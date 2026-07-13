@@ -49,14 +49,6 @@ CREATE OR REPLACE FUNCTION trg_bank_deposits_to_financial_events()
 RETURNS TRIGGER AS $$
 DECLARE
     v_event_code TEXT;
-END;
-$$ LANGUAGE plpgsql;
-
--- Wait, let's fix the empty body in bank deposits trigger above and write it fully:
-CREATE OR REPLACE FUNCTION trg_bank_deposits_to_financial_events() 
-RETURNS TRIGGER AS $$
-DECLARE
-    v_event_code TEXT;
 BEGIN
     IF EXISTS (
         SELECT 1 FROM financial_events 
