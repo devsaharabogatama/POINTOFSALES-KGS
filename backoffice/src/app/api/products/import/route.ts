@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     }
 
     // Set fallback company_id if not supplied
-    const targetCompanyId = companyId || 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+    const targetCompanyId = companyId || '11111111-1111-1111-1111-111111111111'
 
     // Retrieve auth token from Authorization header to respect RLS
     const authHeader = request.headers.get('Authorization')

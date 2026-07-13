@@ -452,14 +452,14 @@ export default function Home() {
   // Get current active company id helper
   const getMyCompanyId = async () => {
     const { data: userData } = await supabase.auth.getUser()
-    if (!userData?.user?.id) return 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+    if (!userData?.user?.id) return '11111111-1111-1111-1111-111111111111'
     const { data: members } = await supabase
       .from('company_memberships')
       .select('company_id')
       .eq('user_id', userData.user.id)
       .eq('status', 'ACTIVE')
       .limit(1)
-    return members?.[0]?.company_id || 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+    return members?.[0]?.company_id || '11111111-1111-1111-1111-111111111111'
   }
 
   // Handle CRUD Customer submit
