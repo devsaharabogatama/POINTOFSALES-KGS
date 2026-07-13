@@ -29,7 +29,8 @@ import {
   ClipboardList,
   Lock,
   Mail,
-  LogOut
+  LogOut,
+  Users
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -110,7 +111,20 @@ export default function Home() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'customer' | 'events' | 'journal' | 'finance'>('overview')
+  // Staff Management States
+  const [staffList, setStaffList] = useState<any[]>([])
+  const [storesList, setStoresList] = useState<any[]>([])
+  const [showAddStaffModal, setShowAddStaffModal] = useState(false)
+  const [isSavingStaff, setIsSavingStaff] = useState(false)
+  const [staffForm, setStaffForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role_code: 'CASHIER',
+    store_id: 'NONE'
+  })
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'staff' | 'customer' | 'events' | 'journal' | 'finance'>('overview')
   const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname' | 'orders'>('levels')
   const [customerSubTab, setCustomerSubTab] = useState<'list' | 'pricelist'>('list')
   const [searchQuery, setSearchQuery] = useState('')
@@ -420,6 +434,32 @@ export default function Home() {
         setFifoAllocations(mappedAllocations)
       }
 
+      // 10. Fetch Staff List
+      const { data: staffData, error: staffErr } = await supabase
+        .from('company_memberships')
+        .select(`
+          user_id, role_code, status,
+          profiles (name, email)
+        `)
+      if (!staffErr && staffData) {
+        const mappedStaff = staffData.map((s: any) => ({
+          userId: s.user_id,
+          name: s.profiles?.name || 'Unknown',
+          email: s.profiles?.email || '-',
+          role: s.role_code,
+          status: s.status
+        }))
+        setStaffList(mappedStaff)
+      }
+
+      // 11. Fetch Stores List
+      const { data: strData, error: strErr } = await supabase
+        .from('stores')
+        .select('id, store_code, store_name')
+      if (!strErr && strData) {
+        setStoresList(strData)
+      }
+
     } catch (err) {
       console.error('Error loading data from Supabase:', err)
     }
@@ -496,6 +536,49 @@ export default function Home() {
     await supabase.auth.signOut()
     setSession(null)
     setActiveTab('overview')
+  }
+
+  // Handle Staff Submit (Create Staff User via Next.js API Route)
+  const handleStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!staffForm.email || !staffForm.password || !staffForm.name || !staffForm.role_code) return
+    setIsSavingStaff(true)
+
+    try {
+      const companyId = await getMyCompanyId()
+      const response = await fetch('/api/staff/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: staffForm.email,
+          password: staffForm.password,
+          name: staffForm.name,
+          role_code: staffForm.role_code,
+          company_id: companyId,
+          store_id: staffForm.store_id
+        })
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        alert('Staf baru berhasil didaftarkan dan dihubungkan ke perusahaan!')
+        setStaffForm({
+          name: '',
+          email: '',
+          password: '',
+          role_code: 'CASHIER',
+          store_id: 'NONE'
+        })
+        setShowAddStaffModal(false)
+        loadDataFromSupabase()
+      } else {
+        alert(`Gagal menambah staf: ${result.error}`)
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`)
+    } finally {
+      setIsSavingStaff(false)
+    }
   }
 
   // Auto-refresh when tab changes
@@ -1060,6 +1143,7 @@ export default function Home() {
         {[
           { id: 'overview', label: 'Ringkasan', icon: TrendingUp },
           { id: 'stock', label: 'Kelola Stok', icon: Database },
+          { id: 'staff', label: 'Kelola Staf', icon: Users },
           { id: 'events', label: 'Event Finansial (Ledger)', icon: ListTodo },
           { id: 'journal', label: 'Jurnal Umum (Double-Entry)', icon: FileText },
           { id: 'finance', label: 'Laporan Keuangan', icon: DollarSign },
@@ -1162,6 +1246,75 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB STAFF: MANAJEMEN STAF */}
+        {activeTab === 'staff' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-white">Manajemen Staf & Akses Tenant</h2>
+                <p className="text-xs text-slate-400">Daftar pengguna terdaftar dan otorisasi peran dalam perusahaan Anda.</p>
+              </div>
+              <button
+                onClick={() => setShowAddStaffModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition-all shadow-md shadow-indigo-600/10"
+              >
+                <PlusCircle className="h-4 w-4" />
+                Tambah Anggota Staf
+              </button>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-semibold uppercase tracking-wider">
+                    <th className="px-6 py-4">Nama Lengkap</th>
+                    <th className="px-6 py-4">Email</th>
+                    <th className="px-6 py-4">Peran (Role)</th>
+                    <th className="px-6 py-4">Status Keanggotaan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-850 text-slate-300">
+                  {staffList.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-10 text-center text-slate-500">
+                        Belum ada data anggota staf rill.
+                      </td>
+                    </tr>
+                  ) : (
+                    staffList.map((staf, idx) => (
+                      <tr key={staf.userId || idx} className="hover:bg-slate-850/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-white">{staf.name}</td>
+                        <td className="px-6 py-4">{staf.email}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            staf.role === 'COMPANY_OWNER'
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              : staf.role === 'COMPANY_ADMIN'
+                              ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          }`}>
+                            {staf.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                            staf.status === 'ACTIVE' ? 'text-emerald-400' : 'text-slate-400'
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${
+                              staf.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-slate-400'
+                            }`} />
+                            {staf.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -2006,6 +2159,108 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* MODAL 0: ADD STAFF USER */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <Users className="h-5 w-5 text-indigo-400" />
+              Daftarkan Anggota Staf Baru
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">
+              Buat akun pengguna Supabase Auth baru dan daftarkan keanggotaannya di tenant Anda secara otomatis.
+            </p>
+
+            <form onSubmit={handleStaffSubmit} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Nama Lengkap</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Budi Cahyono"
+                  value={staffForm.name}
+                  onChange={e => setStaffForm({ ...staffForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Email Login Staf</label>
+                <input
+                  type="email"
+                  placeholder="budi@perusahaan.com"
+                  value={staffForm.email}
+                  onChange={e => setStaffForm({ ...staffForm, email: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Password Sementara</label>
+                <input
+                  type="password"
+                  placeholder="Min 6 karakter"
+                  value={staffForm.password}
+                  onChange={e => setStaffForm({ ...staffForm, password: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Pilih Peran (Role)</label>
+                <select
+                  value={staffForm.role_code}
+                  onChange={e => setStaffForm({ ...staffForm, role_code: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="CASHIER">CASHIER (Kasir Toko)</option>
+                  <option value="STORE_MANAGER">STORE_MANAGER (Manajer Toko)</option>
+                  <option value="WAREHOUSE_ADMIN">WAREHOUSE_ADMIN (Admin Gudang)</option>
+                  <option value="FINANCE">FINANCE (Divisi Keuangan)</option>
+                  <option value="ACCOUNTING">ACCOUNTING (Divisi Akuntansi)</option>
+                  <option value="COMPANY_ADMIN">COMPANY_ADMIN (Admin Perusahaan)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Tautkan Toko Penugasan (Opsional)</label>
+                <select
+                  value={staffForm.store_id}
+                  onChange={e => setStaffForm({ ...staffForm, store_id: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="NONE">-- Tidak Ditautkan ke Toko Spesifik --</option>
+                  {storesList.map(store => (
+                    <option key={store.id} value={store.id}>
+                      {store.store_name} ({store.store_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-850">
+                <button
+                  type="button"
+                  onClick={() => setShowAddStaffModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 rounded-lg text-xs font-semibold text-slate-300 transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingStaff}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition-all disabled:bg-slate-800 disabled:text-slate-500"
+                >
+                  {isSavingStaff ? 'Mendaftarkan...' : 'Daftarkan Staf'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: STOCK TRANSFER */}
       {showTransferModal && (
