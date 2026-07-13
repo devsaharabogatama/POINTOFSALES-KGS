@@ -1,0 +1,5 @@
+sku,nama_produk,kategori,harga_jual_umum,harga_beli_awal_hpp,satuan_uom,stok_awal,kode_gudang
+SEM-PAD-50,Semen Padang 50kg,Bahan Bangunan,72000,65000,sak,100,GDS
+BES-BET-10,Besi Beton 10mm SNI,Bahan Bangunan,85000,78000,batang,50,GDS
+CAT-AV-WHT,Avitex Putih 5kg,Cat & Pewarna,145000,130000,pail,20,KGS
+PAKU-3INCH,Paku Kayu 3 Inch,Alat & Perkakas,20000,15000,kg,15,KGS

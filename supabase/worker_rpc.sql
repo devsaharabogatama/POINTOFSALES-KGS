@@ -1,5 +1,5 @@
 -- -----------------------------------------------------
--- RPC: process_financial_events_queue
+-- RPC: process_financial_events_queue (Multi-Company Ledger Worker)
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION process_financial_events_queue() 
 RETURNS JSONB AS $$
@@ -22,10 +22,10 @@ DECLARE
     v_error_count INT := 0;
     v_results JSONB := '[]'::jsonb;
 BEGIN
-    -- Loop through READY events (Using SKIP LOCKED to prevent concurrent worker collisions)
+    -- Loop through READY/ERROR events for retry
     FOR v_event IN 
         SELECT * FROM financial_events 
-        WHERE status = 'READY' 
+        WHERE status IN ('READY', 'ERROR')
         ORDER BY event_date ASC, event_code ASC
         FOR UPDATE SKIP LOCKED
     LOOP
@@ -40,7 +40,6 @@ BEGIN
 
             -- 3. Resolve Accounting Rules by event_type
             IF v_event.event_type = 'SALE_POSTED' THEN
-                -- Extract amounts from JSONB payload
                 v_sales_net := COALESCE((v_event.amounts->>'sales_net_amount')::NUMERIC, 0);
                 v_hpp := COALESCE((v_event.amounts->>'hpp_amount')::NUMERIC, 0);
                 v_cash := COALESCE((v_event.amounts->>'cash_amount')::NUMERIC, 0);
@@ -49,7 +48,7 @@ BEGIN
                 v_balance := COALESCE((v_event.amounts->>'customer_balance_amount')::NUMERIC, 0);
                 v_ar := COALESCE((v_event.amounts->>'ar_amount')::NUMERIC, 0);
 
-                -- Verify double entry equation: Cash + Transfer + QRIS + Balance + AR = Sales Net
+                -- Verify double entry equation
                 IF (v_cash + v_transfer + v_qris + v_balance + v_ar) != v_sales_net THEN
                     RAISE EXCEPTION 'Double entry mismatch: Sum of payments (Rp %) != Net Sales (Rp %)', 
                         (v_cash + v_transfer + v_qris + v_balance + v_ar), v_sales_net;
@@ -59,29 +58,29 @@ BEGIN
                 v_journal_no := 'JNL-' || to_char(NOW(), 'YYYYMMDD') || '-' || lpad(nextval('journal_no_seq')::text, 4, '0');
                 
                 -- PENJUALAN (Credit)
-                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '4101-01', 'Pendapatan Penjualan', 0, v_sales_net, 'Penjualan SO ' || v_event.event_code);
+                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '4101-01', 'Pendapatan Penjualan', 0, v_sales_net, 'Penjualan SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
 
                 -- DEBITS (Payments)
                 IF v_cash > 0 THEN
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1101-01', 'Kas Kasir KGS', v_cash, 0, 'Pembayaran Tunai SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1101-01', 'Kas Kasir KGS', v_cash, 0, 'Pembayaran Tunai SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
                 IF v_transfer > 0 THEN
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-01', 'Bank BCA Mandiri', v_transfer, 0, 'Pembayaran Transfer SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-01', 'Bank BCA Mandiri', v_transfer, 0, 'Pembayaran Transfer SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
                 IF v_qris > 0 THEN
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-02', 'QRIS Kasir', v_qris, 0, 'Pembayaran QRIS SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-02', 'QRIS Kasir', v_qris, 0, 'Pembayaran QRIS SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
                 IF v_balance > 0 THEN
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '2102-01', 'Titipan Deposito Pelanggan', v_balance, 0, 'Pembayaran Saldo Deposito SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '2102-01', 'Titipan Deposito Pelanggan', v_balance, 0, 'Pembayaran Saldo Deposito SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
                 IF v_ar > 0 THEN
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1201-01', 'Piutang Dagang', v_ar, 0, 'Tempo Piutang SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1201-01', 'Piutang Dagang', v_ar, 0, 'Tempo Piutang SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
 
                 -- B. Post COGS / HPP (Debit HPP, Credit Persediaan)
@@ -89,16 +88,15 @@ BEGIN
                     v_journal_no := 'JNL-' || to_char(NOW(), 'YYYYMMDD') || '-' || lpad(nextval('journal_no_seq')::text, 4, '0');
                     
                     -- HPP (Debit)
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '5101-01', 'Harga Pokok Penjualan (HPP)', v_hpp, 0, 'HPP Penjualan SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '5101-01', 'Harga Pokok Penjualan (HPP)', v_hpp, 0, 'HPP Penjualan SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                     
                     -- PERSEDIAAN (Credit)
-                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1301-01', 'Persediaan Barang Dagang', 0, v_hpp, 'Pengurangan Stok Persediaan SO ' || v_event.event_code);
+                    INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                    VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1301-01', 'Persediaan Barang Dagang', 0, v_hpp, 'Pengurangan Stok Persediaan SO ' || v_event.event_code, v_event.company_id, v_event.store_id);
                 END IF;
 
             ELSIF v_event.event_type = 'EXPENSE_POSTED' THEN
-                -- Beban Operasional / Cash Advance
                 v_amount := COALESCE((v_event.amounts->>'amount')::NUMERIC, 0);
                 v_category := COALESCE(v_event.amounts->>'category', 'Umum');
                 v_description := COALESCE(v_event.amounts->>'description', 'Beban Operasional');
@@ -106,35 +104,34 @@ BEGIN
 
                 v_journal_no := 'JNL-' || to_char(NOW(), 'YYYYMMDD') || '-' || lpad(nextval('journal_no_seq')::text, 4, '0');
 
-                -- BEBAN (Debit) - mapping to different COAs based on category
-                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
+                -- BEBAN (Debit)
+                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
                 VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, 
                     CASE WHEN v_category = 'Bensin' THEN '6101-01' 
                          WHEN v_category = 'Uang Makan' THEN '6101-02'
                          ELSE '6101-99' END, 
-                    'Beban Operasional - ' || v_category, v_amount, 0, v_description);
+                    'Beban Operasional - ' || v_category, v_amount, 0, v_description, v_event.company_id, v_event.store_id);
 
                 -- KAS/BANK (Credit)
-                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
+                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
                 VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, 
                     CASE WHEN v_payment_method = 'Transfer' THEN '1102-01' ELSE '1101-01' END,
                     CASE WHEN v_payment_method = 'Transfer' THEN 'Bank BCA Mandiri' ELSE 'Kas Kasir KGS' END,
-                    0, v_amount, 'Pengeluaran Cash Advance - ' || v_description);
+                    0, v_amount, 'Pengeluaran Cash Advance - ' || v_description, v_event.company_id, v_event.store_id);
 
             ELSIF v_event.event_type = 'BANK_DEPOSIT' THEN
-                -- Setor Tunai Kasir ke Bank
                 v_amount := COALESCE((v_event.amounts->>'amount')::NUMERIC, 0);
                 v_description := COALESCE(v_event.amounts->>'bank_account_info', 'Setor Tunai');
 
                 v_journal_no := 'JNL-' || to_char(NOW(), 'YYYYMMDD') || '-' || lpad(nextval('journal_no_seq')::text, 4, '0');
 
                 -- BANK (Debit)
-                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-01', 'Bank BCA Mandiri', v_amount, 0, 'Penerimaan Setoran Bank - ' || v_description);
+                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1102-01', 'Bank BCA Mandiri', v_amount, 0, 'Penerimaan Setoran Bank - ' || v_description, v_event.company_id, v_event.store_id);
 
                 -- KAS (Credit)
-                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note)
-                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1101-01', 'Kas Kasir KGS', 0, v_amount, 'Setor Kas ke Bank - ' || v_description);
+                INSERT INTO journal_entries (journal_no, entry_group_id, transaction_date, financial_event_id, coa_code, coa_name, debit, kredit, note, company_id, store_id)
+                VALUES (v_journal_no, v_group_id, v_event.event_date, v_event.id, '1101-01', 'Kas Kasir KGS', 0, v_amount, 'Setor Kas ke Bank - ' || v_description, v_event.company_id, v_event.store_id);
             
             ELSE
                 RAISE EXCEPTION 'Unsupported event type: %', v_event.event_type;
@@ -155,7 +152,7 @@ BEGIN
                     pos_net_qris, journal_net_qris, 
                     pos_net_ar, journal_net_ar, 
                     pos_net_hpp, journal_net_hpp,
-                    differences
+                    differences, company_id
                 ) VALUES (
                     v_event.source_id, NOW(), 'MATCH'::recon_status,
                     v_sales_net, v_sales_net,
@@ -164,13 +161,13 @@ BEGIN
                     v_qris, v_qris,
                     v_ar, v_ar,
                     v_hpp, v_hpp,
-                    '{"sales":0,"cash":0,"transfer":0,"qris":0,"ar":0,"hpp":0}'::jsonb
+                    '{"sales":0,"cash":0,"transfer":0,"qris":0,"ar":0,"hpp":0}'::jsonb,
+                    v_event.company_id
                 ) ON CONFLICT (sales_id) DO UPDATE SET
                     reconciled_at = NOW(),
                     status = 'MATCH'::recon_status,
                     differences = '{"sales":0,"cash":0,"transfer":0,"qris":0,"ar":0,"hpp":0}'::jsonb;
                 
-                -- Update sales_headers financial status
                 UPDATE sales_headers 
                 SET financial_status = 'POSTED'::financial_status, recon_status = 'MATCH'::recon_status 
                 WHERE id = v_event.source_id;
@@ -180,8 +177,6 @@ BEGIN
             v_results := v_results || jsonb_build_object('event_code', v_event.event_code, 'status', 'SUCCESS');
 
         EXCEPTION WHEN OTHERS THEN
-            -- Rollback internal entries of this specific block iteration
-            -- and mark the event as ERROR
             v_error_count := v_error_count + 1;
             v_results := v_results || jsonb_build_object('event_code', v_event.event_code, 'status', 'ERROR', 'message', SQLERRM);
 

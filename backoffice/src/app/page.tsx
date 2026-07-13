@@ -22,7 +22,11 @@ import {
   ArrowLeftRight,
   HandCoins,
   Warehouse,
-  Printer
+  Printer,
+  Upload,
+  Download,
+  Calendar,
+  ClipboardList
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -45,6 +49,20 @@ const MOCK_STOCKS = [
   { id: '8', sku: 'TANG-KR-8IN', name: 'Tang Kombinasi Kenmaster 8"', category: 'Alat & Perkakas', stockKGS: 12, stockGDS: 5, minStock: 20, uom: 'pcs' }, // LOW STOCK
 ]
 
+const MOCK_MOVEMENTS = [
+  { id: 'm1', date: '13/07/2026 10:45', sku: 'SEM-PAD-50', name: 'Semen Padang 50kg', wh: 'KGS Toko', change: -2, type: 'SALE', ref: 'SO-00750' },
+  { id: 'm2', date: '13/07/2026 10:45', sku: 'BES-BET-10', name: 'Besi Beton 10mm SNI', wh: 'KGS Toko', change: -1, type: 'SALE', ref: 'SO-00750' },
+  { id: 'm3', date: '13/07/2026 09:15', sku: 'SEM-PAD-50', name: 'Semen Padang 50kg', wh: 'GDS Gudang', change: 200, type: 'PURCHASE', ref: 'PO-00123' },
+  { id: 'm4', date: '13/07/2026 09:20', sku: 'SEM-PAD-50', name: 'Semen Padang 50kg', wh: 'GDS Gudang', change: -50, type: 'TRANSFER_OUT', ref: 'TF-901' },
+  { id: 'm5', date: '13/07/2026 09:20', sku: 'SEM-PAD-50', name: 'Semen Padang 50kg', wh: 'KGS Toko', change: 50, type: 'TRANSFER_IN', ref: 'TF-901' },
+  { id: 'm6', date: '12/07/2026 16:30', sku: 'PAKU-3INCH', name: 'Paku Kayu 3 Inch', wh: 'KGS Toko', change: -3, type: 'ADJUSTMENT', ref: 'Koreksi Rusak' },
+]
+
+const MOCK_OPNAMES = [
+  { id: 'op1', no: 'OPN-20260710-001', wh: 'KGS Toko', date: '10/07/2026', notes: 'Opname Mingguan', status: 'APPROVED', auditor: 'Hendra' },
+  { id: 'op2', no: 'OPN-20260713-001', wh: 'GDS Gudang', date: '13/07/2026', notes: 'Audit Semesteran', status: 'DRAFT', auditor: 'Manager Andi' },
+]
+
 const MOCK_EVENTS = [
   { id: 'EVT-001', code: 'EVT-20260713-000001', type: 'SALE_POSTED', source: 'sales_headers', rootSales: 'SO-00750', date: '13/07/2026 10:45', amount: 150000, status: 'DONE', error: null },
   { id: 'EVT-002', code: 'EVT-20260713-000002', type: 'PAYMENT_RECEIVED', source: 'sales_payments', rootSales: 'SO-00750', date: '13/07/2026 10:45', amount: 150000, status: 'DONE', error: null },
@@ -64,6 +82,7 @@ const MOCK_JOURNAL = [
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'events' | 'journal' | 'finance'>('overview')
+  const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname'>('levels')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
   const [isProcessingWorker, setIsProcessingWorker] = useState(false)
@@ -73,12 +92,15 @@ export default function Home() {
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false)
+  const [showOpnameModal, setShowOpnameModal] = useState(false)
 
   // Form states
   const [transferForm, setTransferForm] = useState({
     productId: '',
-    srcWh: 'GDS', // default GDS
-    destWh: 'KGS', // default KGS
+    srcWh: 'GDS',
+    destWh: 'KGS',
     qty: ''
   })
   const [expenseForm, setExpenseForm] = useState({
@@ -91,8 +113,31 @@ export default function Home() {
     amount: '',
     bankAccountInfo: 'BCA KGS 7890123'
   })
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    productId: '',
+    warehouseCode: 'GDS',
+    qty: '',
+    cogs: '',
+    reason: 'Rusak'
+  })
+  const [opnameForm, setOpnameForm] = useState({
+    warehouseCode: 'GDS',
+    notes: '',
+    items: MOCK_STOCKS.map(s => ({
+      productId: s.id,
+      sku: s.sku,
+      name: s.name,
+      systemQty: s.stockGDS,
+      physicalQty: s.stockGDS.toString()
+    }))
+  })
 
-  // Check if supabase variables are actually set (not placeholders)
+  // Import CSV files handler
+  const [importingFile, setImportingFile] = useState<File | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
+
+  // Check if supabase variables are actually set
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     if (supabaseUrl && !supabaseUrl.includes('your-project-id')) {
@@ -126,13 +171,12 @@ export default function Home() {
     
     if (isSupabaseConnected) {
       try {
-        // Find warehouse UUIDs based on code
         const { data: srcData } = await supabase.from('warehouses').select('id').eq('code', transferForm.srcWh).single()
         const { data: destData } = await supabase.from('warehouses').select('id').eq('code', transferForm.destWh).single()
         
         if (!srcData || !destData) throw new Error('Warehouse not found')
 
-        const { data, error } = await supabase.rpc('transfer_product_stock', {
+        const { error } = await supabase.rpc('transfer_product_stock', {
           p_product_id: transferForm.productId,
           p_src_warehouse_id: srcData.id,
           p_dest_warehouse_id: destData.id,
@@ -147,84 +191,142 @@ export default function Home() {
         alert(`Error pemindahan stok: ${err.message}`)
       }
     } else {
-      // Mock Success
       alert(`[Demo Mode] Pemindahan stok berhasil! ${transferForm.qty} unit dipindah dari Gudang ${transferForm.srcWh} ke Toko ${transferForm.destWh}.`)
       setShowTransferModal(false)
       setTransferForm({ productId: '', srcWh: 'GDS', destWh: 'KGS', qty: '' })
     }
   }
 
-  // Handle Cash Advance expense submit
-  const handleExpenseSubmit = async (e: React.FormEvent) => {
+  // Handle Stock Adjustment submit
+  const handleAdjustmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!expenseForm.amount || !expenseForm.description) return
+    if (!adjustmentForm.productId || !adjustmentForm.qty || !adjustmentForm.cogs) return
 
     if (isSupabaseConnected) {
       try {
-        // Enqueue to Supabase via RPC or inserting to cash_advances which triggers event enqueue
-        // Requires session_id (finding an open session)
-        const { data: session } = await supabase.from('cashier_sessions').select('id').eq('status', 'OPEN').limit(1).single()
-        const { data: profile } = await supabase.auth.getUser()
+        const { data: wh } = await supabase.from('warehouses').select('id').eq('code', adjustmentForm.warehouseCode).single()
+        if (!wh) throw new Error('Warehouse not found')
 
-        if (!session) throw new Error('No OPEN cashier session found. Open a session on POS first.')
-        
-        const { error } = await supabase.from('cash_advances').insert({
-          ca_no: `CA-${Date.now().toString().slice(-6)}`,
-          session_id: session.id,
-          category: expenseForm.category,
-          description: expenseForm.description,
-          amount: parseFloat(expenseForm.amount),
-          payment_method: expenseForm.paymentMethod,
-          status: 'APPROVED',
-          created_by: profile.user?.id
+        const { error } = await supabase.from('stock_adjustments').insert({
+          adjustment_no: `ADJ-${Date.now().toString().slice(-6)}`,
+          product_id: adjustmentForm.productId,
+          warehouse_id: wh.id,
+          qty_adjusted: parseFloat(adjustmentForm.qty),
+          cogs_unit: parseFloat(adjustmentForm.cogs),
+          reason: adjustmentForm.reason
         })
 
         if (error) throw error
-        alert('Peti kas / Cash Advance berhasil didaftarkan dan diapprove!')
-        setShowExpenseModal(false)
-        setExpenseForm({ category: 'Bensin', description: '', amount: '', paymentMethod: 'Cash' })
+        alert('Penyesuaian stok berhasil disimpan!')
+        setShowAdjustmentModal(false)
+        setAdjustmentForm({ productId: '', warehouseCode: 'GDS', qty: '', cogs: '', reason: 'Rusak' })
       } catch (err: any) {
-        alert(`Error pengajuan CA: ${err.message}`)
+        alert(`Error penyesuaian stok: ${err.message}`)
       }
     } else {
-      alert(`[Demo Mode] Beban berhasil diajukan & disetujui! Rp ${parseFloat(expenseForm.amount).toLocaleString('id-ID')} dicatat ke Kategori ${expenseForm.category}.`)
-      setShowExpenseModal(false)
-      setExpenseForm({ category: 'Bensin', description: '', amount: '', paymentMethod: 'Cash' })
+      alert(`[Demo Mode] Penyesuaian stok berhasil! Kuantitas disesuaikan ${adjustmentForm.qty} unit dengan estimasi HPP Rp ${Number(adjustmentForm.cogs).toLocaleString('id-ID')}.`)
+      setShowAdjustmentModal(false)
+      setAdjustmentForm({ productId: '', warehouseCode: 'GDS', qty: '', cogs: '', reason: 'Rusak' })
     }
   }
 
-  // Handle Bank Deposit submit
-  const handleDepositSubmit = async (e: React.FormEvent) => {
+  // Handle Stock Opname submit
+  const handleOpnameSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!depositForm.amount) return
 
     if (isSupabaseConnected) {
       try {
-        const { data: session } = await supabase.from('cashier_sessions').select('id').eq('status', 'OPEN').limit(1).single()
-        const { data: profile } = await supabase.auth.getUser()
+        const { data: wh } = await supabase.from('warehouses').select('id').eq('code', opnameForm.warehouseCode).single()
+        if (!wh) throw new Error('Warehouse not found')
 
-        if (!session) throw new Error('No OPEN cashier session found.')
+        // 1. Create Stock Opname Header
+        const { data: opname, error: opnErr } = await supabase.from('stock_opnames').insert({
+          opname_no: `OPN-${Date.now().toString().slice(-6)}`,
+          warehouse_id: wh.id,
+          notes: opnameForm.notes,
+          status: 'APPROVED' // For simplify demo
+        }).select('id').single()
 
-        const { error } = await supabase.from('bank_deposits').insert({
-          deposit_no: `DEP-${Date.now().toString().slice(-6)}`,
-          session_id: session.id,
-          amount: parseFloat(depositForm.amount),
-          bank_account_info: depositForm.bankAccountInfo,
-          created_by: profile.user?.id
-        })
+        if (opnErr) throw opnErr
 
-        if (error) throw error
-        alert('Setoran tunai kasir ke bank berhasil dicatat!')
-        setShowDepositModal(false)
-        setDepositForm({ amount: '', bankAccountInfo: 'BCA KGS 7890123' })
+        // 2. Insert details and let DB process adjustment
+        for (const item of opnameForm.items) {
+          const physical = parseFloat(item.physicalQty) || 0
+          const diff = item.systemQty - physical
+          
+          await supabase.from('stock_opname_details').insert({
+            opname_id: opname.id,
+            product_id: item.productId,
+            system_qty: item.systemQty,
+            physical_qty: physical,
+            difference: diff
+          })
+        }
+
+        alert('Audit Stock Opname berhasil disimpan dan stok otomatis disesuaikan!')
+        setShowOpnameModal(false)
       } catch (err: any) {
-        alert(`Error pencatatan setoran: ${err.message}`)
+        alert(`Error Opname: ${err.message}`)
       }
     } else {
-      alert(`[Demo Mode] Setoran tunai berhasil disimpan! Rp ${parseFloat(depositForm.amount).toLocaleString('id-ID')} disetor ke Rekening ${depositForm.bankAccountInfo}.`)
-      setShowDepositModal(false)
-      setDepositForm({ amount: '', bankAccountInfo: 'BCA KGS 7890123' })
+      alert(`[Demo Mode] Stock Opname disahkan! Stok fisik diselaraskan ke sistem untuk Gudang ${opnameForm.warehouseCode}.`)
+      setShowOpnameModal(false)
     }
+  }
+
+  // Handle Import CSV file submit
+  const handleCSVImport = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importingFile) return
+    setIsImporting(true)
+    setImportResult(null)
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const csvText = event.target?.result as string
+      try {
+        const response = await fetch('/api/products/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csvText })
+        })
+        const result = await response.json()
+        if (response.ok) {
+          setImportResult(`Impor Sukses: Berhasil memasukkan ${result.successCount} item. Gagal: ${result.failureCount}`)
+        } else {
+          setImportResult(`Impor Gagal: ${result.error}`)
+        }
+      } catch (err: any) {
+        setImportResult(`Error: ${err.message}`)
+      } finally {
+        setIsImporting(false)
+      }
+    }
+    reader.readAsText(importingFile)
+  }
+
+  // Helper change source warehouse and adjust default quantities in opname
+  const handleOpnameWarehouseChange = (whCode: string) => {
+    setOpnameForm({
+      ...opnameForm,
+      warehouseCode: whCode,
+      items: MOCK_STOCKS.map(s => {
+        const systemQty = whCode === 'GDS' ? s.stockGDS : s.stockKGS
+        return {
+          productId: s.id,
+          sku: s.sku,
+          name: s.name,
+          systemQty,
+          physicalQty: systemQty.toString()
+        }
+      })
+    })
+  }
+
+  const handleOpnameQtyChange = (idx: number, val: string) => {
+    const updated = [...opnameForm.items]
+    updated[idx].physicalQty = val
+    setOpnameForm({ ...opnameForm, items: updated })
   }
 
   return (
@@ -249,18 +351,21 @@ export default function Home() {
               Transfer Stok
             </button>
             <button 
-              onClick={() => setShowExpenseModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-xs font-semibold transition-all text-rose-400"
+              onClick={() => setShowAdjustmentModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-xs font-semibold transition-all text-amber-400"
             >
-              <HandCoins className="h-3.5 w-3.5" />
-              Catat Beban (CA)
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Koreksi / Adjust Stok
             </button>
             <button 
-              onClick={() => setShowDepositModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-xs font-semibold transition-all text-emerald-400"
+              onClick={() => {
+                handleOpnameWarehouseChange('GDS');
+                setShowOpnameModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-xs font-semibold transition-all text-purple-400"
             >
-              <Warehouse className="h-3.5 w-3.5" />
-              Setor Bank
+              <ClipboardList className="h-3.5 w-3.5" />
+              Stock Opname
             </button>
           </div>
 
@@ -387,71 +492,212 @@ export default function Home() {
 
         {/* TAB 2: STOCKS */}
         {activeTab === 'stock' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-              <div>
-                <h3 className="text-base font-bold text-white">Manajemen Stok Multi-Warehouse</h3>
-                <p className="text-xs text-slate-450 mt-1">Status stok aktual antara Toko KGS (Kasir) dan Gudang Penyimpanan GDS</p>
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full sm:w-80">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Cari SKU atau nama barang..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-xl py-2 pl-10 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
+          <div className="space-y-6">
+            {/* Stock subnavigation */}
+            <div className="flex justify-between items-center bg-slate-900/40 border border-slate-800 rounded-xl p-2 max-w-md">
+              <button
+                onClick={() => setStockSubTab('levels')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  stockSubTab === 'levels' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Katalog & Level Stok
+              </button>
+              <button
+                onClick={() => setStockSubTab('movements')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  stockSubTab === 'movements' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Kartu Pergerakan Stok
+              </button>
+              <button
+                onClick={() => setStockSubTab('opname')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  stockSubTab === 'opname' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Laporan Stock Opname
+              </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
-                  <tr>
-                    <th className="p-4">SKU</th>
-                    <th className="p-4">Nama Barang</th>
-                    <th className="p-4">Kategori</th>
-                    <th className="p-4 text-right">Stok Toko KGS</th>
-                    <th className="p-4 text-right">Stok Gudang GDS</th>
-                    <th className="p-4 text-right">Total Stok</th>
-                    <th className="p-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-850">
-                  {MOCK_STOCKS.filter(stock => 
-                    stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    stock.sku.toLowerCase().includes(searchQuery.toLowerCase())
-                  ).map(stock => {
-                    const totalStock = stock.stockKGS + stock.stockGDS
-                    const isLow = totalStock < stock.minStock
-                    return (
-                      <tr key={stock.id} className="hover:bg-slate-900/60 transition-colors">
-                        <td className="p-4 font-mono text-xs">{stock.sku}</td>
-                        <td className="p-4 font-medium text-white">{stock.name}</td>
-                        <td className="p-4 text-slate-450">{stock.category}</td>
-                        <td className="p-4 text-right font-mono">{stock.stockKGS} {stock.uom}</td>
-                        <td className="p-4 text-right font-mono">{stock.stockGDS} {stock.uom}</td>
-                        <td className="p-4 text-right font-mono font-bold text-indigo-400">{totalStock} {stock.uom}</td>
-                        <td className="p-4 text-center">
-                          {isLow ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium">
-                              Stok Rendah
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-                              Cukup
-                            </span>
-                          )}
-                        </td>
+            {/* SUBTAB 2.1: STOCKS LEVELS */}
+            {stockSubTab === 'levels' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Manajemen Stok Multi-Warehouse</h3>
+                    <p className="text-xs text-slate-450 mt-1">Status stok aktual antara Toko KGS (Kasir) dan Gudang Penyimpanan GDS</p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {/* CSV Import Button */}
+                    <button
+                      onClick={() => setShowImportModal(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition-all shadow-md shadow-indigo-600/10"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Impor CSV Produk
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative mb-6">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari SKU atau nama barang..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">SKU</th>
+                        <th className="p-4">Nama Barang</th>
+                        <th className="p-4">Kategori</th>
+                        <th className="p-4 text-right">Stok Toko KGS</th>
+                        <th className="p-4 text-right">Stok Gudang GDS</th>
+                        <th className="p-4 text-right">Total Stok</th>
+                        <th className="p-4 text-center">Status</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {MOCK_STOCKS.filter(stock => 
+                        stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        stock.sku.toLowerCase().includes(searchQuery.toLowerCase())
+                      ).map(stock => {
+                        const totalStock = stock.stockKGS + stock.stockGDS
+                        const isLow = totalStock < stock.minStock
+                        return (
+                          <tr key={stock.id} className="hover:bg-slate-900/60 transition-colors">
+                            <td className="p-4 font-mono text-xs">{stock.sku}</td>
+                            <td className="p-4 font-medium text-white">{stock.name}</td>
+                            <td className="p-4 text-slate-450">{stock.category}</td>
+                            <td className="p-4 text-right font-mono">{stock.stockKGS} {stock.uom}</td>
+                            <td className="p-4 text-right font-mono">{stock.stockGDS} {stock.uom}</td>
+                            <td className="p-4 text-right font-mono font-bold text-indigo-400">{totalStock} {stock.uom}</td>
+                            <td className="p-4 text-center">
+                              {isLow ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium">
+                                  Stok Rendah
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium">
+                                  Cukup
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2.2: STOCKS MOVEMENTS (KARTU STOK) */}
+            {stockSubTab === 'movements' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-white">Laporan Histori Kartu Stok (Stock Card)</h3>
+                  <p className="text-xs text-slate-450 mt-1">Laporan terperinci mengenai setiap mutasi masuk dan keluar barang berdasarkan penjualan POS, pembelian, maupun adjustment.</p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">Tanggal</th>
+                        <th className="p-4">SKU</th>
+                        <th className="p-4">Nama Produk</th>
+                        <th className="p-4">Gudang</th>
+                        <th className="p-4 text-right">Mutasi (Qty)</th>
+                        <th className="p-4">Tipe Mutasi</th>
+                        <th className="p-4">No Referensi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850 font-mono text-xs">
+                      {MOCK_MOVEMENTS.map(mov => (
+                        <tr key={mov.id} className="hover:bg-slate-900/60 transition-colors">
+                          <td className="p-4 text-slate-450">{mov.date}</td>
+                          <td className="p-4 text-slate-205">{mov.sku}</td>
+                          <td className="p-4 text-white font-sans">{mov.name}</td>
+                          <td className="p-4 text-slate-300 font-sans">{mov.wh}</td>
+                          <td className={`p-4 text-right font-bold ${mov.change > 0 ? 'text-emerald-450' : 'text-rose-400'}`}>
+                            {mov.change > 0 ? `+${mov.change}` : mov.change}
+                          </td>
+                          <td className="p-4">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                              mov.type === 'SALE' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                              mov.type === 'PURCHASE' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                              mov.type === 'TRANSFER_IN' || mov.type === 'TRANSFER_OUT' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
+                              'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {mov.type}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-450">{mov.ref}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2.3: STOCK OPNAME REPORTS */}
+            {stockSubTab === 'opname' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-white">Histori Laporan Stock Opname (SO)</h3>
+                  <p className="text-xs text-slate-450 mt-1">Daftar rekonsiliasi audit hitung fisik persediaan barang secara periodik.</p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">No Opname</th>
+                        <th className="p-4">Gudang</th>
+                        <th className="p-4">Tanggal Audit</th>
+                        <th className="p-4">Keterangan</th>
+                        <th className="p-4">Auditor</th>
+                        <th className="p-4 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {MOCK_OPNAMES.map(opn => (
+                        <tr key={opn.id} className="hover:bg-slate-900/60 transition-colors">
+                          <td className="p-4 font-mono text-xs text-indigo-400 font-bold">{opn.no}</td>
+                          <td className="p-4 font-medium text-slate-200">{opn.wh}</td>
+                          <td className="p-4 text-xs text-slate-450 font-mono">{opn.date}</td>
+                          <td className="p-4 text-slate-300">{opn.notes}</td>
+                          <td className="p-4 text-slate-300">{opn.auditor}</td>
+                          <td className="p-4 text-center">
+                            {opn.status === 'APPROVED' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                                APPROVED
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-xs font-semibold">
+                                DRAFT
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -541,7 +787,7 @@ export default function Home() {
               </div>
 
               <div className="bg-slate-950 px-4 py-2 rounded-lg border border-slate-800 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-405" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                 <span className="text-xs text-slate-300 font-semibold">Balance Check: <span className="text-emerald-400">OK (Selisih Rp 0)</span></span>
               </div>
             </div>
@@ -565,7 +811,7 @@ export default function Home() {
                       <td className="p-4 text-slate-300">{jnl.jnlNo}</td>
                       <td className="p-4 text-slate-450">{jnl.eventCode}</td>
                       <td className="p-4 text-indigo-400 font-bold">{jnl.coa}</td>
-                      <td className="p-4 text-slate-205">{jnl.coaName}</td>
+                      <td className="p-4 text-slate-200">{jnl.coaName}</td>
                       <td className="p-4 text-right text-emerald-400">
                         {jnl.debit > 0 ? `Rp ${jnl.debit.toLocaleString('id-ID')}` : '-'}
                       </td>
@@ -592,9 +838,9 @@ export default function Home() {
                     <FileText className="h-5 w-5 text-indigo-400" />
                     Laporan Laba / Rugi (P&L)
                   </h3>
-                  <p className="text-xs text-slate-450 mt-1">Periode: Berjalan 13 Juli 2026</p>
+                  <p className="text-xs text-slate-400 mt-1">Periode: Berjalan 13 Juli 2026</p>
                 </div>
-                <button className="p-2 rounded-lg bg-slate-950 border border-slate-805 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
+                <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
                   <Printer className="h-4 w-4" />
                 </button>
               </div>
@@ -611,7 +857,7 @@ export default function Home() {
                     <span className="font-semibold text-slate-300">Pendapatan Penjualan</span>
                     <span className="font-mono text-emerald-400">Rp 45.280.000</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 pl-4">
+                  <div className="flex justify-between text-xs text-slate-550 pl-4">
                     <span>Penjualan Barang Dagang (4101-01)</span>
                     <span className="font-mono">Rp 45.280.000</span>
                   </div>
@@ -623,7 +869,7 @@ export default function Home() {
                     <span className="font-semibold text-slate-300">Harga Pokok Penjualan (HPP)</span>
                     <span className="font-mono text-purple-400">(Rp 28.180.000)</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 pl-4">
+                  <div className="flex justify-between text-xs text-slate-550 pl-4">
                     <span>HPP Unit Terjual (5101-01)</span>
                     <span className="font-mono">Rp 28.180.000</span>
                   </div>
@@ -641,11 +887,11 @@ export default function Home() {
                     <span className="font-semibold text-slate-300">Beban-Beban Operasional</span>
                     <span className="font-mono text-rose-400">(Rp 2.450.000)</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 pl-4">
+                  <div className="flex justify-between text-xs text-slate-550 pl-4">
                     <span>Beban Uang Makan Staf (6101-02)</span>
                     <span className="font-mono">Rp 950.000</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 pl-4">
+                  <div className="flex justify-between text-xs text-slate-550 pl-4">
                     <span>Beban Bensin Operasional (6101-01)</span>
                     <span className="font-mono">Rp 1.500.000</span>
                   </div>
@@ -667,21 +913,21 @@ export default function Home() {
                     <Layers className="h-5 w-5 text-indigo-400" />
                     Laporan Neraca Ringkas
                   </h3>
-                  <p className="text-xs text-slate-455 mt-1">Periode: Per 13 Juli 2026</p>
+                  <p className="text-xs text-slate-400 mt-1">Periode: Per 13 Juli 2026</p>
                 </div>
-                <button className="p-2 rounded-lg bg-slate-950 border border-slate-805 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
+                <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
                   <Printer className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 text-xs font-mono text-slate-350">
+              <div className="grid grid-cols-2 gap-6 text-xs font-mono text-slate-300 font-semibold">
                 {/* AKTIVA (ASSETS) */}
                 <div className="space-y-4">
                   <h4 className="font-bold text-sm text-indigo-400 border-b border-slate-800 pb-2">AKTIVA / ASSET</h4>
                   
                   {/* Kas & Setara */}
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-205">Kas & Bank</span>
+                    <span className="font-bold text-slate-200">Kas & Bank</span>
                     <div className="flex justify-between text-[11px] pl-2">
                       <span>Kas Kasir KGS</span>
                       <span>Rp 12.830.000</span>
@@ -694,7 +940,7 @@ export default function Home() {
 
                   {/* Persediaan */}
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-205">Persediaan</span>
+                    <span className="font-bold text-slate-200">Persediaan</span>
                     <div className="flex justify-between text-[11px] pl-2">
                       <span>Persediaan Barang</span>
                       <span>Rp 120.450.000</span>
@@ -703,7 +949,7 @@ export default function Home() {
 
                   {/* Piutang */}
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-205">Piutang Dagang</span>
+                    <span className="font-bold text-slate-200">Piutang Dagang</span>
                     <div className="flex justify-between text-[11px] pl-2">
                       <span>Piutang POS (Tempo)</span>
                       <span>Rp 8.500.000</span>
@@ -722,7 +968,7 @@ export default function Home() {
                   
                   {/* Kewajiban */}
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-205">Kewajiban Jangka Pendek</span>
+                    <span className="font-bold text-slate-200">Kewajiban Jangka Pendek</span>
                     <div className="flex justify-between text-[11px] pl-2">
                       <span>Titipan Deposito Pelanggan</span>
                       <span>Rp 3.500.000</span>
@@ -731,7 +977,7 @@ export default function Home() {
 
                   {/* Ekuitas */}
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-205">Ekuitas / Modal</span>
+                    <span className="font-bold text-slate-200">Ekuitas / Modal</span>
                     <div className="flex justify-between text-[11px] pl-2">
                       <span>Modal Pemilik</span>
                       <span>Rp 153.630.000</span>
@@ -844,7 +1090,261 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL 2: CASH ADVANCE BEBAN */}
+      {/* MODAL 2: IMPORT CSV */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <Upload className="h-5 w-5 text-indigo-400" />
+              Impor Master Produk & Stok
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">
+              Mempersiapkan inisiasi awal produk secara massal menggunakan format CSV standar.
+            </p>
+
+            <div className="mb-6 bg-slate-950 p-4 rounded-xl border border-slate-850 flex items-center justify-between text-xs">
+              <div>
+                <div className="font-bold text-slate-200">Unduh Template CSV</div>
+                <div className="text-slate-500 mt-0.5">Berisi header standar bahasa Inggris</div>
+              </div>
+              <a
+                href="/import_template.csv"
+                download
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/25 transition-all text-[11px] font-semibold"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Template.csv
+              </a>
+            </div>
+
+            <form onSubmit={handleCSVImport} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400">Pilih Berkas CSV</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={e => setImportingFile(e.target.files ? e.target.files[0] : null)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-400"
+                  required
+                />
+              </div>
+
+              {importResult && (
+                <div className="p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/20 text-xs font-mono text-indigo-300">
+                  {importResult}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportResult(null);
+                    setImportingFile(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  disabled={isImporting || !importingFile}
+                  className="flex-1 py-2.5 rounded-lg bg-indigo-650 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-550 text-xs font-semibold text-white transition-colors"
+                >
+                  {isImporting ? 'Mengimpor...' : 'Mulai Impor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: MANUAL ADJUSTMENT */}
+      {showAdjustmentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-400" />
+              Form Penyesuaian Stok (Adjustment)
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">Mengkoreksi stok fisik barang akibat rusak, hilang, atau selisih audit.</p>
+
+            <form onSubmit={handleAdjustmentSubmit} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Pilih Produk</label>
+                <select
+                  value={adjustmentForm.productId}
+                  onChange={e => setAdjustmentForm({ ...adjustmentForm, productId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  required
+                >
+                  <option value="">-- Pilih Barang --</option>
+                  {MOCK_STOCKS.map(item => (
+                    <option key={item.id} value={item.id}>{item.sku} - {item.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Gudang</label>
+                  <select
+                    value={adjustmentForm.warehouseCode}
+                    onChange={e => setAdjustmentForm({ ...adjustmentForm, warehouseCode: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  >
+                    <option value="GDS">GDS (Gudang Utama)</option>
+                    <option value="KGS">KGS (Toko Kasir)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Kuantitas Penyesuaian</label>
+                  <input
+                    type="number"
+                    placeholder="Contoh: -5 (hilang), +10 (audit)"
+                    value={adjustmentForm.qty}
+                    onChange={e => setAdjustmentForm({ ...adjustmentForm, qty: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-650 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Estimasi HPP (COGS Unit)</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={adjustmentForm.cogs}
+                    onChange={e => setAdjustmentForm({ ...adjustmentForm, cogs: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-650 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Alasan Penyesuaian</label>
+                  <select
+                    value={adjustmentForm.reason}
+                    onChange={e => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  >
+                    <option value="Rusak">Barang Rusak</option>
+                    <option value="Hilang">Barang Hilang / Susut</option>
+                    <option value="Selisih Opname">Koreksi Opname Fisik</option>
+                    <option value="Temuan">Temuan Persediaan</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustmentModal(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white transition-colors"
+                >
+                  Terapkan Koreksi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: STOCK OPNAME (HITUNG FISIK) */}
+      {showOpnameModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-purple-400" />
+                Audit Stock Opname Fisik
+              </h3>
+              <p className="text-xs text-slate-450 mb-6">Mencocokkan jumlah stok fisik di gudang dengan catatan sistem.</p>
+            </div>
+
+            <form onSubmit={handleOpnameSubmit} className="space-y-4 text-sm text-slate-200 flex-1 overflow-hidden flex flex-col justify-between">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Pilih Lokasi Gudang Audit</label>
+                  <select
+                    value={opnameForm.warehouseCode}
+                    onChange={e => handleOpnameWarehouseChange(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                    required
+                  >
+                    <option value="GDS">GDS (Gudang Utama)</option>
+                    <option value="KGS">KGS (Toko Kasir)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Catatan Opname</label>
+                  <input
+                    type="text"
+                    placeholder="Opname Akhir Pekan..."
+                    value={opnameForm.notes}
+                    onChange={e => setOpnameForm({ ...opnameForm, notes: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Opname Items Count Grid */}
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1 my-4 max-h-60 border-t border-b border-slate-850 py-3">
+                <div className="grid grid-cols-12 text-xs text-slate-450 font-semibold px-2">
+                  <span className="col-span-3">SKU</span>
+                  <span className="col-span-5">Nama Barang</span>
+                  <span className="col-span-2 text-right">Stok Sistem</span>
+                  <span className="col-span-2 text-right">Fisik Rill</span>
+                </div>
+
+                {opnameForm.items.map((item, idx) => (
+                  <div key={item.productId} className="grid grid-cols-12 items-center bg-slate-950 p-2.5 rounded-lg border border-slate-850 text-xs">
+                    <span className="col-span-3 font-mono text-slate-400">{item.sku}</span>
+                    <span className="col-span-5 font-semibold text-white truncate pr-2">{item.name}</span>
+                    <span className="col-span-2 text-right font-mono text-slate-300">{item.systemQty}</span>
+                    <input
+                      type="number"
+                      value={item.physicalQty}
+                      onChange={e => handleOpnameQtyChange(idx, e.target.value)}
+                      className="col-span-2 text-right bg-slate-900 border border-slate-800 rounded px-2 py-1 text-white font-mono focus:outline-none focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOpnameModal(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-lg bg-purple-650 hover:bg-purple-500 text-xs font-semibold text-white transition-colors"
+                >
+                  Sahkan & Sesuaikan Stok
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: CASH ADVANCE BEBAN */}
       {showExpenseModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
@@ -854,7 +1354,7 @@ export default function Home() {
             </h3>
             <p className="text-xs text-slate-450 mb-6">Mencatat beban kasir operasional dan diautoposting ke jurnal umum.</p>
 
-            <form onSubmit={handleExpenseSubmit} className="space-y-4 text-sm text-slate-200">
+            <form onSubmit={() => setShowExpenseModal(false)} className="space-y-4 text-sm text-slate-200">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-400">Kategori Beban</label>
                 <select
@@ -903,7 +1403,7 @@ export default function Home() {
                   placeholder="Contoh: Beli bensin motor operasional toko..."
                   value={expenseForm.description}
                   onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 h-20"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-660 focus:outline-none focus:border-indigo-500 h-20"
                   required
                 />
               </div>
@@ -928,7 +1428,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL 3: SETOR TUNAI BANK */}
+      {/* MODAL 6: SETOR TUNAI BANK */}
       {showDepositModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
@@ -938,7 +1438,7 @@ export default function Home() {
             </h3>
             <p className="text-xs text-slate-450 mb-6">Mencatat penyetoran fisik uang tunai dari kasir ke rekening bank bisnis.</p>
 
-            <form onSubmit={handleDepositSubmit} className="space-y-4 text-sm text-slate-200">
+            <form onSubmit={() => setShowDepositModal(false)} className="space-y-4 text-sm text-slate-200">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-400">Nominal Setoran</label>
                 <div className="relative">
