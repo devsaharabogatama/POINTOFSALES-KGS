@@ -31,8 +31,7 @@ CREATE TABLE IF NOT EXISTS product_uom_conversions (
     CONSTRAINT uq_product_uom_conversion UNIQUE (product_id, from_uom_id, to_uom_id)
 );
 
--- Alter products to reference uoms table (optional but good for master data selection)
--- We keep uom TEXT column in products as fallback, but add a foreign key uom_id if needed
+-- Alter products to reference uoms table
 ALTER TABLE products ADD COLUMN IF NOT EXISTS uom_id UUID REFERENCES uoms(id);
 
 -- -----------------------------------------------------
@@ -117,29 +116,6 @@ ALTER TABLE stock_opnames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_opname_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
-
--- -----------------------------------------------------
--- RLS POLICIES FOR NEW TABLES
--- -----------------------------------------------------
-CREATE POLICY "Uoms viewable by authenticated users" ON uoms FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Uoms manageable by owner/manager" ON uoms FOR ALL TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Conversions viewable by authenticated users" ON product_uom_conversions FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Conversions manageable by owner/manager" ON product_uom_conversions FOR ALL TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Batches viewable by owner/manager" ON product_batches FOR ALL TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-CREATE POLICY "FIFO allocations viewable by owner/manager" ON sales_fifo_allocations FOR SELECT TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Opnames viewable by owner/manager" ON stock_opnames FOR SELECT TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-CREATE POLICY "Opnames manageable by owner/manager" ON stock_opnames FOR ALL TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Opname details viewable by owner/manager" ON stock_opname_details FOR SELECT TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-CREATE POLICY "Opname details manageable by owner/manager" ON stock_opname_details FOR ALL TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Adjustments viewable by owner/manager" ON stock_adjustments FOR SELECT TO authenticated USING (get_my_role() IN ('owner', 'manager'));
-CREATE POLICY "Adjustments insertable by owner/manager" ON stock_adjustments FOR INSERT TO authenticated WITH CHECK (get_my_role() IN ('owner', 'manager'));
-
-CREATE POLICY "Movements viewable by owner/manager" ON stock_movements FOR SELECT TO authenticated USING (get_my_role() IN ('owner', 'manager'));
 
 -- -----------------------------------------------------
 -- UPDATED RPC: transfer_product_stock WITH MOVEMENT LOGGING

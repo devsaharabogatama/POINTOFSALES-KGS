@@ -229,3 +229,85 @@ CREATE POLICY "Reconciliation viewable by company owner/admin/finance" ON pos_re
         private_user_has_company_access(company_id) 
         AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING')
     );
+
+-- Uoms
+DROP POLICY IF EXISTS "Uoms viewable by authenticated users" ON uoms;
+CREATE POLICY "Uoms viewable by company members" ON uoms
+    FOR SELECT TO authenticated USING (private_user_has_company_access(company_id));
+
+CREATE POLICY "Uoms manageable by company owner/admin" ON uoms
+    FOR ALL TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Product UOM Conversions
+DROP POLICY IF EXISTS "Conversions viewable by authenticated users" ON product_uom_conversions;
+CREATE POLICY "Conversions viewable by company members" ON product_uom_conversions
+    FOR SELECT TO authenticated USING (private_user_has_company_access(company_id));
+
+CREATE POLICY "Conversions manageable by company owner/admin" ON product_uom_conversions
+    FOR ALL TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Product Batches (FIFO)
+DROP POLICY IF EXISTS "Batches viewable by owner/manager" ON product_batches;
+CREATE POLICY "Batches manageable by company owner/admin" ON product_batches
+    FOR ALL TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Sales FIFO Allocations
+DROP POLICY IF EXISTS "FIFO allocations viewable by owner/manager" ON sales_fifo_allocations;
+CREATE POLICY "FIFO allocations viewable by company owner/admin/finance" ON sales_fifo_allocations
+    FOR SELECT TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING')
+    );
+
+-- Stock Opnames
+DROP POLICY IF EXISTS "Opnames viewable by owner/manager" ON stock_opnames;
+CREATE POLICY "Opnames viewable by company owner/admin" ON stock_opnames
+    FOR SELECT TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+CREATE POLICY "Opnames manageable by company owner/admin" ON stock_opnames
+    FOR ALL TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Stock Opname Details
+DROP POLICY IF EXISTS "Opname details viewable by owner/manager" ON stock_opname_details;
+CREATE POLICY "Opname details viewable by company owner/admin" ON stock_opname_details
+    FOR SELECT TO authenticated USING (private_user_has_company_access(company_id));
+
+CREATE POLICY "Opname details manageable by company owner/admin" ON stock_opname_details
+    FOR ALL TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Stock Adjustments
+DROP POLICY IF EXISTS "Adjustments viewable by owner/manager" ON stock_adjustments;
+CREATE POLICY "Adjustments viewable by company owner/admin" ON stock_adjustments
+    FOR SELECT TO authenticated USING (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+CREATE POLICY "Adjustments insertable by company owner/admin" ON stock_adjustments
+    FOR INSERT TO authenticated WITH CHECK (
+        private_user_has_company_access(company_id) 
+        AND get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
+
+-- Stock Movements (Kartu Stok)
+DROP POLICY IF EXISTS "Movements viewable by owner/manager" ON stock_movements;
+CREATE POLICY "Movements viewable by company members" ON stock_movements
+    FOR SELECT TO authenticated USING (private_user_has_company_access(company_id));
