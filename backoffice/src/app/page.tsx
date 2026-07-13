@@ -496,6 +496,14 @@ export default function Home() {
   // Ensure current user is linked to Company A automatically (fixes local RLS isolation bootstrapping)
   const ensureUserMembership = async (user: any) => {
     try {
+      // 0. Ensure user profile exists in public.profiles table (requires INSERT policy)
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email.split('@')[0],
+        role: 'cashier'
+      })
+
       // 1. Ensure basic tenant tables are seeded (No RLS tables first)
       await supabase.from('companies').upsert({
         id: '11111111-1111-1111-1111-111111111111',
