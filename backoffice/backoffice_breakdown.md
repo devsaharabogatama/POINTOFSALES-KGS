@@ -180,8 +180,8 @@ Double-entry ledger yang menyajikan:
 * [x] Buat UI Manajemen Penyesuaian Stok (*Stock Adjustment*) & Halaman Audit hitung fisik (*Stock Opname*).
 
 ### Langkah 7.4: Modul Pelanggan & Pricelist Kustom
-* [ ] Buat halaman terpisah untuk CRUD Pelanggan (Customer Manager).
-* [ ] Buat sub-modul untuk mengatur daftar harga kustom (*customer pricelist*) per produk untuk pelanggan tertentu.
+* [x] Buat halaman terpisah untuk CRUD Pelanggan (Customer Manager).
+* [x] Buat sub-modul untuk mengatur daftar harga kustom (*customer pricelist*) per produk untuk pelanggan tertentu.
 
 ### Langkah 7.5: Laporan Laba/Rugi FIFO & Kartu Stok
 * [ ] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations`.
