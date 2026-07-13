@@ -1,98 +1,95 @@
-# Spesifikasi Arsitektur & Breakdown Detail Backoffice KGS
+# Master Arsitektur & Breakdown Detail Backoffice KGS (4 Modul Utama)
 
-Dokumen ini mendefinisikan desain teknis, struktur database tambahan, dan alur modul manajerial untuk backend **KGS Backoffice Dashboard**.
+Dokumen ini mendefinisikan rancangan teknis, struktur database, laporan, dan rencana implementasi Next.js untuk **KGS Backoffice Dashboard** yang terbagi menjadi **4 Modul Utama**.
 
 ---
 
-## 1. Pemisahan Modul Berdasarkan Role (Role-Based Access Control)
+## 1. Pembagian 4 Modul Utama & Akses Role (RBAC)
 
-Akses halaman di Next.js akan dibatasi menggunakan Middleware/Auth check dan RLS Supabase:
+Akses halaman di Next.js dibatasi menggunakan Middleware/Auth check dan RLS Supabase:
 
-| Modul | Sub-Fitur | Cashier | Manager | Owner |
+| Modul Besar | Fitur & Sub-Modul | Cashier | Manager | Owner |
 | :--- | :--- | :---: | :---: | :---: |
-| **Stock Management** | Stok Barang, Transfer Stok, Konfirmasi PO | ❌ |  |  |
-| **Product Master Data** | CRUD Produk, Harga Jual, Import Data | ❌ |  |  |
-| **Finance Module** | Jurnal Ledger, P&L, Neraca, Approval CA | ❌ | ❌ |  |
+| **1. Inventory / Stock** | Stok Realtime, Transfer Stok, Opname, Adjustment, Konfirmasi PO, Laporan Kartu Stok | ❌ |  |  |
+| **2. Keuangan (Finance)**| Jurnal Umum, Laporan P&L, Neraca, Approval Cash Advance, Setoran Bank | ❌ | ❌ |  |
+| **3. Customer** | CRUD Pelanggan, Log Deposit, Pricelist Kustom per Pelanggan | ❌ |  |  |
+| **4. Master Data** | CRUD Produk, Konfigurasi Bundling, Master Satuan (UOM) & Konversi | ❌ |  |  |
 
 ---
 
-## 2. Alur Desain FIFO (First-In, First-Out) untuk HPP
+## 2. Modul Master Data (UOM & Konversi)
 
-Untuk mengakomodasi fluktuasi harga pembelian, kita akan mengabaikan rata-rata (*Average*) dan menerapkan metode FIFO murni. Barang yang dibeli pertama kali akan dikeluarkan terlebih dahulu saat ada penjualan.
+Pembelian barang seringkali menggunakan satuan besar (misal: Dus/Box) sedangkan penjualan menggunakan satuan kecil (misal: Pcs/Pack). Kita akan membuat Master Satuan (UOM) dinamis.
 
 ### A. Tambahan Tabel Database
-Kita memerlukan dua tabel baru di Supabase:
-
 ```sql
--- Batch persediaan barang masuk (pembelian)
-CREATE TABLE product_batches (
+-- Master Satuan (UOM)
+CREATE TABLE uoms (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code TEXT UNIQUE NOT NULL, -- e.g. 'PCS', 'DUS', 'PACK', 'SAK', 'KG', 'BATANG'
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Konversi Satuan per Produk
+CREATE TABLE product_uom_conversions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
-    qty_purchased NUMERIC NOT NULL,
-    qty_remaining NUMERIC NOT NULL, -- Sisa stok di batch ini
-    cogs_unit NUMERIC NOT NULL,     -- Harga beli per unit (HPP)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    from_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE CASCADE, -- Satuan besar (e.g. DUS)
+    to_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE CASCADE,   -- Satuan kecil (e.g. PCS)
+    conversion_factor NUMERIC NOT NULL,                              -- e.g. 1 DUS = 12 PCS (factor = 12)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_product_uom_conversion UNIQUE (product_id, from_uom_id, to_uom_id)
 );
+```
 
--- Catatan detail alokasi penjualan terhadap batch FIFO
-CREATE TABLE sales_fifo_allocations (
+---
+
+## 3. Modul Master Data (Produk Bundling)
+
+Produk bundling adalah produk virtual yang berisi kombinasi beberapa produk komponen dengan harga jual khusus.
+
+### A. Logika Persediaan & FIFO untuk Bundling
+1. **Stok Virtual**: Produk bundling tidak memiliki stok fisik langsung di tabel `product_stocks`. Stok bundling dihitung secara dinamis di POS berdasarkan batas minimum stok komponen-komponennya.
+2. **Pemotongan Stok**: Saat produk bundling terjual, sistem (lewat RPC Checkout) otomatis mengurangi stok produk komponen penyusunnya di tabel `product_stocks`.
+3. **Kalkulasi HPP/COGS**: HPP produk bundling dihitung dari akumulasi HPP masing-masing komponen penyusun yang dikurangi berdasarkan alokasi antrean FIFO (`product_batches`).
+
+### B. Relasi Database (Bundling)
+Tabel `product_bundle_items` akan mencatat komponen penyusun:
+```sql
+CREATE TABLE product_bundle_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sales_detail_id UUID NOT NULL REFERENCES sales_details(id) ON DELETE CASCADE,
-    product_batch_id UUID NOT NULL REFERENCES product_batches(id) ON DELETE CASCADE,
-    qty_allocated NUMERIC NOT NULL,  -- Kuantitas yang diambil dari batch ini
-    cogs_unit NUMERIC NOT NULL,      -- HPP batch saat dibeli
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    bundle_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE, -- Produk bertipe 'is_bundle = TRUE'
+    item_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,   -- Produk komponen riil
+    qty NUMERIC NOT NULL DEFAULT 1,                                    -- Jumlah komponen dalam bundle
+    CONSTRAINT chk_qty_positive CHECK (qty > 0)
 );
 ```
 
-### B. Visualisasi Alur FIFO (Mermaid)
+---
 
-```mermaid
-graph TD
-    PO[1. Pembelian PO Masuk] -->|Konfirmasi Manajer| PB[2. Buat Product Batch Baru - cogs_unit = Harga Beli]
-    PB -->|Sisa Stok Disimpan di| qty_remaining[product_batches.qty_remaining]
-    
-    Sale[3. POS Checkout / Jual Barang] -->|Trigger Alokasi FIFO| FIFO[4. Ambil Batch Tertua - created_at ASC]
-    FIFO -->|Kurangi qty_remaining| Ded[5. Update product_batches]
-    FIFO -->|Simpan Alokasi Detail| Alloc[6. Insert sales_fifo_allocations]
-    Alloc -->|Hitung Rata-rata HPP Batch| UpdateSD[7. Tulis cogs_unit & cogs_total ke sales_details]
+## 4. Modul Pelanggan (Customer) & Daftar Harga Kustom (Pricelist)
+
+Memisahkan pengelolaan pelanggan, saldo deposit/piutang, serta pengaturan harga kustom.
+
+### A. Tambahan Tabel Database
+```sql
+-- Daftar harga kustom per pelanggan (Pricelist)
+CREATE TABLE customer_pricelists (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    custom_price NUMERIC NOT NULL, -- Harga khusus untuk pelanggan ini
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_customer_product_price UNIQUE (customer_id, product_id)
+);
 ```
 
 ---
 
-## 3. Modul Konfirmasi Order Stok (Stock Confirmation)
+## 5. Modul Inventory (Stok, Adjustment, Opname & Kartu Stok)
 
-Modul ini memproses penambahan stok. Penambahan stok tidak langsung terjadi saat PO dibuat, melainkan harus dikonfirmasi oleh manajer setelah fisik barang sampai di gudang.
-
-1. **Kasir / Staf mengajukan Order Stok (Draft Purchase Order)**.
-2. **Manajer meninjau berkas PO masuk**.
-3. **Manajer mengklik "Konfirmasi & Terima Barang"**:
-   * Sistem merubah status `purchases_headers.payment_status` ke status yang sesuai.
-   * Sistem menambah kuantitas di `product_stocks`.
-   * Sistem membuat baris baru di `product_batches` (untuk log FIFO HPP) dengan harga beli saat itu.
-
----
-
-## 4. Modul Import Master Data (CSV / Excel Import)
-
-Untuk mempercepat inisiasi proyek, manajer memerlukan alat import data. 
-* **Format File (CSV)**:
-  ```csv
-  sku,name,category,price,purchase_price,uom,initial_stock,warehouse_code
-  PROD-001,Semen Padang 50kg,Bahan Bangunan,72000,65000,sak,100,GDS
-  ```
-* **Logika Backend**:
-  1. Membaca baris CSV.
-  2. Melakukan UPSERT ke tabel `products`.
-  3. Memasukkan data stok awal ke `product_stocks` sesuai dengan `warehouse_code`.
-  4. Membuat Batch Persediaan Awal di `product_batches` dengan `cogs_unit = purchase_price`.
-
----
-
-## 5. Modul Penyesuaian Stok (Stock Adjustment) & Stock Opname
-
-Untuk menangani selisih stok akibat barang rusak, susut, atau audit fisik periodik secara akurat:
+Koreksi stok, audit berkala, dan penelusuran mutasi fisik barang.
 
 ### A. Tambahan Tabel Database
 ```sql
@@ -115,71 +112,30 @@ CREATE TABLE stock_opname_details (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     opname_id UUID NOT NULL REFERENCES stock_opnames(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    system_qty NUMERIC NOT NULL,   -- Stok tercatat di sistem
-    physical_qty NUMERIC NOT NULL, -- Stok fisik yang dihitung
-    difference NUMERIC NOT NULL,   -- Selisih (system_qty - physical_qty)
+    system_qty NUMERIC NOT NULL,
+    physical_qty NUMERIC NOT NULL,
+    difference NUMERIC NOT NULL,
     notes TEXT
 );
 
--- Penyesuaian stok manual (penyesuaian mandiri atau hasil dari opname)
+-- Penyesuaian stok manual (mandiri atau dari hasil opname)
 CREATE TABLE stock_adjustments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     adjustment_no TEXT UNIQUE NOT NULL, -- e.g. ADJ-20260713-0001
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
-    opname_detail_id UUID REFERENCES stock_opname_details(id) ON DELETE SET NULL, -- Referensi jika dibuat dari opname
+    opname_detail_id UUID REFERENCES stock_opname_details(id) ON DELETE SET NULL,
     qty_adjusted NUMERIC NOT NULL, -- Positif untuk penambahan, negatif untuk pengurangan
-    cogs_unit NUMERIC NOT NULL,    -- Harga per unit saat disesuaikan (HPP)
+    cogs_unit NUMERIC NOT NULL,    -- HPP per unit saat penyesuaian
     reason TEXT NOT NULL,          -- e.g. 'Rusak', 'Hilang', 'Selisih Opname'
     created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-```
 
-### B. Hubungan dengan Metode FIFO
-1. **Penyesuaian Positif (Stok Bertambah / Temuan)**:
-   * Menambahkan stok di `product_stocks`.
-   * Membuat batch persediaan baru di `product_batches` dengan `cogs_unit` setara dengan COGS produk saat itu.
-2. **Penyesuaian Negatif (Stok Berkurang / Rusak / Hilang)**:
-   * Mengurangi stok di `product_stocks`.
-   * Mengurangi sisa stok (`qty_remaining`) dari batch FIFO tertua (`product_batches`), mirip dengan pemotongan transaksi penjualan.
-   * Menulis event akuntansi `'EXPENSE_POSTED'` dengan nilai total kerugian HPP barang ke antrean `financial_events` dengan kategori `'Kerugian Selisih Persediaan'` agar otomatis terposting ke Buku Besar.
-
----
-
-## 6. Modul Pelanggan (Customer) & Daftar Harga Kustom (Pricelists)
-
-Untuk memisahkan manajemen pelanggan dari modul stok, serta memberikan fleksibilitas harga jual:
-
-### A. Tambahan Tabel Database
-```sql
--- Daftar harga kustom per pelanggan (Pricelist)
-CREATE TABLE customer_pricelists (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    custom_price NUMERIC NOT NULL, -- Harga khusus untuk pelanggan ini
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_customer_product_price UNIQUE (customer_id, product_id)
-);
-```
-
-### B. Alur Logika Harga Kustom di POS
-1. Saat kasir memilih pelanggan (*Customer*) di POS, aplikasi kasir memeriksa apakah pelanggan tersebut memiliki harga khusus untuk produk di keranjang belanja.
-2. POS melakukan query ke IndexedDB (yang sudah disinkronisasikan dengan `customer_pricelists`) atau API.
-3. Jika ditemukan, harga jual default produk digantikan oleh `custom_price`. Jika tidak, menggunakan harga umum default produk.
-
----
-
-## 7. Laporan Pergerakan Stok (Kartu Stok / Stock Card)
-
-Untuk melacak histori mutasi keluar-masuk stok barang di setiap gudang secara terperinci untuk audit:
-
-### A. Tambahan Tabel Database
-```sql
+-- Tipe Mutasi Kartu Stok
 CREATE TYPE stock_movement_type AS ENUM ('SALE', 'PURCHASE', 'ADJUSTMENT', 'TRANSFER_IN', 'TRANSFER_OUT');
 
--- Log kartu stok historis
+-- Log kartu stok historis per warehouse
 CREATE TABLE stock_movements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -192,35 +148,41 @@ CREATE TABLE stock_movements (
 );
 ```
 
-### B. Otomatisasi Log Pergerakan Stok
-Kita akan membuat trigger di database Supabase agar setiap kali ada perubahan stok (dari penjualan POS, pembelian, transfer gudang, maupun penyesuaian/opname), data mutasi otomatis tercatat di `stock_movements`. Ini menjamin laporan pergerakan stok 100% akurat.
+---
+
+## 6. Laporan Keuangan (Finance Module)
+
+Double-entry ledger yang menyajikan:
+1. **Laba / Rugi (P&L)**: Menghitung Pendapatan minus HPP FIFO aktual (berdasarkan log alokasi `sales_fifo_allocations`) minus beban CA.
+2. **Neraca Keuangan**: Menyajikan Aktiva vs Pasiva secara realtime.
 
 ---
 
-## 8. Rencana Tugas Implementasi (To-Do List)
+## 7. Rencana Tugas Implementasi (To-Do List)
 
-### Langkah 8.1: Eksekusi SQL Migrasi Baru (Supabase)
+### Langkah 7.1: Eksekusi SQL Migrasi Baru (Supabase)
+* [ ] Jalankan query pembuatan tabel `uoms` dan `product_uom_conversions` (Master UOM).
 * [ ] Jalankan query pembuatan tabel `product_batches` dan `sales_fifo_allocations` (FIFO).
 * [ ] Jalankan query pembuatan tipe `opname_status` dan tabel `stock_opnames`, `stock_opname_details`, serta `stock_adjustments` (Opname & Adjustment).
 * [ ] Jalankan query pembuatan tabel `customer_pricelists` (Pricelist kustom).
 * [ ] Jalankan query pembuatan tipe `stock_movement_type` dan tabel `stock_movements` (Kartu Stok).
-* [ ] Buat trigger/fungsi PostgreSQL `allocate_fifo_cogs()` untuk melakukan kalkulasi FIFO otomatis saat terjadi penjualan.
-* [ ] Buat fungsi trigger/RPC `approve_stock_opname()` untuk mengesahkan opname fisik dan meluncurkan penyesuaian stok otomatis.
+* [ ] Buat trigger/fungsi PostgreSQL `allocate_fifo_cogs()` untuk mendukung penjualan bundling dan alokasi FIFO otomatis saat checkout.
+* [ ] Buat fungsi trigger/RPC `approve_stock_opname()` untuk mengesahkan opname fisik.
 * [ ] Buat trigger log mutasi otomatis untuk mengisi tabel `stock_movements` setiap kali stok berubah.
 
-### Langkah 8.2: Pembuatan API & Komponen Impor di Backoffice
+### Langkah 7.2: Pembuatan API & Komponen Impor di Backoffice
 * [ ] Setup route `/api/products/import` untuk membaca data CSV/Excel produk.
 * [ ] Buat UI Halaman CRUD Produk dan tombol Impor CSV.
 
-### Langkah 8.3: Halaman Konfirmasi Order Stok & Penyesuaian Stok
+### Langkah 7.3: Halaman Konfirmasi Order Stok & Penyesuaian Stok
 * [ ] Buat UI Manajemen Pembelian (PO) dengan filter "Menunggu Konfirmasi".
 * [ ] Tautkan tombol "Konfirmasi Terima" ke RPC database yang menambah stok dan batch FIFO.
 * [ ] Buat UI Manajemen Penyesuaian Stok (*Stock Adjustment*) & Halaman Audit hitung fisik (*Stock Opname*).
 
-### Langkah 8.4: Modul Pelanggan & Pricelist Kustom
+### Langkah 7.4: Modul Pelanggan & Pricelist Kustom
 * [ ] Buat halaman terpisah untuk CRUD Pelanggan (Customer Manager).
 * [ ] Buat sub-modul untuk mengatur daftar harga kustom (*customer pricelist*) per produk untuk pelanggan tertentu.
 
-### Langkah 8.5: Laporan Laba/Rugi FIFO & Kartu Stok
-* [ ] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations` (bukan harga rata-rata/cogs statis).
-* [ ] Buat sub-tab Laporan Pergerakan Stok (*Stock Card*) dengan filter pencarian per produk, per gudang, dan rentang tanggal untuk melihat histori masuk/keluar barang.
+### Langkah 7.5: Laporan Laba/Rugi FIFO & Kartu Stok
+* [ ] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations`.
+* [ ] Buat sub-tab Laporan Pergerakan Stok (*Stock Card*) untuk memantau mutasi barang masuk/keluar.
