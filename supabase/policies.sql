@@ -358,3 +358,52 @@ DROP POLICY IF EXISTS "Movements viewable by owner/manager" ON stock_movements;
 DROP POLICY IF EXISTS "Movements viewable by company members" ON stock_movements;
 CREATE POLICY "Movements viewable by company members" ON stock_movements
     FOR SELECT TO authenticated USING (private_user_has_company_access(company_id));
+
+
+-- -----------------------------------------------------
+-- 8. SECURITY DEFINER RPC TO BYPASS RLS FOR BOOTSTRAPPING
+-- -----------------------------------------------------
+CREATE OR REPLACE FUNCTION public.bootstrap_tenant_data(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Ensure profile exists in profiles table
+    INSERT INTO public.profiles (id, email, name, role)
+    SELECT 
+        id, 
+        email, 
+        COALESCE(raw_user_meta_data->>'name', split_part(email, '@', 1)),
+        'cashier'::user_role
+    FROM auth.users
+    WHERE id = p_user_id
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Create Company A
+    INSERT INTO companies (id, company_code, company_name, company_slug, status)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'COMP-A', 'Company A', 'company-a', 'ACTIVE')
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Create Store A
+    INSERT INTO stores (id, company_id, store_code, store_name, status)
+    VALUES ('11111111-1111-1111-1111-111111111112', '11111111-1111-1111-1111-111111111111', 'STORE-A', 'Store A', 'ACTIVE')
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Create Warehouses (GDS & KGS)
+    INSERT INTO warehouses (company_id, code, name, is_active)
+    VALUES 
+        ('11111111-1111-1111-1111-111111111111', 'GDS', 'Gudang Utama GDS', true),
+        ('11111111-1111-1111-1111-111111111111', 'KGS', 'Toko Kasir KGS', true)
+    ON CONFLICT DO NOTHING;
+
+    -- Create Company Membership
+    INSERT INTO company_memberships (company_id, user_id, role_code, status)
+    VALUES ('11111111-1111-1111-1111-111111111111', p_user_id, 'COMPANY_OWNER', 'ACTIVE')
+    ON CONFLICT (company_id, user_id) DO NOTHING;
+
+    -- Create Store Membership
+    INSERT INTO store_memberships (company_id, store_id, user_id, status)
+    VALUES ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111112', p_user_id, 'ACTIVE')
+    ON CONFLICT (company_id, store_id, user_id) DO NOTHING;
+
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
