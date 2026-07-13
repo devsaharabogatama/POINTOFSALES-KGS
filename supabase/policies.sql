@@ -365,7 +365,31 @@ CREATE POLICY "Movements viewable by company members" ON stock_movements
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION public.bootstrap_tenant_data(p_user_id UUID)
 RETURNS BOOLEAN AS $$
+DECLARE
+    v_company_id UUID;
+    v_store_id UUID;
+    v_company_code TEXT;
+    v_company_name TEXT;
+    v_email TEXT;
 BEGIN
+    -- Get user email to generate name
+    SELECT email INTO v_email FROM auth.users WHERE id = p_user_id;
+    IF v_email IS NULL THEN
+        v_email := 'tenant@example.com';
+    END IF;
+
+    v_company_name := 'Company ' || initcap(split_part(v_email, '@', 1));
+    v_company_code := 'COMP-' || upper(split_part(v_email, '@', 1));
+
+    -- Check if user already has a membership
+    IF EXISTS (SELECT 1 FROM company_memberships WHERE user_id = p_user_id) THEN
+        RETURN TRUE;
+    END IF;
+
+    -- Generate unique UUIDs for multi-tenant isolation
+    v_company_id := gen_random_uuid();
+    v_store_id := gen_random_uuid();
+
     -- Ensure profile exists in profiles table
     INSERT INTO public.profiles (id, email, name, role)
     SELECT 
@@ -377,32 +401,32 @@ BEGIN
     WHERE id = p_user_id
     ON CONFLICT (id) DO NOTHING;
 
-    -- Create Company A
+    -- Create Company (completely unique per registered user)
     INSERT INTO companies (id, company_code, company_name, company_slug, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', 'COMP-A', 'Company A', 'company-a', 'ACTIVE')
-    ON CONFLICT (id) DO NOTHING;
+    VALUES (v_company_id, v_company_code, v_company_name, lower(v_company_code), 'ACTIVE')
+    ON CONFLICT DO NOTHING;
 
-    -- Create Store A
+    -- Create Store (completely unique per registered user)
     INSERT INTO stores (id, company_id, store_code, store_name, status)
-    VALUES ('11111111-1111-1111-1111-111111111112', '11111111-1111-1111-1111-111111111111', 'STORE-A', 'Store A', 'ACTIVE')
-    ON CONFLICT (id) DO NOTHING;
+    VALUES (v_store_id, v_company_id, 'STORE-MAIN', 'Main Store', 'ACTIVE')
+    ON CONFLICT DO NOTHING;
 
     -- Create Warehouses (GDS & KGS)
     INSERT INTO warehouses (company_id, code, name, is_active)
     VALUES 
-        ('11111111-1111-1111-1111-111111111111', 'GDS', 'Gudang Utama GDS', true),
-        ('11111111-1111-1111-1111-111111111111', 'KGS', 'Toko Kasir KGS', true)
+        (v_company_id, 'GDS', 'Gudang Utama GDS', true),
+        (v_company_id, 'KGS', 'Toko Kasir KGS', true)
     ON CONFLICT DO NOTHING;
 
-    -- Create Company Membership
+    -- Create Company Membership (Owner of their own unique company)
     INSERT INTO company_memberships (company_id, user_id, role_code, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', p_user_id, 'COMPANY_OWNER', 'ACTIVE')
-    ON CONFLICT (company_id, user_id) DO NOTHING;
+    VALUES (v_company_id, p_user_id, 'COMPANY_OWNER', 'ACTIVE')
+    ON CONFLICT DO NOTHING;
 
     -- Create Store Membership
     INSERT INTO store_memberships (company_id, store_id, user_id, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111112', p_user_id, 'ACTIVE')
-    ON CONFLICT (company_id, store_id, user_id) DO NOTHING;
+    VALUES (v_company_id, v_store_id, p_user_id, 'ACTIVE')
+    ON CONFLICT DO NOTHING;
 
     RETURN TRUE;
 END;
