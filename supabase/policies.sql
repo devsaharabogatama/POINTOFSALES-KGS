@@ -43,6 +43,10 @@ DROP POLICY IF EXISTS "Profiles can be updated by owners or self" ON profiles;
 CREATE POLICY "Profiles can be updated by owners or self" ON profiles
     FOR UPDATE TO authenticated USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Profiles can be inserted by self" ON profiles;
+CREATE POLICY "Profiles can be inserted by self" ON profiles
+    FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
+
 -- Warehouses
 DROP POLICY IF EXISTS "Warehouses viewable by authenticated users" ON warehouses;
 CREATE POLICY "Warehouses viewable by company members" ON warehouses
