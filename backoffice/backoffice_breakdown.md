@@ -184,5 +184,5 @@ Double-entry ledger yang menyajikan:
 * [x] Buat sub-modul untuk mengatur daftar harga kustom (*customer pricelist*) per produk untuk pelanggan tertentu.
 
 ### Langkah 7.5: Laporan Laba/Rugi FIFO & Kartu Stok
-* [ ] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations`.
-* [ ] Buat sub-tab Laporan Pergerakan Stok (*Stock Card*) untuk memantau mutasi barang masuk/keluar.
+* [x] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations`.
+* [x] Buat sub-tab Laporan Pergerakan Stok (*Stock Card*) untuk memantau mutasi barang masuk/keluar.
