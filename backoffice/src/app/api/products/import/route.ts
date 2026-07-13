@@ -8,19 +8,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'CSV data is required.' }, { status: 400 })
     }
 
-    // Simple CSV parser
     const lines = csvText.split('\n').map((line: string) => line.trim()).filter(Boolean)
     if (lines.length <= 1) {
       return NextResponse.json({ error: 'CSV file contains no data rows.' }, { status: 400 })
     }
 
-    const headers = lines[0].split(',').map((h: string) => h.trim().toLowerCase())
+    // Robust CSV parser supporting commas and semicolons (Indonesian Excel standard)
+    const firstLine = lines[0]
+    const commaCount = (firstLine.match(/,/g) || []).length
+    const semicolonCount = (firstLine.match(/;/g) || []).length
+    const delimiter = commaCount >= semicolonCount ? ',' : ';'
+
+    const parseCSVRow = (text: string, delim: string): string[] => {
+      const result = []
+      let insideQuote = false
+      let currentField = ''
+      for (let idx = 0; idx < text.length; idx++) {
+        const char = text[idx]
+        if (char === '"') {
+          insideQuote = !insideQuote
+        } else if (char === delim && !insideQuote) {
+          result.push(currentField.trim())
+          currentField = ''
+        } else {
+          currentField += char
+        }
+      }
+      result.push(currentField.trim())
+      return result.map(f => f.replace(/^"|"$/g, ''))
+    }
+
+    const headers = parseCSVRow(firstLine, delimiter).map((h: string) => h.toLowerCase())
     
     // Check if essential headers are present
     const requiredHeaders = ['sku', 'nama_produk', 'kategori', 'harga_jual_umum', 'harga_beli_awal_hpp', 'satuan_uom', 'stok_awal', 'kode_gudang']
     const missingHeaders = requiredHeaders.filter(rh => !headers.includes(rh))
     if (missingHeaders.length > 0) {
-      return NextResponse.json({ error: `Missing required headers: ${missingHeaders.join(', ')}` }, { status: 400 })
+      return NextResponse.json({ error: `Missing required headers: ${missingHeaders.join(', ')}. Detected delimiter: "${delimiter}"` }, { status: 400 })
     }
 
     const skuIdx = headers.indexOf('sku')
@@ -38,7 +62,7 @@ export async function POST(request: Request) {
 
     // Process rows sequentially
     for (let i = 1; i < lines.length; i++) {
-      const row = lines[i].split(',').map((cell: string) => cell.trim())
+      const row = parseCSVRow(lines[i], delimiter)
       if (row.length < headers.length) {
         failureCount++
         importResults.push({ row: i, sku: row[skuIdx] || 'UNKNOWN', status: 'FAILED', reason: 'Column length mismatch' })
