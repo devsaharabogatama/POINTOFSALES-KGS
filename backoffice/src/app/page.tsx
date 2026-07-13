@@ -82,11 +82,19 @@ const MOCK_JOURNAL = [
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'events' | 'journal' | 'finance'>('overview')
-  const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname'>('levels')
+  const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname' | 'orders'>('levels')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
   const [isProcessingWorker, setIsProcessingWorker] = useState(false)
   const [workerResult, setWorkerResult] = useState<string | null>(null)
+
+  // Real Database and Mock Fallback States
+  const [stocks, setStocks] = useState<any[]>(MOCK_STOCKS)
+  const [movements, setMovements] = useState<any[]>(MOCK_MOVEMENTS)
+  const [opnames, setOpnames] = useState<any[]>(MOCK_OPNAMES)
+  const [events, setEvents] = useState<any[]>(MOCK_EVENTS)
+  const [journal, setJournal] = useState<any[]>(MOCK_JOURNAL)
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
 
   // Modals state
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -137,6 +145,184 @@ export default function Home() {
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
 
+  // Function to load all data dynamically from Supabase
+  const loadDataFromSupabase = async () => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!supabaseUrl || supabaseUrl.includes('your-project-id')) return
+    
+    try {
+      // 1. Fetch products joined with stocks
+      const { data: prodData, error: prodErr } = await supabase
+        .from('products')
+        .select(`
+          id, sku, name, category, price, cogs, uom,
+          product_stocks (
+            stock_qty,
+            warehouses (
+              code
+            )
+          )
+        `)
+      
+      if (!prodErr && prodData && prodData.length > 0) {
+        const mappedStocks = prodData.map((p: any) => {
+          let stockKGS = 0
+          let stockGDS = 0
+          if (p.product_stocks) {
+            p.product_stocks.forEach((st: any) => {
+              if (st.warehouses?.code === 'KGS') stockKGS = parseFloat(st.stock_qty) || 0
+              if (st.warehouses?.code === 'GDS') stockGDS = parseFloat(st.stock_qty) || 0
+            })
+          }
+          return {
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            category: p.category || 'Umum',
+            stockKGS,
+            stockGDS,
+            minStock: 20,
+            uom: p.uom || 'pcs'
+          }
+        })
+        setStocks(mappedStocks)
+      }
+
+      // 2. Fetch Movements
+      const { data: movData, error: movErr } = await supabase
+        .from('stock_movements')
+        .select(`
+          id, qty_change, movement_type, reference_table, reference_id, created_at,
+          products (sku, name),
+          warehouses (code)
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (!movErr && movData) {
+        const mappedMovements = movData.map((m: any) => ({
+          id: m.id,
+          sku: m.products?.sku || '-',
+          name: m.products?.name || '-',
+          wh: m.warehouses?.code === 'GDS' ? 'GDS Gudang' : 'KGS Toko',
+          qty: parseFloat(m.qty_change),
+          type: m.movement_type,
+          ref: `${m.reference_table} (${m.reference_id.substring(0, 5)}...)`,
+          date: new Date(m.created_at).toLocaleString('id-ID')
+        }))
+        setMovements(mappedMovements)
+      }
+
+      // 3. Fetch Opnames
+      const { data: opnData, error: opnErr } = await supabase
+        .from('stock_opnames')
+        .select(`
+          id, opname_no, created_at, notes, status,
+          warehouses (code),
+          profiles (name)
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (!opnErr && opnData) {
+        const mappedOpnames = opnData.map((o: any) => ({
+          id: o.id,
+          no: o.opname_no,
+          wh: o.warehouses?.code === 'GDS' ? 'GDS Gudang' : 'KGS Toko',
+          date: new Date(o.created_at).toLocaleDateString('id-ID'),
+          notes: o.notes || '',
+          status: o.status,
+          auditor: o.profiles?.name || 'System'
+        }))
+        setOpnames(mappedOpnames)
+      }
+
+      // 4. Fetch Purchase Orders (PO)
+      const { data: poData, error: poErr } = await supabase
+        .from('purchases_headers')
+        .select(`
+          id, purchase_no, supplier_name, transaction_date, grand_total, status,
+          warehouses (code)
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (!poErr && poData) {
+        const mappedPOs = poData.map((po: any) => ({
+          id: po.id,
+          purchase_no: po.purchase_no,
+          supplier_name: po.supplier_name,
+          transaction_date: po.transaction_date,
+          grand_total: po.grand_total,
+          status: po.status,
+          warehouse_name: po.warehouses?.code === 'GDS' ? 'GDS Gudang' : 'KGS Toko'
+        }))
+        setPurchaseOrders(mappedPOs)
+      }
+
+      // 5. Fetch Events
+      const { data: evtData, error: evtErr } = await supabase
+        .from('financial_events')
+        .select('*')
+        .order('event_date', { ascending: false })
+      
+      if (!evtErr && evtData) {
+        const mappedEvents = evtData.map((e: any) => ({
+          id: e.id,
+          code: e.event_code,
+          type: e.event_type,
+          source: e.source_table,
+          rootSales: e.root_sales_id || '-',
+          date: new Date(e.event_date).toLocaleString('id-ID'),
+          amount: parseFloat(e.amounts?.sales_net_amount || e.amounts?.amount || 0),
+          status: e.status,
+          error: e.error_message
+        }))
+        setEvents(mappedEvents)
+      }
+
+      // 6. Fetch Journal Entries
+      const { data: jnlData, error: jnlErr } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .order('transaction_date', { ascending: false })
+      
+      if (!jnlErr && jnlData) {
+        const mappedJournal = jnlData.map((j: any) => ({
+          id: j.id,
+          jnlNo: j.journal_no,
+          eventCode: j.entry_group_id,
+          coa: j.coa_code,
+          coaName: j.coa_name,
+          debit: parseFloat(j.debit),
+          kredit: parseFloat(j.kredit),
+          note: j.note
+        }))
+        setJournal(mappedJournal)
+      }
+
+    } catch (err) {
+      console.error('Error loading data from Supabase:', err)
+    }
+  }
+
+  // Handle Confirm Purchase (PO)
+  const handleConfirmPurchase = async (purchaseId: string) => {
+    if (!isSupabaseConnected) return
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const userId = userData?.user?.id || 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+
+      const { error } = await supabase.rpc('confirm_purchase_order', {
+        p_purchase_id: purchaseId,
+        p_user_id: userId
+      })
+
+      if (error) throw error
+      alert('Order pembelian (PO) berhasil dikonfirmasi! Stok gudang dan batch FIFO telah terbuat.')
+      loadDataFromSupabase()
+    } catch (err: any) {
+      alert(`Gagal konfirmasi PO: ${err.message}`)
+    }
+  }
+
   // Check if supabase variables are actually set
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -144,6 +330,13 @@ export default function Home() {
       setIsSupabaseConnected(true)
     }
   }, [])
+
+  // Auto-refresh when tab changes
+  useEffect(() => {
+    if (isSupabaseConnected) {
+      loadDataFromSupabase()
+    }
+  }, [isSupabaseConnected, activeTab, stockSubTab])
 
   // Trigger Queue Worker calling backend Next.js API
   const handleTriggerWorker = async () => {
@@ -494,7 +687,7 @@ export default function Home() {
         {activeTab === 'stock' && (
           <div className="space-y-6">
             {/* Stock subnavigation */}
-            <div className="flex justify-between items-center bg-slate-900/40 border border-slate-800 rounded-xl p-2 max-w-md">
+            <div className="flex justify-between items-center bg-slate-900/40 border border-slate-800 rounded-xl p-2 max-w-xl">
               <button
                 onClick={() => setStockSubTab('levels')}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
@@ -518,6 +711,14 @@ export default function Home() {
                 }`}
               >
                 Laporan Stock Opname
+              </button>
+              <button
+                onClick={() => setStockSubTab('orders')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  stockSubTab === 'orders' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Konfirmasi Order (PO)
               </button>
             </div>
 
@@ -693,6 +894,84 @@ export default function Home() {
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2.4: PURCHASE ORDERS (PO) CONFIRMATION */}
+            {stockSubTab === 'orders' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-white">Konfirmasi Penerimaan Stok (Purchase Orders)</h3>
+                  <p className="text-xs text-slate-450 mt-1">Daftar order stock/pembelian barang dari kasir yang memerlukan konfirmasi penerimaan fisik untuk masuk ke gudang (batch FIFO).</p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">No PO / Purchase</th>
+                        <th className="p-4">Supplier</th>
+                        <th className="p-4">Tanggal Order</th>
+                        <th className="p-4">Gudang Tujuan</th>
+                        <th className="p-4 text-right">Total Nilai</th>
+                        <th className="p-4 text-center">Status</th>
+                        <th className="p-4 text-center">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {purchaseOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500 text-xs">
+                            Tidak ada order pembelian (PO) terdaftar.
+                          </td>
+                        </tr>
+                      ) : (
+                        purchaseOrders.map(po => (
+                          <tr key={po.id} className="hover:bg-slate-900/60 transition-colors">
+                            <td className="p-4 font-mono text-xs text-indigo-400 font-bold">{po.purchase_no}</td>
+                            <td className="p-4 font-medium text-slate-200">{po.supplier_name}</td>
+                            <td className="p-4 text-xs text-slate-450 font-mono">
+                              {new Date(po.transaction_date).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="p-4 text-slate-300">{po.warehouse_name || 'Gudang'}</td>
+                            <td className="p-4 text-right font-mono text-slate-100 font-bold">
+                              Rp {Number(po.grand_total).toLocaleString('id-ID')}
+                            </td>
+                            <td className="p-4 text-center">
+                              {po.status === 'CONFIRMED' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                                  DITERIMA
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold">
+                                  PENDING
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4 text-center">
+                              {po.status === 'PENDING' ? (
+                                <button
+                                  onClick={() => handleConfirmPurchase(po.id)}
+                                  className="px-3 py-1 rounded bg-indigo-650 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors"
+                                >
+                                  Konfirmasi Terima
+                                </button>
+                              ) : (
+                                <span className="text-slate-500 text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
