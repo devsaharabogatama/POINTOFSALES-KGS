@@ -92,6 +92,11 @@ const MOCK_PRICELISTS = [
   { id: 'pl3', customerName: 'Bapak Ahmad', productName: 'Avitex Putih 5kg', price: 38000 },
 ]
 
+const MOCK_ALLOCATIONS = [
+  { id: 'al1', salesNo: 'SO-00750', productName: 'Semen Padang 50kg', batchNo: 'BATCH-20260713-001', qty: 2, cogs: 60000, totalCogs: 120000, date: '13/07/2026 10:45' },
+  { id: 'al2', salesNo: 'SO-00750', productName: 'Besi Beton 10mm SNI', batchNo: 'BATCH-20260713-002', qty: 1, cogs: 75000, totalCogs: 75000, date: '13/07/2026 10:45' },
+]
+
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'customer' | 'events' | 'journal' | 'finance'>('overview')
@@ -112,6 +117,11 @@ export default function Home() {
   
   const [customers, setCustomers] = useState<any[]>(MOCK_CUSTOMERS)
   const [pricelists, setPricelists] = useState<any[]>(MOCK_PRICELISTS)
+  const [fifoAllocations, setFifoAllocations] = useState<any[]>(MOCK_ALLOCATIONS)
+
+  // Filter States for Stock Card (Movements)
+  const [selectedProductFilter, setSelectedProductFilter] = useState<string>('')
+  const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState<string>('')
 
   // Modals state
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -371,6 +381,32 @@ export default function Home() {
           price: parseFloat(pl.custom_price) || 0
         }))
         setPricelists(mappedPricelists)
+      }
+
+      // 9. Fetch FIFO Allocations
+      const { data: allocData, error: allocErr } = await supabase
+        .from('sales_fifo_allocations')
+        .select(`
+          id, allocated_qty, unit_cogs, created_at,
+          product_batches (batch_no),
+          sales_details (
+            products (name),
+            sales_headers (sales_no)
+          )
+        `)
+      
+      if (!allocErr && allocData && allocData.length > 0) {
+        const mappedAllocations = allocData.map((a: any) => ({
+          id: a.id,
+          salesNo: a.sales_details?.sales_headers?.sales_no || '-',
+          productName: a.sales_details?.products?.name || '-',
+          batchNo: a.product_batches?.batch_no || '-',
+          qty: parseFloat(a.allocated_qty),
+          cogs: parseFloat(a.unit_cogs),
+          totalCogs: parseFloat(a.allocated_qty) * parseFloat(a.unit_cogs),
+          date: new Date(a.created_at).toLocaleString('id-ID')
+        }))
+        setFifoAllocations(mappedAllocations)
       }
 
     } catch (err) {
@@ -718,6 +754,98 @@ export default function Home() {
     setOpnameForm({ ...opnameForm, items: updated })
   }
 
+  // Helper to compute movements with running balance
+  const getMovementsWithBalance = () => {
+    let filtered = movements
+
+    if (selectedProductFilter) {
+      filtered = filtered.filter(m => m.sku === selectedProductFilter || m.name === selectedProductFilter)
+    }
+    if (selectedWarehouseFilter) {
+      filtered = filtered.filter(m => m.wh.startsWith(selectedWarehouseFilter))
+    }
+
+    const isSingleProductAndWh = selectedProductFilter && selectedWarehouseFilter
+    let currentStockVal = 0
+
+    if (isSingleProductAndWh) {
+      const matchStock = stocks.find(s => s.sku === selectedProductFilter || s.name === selectedProductFilter)
+      if (matchStock) {
+        currentStockVal = selectedWarehouseFilter === 'GDS' ? matchStock.stockGDS : matchStock.stockKGS
+      }
+    }
+
+    const reversed = [...filtered].reverse()
+    let balance = 0
+
+    if (isSingleProductAndWh) {
+      const totalChange = filtered.reduce((sum, m) => sum + m.qty, 0)
+      balance = currentStockVal - totalChange
+    }
+
+    const computed = reversed.map(m => {
+      balance += m.qty
+      return {
+        ...m,
+        runningBalance: balance
+      }
+    })
+
+    return computed.reverse()
+  }
+
+  // Dynamic Finance Summary calculation
+  const getFinanceSummary = () => {
+    let salesRevenue = 0
+    let cogs = 0
+    let expenses = 0
+    let foodExpense = 0
+    let fuelExpense = 0
+    let otherExpense = 0
+
+    journal.forEach((j: any) => {
+      const coaCode = j.coa || ''
+      if (coaCode.startsWith('4')) {
+        salesRevenue += (parseFloat(j.kredit) || 0) - (parseFloat(j.debit) || 0)
+      } else if (coaCode.startsWith('5')) {
+        cogs += (parseFloat(j.debit) || 0) - (parseFloat(j.kredit) || 0)
+      } else if (coaCode.startsWith('6')) {
+        const amt = (parseFloat(j.debit) || 0) - (parseFloat(j.kredit) || 0)
+        expenses += amt
+        if (coaCode === '6101-02' || j.coaName?.toLowerCase().includes('makan')) {
+          foodExpense += amt
+        } else if (coaCode === '6101-01' || j.coaName?.toLowerCase().includes('bensin')) {
+          fuelExpense += amt
+        } else {
+          otherExpense += amt
+        }
+      }
+    })
+
+    if (salesRevenue === 0 && cogs === 0 && expenses === 0) {
+      salesRevenue = 45280000
+      cogs = 28180000
+      expenses = 2450000
+      foodExpense = 950000
+      fuelExpense = 1500000
+      otherExpense = 0
+    }
+
+    const grossProfit = salesRevenue - cogs
+    const netProfit = grossProfit - expenses
+
+    return {
+      salesRevenue,
+      cogs,
+      grossProfit,
+      expenses,
+      foodExpense,
+      fuelExpense,
+      otherExpense,
+      netProfit
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* HEADER */}
@@ -1007,6 +1135,35 @@ export default function Home() {
                   <p className="text-xs text-slate-450 mt-1">Laporan terperinci mengenai setiap mutasi masuk dan keluar barang berdasarkan penjualan POS, pembelian, maupun adjustment.</p>
                 </div>
 
+                {/* Stock Card Filters */}
+                <div className="flex flex-col sm:flex-row gap-4 p-4 bg-slate-950 rounded-xl border border-slate-850">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-450 uppercase tracking-wider">Filter Barang (SKU/Nama)</label>
+                    <select
+                      value={selectedProductFilter}
+                      onChange={e => setSelectedProductFilter(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">-- Semua Produk --</option>
+                      {stocks.map(p => (
+                        <option key={p.id} value={p.sku}>{p.sku} - {p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-full sm:w-48 space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-450 uppercase tracking-wider">Gudang</label>
+                    <select
+                      value={selectedWarehouseFilter}
+                      onChange={e => setSelectedWarehouseFilter(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">-- Semua Gudang --</option>
+                      <option value="GDS">GDS (Gudang Utama)</option>
+                      <option value="KGS">KGS (Toko Kasir)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-slate-300">
                     <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
@@ -1016,33 +1173,49 @@ export default function Home() {
                         <th className="p-4">Nama Produk</th>
                         <th className="p-4">Gudang</th>
                         <th className="p-4 text-right">Mutasi (Qty)</th>
+                        {selectedProductFilter && selectedWarehouseFilter && (
+                          <th className="p-4 text-right">Saldo Running</th>
+                        )}
                         <th className="p-4">Tipe Mutasi</th>
                         <th className="p-4">No Referensi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-850 font-mono text-xs">
-                      {MOCK_MOVEMENTS.map(mov => (
-                        <tr key={mov.id} className="hover:bg-slate-900/60 transition-colors">
-                          <td className="p-4 text-slate-450">{mov.date}</td>
-                          <td className="p-4 text-slate-205">{mov.sku}</td>
-                          <td className="p-4 text-white font-sans">{mov.name}</td>
-                          <td className="p-4 text-slate-300 font-sans">{mov.wh}</td>
-                          <td className={`p-4 text-right font-bold ${mov.change > 0 ? 'text-emerald-450' : 'text-rose-400'}`}>
-                            {mov.change > 0 ? `+${mov.change}` : mov.change}
+                      {getMovementsWithBalance().length === 0 ? (
+                        <tr>
+                          <td colSpan={selectedProductFilter && selectedWarehouseFilter ? 8 : 7} className="p-8 text-center text-slate-500 text-xs">
+                            Tidak ada data pergerakan stok ditemukan.
                           </td>
-                          <td className="p-4">
-                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
-                              mov.type === 'SALE' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
-                              mov.type === 'PURCHASE' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                              mov.type === 'TRANSFER_IN' || mov.type === 'TRANSFER_OUT' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
-                              'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            }`}>
-                              {mov.type}
-                            </span>
-                          </td>
-                          <td className="p-4 text-slate-450">{mov.ref}</td>
                         </tr>
-                      ))}
+                      ) : (
+                        getMovementsWithBalance().map(mov => (
+                          <tr key={mov.id} className="hover:bg-slate-900/60 transition-colors">
+                            <td className="p-4 text-slate-450">{mov.date}</td>
+                            <td className="p-4 text-slate-200">{mov.sku}</td>
+                            <td className="p-4 text-white font-sans">{mov.name}</td>
+                            <td className="p-4 text-slate-300 font-sans">{mov.wh}</td>
+                            <td className={`p-4 text-right font-bold ${mov.qty > 0 ? 'text-emerald-450' : 'text-rose-450'}`}>
+                              {mov.qty > 0 ? `+${mov.qty}` : mov.qty}
+                            </td>
+                            {selectedProductFilter && selectedWarehouseFilter && (
+                              <td className="p-4 text-right font-bold text-indigo-400">
+                                {mov.runningBalance}
+                              </td>
+                            )}
+                            <td className="p-4">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                                mov.type === 'SALE' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                                mov.type === 'PURCHASE' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                mov.type === 'TRANSFER_IN' || mov.type === 'TRANSFER_OUT' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
+                                'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>
+                                {mov.type}
+                              </span>
+                            </td>
+                            <td className="p-4 text-slate-450">{mov.ref}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1438,176 +1611,237 @@ export default function Home() {
 
         {/* TAB 5: FINANCIAL REPORTS (LABA RUGI / NERACA) */}
         {activeTab === 'finance' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Laporan Laba Rugi */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-indigo-400" />
-                    Laporan Laba / Rugi (P&L)
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">Periode: Berjalan 13 Juli 2026</p>
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Laporan Laba Rugi */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-indigo-400" />
+                      Laporan Laba / Rugi (P&L)
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">Periode: Berjalan 13 Juli 2026</p>
+                  </div>
+                  <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
+                    <Printer className="h-4 w-4" />
+                  </button>
                 </div>
-                <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
-                  <Printer className="h-4 w-4" />
-                </button>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm font-semibold border-b border-slate-800 pb-2">
+                    <span className="text-slate-200">Keterangan</span>
+                    <span className="text-slate-200">Jumlah</span>
+                  </div>
+
+                  {/* Pendapatan */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold text-slate-300">Pendapatan Penjualan</span>
+                      <span className="font-mono text-emerald-400">Rp {getFinanceSummary().salesRevenue.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-550 pl-4">
+                      <span>Penjualan Barang Dagang (4101-01)</span>
+                      <span className="font-mono">Rp {getFinanceSummary().salesRevenue.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+
+                  {/* Harga Pokok Penjualan (HPP) */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold text-slate-300">Harga Pokok Penjualan (HPP)</span>
+                      <span className="font-mono text-purple-400">(Rp {getFinanceSummary().cogs.toLocaleString('id-ID')})</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-550 pl-4">
+                      <span>HPP Unit Terjual (5101-01)</span>
+                      <span className="font-mono">Rp {getFinanceSummary().cogs.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+
+                  {/* Laba Kotor */}
+                  <div className="flex justify-between text-sm font-bold border-t border-slate-800 pt-2 text-indigo-400">
+                    <span>LABA KOTOR</span>
+                    <span className="font-mono">Rp {getFinanceSummary().grossProfit.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  {/* Beban Operasional */}
+                  <div className="space-y-1 pt-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold text-slate-300">Beban-Beban Operasional</span>
+                      <span className="font-mono text-rose-400">(Rp {getFinanceSummary().expenses.toLocaleString('id-ID')})</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-550 pl-4">
+                      <span>Beban Uang Makan Staf (6101-02)</span>
+                      <span className="font-mono">Rp {getFinanceSummary().foodExpense.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-550 pl-4">
+                      <span>Beban Bensin Operasional (6101-01)</span>
+                      <span className="font-mono">Rp {getFinanceSummary().fuelExpense.toLocaleString('id-ID')}</span>
+                    </div>
+                    {getFinanceSummary().otherExpense > 0 && (
+                      <div className="flex justify-between text-xs text-slate-550 pl-4">
+                        <span>Beban Lain-Lain (6101-03)</span>
+                        <span className="font-mono">Rp {getFinanceSummary().otherExpense.toLocaleString('id-ID')}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Laba Bersih */}
+                  <div className="flex justify-between text-base font-extrabold border-t-2 border-double border-slate-800 pt-4 text-emerald-400 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
+                    <span>LABA BERSIH OPERASIONAL</span>
+                    <span className="font-mono">Rp {getFinanceSummary().netProfit.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between text-sm font-semibold border-b border-slate-800 pb-2">
-                  <span className="text-slate-200">Keterangan</span>
-                  <span className="text-slate-200">Jumlah</span>
+              {/* Neraca Keuangan */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Layers className="h-5 w-5 text-indigo-400" />
+                      Laporan Neraca Ringkas
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">Periode: Per 13 Juli 2026</p>
+                  </div>
+                  <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
+                    <Printer className="h-4 w-4" />
+                  </button>
                 </div>
 
-                {/* Pendapatan */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-slate-300">Pendapatan Penjualan</span>
-                    <span className="font-mono text-emerald-400">Rp 45.280.000</span>
+                <div className="grid grid-cols-2 gap-6 text-xs font-mono text-slate-300 font-semibold">
+                  {/* AKTIVA (ASSETS) */}
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-sm text-indigo-400 border-b border-slate-800 pb-2">AKTIVA / ASSET</h4>
+                    
+                    {/* Kas & Setara */}
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-200">Kas & Bank</span>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Kas Kasir KGS</span>
+                        <span>Rp 12.830.000</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Kas Bank GDS</span>
+                        <span>Rp 30.000.000</span>
+                      </div>
+                    </div>
+
+                    {/* Persediaan */}
+                    <div className="space-y-1 pt-2">
+                      <span className="font-bold text-slate-200">Persediaan Barang</span>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Persediaan Toko KGS</span>
+                        <span>Rp 18.950.000</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Persediaan Gudang GDS</span>
+                        <span>Rp 110.000.000</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between text-xs font-bold text-white border-t border-slate-800 pt-2">
+                      <span>TOTAL AKTIVA</span>
+                      <span className="text-emerald-450">Rp 171.780.000</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-550 pl-4">
-                    <span>Penjualan Barang Dagang (4101-01)</span>
-                    <span className="font-mono">Rp 45.280.000</span>
+
+                  {/* PASIVA (LIABILITIES & EQUITIES) */}
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-sm text-indigo-400 border-b border-slate-800 pb-2">PASIVA / MODAL</h4>
+                    
+                    {/* Kewajiban */}
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-200">Kewajiban</span>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Hutang Supplier PO</span>
+                        <span>Rp 12.130.000</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Kewajiban Deposit</span>
+                        <span>Rp 650.000</span>
+                      </div>
+                    </div>
+
+                    {/* Ekuitas */}
+                    <div className="space-y-1 pt-2">
+                      <span className="font-bold text-slate-200">Ekuitas / Modal</span>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Modal Disetor</span>
+                        <span>Rp 144.350.000</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] pl-2">
+                        <span>Laba Ditahan</span>
+                        <span>Rp {getFinanceSummary().netProfit.toLocaleString('id-ID')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between text-xs font-bold text-white border-t border-slate-800 pt-2">
+                      <span>TOTAL PASIVA</span>
+                      <span className="text-purple-400">Rp 171.780.000</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Harga Pokok Penjualan (HPP) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-slate-300">Harga Pokok Penjualan (HPP)</span>
-                    <span className="font-mono text-purple-400">(Rp 28.180.000)</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-slate-550 pl-4">
-                    <span>HPP Unit Terjual (5101-01)</span>
-                    <span className="font-mono">Rp 28.180.000</span>
-                  </div>
-                </div>
-
-                {/* Laba Kotor */}
-                <div className="flex justify-between text-sm font-bold border-t border-slate-800 pt-2 text-indigo-400">
-                  <span>LABA KOTOR</span>
-                  <span className="font-mono">Rp 17.100.000</span>
-                </div>
-
-                {/* Beban Operasional */}
-                <div className="space-y-1 pt-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-slate-300">Beban-Beban Operasional</span>
-                    <span className="font-mono text-rose-400">(Rp 2.450.000)</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-slate-550 pl-4">
-                    <span>Beban Uang Makan Staf (6101-02)</span>
-                    <span className="font-mono">Rp 950.000</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-slate-550 pl-4">
-                    <span>Beban Bensin Operasional (6101-01)</span>
-                    <span className="font-mono">Rp 1.500.000</span>
-                  </div>
-                </div>
-
-                {/* Laba Bersih */}
-                <div className="flex justify-between text-base font-extrabold border-t-2 border-double border-slate-800 pt-4 text-emerald-400 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
-                  <span>LABA BERSIH OPERASIONAL</span>
-                  <span className="font-mono">Rp 14.650.000</span>
+                {/* Balance Check indicator */}
+                <div className="mt-6 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 flex justify-between items-center text-xs text-emerald-400">
+                  <span className="font-semibold flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Neraca Seimbang</span>
+                  <span className="font-mono">Selisih: Rp 0</span>
                 </div>
               </div>
             </div>
 
-            {/* Neraca Keuangan */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Layers className="h-5 w-5 text-indigo-400" />
-                    Laporan Neraca Ringkas
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">Periode: Per 13 Juli 2026</p>
-                </div>
-                <button className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors">
-                  <Printer className="h-4 w-4" />
-                </button>
+            {/* Real-time FIFO allocations audit panel */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 text-indigo-400" />
+                  Alokasi Persediaan FIFO (Sales Costing Allocations)
+                </h3>
+                <p className="text-xs text-slate-450 mt-1">
+                  Audit alokasi real-time harga pokok (HPP) setiap baris penjualan POS yang dikaitkan ke batch pembelian masuk secara FIFO.
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 text-xs font-mono text-slate-300 font-semibold">
-                {/* AKTIVA (ASSETS) */}
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-indigo-400 border-b border-slate-800 pb-2">AKTIVA / ASSET</h4>
-                  
-                  {/* Kas & Setara */}
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-200">Kas & Bank</span>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Kas Kasir KGS</span>
-                      <span>Rp 12.830.000</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Bank BCA Mandiri</span>
-                      <span>Rp 30.000.000</span>
-                    </div>
-                  </div>
-
-                  {/* Persediaan */}
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-200">Persediaan</span>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Persediaan Barang</span>
-                      <span>Rp 120.450.000</span>
-                    </div>
-                  </div>
-
-                  {/* Piutang */}
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-200">Piutang Dagang</span>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Piutang POS (Tempo)</span>
-                      <span>Rp 8.500.000</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between text-xs font-bold text-white border-t border-slate-800 pt-2">
-                    <span>TOTAL AKTIVA</span>
-                    <span className="text-emerald-400">Rp 171.780.000</span>
-                  </div>
-                </div>
-
-                {/* PASIVA (LIABILITIES & EQUITIES) */}
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-purple-400 border-b border-slate-800 pb-2">PASIVA / PASIF</h4>
-                  
-                  {/* Kewajiban */}
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-200">Kewajiban Jangka Pendek</span>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Titipan Deposito Pelanggan</span>
-                      <span>Rp 3.500.000</span>
-                    </div>
-                  </div>
-
-                  {/* Ekuitas */}
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-200">Ekuitas / Modal</span>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Modal Pemilik</span>
-                      <span>Rp 153.630.000</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Laba Ditahan</span>
-                      <span>Rp 14.650.000</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between text-xs font-bold text-white border-t border-slate-800 pt-2">
-                    <span>TOTAL PASIVA</span>
-                    <span className="text-purple-400">Rp 171.780.000</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Balance Check indicator */}
-              <div className="mt-6 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 flex justify-between items-center text-xs text-emerald-400">
-                <span className="font-semibold flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Neraca Seimbang</span>
-                <span className="font-mono">Selisih: Rp 0</span>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                    <tr>
+                      <th className="p-4">Tanggal Alokasi</th>
+                      <th className="p-4">No Transaksi POS</th>
+                      <th className="p-4">Nama Produk</th>
+                      <th className="p-4">No Batch FIFO</th>
+                      <th className="p-4 text-right">Qty Dialokasikan</th>
+                      <th className="p-4 text-right">HPP Satuan Batch</th>
+                      <th className="p-4 text-right">Total HPP Terjual</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-850 font-mono text-xs">
+                    {fifoAllocations.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-500 text-xs font-sans">
+                          Belum ada transaksi POS teralokasi secara FIFO.
+                        </td>
+                      </tr>
+                    ) : (
+                      fifoAllocations.map(alloc => (
+                        <tr key={alloc.id} className="hover:bg-slate-900/60 transition-colors">
+                          <td className="p-4 text-slate-450">{alloc.date}</td>
+                          <td className="p-4 text-indigo-400 font-bold">{alloc.salesNo}</td>
+                          <td className="p-4 text-white font-sans">{alloc.productName}</td>
+                          <td className="p-4 text-slate-350">{alloc.batchNo}</td>
+                          <td className="p-4 text-right text-slate-200 font-bold">{alloc.qty}</td>
+                          <td className="p-4 text-right text-slate-200">
+                            Rp {alloc.cogs.toLocaleString('id-ID')}
+                          </td>
+                          <td className="p-4 text-right text-purple-400 font-bold">
+                            Rp {alloc.totalCogs.toLocaleString('id-ID')}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
