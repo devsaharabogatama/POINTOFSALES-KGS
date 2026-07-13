@@ -48,8 +48,9 @@ VALUES (
     'ACTIVE'
 ) ON CONFLICT DO NOTHING;
 
-INSERT INTO store_memberships (store_id, user_id, status)
+INSERT INTO store_memberships (company_id, store_id, user_id, status)
 VALUES (
+    '11111111-1111-1111-1111-111111111111', -- Company A
     '11111111-1111-1111-1111-111111111112', -- Store A
     'd290f1ee-6c54-4b01-90e6-d701748f0851', -- Cashier ID
     'ACTIVE'
