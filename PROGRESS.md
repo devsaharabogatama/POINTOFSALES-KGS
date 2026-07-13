@@ -16,7 +16,7 @@ Setiap penambahan fitur atau perbaikan kode harus mengikuti langkah-langkah beri
 
 ### 🟢 Fase 1: Database Setup (Supabase)
 * [x] Inisiasi proyek Supabase dan eksekusi skema PostgreSQL dasar ([supabase/schema.sql](file:///C:/Users/sbi_l/OneDrive/Documents/POINT%20OF%20SALES/supabase/schema.sql)).
-* [ ] Konfigurasi RLS (Row Level Security) untuk Cashier, Manager, dan Owner.
+* [x] Konfigurasi RLS (Row Level Security) untuk Cashier, Manager, dan Owner.
 * [ ] Aktifkan Supabase Realtime untuk tabel `product_stocks`.
 
 ### 🟢 Fase 2: Struktur & Kerangka Dasar Proyek
