@@ -710,14 +710,27 @@ export default function Home() {
     reader.onload = async (event) => {
       const csvText = event.target?.result as string
       try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+        const companyId = await getMyCompanyId()
+
         const response = await fetch('/api/products/import', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvText })
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ csvText, companyId })
         })
         const result = await response.json()
         if (response.ok) {
-          setImportResult(`Impor Sukses: Berhasil memasukkan ${result.successCount} item. Gagal: ${result.failureCount}`)
+          if (result.failureCount > 0) {
+            const firstFail = result.details.find((d: any) => d.status === 'FAILED')
+            setImportResult(`Impor Parsial: Sukses ${result.successCount}, Gagal ${result.failureCount}. Detail Gagal: ${firstFail?.reason || 'Unknown error'}`)
+          } else {
+            setImportResult(`Impor Sukses: Berhasil memasukkan ${result.successCount} item.`)
+            loadDataFromSupabase()
+          }
         } else {
           setImportResult(`Impor Gagal: ${result.error}`)
         }

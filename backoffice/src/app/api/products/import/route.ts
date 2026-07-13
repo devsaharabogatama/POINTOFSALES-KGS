@@ -1,12 +1,31 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 export async function POST(request: Request) {
   try {
-    const { csvText } = await request.json()
+    const { csvText, companyId } = await request.json()
     if (!csvText) {
       return NextResponse.json({ error: 'CSV data is required.' }, { status: 400 })
     }
+
+    // Set fallback company_id if not supplied
+    const targetCompanyId = companyId || 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+
+    // Retrieve auth token from Authorization header to respect RLS
+    const authHeader = request.headers.get('Authorization')
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''
+    
+    const client = authHeader && authHeader.startsWith('Bearer ')
+      ? createClient(supabaseUrl, supabaseAnonKey, {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        })
+      : supabase
 
     const lines = csvText.split('\n').map((line: string) => line.trim()).filter(Boolean)
     if (lines.length <= 1) {
@@ -81,13 +100,13 @@ export async function POST(request: Request) {
       try {
         // 1. Get or create UOM
         let uomId = null
-        const { data: existingUom } = await supabase.from('uoms').select('id').eq('code', uomCode).single()
+        const { data: existingUom } = await client.from('uoms').select('id').eq('code', uomCode).single()
         if (existingUom) {
           uomId = existingUom.id
         } else {
-          const { data: newUom, error: uomErr } = await supabase
+          const { data: newUom, error: uomErr } = await client
             .from('uoms')
-            .insert({ code: uomCode, name: uomCode })
+            .insert({ code: uomCode, name: uomCode, company_id: targetCompanyId })
             .select('id')
             .single()
           if (uomErr) throw uomErr
@@ -96,16 +115,16 @@ export async function POST(request: Request) {
 
         // 2. Upsert Product
         let productId = null
-        const { data: existingProduct } = await supabase.from('products').select('id').eq('sku', sku).single()
+        const { data: existingProduct } = await client.from('products').select('id').eq('sku', sku).single()
         if (existingProduct) {
           productId = existingProduct.id
-          await supabase.from('products').update({
-            name, category, price, cogs, uom: uomCode, uom_id: uomId
+          await client.from('products').update({
+            name, category, price, cogs, uom: uomCode, uom_id: uomId, company_id: targetCompanyId
           }).eq('id', productId)
         } else {
-          const { data: newProduct, error: prodErr } = await supabase
+          const { data: newProduct, error: prodErr } = await client
             .from('products')
-            .insert({ sku, name, category, price, cogs, uom: uomCode, uom_id: uomId })
+            .insert({ sku, name, category, price, cogs, uom: uomCode, uom_id: uomId, company_id: targetCompanyId })
             .select('id')
             .single()
           if (prodErr) throw prodErr
@@ -114,13 +133,13 @@ export async function POST(request: Request) {
 
         // 3. Find or Create Warehouse
         let warehouseId = null
-        const { data: existingWh } = await supabase.from('warehouses').select('id').eq('code', warehouseCode).single()
+        const { data: existingWh } = await client.from('warehouses').select('id').eq('code', warehouseCode).single()
         if (existingWh) {
           warehouseId = existingWh.id
         } else {
-          const { data: newWh, error: whErr } = await supabase
+          const { data: newWh, error: whErr } = await client
             .from('warehouses')
-            .insert({ code: warehouseCode, name: `Gudang ${warehouseCode}` })
+            .insert({ code: warehouseCode, name: `Gudang ${warehouseCode}`, company_id: targetCompanyId })
             .select('id')
             .single()
           if (whErr) throw whErr
@@ -128,7 +147,7 @@ export async function POST(request: Request) {
         }
 
         // 4. Upsert Product Stock
-        const { data: existingStock } = await supabase
+        const { data: existingStock } = await client
           .from('product_stocks')
           .select('id, stock_qty')
           .eq('product_id', productId)
@@ -136,38 +155,42 @@ export async function POST(request: Request) {
           .single()
         
         if (existingStock) {
-          await supabase.from('product_stocks').update({
+          await client.from('product_stocks').update({
             stock_qty: existingStock.stock_qty + initialStock,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            company_id: targetCompanyId
           }).eq('id', existingStock.id)
         } else {
-          await supabase.from('product_stocks').insert({
+          await client.from('product_stocks').insert({
             product_id: productId,
             warehouse_id: warehouseId,
-            stock_qty: initialStock
+            stock_qty: initialStock,
+            company_id: targetCompanyId
           })
         }
 
         // 5. Create Initial FIFO batch if stock > 0
         if (initialStock > 0) {
-          const { data: batch, error: batchErr } = await supabase.from('product_batches').insert({
+          const { data: batch, error: batchErr } = await client.from('product_batches').insert({
             product_id: productId,
             warehouse_id: warehouseId,
             qty_purchased: initialStock,
             qty_remaining: initialStock,
-            cogs_unit: cogs
+            cogs_unit: cogs,
+            company_id: targetCompanyId
           }).select('id').single()
 
           if (batchErr) throw batchErr
 
           // 6. Log Stock Movement
-          await supabase.from('stock_movements').insert({
+          await client.from('stock_movements').insert({
             product_id: productId,
             warehouse_id: warehouseId,
             qty_change: initialStock,
             movement_type: 'PURCHASE',
             reference_table: 'product_batches',
-            reference_id: batch.id
+            reference_id: batch.id,
+            company_id: targetCompanyId
           })
         }
 
