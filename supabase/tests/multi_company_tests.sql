@@ -4,6 +4,27 @@
 
 -- Note: Execute this script in your SQL editor to validate multi-tenant rules.
 
+-- 0. Seed Mock User in Auth.Users & Profiles for test execution
+INSERT INTO auth.users (id, email, instance_id, raw_app_meta_data, raw_user_meta_data, is_super_admin, role, aud)
+VALUES (
+    'd290f1ee-6c54-4b01-90e6-d701748f0851',
+    'kasir1@kgs.com',
+    '00000000-0000-0000-0000-000000000000',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"name":"Kasir KGS Utama"}'::jsonb,
+    FALSE,
+    'authenticated',
+    'authenticated'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO profiles (id, email, name, role)
+VALUES (
+    'd290f1ee-6c54-4b01-90e6-d701748f0851',
+    'kasir1@kgs.com',
+    'Kasir KGS Utama',
+    'cashier'::user_role
+) ON CONFLICT (id) DO NOTHING;
+
 -- 1. Setup Test Tenants (Company A & Company B)
 INSERT INTO companies (id, company_code, company_name, company_slug, status)
 VALUES 
@@ -72,7 +93,7 @@ INSERT INTO cashier_sessions (id, session_code, cashier_id, status, company_id, 
 VALUES (
     '11111111-1111-1111-1111-111111111200', 
     'SESS-TEST-A', 
-    'd290f1ee-6c54-4b01-90e6-d701748f0851', -- existing fallback user profiles id
+    'd290f1ee-6c54-4b01-90e6-d701748f0851', -- existing fallback user profiles id (now verified in profiles)
     'OPEN'::session_status,
     '11111111-1111-1111-1111-111111111111', 
     '11111111-1111-1111-1111-111111111112',
@@ -112,7 +133,6 @@ DECLARE
     v_sales_id1 UUID;
     v_sales_id2 UUID;
 BEGIN
-    -- Setup temporary KGS memberships if needed for this trigger
     -- First checkout
     v_sales_id1 := create_sales_transaction(
         'INV-IDEMP-001',
@@ -125,7 +145,7 @@ BEGIN
     );
 
     BEGIN
-        -- Second checkout with identical invoice number (triggers unique constraint exception)
+        -- Second checkout with identical invoice number
         v_sales_id2 := create_sales_transaction(
             'INV-IDEMP-001',
             '11111111-1111-1111-1111-111111111200',
