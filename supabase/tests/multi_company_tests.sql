@@ -39,6 +39,22 @@ VALUES
     ('22222222-2222-2222-2222-222222222223', '22222222-2222-2222-2222-222222222222', 'STORE-B', 'Store Company B', 'ACTIVE')
 ON CONFLICT DO NOTHING;
 
+-- 2.1. Seed Company & Store Memberships for the testing cashier
+INSERT INTO company_memberships (company_id, user_id, role_code, status)
+VALUES (
+    '11111111-1111-1111-1111-111111111111', -- Company A
+    'd290f1ee-6c54-4b01-90e6-d701748f0851', -- Cashier ID
+    'COMPANY_OWNER',
+    'ACTIVE'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO store_memberships (store_id, user_id, status)
+VALUES (
+    '11111111-1111-1111-1111-111111111112', -- Store A
+    'd290f1ee-6c54-4b01-90e6-d701748f0851', -- Cashier ID
+    'ACTIVE'
+) ON CONFLICT DO NOTHING;
+
 -- 3. Setup Test Warehouses
 INSERT INTO warehouses (id, company_id, code, name, is_active)
 VALUES 
