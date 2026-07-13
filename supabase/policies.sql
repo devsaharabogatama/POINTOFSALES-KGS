@@ -361,72 +361,55 @@ CREATE POLICY "Movements viewable by company members" ON stock_movements
 
 
 -- -----------------------------------------------------
--- 8. SECURITY DEFINER RPC TO BYPASS RLS FOR BOOTSTRAPPING
+-- 8. SECURITY DEFINER RPC TO BYPASS RLS FOR BOOTSTRAPPING (SEED-COMPLIANT FLOW)
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION public.bootstrap_tenant_data(p_user_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
-    v_company_id UUID;
-    v_store_id UUID;
-    v_company_code TEXT;
-    v_company_name TEXT;
     v_email TEXT;
 BEGIN
-    -- Get user email to generate name
+    -- Get user email to create name
     SELECT email INTO v_email FROM auth.users WHERE id = p_user_id;
     IF v_email IS NULL THEN
-        v_email := 'tenant@example.com';
+        v_email := 'admin@kgs.com';
     END IF;
 
-    v_company_name := 'Company ' || initcap(split_part(v_email, '@', 1));
-    v_company_code := 'COMP-' || upper(split_part(v_email, '@', 1));
-
-    -- Check if user already has a membership
-    IF EXISTS (SELECT 1 FROM company_memberships WHERE user_id = p_user_id) THEN
-        RETURN TRUE;
-    END IF;
-
-    -- Generate unique UUIDs for multi-tenant isolation
-    v_company_id := gen_random_uuid();
-    v_store_id := gen_random_uuid();
-
-    -- Ensure profile exists in profiles table
+    -- 1. Ensure profile exists in profiles table
     INSERT INTO public.profiles (id, email, name, role)
-    SELECT 
-        id, 
-        email, 
-        COALESCE(raw_user_meta_data->>'name', split_part(email, '@', 1)),
+    VALUES (
+        p_user_id, 
+        v_email, 
+        initcap(split_part(v_email, '@', 1)),
         'cashier'::user_role
-    FROM auth.users
-    WHERE id = p_user_id
+    )
     ON CONFLICT (id) DO NOTHING;
 
-    -- Create Company (completely unique per registered user)
+    -- 2. Ensure default Company A exists (Matches seed_company_data.sql)
     INSERT INTO companies (id, company_code, company_name, company_slug, status)
-    VALUES (v_company_id, v_company_code, v_company_name, lower(v_company_code), 'ACTIVE')
-    ON CONFLICT DO NOTHING;
+    VALUES ('11111111-1111-1111-1111-111111111111', 'COMP-A', 'Company A', 'company-a', 'ACTIVE')
+    ON CONFLICT (id) DO NOTHING;
 
-    -- Create Store (completely unique per registered user)
+    -- 3. Ensure default Store A exists
     INSERT INTO stores (id, company_id, store_code, store_name, status)
-    VALUES (v_store_id, v_company_id, 'STORE-MAIN', 'Main Store', 'ACTIVE')
-    ON CONFLICT DO NOTHING;
+    VALUES ('11111111-1111-1111-1111-111111111112', '11111111-1111-1111-1111-111111111111', 'STORE-A', 'Store A', 'ACTIVE')
+    ON CONFLICT (id) DO NOTHING;
 
-    -- Create Warehouses (GDS & KGS)
+    -- 4. Ensure default Warehouses (GDS & KGS) exist under Company A
     INSERT INTO warehouses (company_id, code, name, is_active)
     VALUES 
-        (v_company_id, 'GDS', 'Gudang Utama GDS', true),
-        (v_company_id, 'KGS', 'Toko Kasir KGS', true)
+        ('11111111-1111-1111-1111-111111111111', 'GDS', 'Gudang Utama GDS', true),
+        ('11111111-1111-1111-1111-111111111111', 'KGS', 'Toko Kasir KGS', true)
     ON CONFLICT DO NOTHING;
 
-    -- Create Company Membership (Owner of their own unique company)
+    -- 5. Link this User to Company A as OWNER
     INSERT INTO company_memberships (company_id, user_id, role_code, status)
-    VALUES (v_company_id, p_user_id, 'COMPANY_OWNER', 'ACTIVE')
-    ON CONFLICT DO NOTHING;
+    VALUES ('11111111-1111-1111-1111-111111111111', p_user_id, 'COMPANY_OWNER', 'ACTIVE')
+    ON CONFLICT (company_id, user_id) DO NOTHING;
 
-    -- Create Store Membership
+    -- 6. Link this User to Store A
     INSERT INTO store_memberships (company_id, store_id, user_id, status)
-    VALUES (v_company_id, v_store_id, p_user_id, 'ACTIVE')
-    ON CONFLICT DO NOTHING;
+    VALUES ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111112', p_user_id, 'ACTIVE')
+    ON CONFLICT (company_id, store_id, user_id) DO NOTHING;
 
     RETURN TRUE;
 END;
