@@ -1,23 +1,76 @@
 -- -----------------------------------------------------
+-- 1. ADD SUPER_ADMIN ROLE TO ENUM (OUTSIDE TRANSACTION IF NEEDED)
+-- -----------------------------------------------------
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'super_admin';
+
+-- -----------------------------------------------------
 -- RLS Helper Functions & Auth Signup Trigger (Multi-Tenant Aware)
 -- -----------------------------------------------------
+
+-- Helper to check if a user is a super admin
+CREATE OR REPLACE FUNCTION private_is_super_admin(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM profiles 
+        WHERE id = p_user_id AND role = 'super_admin'::user_role
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Helper to check company access
+CREATE OR REPLACE FUNCTION private_user_has_company_access(p_company_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Super admins bypass RLS and have access to all companies
+    IF EXISTS (
+        SELECT 1 FROM profiles 
+        WHERE id = auth.uid() AND role = 'super_admin'::user_role
+    ) THEN
+        RETURN TRUE;
+    END IF;
+
+    -- Normal company membership check
+    RETURN EXISTS (
+        SELECT 1 FROM company_memberships 
+        WHERE company_id = p_company_id 
+          AND user_id = auth.uid() 
+          AND status = 'ACTIVE'
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Helper to check role in company context
 CREATE OR REPLACE FUNCTION get_user_role_in_company(p_company_id UUID) 
 RETURNS TEXT AS $$
-    SELECT role_code FROM company_memberships 
+DECLARE
+    v_role TEXT;
+BEGIN
+    -- If super admin, treat them as owner of the company to give full access
+    IF EXISTS (
+        SELECT 1 FROM profiles 
+        WHERE id = auth.uid() AND role = 'super_admin'::user_role
+    ) THEN
+        RETURN 'COMPANY_OWNER';
+    END IF;
+
+    SELECT role_code INTO v_role FROM company_memberships 
     WHERE company_id = p_company_id AND user_id = auth.uid() AND status = 'ACTIVE';
-$$ LANGUAGE sql SECURITY DEFINER;
+
+    RETURN v_role;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger to automatically create profile on Auth signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, name)
+    INSERT INTO public.profiles (id, email, name, role)
     VALUES (
         new.id, 
         new.email, 
-        COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
+        COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+        'cashier'::user_role
     );
     RETURN NEW;
 END;
@@ -37,17 +90,42 @@ FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 -- Profiles
 DROP POLICY IF EXISTS "Profiles are viewable by owner, manager, or self" ON profiles;
 CREATE POLICY "Profiles are viewable by owner, manager, or self" ON profiles
-    FOR SELECT TO authenticated USING (auth.uid() = id OR EXISTS (
-        SELECT 1 FROM company_memberships WHERE user_id = auth.uid() AND role_code IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
-    ));
+    FOR SELECT TO authenticated USING (
+        auth.uid() = id 
+        OR private_is_super_admin(auth.uid())
+        OR EXISTS (
+            SELECT 1 FROM company_memberships WHERE user_id = auth.uid() AND role_code IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+        )
+    );
 
 DROP POLICY IF EXISTS "Profiles can be updated by owners or self" ON profiles;
 CREATE POLICY "Profiles can be updated by owners or self" ON profiles
-    FOR UPDATE TO authenticated USING (auth.uid() = id);
+    FOR UPDATE TO authenticated USING (
+        auth.uid() = id 
+        OR private_is_super_admin(auth.uid())
+    );
 
 DROP POLICY IF EXISTS "Profiles can be inserted by self" ON profiles;
 CREATE POLICY "Profiles can be inserted by self" ON profiles
-    FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
+    FOR INSERT TO authenticated WITH CHECK (
+        auth.uid() = id 
+        OR private_is_super_admin(auth.uid())
+    );
+
+-- Companies table RLS (Enable and add policies since we want to secure it but allow Super Admin)
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Companies viewable by company members" ON companies;
+CREATE POLICY "Companies viewable by company members" ON companies
+    FOR SELECT TO authenticated USING (
+        private_user_has_company_access(id)
+    );
+
+DROP POLICY IF EXISTS "Companies manageable by super admin" ON companies;
+CREATE POLICY "Companies manageable by super admin" ON companies
+    FOR ALL TO authenticated USING (
+        private_is_super_admin(auth.uid())
+    );
 
 -- Warehouses
 DROP POLICY IF EXISTS "Warehouses viewable by authenticated users" ON warehouses;
