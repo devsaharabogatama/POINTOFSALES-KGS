@@ -30,7 +30,10 @@ import {
   Lock,
   Mail,
   LogOut,
-  Users
+  Users,
+  User,
+  Building2,
+  Key
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -110,6 +113,15 @@ export default function Home() {
   const [loginPassword, setLoginPassword] = useState('')
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+
+  // Tenant Sign Up States
+  const [isRegisteringTenant, setIsRegisteringTenant] = useState(false)
+  const [regEmail, setRegEmail] = useState('')
+  const [regPassword, setRegPassword] = useState('')
+  const [regName, setRegName] = useState('')
+  const [regCompanyName, setRegCompanyName] = useState('')
+  const [regCompanyCode, setRegCompanyCode] = useState('')
+  const [isRegistering, setIsRegistering] = useState(false)
 
   // Staff Management States
   const [staffList, setStaffList] = useState<any[]>([])
@@ -495,79 +507,18 @@ export default function Home() {
 
   // Ensure current user is linked to Company A automatically (fixes local RLS isolation bootstrapping)
   const ensureUserMembership = async (user: any) => {
-    // 1. Ensure basic tenant tables are seeded (No RLS tables first)
     try {
-      await supabase.from('companies').upsert({
-        id: '11111111-1111-1111-1111-111111111111',
-        company_code: 'COMP-A',
-        company_name: 'Company A',
-        company_slug: 'company-a',
-        status: 'ACTIVE'
+      console.log('Bootstrapping tenant data via RPC for user:', user.id)
+      const { data, error } = await supabase.rpc('bootstrap_tenant_data', {
+        p_user_id: user.id
       })
-    } catch (e) {
-      console.error('Auto-seeding Company failed:', e)
-    }
-
-    try {
-      await supabase.from('stores').upsert({
-        id: '11111111-1111-1111-1111-111111111112',
-        company_id: '11111111-1111-1111-1111-111111111111',
-        store_code: 'STORE-A',
-        store_name: 'Store A',
-        status: 'ACTIVE'
-      })
-    } catch (e) {
-      console.error('Auto-seeding Store failed:', e)
-    }
-
-    // 2. Try to insert user profile
-    try {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.name || user.email.split('@')[0],
-        role: 'cashier'
-      })
-    } catch (e) {
-      console.error('Auto-creating user profile failed (or relies on DB trigger):', e)
-    }
-
-    // 3. Check and link user membership
-    try {
-      const { data: cm } = await supabase
-        .from('company_memberships')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .limit(1)
-
-      if (!cm || cm.length === 0) {
-        console.log('Auto-linking user to default Company A...')
-        await supabase.from('company_memberships').insert({
-          company_id: '11111111-1111-1111-1111-111111111111',
-          user_id: user.id,
-          role_code: 'COMPANY_OWNER',
-          status: 'ACTIVE'
-        })
-
-        await supabase.from('store_memberships').insert({
-          company_id: '11111111-1111-1111-1111-111111111111',
-          store_id: '11111111-1111-1111-1111-111111111112',
-          user_id: user.id,
-          status: 'ACTIVE'
-        })
+      if (error) {
+        console.warn('RPC Bootstrapping warning (expected if user already has membership):', error.message)
+      } else {
+        console.log('Tenant data bootstrapped successfully:', data)
       }
     } catch (e) {
-      console.error('Auto-creating memberships failed:', e)
-    }
-
-    // 4. Try to insert warehouses (RLS is enabled on warehouses, but now the user has membership, so RLS passes!)
-    try {
-      await supabase.from('warehouses').upsert([
-        { id: '11111111-1111-1111-1111-111111111113', company_id: '11111111-1111-1111-1111-111111111111', code: 'GDS', name: 'Gudang Utama GDS', is_active: true },
-        { id: '11111111-1111-1111-1111-111111111114', company_id: '11111111-1111-1111-1111-111111111111', code: 'KGS', name: 'Toko Kasir KGS', is_active: true }
-      ])
-    } catch (e) {
-      console.error('Auto-seeding Warehouses failed:', e)
+      console.error('Tenant bootstrapping RPC failed:', e)
     }
   }
 
@@ -612,6 +563,46 @@ export default function Home() {
       setAuthError(err.message || 'Login failed')
     } finally {
       setIsLoggingIn(false)
+    }
+  }
+
+  // Handle Tenant (Company & Owner) Registration submit
+  const handleRegisterTenant = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!regEmail || !regPassword || !regName || !regCompanyName || !regCompanyCode) return
+    setIsRegistering(true)
+    setAuthError(null)
+    try {
+      const response = await fetch('/api/tenant/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: regEmail,
+          password: regPassword,
+          name: regName,
+          company_code: regCompanyCode,
+          company_name: regCompanyName
+        })
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        alert('Registrasi Perusahaan Baru & Akun Owner Berhasil! Silakan masuk menggunakan akun baru Anda.')
+        setLoginEmail(regEmail)
+        setLoginPassword(regPassword)
+        setIsRegisteringTenant(false)
+        setRegEmail('')
+        setRegPassword('')
+        setRegName('')
+        setRegCompanyName('')
+        setRegCompanyCode('')
+      } else {
+        throw new Error(result.error || 'Pendaftaran perusahaan gagal')
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Pendaftaran gagal')
+    } finally {
+      setIsRegistering(false)
     }
   }
 
@@ -1107,54 +1098,170 @@ export default function Home() {
             <p className="text-xs text-slate-400">Manajemen Mini-ERP KGS (Multi-Tenant POS)</p>
           </div>
 
+          {/* Tab Selector */}
+          <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800/80">
+            <button
+              onClick={() => {
+                setIsRegisteringTenant(false)
+                setAuthError(null)
+              }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+                !isRegisteringTenant
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Masuk Staf
+            </button>
+            <button
+              onClick={() => {
+                setIsRegisteringTenant(true)
+                setAuthError(null)
+              }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+                isRegisteringTenant
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Daftar Perusahaan Baru
+            </button>
+          </div>
+
           {authError && (
-            <div className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-xs text-rose-455 flex items-start gap-2.5">
+            <div className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-xs text-rose-400 flex items-start gap-2.5">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{authError}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                <Mail className="h-3.5 w-3.5" /> Email Pengguna
-              </label>
-              <input
-                type="email"
-                placeholder="nama@perusahaan.com"
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors"
-                required
-              />
-            </div>
+          {!isRegisteringTenant ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" /> Email Pengguna
+                </label>
+                <input
+                  type="email"
+                  placeholder="nama@perusahaan.com"
+                  value={loginEmail}
+                  onChange={e => setLoginEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                  required
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                <Lock className="h-3.5 w-3.5" /> Password
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors"
-                required
-              />
-            </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5" /> Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={loginPassword}
+                  onChange={e => setLoginPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                  required
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-sm text-white transition-all shadow-lg shadow-indigo-600/20 disabled:bg-slate-850 disabled:text-slate-550"
-            >
-              {isLoggingIn ? 'Memproses Masuk...' : 'Masuk Dashboard'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-sm text-white transition-all shadow-lg shadow-indigo-600/20 disabled:bg-slate-800 disabled:text-slate-500"
+              >
+                {isLoggingIn ? 'Memproses Masuk...' : 'Masuk Dashboard'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegisterTenant} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5" /> Nama Owner
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Budi"
+                    value={regName}
+                    onChange={e => setRegName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" /> Email Owner
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="budi@perusahaan.com"
+                    value={regEmail}
+                    onChange={e => setRegEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5" /> Password Owner
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={regPassword}
+                  onChange={e => setRegPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5" /> Nama Perusahaan
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="PT Semesta"
+                    value={regCompanyName}
+                    onChange={e => setRegCompanyName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <Key className="h-3.5 w-3.5" /> Kode Perusahaan
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="SEM-A"
+                    value={regCompanyCode}
+                    onChange={e => setRegCompanyCode(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors text-white"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isRegistering}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-sm text-white transition-all shadow-lg shadow-indigo-600/20 disabled:bg-slate-800 disabled:text-slate-500"
+              >
+                {isRegistering ? 'Memproses Pendaftaran...' : 'Daftar & Buat Perusahaan'}
+              </button>
+            </form>
+          )}
 
           <div className="border-t border-slate-850 pt-4 text-center">
             <p className="text-[11px] text-slate-500 leading-normal">
-              Gunakan akun kasir/owner yang terdaftar pada PWA KGS Kasir Anda untuk menguji isolasi RLS tenant.
+              {!isRegisteringTenant 
+                ? 'Gunakan akun kasir/owner yang terdaftar pada PWA KGS Kasir Anda untuk menguji isolasi RLS tenant.'
+                : 'Mendaftarkan perusahaan baru akan secara otomatis membuat database terisolasi baru (Company Owner) dan default store/warehouse.'}
             </p>
           </div>
         </div>
