@@ -83,6 +83,9 @@ ON CONFLICT DO NOTHING;
 -- -----------------------------------------------------
 DO $$
 BEGIN
+    -- Mock the auth user session claim inside PostgreSQL session
+    PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
+
     BEGIN
         -- Attempt to transfer stock between Warehouse of Company A and Warehouse of Company B
         PERFORM transfer_product_stock(
@@ -119,6 +122,9 @@ VALUES (
 
 DO $$
 BEGIN
+    -- Mock the auth user session claim inside PostgreSQL session
+    PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
+
     BEGIN
         -- Attempt checkout for Company A session, using Product from Company B
         PERFORM create_sales_transaction(
@@ -150,6 +156,9 @@ DECLARE
     v_sales_id1 UUID;
     v_sales_id2 UUID;
 BEGIN
+    -- Mock the auth user session claim inside PostgreSQL session
+    PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
+
     -- First checkout
     v_sales_id1 := create_sales_transaction(
         'INV-IDEMP-001',
