@@ -26,7 +26,10 @@ import {
   Upload,
   Download,
   Calendar,
-  ClipboardList
+  ClipboardList,
+  Lock,
+  Mail,
+  LogOut
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -99,6 +102,14 @@ const MOCK_ALLOCATIONS = [
 
 
 export default function Home() {
+  // Auth Session States
+  const [session, setSession] = useState<any>(null)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
   const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'customer' | 'events' | 'journal' | 'finance'>('overview')
   const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname' | 'orders'>('levels')
   const [customerSubTab, setCustomerSubTab] = useState<'list' | 'pricelist'>('list')
@@ -441,6 +452,51 @@ export default function Home() {
       setIsSupabaseConnected(true)
     }
   }, [])
+
+  // Listen to Auth Session changes on mount
+  useEffect(() => {
+    if (isSupabaseConnected) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setSession(session)
+        setIsCheckingAuth(false)
+      })
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session)
+        setIsCheckingAuth(false)
+      })
+
+      return () => subscription.unsubscribe()
+    } else {
+      setIsCheckingAuth(false)
+    }
+  }, [isSupabaseConnected])
+
+  // Handle Auth Login submit
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoggingIn(true)
+    setAuthError(null)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword
+      })
+      if (error) throw error
+      setSession(data.session)
+    } catch (err: any) {
+      setAuthError(err.message || 'Login failed')
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }
+
+  // Handle Logout
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+    setActiveTab('overview')
+  }
 
   // Auto-refresh when tab changes
   useEffect(() => {
@@ -859,6 +915,86 @@ export default function Home() {
     }
   }
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="h-10 w-10 text-indigo-500 animate-spin" />
+          <p className="text-sm font-semibold text-slate-400 animate-pulse">Memeriksa Sesi Autentikasi...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isSupabaseConnected && !session) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans p-4">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6 relative overflow-hidden">
+          <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              KGS BACKOFFICE
+            </h1>
+            <p className="text-xs text-slate-400">Manajemen Mini-ERP KGS (Multi-Tenant POS)</p>
+          </div>
+
+          {authError && (
+            <div className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-xs text-rose-455 flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" /> Email Pengguna
+              </label>
+              <input
+                type="email"
+                placeholder="nama@perusahaan.com"
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" /> Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={loginPassword}
+                onChange={e => setLoginPassword(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-sm focus:outline-none transition-colors"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-sm text-white transition-all shadow-lg shadow-indigo-600/20 disabled:bg-slate-850 disabled:text-slate-550"
+            >
+              {isLoggingIn ? 'Memproses Masuk...' : 'Masuk Dashboard'}
+            </button>
+          </form>
+
+          <div className="border-t border-slate-850 pt-4 text-center">
+            <p className="text-[11px] text-slate-500 leading-normal">
+              Gunakan akun kasir/owner yang terdaftar pada PWA KGS Kasir Anda untuk menguji isolasi RLS tenant.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* HEADER */}
@@ -906,6 +1042,16 @@ export default function Home() {
           }`}>
             Koneksi Database: <span className="font-bold">{isSupabaseConnected ? 'Tersambung (Cloud)' : 'Mode Demo (Lokal)'}</span>
           </div>
+
+          {isSupabaseConnected && session && (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-850 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-750 transition-all hover:text-white"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Keluar
+            </button>
+          )}
         </div>
       </header>
 
