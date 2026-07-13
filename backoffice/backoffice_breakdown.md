@@ -171,13 +171,13 @@ Double-entry ledger yang menyajikan:
 * [ ] Buat trigger log mutasi otomatis untuk mengisi tabel `stock_movements` setiap kali stok berubah.
 
 ### Langkah 7.2: Pembuatan API & Komponen Impor di Backoffice
-* [ ] Setup route `/api/products/import` untuk membaca data CSV/Excel produk.
-* [ ] Buat UI Halaman CRUD Produk dan tombol Impor CSV.
+* [x] Setup route `/api/products/import` untuk membaca data CSV/Excel produk.
+* [x] Buat UI Halaman CRUD Produk dan tombol Impor CSV.
 
 ### Langkah 7.3: Halaman Konfirmasi Order Stok & Penyesuaian Stok
-* [ ] Buat UI Manajemen Pembelian (PO) dengan filter "Menunggu Konfirmasi".
-* [ ] Tautkan tombol "Konfirmasi Terima" ke RPC database yang menambah stok dan batch FIFO.
-* [ ] Buat UI Manajemen Penyesuaian Stok (*Stock Adjustment*) & Halaman Audit hitung fisik (*Stock Opname*).
+* [x] Buat UI Manajemen Pembelian (PO) dengan filter "Menunggu Konfirmasi".
+* [x] Tautkan tombol "Konfirmasi Terima" ke RPC database yang menambah stok dan batch FIFO.
+* [x] Buat UI Manajemen Penyesuaian Stok (*Stock Adjustment*) & Halaman Audit hitung fisik (*Stock Opname*).
 
 ### Langkah 7.4: Modul Pelanggan & Pricelist Kustom
 * [ ] Buat halaman terpisah untuk CRUD Pelanggan (Customer Manager).
