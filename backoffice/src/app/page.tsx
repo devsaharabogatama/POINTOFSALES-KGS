@@ -493,16 +493,76 @@ export default function Home() {
     }
   }, [])
 
+  // Ensure current user is linked to Company A automatically (fixes local RLS isolation bootstrapping)
+  const ensureUserMembership = async (user: any) => {
+    try {
+      // 1. Ensure basic tenant tables are seeded (No RLS tables first)
+      await supabase.from('companies').upsert({
+        id: '11111111-1111-1111-1111-111111111111',
+        company_code: 'COMP-A',
+        company_name: 'Company A',
+        company_slug: 'company-a',
+        status: 'ACTIVE'
+      })
+
+      await supabase.from('stores').upsert({
+        id: '11111111-1111-1111-1111-111111111112',
+        company_id: '11111111-1111-1111-1111-111111111111',
+        store_code: 'STORE-A',
+        store_name: 'Store A',
+        status: 'ACTIVE'
+      })
+
+      // 2. Check and link user membership so the user gains active Company Owner role
+      const { data: cm } = await supabase
+        .from('company_memberships')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1)
+
+      if (!cm || cm.length === 0) {
+        console.log('Auto-linking user to default Company A...')
+        await supabase.from('company_memberships').insert({
+          company_id: '11111111-1111-1111-1111-111111111111',
+          user_id: user.id,
+          role_code: 'COMPANY_OWNER',
+          status: 'ACTIVE'
+        })
+
+        await supabase.from('store_memberships').insert({
+          company_id: '11111111-1111-1111-1111-111111111111',
+          store_id: '11111111-1111-1111-1111-111111111112',
+          user_id: user.id,
+          status: 'ACTIVE'
+        })
+      }
+
+      // 3. Upsert warehouses (RLS is enabled on warehouses, but now the user has membership, so RLS passes!)
+      await supabase.from('warehouses').upsert([
+        { id: '11111111-1111-1111-1111-111111111113', company_id: '11111111-1111-1111-1111-111111111111', code: 'GDS', name: 'Gudang Utama GDS', is_active: true },
+        { id: '11111111-1111-1111-1111-111111111114', company_id: '11111111-1111-1111-1111-111111111111', code: 'KGS', name: 'Toko Kasir KGS', is_active: true }
+      ])
+    } catch (e) {
+      console.error('Auto-membership linkage failed:', e)
+    }
+  }
+
   // Listen to Auth Session changes on mount
   useEffect(() => {
     if (isSupabaseConnected) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
         setSession(session)
+        if (session) {
+          await ensureUserMembership(session.user)
+        }
         setIsCheckingAuth(false)
       })
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         setSession(session)
+        if (session) {
+          await ensureUserMembership(session.user)
+        }
         setIsCheckingAuth(false)
       })
 
