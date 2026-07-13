@@ -51,6 +51,14 @@ Setiap penambahan fitur atau perbaikan kode harus mengikuti langkah-langkah beri
 * [x] Konfigurasi WebBluetooth / WebUSB ESC/POS printing driver pada POS.
 * [x] Deployment aplikasi Backoffice ke Vercel.
 
+### 🟢 Fase 7: Multi-Company SaaS Upgrade
+* [x] Struktur Data Tenant Core (`companies`, `stores`, `pos_terminals`, `memberships`).
+* [x] Integrasi `company_id` dan `store_id` ke seluruh tabel master dan transaksi.
+* [x] Backfill data KGS existing ke tenant default KGS.
+* [x] Refactor checkout RPC, stock transfer RPC, dan background ledger worker untuk isolasi tenant.
+* [x] Penambahan SQL Tests untuk validasi isolasi tenant dan checkout idempotency.
+* [x] RLS Policies multi-company menggunakan helper private check.
+
 ---
 
 ## 🛠️ Ringkasan Perintah Penting
