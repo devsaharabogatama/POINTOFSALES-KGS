@@ -147,21 +147,80 @@ CREATE TABLE stock_adjustments (
 
 ---
 
-## 6. Rencana Tugas Implementasi (To-Do List)
+## 6. Modul Pelanggan (Customer) & Daftar Harga Kustom (Pricelists)
 
-### Langkah 6.1: Eksekusi SQL Migrasi Baru (Supabase)
-* [ ] Jalankan query pembuatan tabel `product_batches` dan `sales_fifo_allocations`.
-* [ ] Jalankan query pembuatan tipe `opname_status` dan tabel `stock_opnames`, `stock_opname_details`, serta `stock_adjustments`.
+Untuk memisahkan manajemen pelanggan dari modul stok, serta memberikan fleksibilitas harga jual:
+
+### A. Tambahan Tabel Database
+```sql
+-- Daftar harga kustom per pelanggan (Pricelist)
+CREATE TABLE customer_pricelists (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    custom_price NUMERIC NOT NULL, -- Harga khusus untuk pelanggan ini
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_customer_product_price UNIQUE (customer_id, product_id)
+);
+```
+
+### B. Alur Logika Harga Kustom di POS
+1. Saat kasir memilih pelanggan (*Customer*) di POS, aplikasi kasir memeriksa apakah pelanggan tersebut memiliki harga khusus untuk produk di keranjang belanja.
+2. POS melakukan query ke IndexedDB (yang sudah disinkronisasikan dengan `customer_pricelists`) atau API.
+3. Jika ditemukan, harga jual default produk digantikan oleh `custom_price`. Jika tidak, menggunakan harga umum default produk.
+
+---
+
+## 7. Laporan Pergerakan Stok (Kartu Stok / Stock Card)
+
+Untuk melacak histori mutasi keluar-masuk stok barang di setiap gudang secara terperinci untuk audit:
+
+### A. Tambahan Tabel Database
+```sql
+CREATE TYPE stock_movement_type AS ENUM ('SALE', 'PURCHASE', 'ADJUSTMENT', 'TRANSFER_IN', 'TRANSFER_OUT');
+
+-- Log kartu stok historis
+CREATE TABLE stock_movements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    qty_change NUMERIC NOT NULL, -- Positif (masuk) atau Negatif (keluar)
+    movement_type stock_movement_type NOT NULL,
+    reference_table TEXT NOT NULL, -- e.g. 'sales_details', 'purchases_details', 'stock_adjustments'
+    reference_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### B. Otomatisasi Log Pergerakan Stok
+Kita akan membuat trigger di database Supabase agar setiap kali ada perubahan stok (dari penjualan POS, pembelian, transfer gudang, maupun penyesuaian/opname), data mutasi otomatis tercatat di `stock_movements`. Ini menjamin laporan pergerakan stok 100% akurat.
+
+---
+
+## 8. Rencana Tugas Implementasi (To-Do List)
+
+### Langkah 8.1: Eksekusi SQL Migrasi Baru (Supabase)
+* [ ] Jalankan query pembuatan tabel `product_batches` dan `sales_fifo_allocations` (FIFO).
+* [ ] Jalankan query pembuatan tipe `opname_status` dan tabel `stock_opnames`, `stock_opname_details`, serta `stock_adjustments` (Opname & Adjustment).
+* [ ] Jalankan query pembuatan tabel `customer_pricelists` (Pricelist kustom).
+* [ ] Jalankan query pembuatan tipe `stock_movement_type` dan tabel `stock_movements` (Kartu Stok).
 * [ ] Buat trigger/fungsi PostgreSQL `allocate_fifo_cogs()` untuk melakukan kalkulasi FIFO otomatis saat terjadi penjualan.
 * [ ] Buat fungsi trigger/RPC `approve_stock_opname()` untuk mengesahkan opname fisik dan meluncurkan penyesuaian stok otomatis.
+* [ ] Buat trigger log mutasi otomatis untuk mengisi tabel `stock_movements` setiap kali stok berubah.
 
-### Langkah 6.2: Pembuatan API & Komponen Impor di Backoffice
+### Langkah 8.2: Pembuatan API & Komponen Impor di Backoffice
 * [ ] Setup route `/api/products/import` untuk membaca data CSV/Excel produk.
 * [ ] Buat UI Halaman CRUD Produk dan tombol Impor CSV.
 
-### Langkah 6.3: Halaman Konfirmasi Order Stok
+### Langkah 8.3: Halaman Konfirmasi Order Stok & Penyesuaian Stok
 * [ ] Buat UI Manajemen Pembelian (PO) dengan filter "Menunggu Konfirmasi".
 * [ ] Tautkan tombol "Konfirmasi Terima" ke RPC database yang menambah stok dan batch FIFO.
+* [ ] Buat UI Manajemen Penyesuaian Stok (*Stock Adjustment*) & Halaman Audit hitung fisik (*Stock Opname*).
 
-### Langkah 6.4: Laporan Laba/Rugi Murni FIFO
+### Langkah 8.4: Modul Pelanggan & Pricelist Kustom
+* [ ] Buat halaman terpisah untuk CRUD Pelanggan (Customer Manager).
+* [ ] Buat sub-modul untuk mengatur daftar harga kustom (*customer pricelist*) per produk untuk pelanggan tertentu.
+
+### Langkah 8.5: Laporan Laba/Rugi FIFO & Kartu Stok
 * [ ] Perbarui tab Laporan Keuangan agar menghitung HPP berdasarkan hasil alokasi tabel `sales_fifo_allocations` (bukan harga rata-rata/cogs statis).
+* [ ] Buat sub-tab Laporan Pergerakan Stok (*Stock Card*) dengan filter pencarian per produk, per gudang, dan rentang tanggal untuk melihat histori masuk/keluar barang.
