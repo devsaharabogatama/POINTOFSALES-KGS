@@ -495,16 +495,8 @@ export default function Home() {
 
   // Ensure current user is linked to Company A automatically (fixes local RLS isolation bootstrapping)
   const ensureUserMembership = async (user: any) => {
+    // 1. Ensure basic tenant tables are seeded (No RLS tables first)
     try {
-      // 0. Ensure user profile exists in public.profiles table (requires INSERT policy)
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.name || user.email.split('@')[0],
-        role: 'cashier'
-      })
-
-      // 1. Ensure basic tenant tables are seeded (No RLS tables first)
       await supabase.from('companies').upsert({
         id: '11111111-1111-1111-1111-111111111111',
         company_code: 'COMP-A',
@@ -512,7 +504,11 @@ export default function Home() {
         company_slug: 'company-a',
         status: 'ACTIVE'
       })
+    } catch (e) {
+      console.error('Auto-seeding Company failed:', e)
+    }
 
+    try {
       await supabase.from('stores').upsert({
         id: '11111111-1111-1111-1111-111111111112',
         company_id: '11111111-1111-1111-1111-111111111111',
@@ -520,8 +516,24 @@ export default function Home() {
         store_name: 'Store A',
         status: 'ACTIVE'
       })
+    } catch (e) {
+      console.error('Auto-seeding Store failed:', e)
+    }
 
-      // 2. Check and link user membership so the user gains active Company Owner role
+    // 2. Try to insert user profile
+    try {
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email.split('@')[0],
+        role: 'cashier'
+      })
+    } catch (e) {
+      console.error('Auto-creating user profile failed (or relies on DB trigger):', e)
+    }
+
+    // 3. Check and link user membership
+    try {
       const { data: cm } = await supabase
         .from('company_memberships')
         .select('company_id')
@@ -544,14 +556,18 @@ export default function Home() {
           status: 'ACTIVE'
         })
       }
+    } catch (e) {
+      console.error('Auto-creating memberships failed:', e)
+    }
 
-      // 3. Upsert warehouses (RLS is enabled on warehouses, but now the user has membership, so RLS passes!)
+    // 4. Try to insert warehouses (RLS is enabled on warehouses, but now the user has membership, so RLS passes!)
+    try {
       await supabase.from('warehouses').upsert([
         { id: '11111111-1111-1111-1111-111111111113', company_id: '11111111-1111-1111-1111-111111111111', code: 'GDS', name: 'Gudang Utama GDS', is_active: true },
         { id: '11111111-1111-1111-1111-111111111114', company_id: '11111111-1111-1111-1111-111111111111', code: 'KGS', name: 'Toko Kasir KGS', is_active: true }
       ])
     } catch (e) {
-      console.error('Auto-membership linkage failed:', e)
+      console.error('Auto-seeding Warehouses failed:', e)
     }
   }
 
