@@ -80,9 +80,23 @@ const MOCK_JOURNAL = [
   { id: '6', jnlNo: 'JNL-20260713-0003', eventCode: 'EVT-20260713-000003', coa: '1101-01', coaName: 'Kas Kasir KGS', debit: 0, kredit: 45000, note: 'Beban CA Makan Siang Kasir' },
 ]
 
+const MOCK_CUSTOMERS = [
+  { id: 'c1', code: 'CUST-001', name: 'Toko Jaya Mandiri', email: 'jaya@mandiri.com', phone: '08123456789', balance: 500000 },
+  { id: 'c2', code: 'CUST-002', name: 'Bapak Ahmad', email: 'ahmad@gmail.com', phone: '08234567890', balance: 150000 },
+  { id: 'c3', code: 'CUST-003', name: 'Kontraktor Sentosa', email: 'sentosa@sentosa.com', phone: '08345678901', balance: 0 },
+]
+
+const MOCK_PRICELISTS = [
+  { id: 'pl1', customerName: 'Toko Jaya Mandiri', productName: 'Semen Padang 50kg', price: 68000 },
+  { id: 'pl2', customerName: 'Toko Jaya Mandiri', productName: 'Besi Beton 10mm SNI', price: 82000 },
+  { id: 'pl3', customerName: 'Bapak Ahmad', productName: 'Avitex Putih 5kg', price: 38000 },
+]
+
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'events' | 'journal' | 'finance'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'customer' | 'events' | 'journal' | 'finance'>('overview')
   const [stockSubTab, setStockSubTab] = useState<'levels' | 'movements' | 'opname' | 'orders'>('levels')
+  const [customerSubTab, setCustomerSubTab] = useState<'list' | 'pricelist'>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
   const [isProcessingWorker, setIsProcessingWorker] = useState(false)
@@ -95,6 +109,9 @@ export default function Home() {
   const [events, setEvents] = useState<any[]>(MOCK_EVENTS)
   const [journal, setJournal] = useState<any[]>(MOCK_JOURNAL)
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
+  
+  const [customers, setCustomers] = useState<any[]>(MOCK_CUSTOMERS)
+  const [pricelists, setPricelists] = useState<any[]>(MOCK_PRICELISTS)
 
   // Modals state
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -103,6 +120,10 @@ export default function Home() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false)
   const [showOpnameModal, setShowOpnameModal] = useState(false)
+
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [showPricelistModal, setShowPricelistModal] = useState(false)
+  const [showTopupModal, setShowTopupModal] = useState(false)
 
   // Form states
   const [transferForm, setTransferForm] = useState({
@@ -128,6 +149,23 @@ export default function Home() {
     cogs: '',
     reason: 'Rusak'
   })
+  const [customerForm, setCustomerForm] = useState({
+    code: '',
+    name: '',
+    email: '',
+    phone: '',
+    balance: '0'
+  })
+  const [pricelistForm, setPricelistForm] = useState({
+    customerId: '',
+    productId: '',
+    price: ''
+  })
+  const [topupForm, setTopupForm] = useState({
+    customerId: '',
+    amount: ''
+  })
+
   const [opnameForm, setOpnameForm] = useState({
     warehouseCode: 'GDS',
     notes: '',
@@ -298,6 +336,43 @@ export default function Home() {
         setJournal(mappedJournal)
       }
 
+      // 7. Fetch Customers
+      const { data: custData, error: custErr } = await supabase
+        .from('customers')
+        .select('*')
+        .order('name', { ascending: true })
+      
+      if (!custErr && custData && custData.length > 0) {
+        const mappedCustomers = custData.map((c: any) => ({
+          id: c.id,
+          code: c.code,
+          name: c.name,
+          email: c.email || '-',
+          phone: c.phone || '-',
+          balance: parseFloat(c.balance) || 0
+        }))
+        setCustomers(mappedCustomers)
+      }
+
+      // 8. Fetch Customer Pricelists
+      const { data: plData, error: plErr } = await supabase
+        .from('customer_pricelists')
+        .select(`
+          id, custom_price,
+          customers (name),
+          products (name)
+        `)
+      
+      if (!plErr && plData && plData.length > 0) {
+        const mappedPricelists = plData.map((pl: any) => ({
+          id: pl.id,
+          customerName: pl.customers?.name || '-',
+          productName: pl.products?.name || '-',
+          price: parseFloat(pl.custom_price) || 0
+        }))
+        setPricelists(mappedPricelists)
+      }
+
     } catch (err) {
       console.error('Error loading data from Supabase:', err)
     }
@@ -337,6 +412,127 @@ export default function Home() {
       loadDataFromSupabase()
     }
   }, [isSupabaseConnected, activeTab, stockSubTab])
+
+  // Get current active company id helper
+  const getMyCompanyId = async () => {
+    const { data: userData } = await supabase.auth.getUser()
+    if (!userData?.user?.id) return 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+    const { data: members } = await supabase
+      .from('company_memberships')
+      .select('company_id')
+      .eq('user_id', userData.user.id)
+      .eq('status', 'ACTIVE')
+      .limit(1)
+    return members?.[0]?.company_id || 'd290f1ee-6c54-4b01-90e6-d701748f0851'
+  }
+
+  // Handle CRUD Customer submit
+  const handleCustomerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customerForm.code || !customerForm.name) return
+    
+    if (isSupabaseConnected) {
+      try {
+        const companyId = await getMyCompanyId()
+        const { error } = await supabase.from('customers').insert({
+          code: customerForm.code,
+          name: customerForm.name,
+          email: customerForm.email || null,
+          phone: customerForm.phone || null,
+          balance: parseFloat(customerForm.balance) || 0,
+          company_id: companyId
+        })
+
+        if (error) throw error
+        alert('Pelanggan baru berhasil ditambahkan!')
+        setShowCustomerModal(false)
+        setCustomerForm({ code: '', name: '', email: '', phone: '', balance: '0' })
+        loadDataFromSupabase()
+      } catch (err: any) {
+        alert(`Gagal menambah pelanggan: ${err.message}`)
+      }
+    } else {
+      const newCust = {
+        id: 'mock-c-' + Date.now(),
+        code: customerForm.code,
+        name: customerForm.name,
+        email: customerForm.email || '-',
+        phone: customerForm.phone || '-',
+        balance: parseFloat(customerForm.balance) || 0
+      }
+      setCustomers([...customers, newCust])
+      setShowCustomerModal(false)
+      setCustomerForm({ code: '', name: '', email: '', phone: '', balance: '0' })
+    }
+  }
+
+  // Handle topup customer balance
+  const handleTopupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!topupForm.customerId || !topupForm.amount) return
+
+    const topupVal = parseFloat(topupForm.amount)
+    if (isSupabaseConnected) {
+      try {
+        const { data: currentCust } = await supabase.from('customers').select('balance').eq('id', topupForm.customerId).single()
+        const newBalance = (parseFloat(currentCust?.balance) || 0) + topupVal
+
+        const { error } = await supabase.from('customers').update({
+          balance: newBalance
+        }).eq('id', topupForm.customerId)
+
+        if (error) throw error
+        alert('Top up saldo deposit pelanggan berhasil!')
+        setShowTopupModal(false)
+        setTopupForm({ customerId: '', amount: '' })
+        loadDataFromSupabase()
+      } catch (err: any) {
+        alert(`Gagal top up: ${err.message}`)
+      }
+    } else {
+      setCustomers(customers.map(c => c.id === topupForm.customerId ? { ...c, balance: c.balance + topupVal } : c))
+      setShowTopupModal(false)
+      setTopupForm({ customerId: '', amount: '' })
+    }
+  }
+
+  // Handle Pricelist Custom submit
+  const handlePricelistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pricelistForm.customerId || !pricelistForm.productId || !pricelistForm.price) return
+
+    if (isSupabaseConnected) {
+      try {
+        const companyId = await getMyCompanyId()
+        const { error } = await supabase.from('customer_pricelists').insert({
+          customer_id: pricelistForm.customerId,
+          product_id: pricelistForm.productId,
+          custom_price: parseFloat(pricelistForm.price),
+          company_id: companyId
+        })
+
+        if (error) throw error
+        alert('Harga khusus pelanggan berhasil disimpan!')
+        setShowPricelistModal(false)
+        setPricelistForm({ customerId: '', productId: '', price: '' })
+        loadDataFromSupabase()
+      } catch (err: any) {
+        alert(`Gagal menyimpan harga khusus: ${err.message}`)
+      }
+    } else {
+      const targetCust = customers.find(c => c.id === pricelistForm.customerId)
+      const targetProd = stocks.find(s => s.id === pricelistForm.productId)
+      const newPl = {
+        id: 'mock-pl-' + Date.now(),
+        customerName: targetCust?.name || 'Pelanggan',
+        productName: targetProd?.name || 'Produk',
+        price: parseFloat(pricelistForm.price)
+      }
+      setPricelists([...pricelists, newPl])
+      setShowPricelistModal(false)
+      setPricelistForm({ customerId: '', productId: '', price: '' })
+    }
+  }
 
   // Trigger Queue Worker calling backend Next.js API
   const handleTriggerWorker = async () => {
@@ -968,6 +1164,140 @@ export default function Home() {
                               ) : (
                                 <span className="text-slate-500 text-xs">-</span>
                               )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: CUSTOMERS & PRICELISTS */}
+        {activeTab === 'customer' && (
+          <div className="space-y-6">
+            {/* Customer subnavigation */}
+            <div className="flex justify-between items-center bg-slate-900/40 border border-slate-800 rounded-xl p-2 max-w-md">
+              <button
+                onClick={() => setCustomerSubTab('list')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  customerSubTab === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Daftar Pelanggan
+              </button>
+              <button
+                onClick={() => setCustomerSubTab('pricelist')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  customerSubTab === 'pricelist' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Pricelist Khusus
+              </button>
+            </div>
+
+            {/* SUBTAB: CUSTOMER LIST */}
+            {customerSubTab === 'list' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Manajemen Database Pelanggan</h3>
+                    <p className="text-xs text-slate-450 mt-1">Kelola data pelanggan KGS, riwayat balance deposit, dan info kontak.</p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowCustomerModal(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-650 hover:bg-indigo-500 text-xs font-bold text-white transition-all shadow-md"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Tambah Pelanggan
+                    </button>
+                    <button
+                      onClick={() => setShowTopupModal(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-xs font-bold text-slate-200 border border-slate-750 transition-all shadow-md"
+                    >
+                      <HandCoins className="h-4 w-4" />
+                      Top Up Saldo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">Kode</th>
+                        <th className="p-4">Nama Pelanggan</th>
+                        <th className="p-4">Email</th>
+                        <th className="p-4">Telepon</th>
+                        <th className="p-4 text-right">Saldo Deposit</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {customers.map(cust => (
+                        <tr key={cust.id} className="hover:bg-slate-900/60 transition-colors">
+                          <td className="p-4 font-mono text-xs text-slate-400">{cust.code}</td>
+                          <td className="p-4 font-medium text-slate-200">{cust.name}</td>
+                          <td className="p-4 text-xs text-slate-450">{cust.email}</td>
+                          <td className="p-4 text-xs text-slate-450">{cust.phone}</td>
+                          <td className="p-4 text-right font-mono text-emerald-400 font-bold">
+                            Rp {cust.balance.toLocaleString('id-ID')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB: CUSTOM PRICELIST */}
+            {customerSubTab === 'pricelist' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Daftar Harga Kustom (Pricelist)</h3>
+                    <p className="text-xs text-slate-450 mt-1">Daftar harga jual khusus yang diatur per pelanggan untuk produk tertentu.</p>
+                  </div>
+
+                  <div>
+                    <button
+                      onClick={() => setShowPricelistModal(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-655 hover:bg-indigo-500 text-xs font-bold text-white transition-all shadow-md"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Set Harga Khusus
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-4">Nama Pelanggan</th>
+                        <th className="p-4">Nama Produk</th>
+                        <th className="p-4 text-right">Harga Khusus</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {pricelists.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="p-8 text-center text-slate-500 text-xs">
+                            Belum ada harga khusus yang diatur.
+                          </td>
+                        </tr>
+                      ) : (
+                        pricelists.map(pl => (
+                          <tr key={pl.id} className="hover:bg-slate-900/60 transition-colors">
+                            <td className="p-4 font-medium text-slate-200">{pl.customerName}</td>
+                            <td className="p-4 text-slate-300">{pl.productName}</td>
+                            <td className="p-4 text-right font-mono text-indigo-400 font-bold">
+                              Rp {pl.price.toLocaleString('id-ID')}
                             </td>
                           </tr>
                         ))
@@ -1758,6 +2088,236 @@ export default function Home() {
                   className="flex-1 py-2.5 rounded-lg bg-emerald-650 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors"
                 >
                   Catat Setoran
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: ADD CUSTOMER */}
+      {showCustomerModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <PlusCircle className="h-5 w-5 text-indigo-400" />
+              Tambah Pelanggan Baru
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">Mendaftarkan pelanggan baru ke database KGS.</p>
+
+            <form onSubmit={handleCustomerSubmit} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Kode Pelanggan</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: CUST-010"
+                  value={customerForm.code}
+                  onChange={e => setCustomerForm({ ...customerForm, code: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Nama Pelanggan</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Budi Santoso"
+                  value={customerForm.name}
+                  onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">Email (Opsional)</label>
+                  <input
+                    type="email"
+                    placeholder="budi@email.com"
+                    value={customerForm.email}
+                    onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-400">No Telepon (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="0812xxxx"
+                    value={customerForm.phone}
+                    onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Saldo Deposit Awal</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-550">Rp</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={customerForm.balance}
+                    onChange={e => setCustomerForm({ ...customerForm, balance: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-9 pr-4 text-sm font-mono text-slate-100 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomerModal(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-lg bg-indigo-650 hover:bg-indigo-500 text-xs font-semibold text-white transition-colors"
+                >
+                  Simpan Pelanggan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: TOPUP BALANCE */}
+      {showTopupModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <HandCoins className="h-5 w-5 text-emerald-450" />
+              Top Up Deposit Pelanggan
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">Menambah saldo titipan/deposit pelanggan untuk mempermudah transaksi kasir.</p>
+
+            <form onSubmit={handleTopupSubmit} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Pilih Pelanggan</label>
+                <select
+                  value={topupForm.customerId}
+                  onChange={e => setTopupForm({ ...topupForm, customerId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  required
+                >
+                  <option value="">-- Pilih Pelanggan --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Nominal Top Up</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-550">Rp</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={topupForm.amount}
+                    onChange={e => setTopupForm({ ...topupForm, amount: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-9 pr-4 text-sm font-mono text-slate-100 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTopupModal(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-lg bg-emerald-650 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors"
+                >
+                  Proses Top Up
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 9: SET PRICELIST CUSTOM */}
+      {showPricelistModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <PlusCircle className="h-5 w-5 text-indigo-400" />
+              Set Harga Khusus Pelanggan
+            </h3>
+            <p className="text-xs text-slate-450 mb-6">Mengatur harga jual khusus produk tertentu untuk satu pelanggan khusus.</p>
+
+            <form onSubmit={handlePricelistSubmit} className="space-y-4 text-sm text-slate-200">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Pilih Pelanggan</label>
+                <select
+                  value={pricelistForm.customerId}
+                  onChange={e => setPricelistForm({ ...pricelistForm, customerId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  required
+                >
+                  <option value="">-- Pilih Pelanggan --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Pilih Produk</label>
+                <select
+                  value={pricelistForm.productId}
+                  onChange={e => setPricelistForm({ ...pricelistForm, productId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  required
+                >
+                  <option value="">-- Pilih Produk --</option>
+                  {stocks.map(s => (
+                    <option key={s.id} value={s.id}>{s.sku} - {s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400">Harga Jual Khusus</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-550">Rp</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={pricelistForm.price}
+                    onChange={e => setPricelistForm({ ...pricelistForm, price: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-9 pr-4 text-sm font-mono text-slate-100 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPricelistModal(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-lg bg-indigo-650 hover:bg-indigo-500 text-xs font-semibold text-white transition-colors"
+                >
+                  Simpan Harga Khusus
                 </button>
               </div>
             </form>
