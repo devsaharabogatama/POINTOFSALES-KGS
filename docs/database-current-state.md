@@ -1,6 +1,8 @@
 # Database Current State Audit
 
-Dokumen ini mendokumentasikan kondisi skema database KGS saat ini sebelum dilakukan migrasi multi-company.
+**Status:** Historical pre-migration snapshot; bukan sumber kondisi database terkini. Verifikasi ulang schema/migration yang benar-benar telah diterapkan sebelum memakai isi dokumen ini.
+
+Dokumen ini mendokumentasikan kondisi skema database KGS pada saat sebelum migrasi multi-company direncanakan.
 
 ---
 

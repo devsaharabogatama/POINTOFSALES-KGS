@@ -3,6 +3,9 @@
 -- -----------------------------------------------------
 
 -- Note: Execute this script in your SQL editor to validate multi-tenant rules.
+-- The transaction is always rolled back so fixtures do not pollute the target database.
+
+BEGIN;
 
 -- 0. Seed Mock User in Auth.Users & Profiles for test execution
 INSERT INTO auth.users (id, email, instance_id, raw_app_meta_data, raw_user_meta_data, is_super_admin, role, aud)
@@ -82,6 +85,8 @@ ON CONFLICT DO NOTHING;
 -- TEST 1: Tenant Cross-Company Stock Transfer Prevention
 -- -----------------------------------------------------
 DO $$
+DECLARE
+    v_blocked BOOLEAN := FALSE;
 BEGIN
     -- Mock the auth user session claim inside PostgreSQL session
     PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
@@ -94,14 +99,17 @@ BEGIN
             '22222222-2222-2222-2222-222222222225', -- Wh B (Company B)
             10
         );
-        RAISE EXCEPTION 'TEST FAILED: Cross-company transfer was allowed!';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM = 'TRANSFER_COMPANY_MISMATCH' THEN
+            v_blocked := TRUE;
             RAISE NOTICE 'TEST PASSED: Cross-company transfer blocked successfully.';
         ELSE
-            RAISE NOTICE 'TEST PASSED (With alternative exception): Blocked cross-company transfer. Error: %', SQLERRM;
+            RAISE EXCEPTION 'TEST FAILED with unexpected error: %', SQLERRM;
         END IF;
     END;
+    IF NOT v_blocked THEN
+        RAISE EXCEPTION 'TEST FAILED: Cross-company transfer was allowed!';
+    END IF;
 END $$;
 
 
@@ -121,6 +129,8 @@ VALUES (
 ) ON CONFLICT DO NOTHING;
 
 DO $$
+DECLARE
+    v_blocked BOOLEAN := FALSE;
 BEGIN
     -- Mock the auth user session claim inside PostgreSQL session
     PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
@@ -137,14 +147,17 @@ BEGIN
             '[{"product_id": "22222222-2222-2222-2222-222222222227", "warehouse_id": "11111111-1111-1111-1111-111111111114", "qty": 1, "price": 15000, "discount_amount": 0, "subtotal": 15000, "cogs_unit": 9000, "cogs_total": 9000}]'::jsonb,
             '[{"payment_no": "PAY-001", "payment_method": "Cash", "amount": 15000, "balance_before": 0, "balance_after": 0, "is_reversal": false}]'::jsonb
         );
-        RAISE EXCEPTION 'TEST FAILED: Checkout with mismatching product company was allowed!';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM = 'PRODUCT_COMPANY_MISMATCH' THEN
+            v_blocked := TRUE;
             RAISE NOTICE 'TEST PASSED: Mismatched product company checkout was blocked.';
         ELSE
-            RAISE NOTICE 'TEST PASSED: Blocked mismatch product. Error: %', SQLERRM;
+            RAISE EXCEPTION 'TEST FAILED with unexpected error: %', SQLERRM;
         END IF;
     END;
+    IF NOT v_blocked THEN
+        RAISE EXCEPTION 'TEST FAILED: Checkout with mismatching product company was allowed!';
+    END IF;
 END $$;
 
 
@@ -155,6 +168,7 @@ DO $$
 DECLARE
     v_sales_id1 UUID;
     v_sales_id2 UUID;
+    v_duplicate_blocked BOOLEAN := FALSE;
 BEGIN
     -- Mock the auth user session claim inside PostgreSQL session
     PERFORM set_config('request.jwt.claims', '{"sub": "d290f1ee-6c54-4b01-90e6-d701748f0851"}', true);
@@ -181,8 +195,17 @@ BEGIN
             '[{"product_id": "11111111-1111-1111-1111-111111111116", "warehouse_id": "11111111-1111-1111-1111-111111111114", "qty": 1, "price": 10000, "discount_amount": 0, "subtotal": 10000, "cogs_unit": 7000, "cogs_total": 7000}]'::jsonb,
             '[{"payment_no": "PAY-IDEMP-001", "payment_method": "Cash", "amount": 10000, "balance_before": 0, "balance_after": 0, "is_reversal": false}]'::jsonb
         );
-        RAISE EXCEPTION 'TEST FAILED: Duplicate checkout went through without error!';
     EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'TEST PASSED: Duplicate checkout blocked successfully (Idempotency Unique Constraint Triggered). Error: %', SQLERRM;
+        IF SQLSTATE = '23505' THEN
+            v_duplicate_blocked := TRUE;
+            RAISE NOTICE 'TEST PASSED: Duplicate checkout blocked by unique constraint. Error: %', SQLERRM;
+        ELSE
+            RAISE EXCEPTION 'TEST FAILED with unexpected error: %', SQLERRM;
+        END IF;
     END;
+    IF NOT v_duplicate_blocked THEN
+        RAISE EXCEPTION 'TEST FAILED: Duplicate checkout went through without error!';
+    END IF;
 END $$;
+
+ROLLBACK;

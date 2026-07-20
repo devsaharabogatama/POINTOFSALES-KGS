@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { apiError, requireCaller } from '@/lib/server-auth'
 
 export async function POST(request: Request) {
   try {
+    const caller = await requireCaller(request)
     const { header, details, payments } = await request.json()
 
     if (!header || !details || !payments) {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Call PostgreSQL Stored Procedure (RPC) to guarantee ACID transaction for synced sales
-    const { data, error } = await supabase.rpc('create_sales_transaction', {
+    const { data, error } = await caller.client.rpc('create_sales_transaction', {
       p_invoice_no: header.invoice_no,
       p_session_id: header.session_id,
       p_customer_id: header.customer_id || null,
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
       p_paid_amount: Number(header.paid_amount) || 0,
       p_sisa_piutang: Number(header.sisa_piutang) || 0,
       p_payment_status: header.payment_status || 'DRAFT',
-      p_created_by: header.created_by,
+      p_created_by: caller.user.id,
       p_payload_snapshot: header.payload_snapshot || { header, details, payments },
       p_details: details,
       p_payments: payments
@@ -37,8 +38,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, sales_id: data })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Sync endpoint error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 }

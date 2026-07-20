@@ -62,6 +62,10 @@ BEGIN
         RAISE EXCEPTION 'STORE_ACCESS_DENIED';
     END IF;
 
+    IF auth.uid() IS NULL OR p_created_by IS DISTINCT FROM auth.uid() THEN
+        RAISE EXCEPTION 'INVALID_TRANSACTION_ACTOR';
+    END IF;
+
     -- 3. Verify Customer Company Match if customer is selected
     IF p_customer_id IS NOT NULL THEN
         SELECT company_id INTO v_cust_company_id FROM customers WHERE id = p_customer_id;
@@ -118,11 +122,22 @@ BEGIN
         -- Accumulate HPP
         v_total_cogs := v_total_cogs + v_detail_rec.cogs_total;
 
-        -- Update Stock Level
-        INSERT INTO product_stocks (product_id, warehouse_id, stock_qty, company_id)
-        VALUES (v_detail_rec.product_id, v_detail_rec.warehouse_id, -v_detail_rec.qty, v_company_id)
-        ON CONFLICT (product_id, warehouse_id) 
-        DO UPDATE SET stock_qty = product_stocks.stock_qty - EXCLUDED.stock_qty, updated_at = NOW();
+        IF v_detail_rec.qty <= 0 THEN
+            RAISE EXCEPTION 'INVALID_SALE_QUANTITY';
+        END IF;
+
+        -- Lock and deduct existing stock. Checkout may never create negative stock.
+        UPDATE product_stocks
+        SET stock_qty = stock_qty - v_detail_rec.qty,
+            updated_at = NOW()
+        WHERE company_id = v_company_id
+          AND product_id = v_detail_rec.product_id
+          AND warehouse_id = v_detail_rec.warehouse_id
+          AND stock_qty >= v_detail_rec.qty;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'INSUFFICIENT_STOCK';
+        END IF;
     END LOOP;
 
     -- 6. Loop and Insert Payments
@@ -176,4 +191,15 @@ BEGIN
 
     RETURN v_sales_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE ALL ON FUNCTION create_sales_transaction(
+    TEXT, UUID, UUID, BOOLEAN, TIMESTAMPTZ, BOOLEAN, TEXT,
+    NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC,
+    payment_status, UUID, JSONB, JSONB, JSONB
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION create_sales_transaction(
+    TEXT, UUID, UUID, BOOLEAN, TIMESTAMPTZ, BOOLEAN, TEXT,
+    NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC,
+    payment_status, UUID, JSONB, JSONB, JSONB
+) TO authenticated;

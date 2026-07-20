@@ -1,18 +1,31 @@
--- ----------------------------------------------------------------------
--- SQL SCRIPT: fix_permissions.sql
--- Grant explicit access privileges on all tables/sequences/functions
--- to standard Supabase roles (postgres, service_role, authenticated, anon)
--- ----------------------------------------------------------------------
+-- Safe API privileges. RLS remains the authorization boundary.
+-- Do not grant ALL to anon: several tenant-core tables were historically exposed.
 
--- 1. Grant permissions on existing objects in public schema
-GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, service_role, authenticated, anon;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, service_role, authenticated, anon;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres, service_role, authenticated, anon;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
--- 2. Ensure future objects automatically inherit these permissions
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, service_role, authenticated, anon;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, service_role, authenticated, anon;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO postgres, service_role, authenticated, anon;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon;
 
--- 3. Force PostgREST schema cache reload
-NOTIFY pgrst, 'reload schema';
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated;
+
+-- A user may edit their display name, never their platform role.
+REVOKE UPDATE ON public.profiles FROM authenticated;
+GRANT UPDATE (name) ON public.profiles TO authenticated;
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT ALL ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT ALL ON SEQUENCES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT ALL ON FUNCTIONS TO service_role;

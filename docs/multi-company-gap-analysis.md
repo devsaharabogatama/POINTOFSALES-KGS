@@ -1,5 +1,7 @@
 # Multi-Company Gap Analysis
 
+**Status:** Historical pre-migration gap snapshot; item `BELUM ADA` tidak boleh dianggap kondisi production terkini tanpa verifikasi database.
+
 Analisis kesenjangan antara arsitektur database saat ini dengan target spesifikasi Multi-Company / Multi-Tenant.
 
 ---

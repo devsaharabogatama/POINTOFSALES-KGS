@@ -1,97 +1,111 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import {
+  apiError,
+  canManageCompany,
+  createAdminClient,
+  requireCaller,
+} from '@/lib/server-auth'
+
+const ALLOWED_ROLES = new Set([
+  'COMPANY_ADMIN',
+  'STORE_MANAGER',
+  'WAREHOUSE_ADMIN',
+  'FINANCE',
+  'ACCOUNTING',
+  'CASHIER',
+])
+
+type CreateStaffBody = {
+  email?: string
+  password?: string
+  name?: string
+  role_code?: string
+  company_id?: string
+  store_id?: string
+}
 
 export async function POST(request: Request) {
+  let createdUserId: string | null = null
   try {
-    const body = await request.json()
-    const { email, password, name, role_code, company_id, store_id } = body
+    const caller = await requireCaller(request)
+    const body = (await request.json()) as CreateStaffBody
+    const email = body.email?.trim().toLowerCase()
+    const password = body.password
+    const name = body.name?.trim()
+    const roleCode = body.role_code?.trim().toUpperCase()
+    const companyId = body.company_id
+    const storeId = body.store_id
 
-    if (!email || !password || !name || !role_code || !company_id) {
-      return NextResponse.json({ error: 'Missing required fields: email, password, name, role_code, company_id' }, { status: 400 })
+    if (!email || !password || !name || !roleCode || !companyId) {
+      return Response.json({ error: 'INVALID_STAFF_PAYLOAD' }, { status: 400 })
+    }
+    if (password.length < 8) {
+      return Response.json({ error: 'PASSWORD_MINIMUM_8_CHARACTERS' }, { status: 400 })
+    }
+    if (!ALLOWED_ROLES.has(roleCode)) {
+      return Response.json({ error: 'ROLE_NOT_ALLOWED' }, { status: 400 })
+    }
+    if (!(await canManageCompany(caller, companyId))) {
+      return Response.json({ error: 'FORBIDDEN' }, { status: 403 })
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!serviceRoleKey) {
-      return NextResponse.json({ 
-        error: 'SUPABASE_SERVICE_ROLE_KEY is not configured in .env.local on the server. Please add it to allow admin user creation.' 
-      }, { status: 500 })
-    }
-
-    // Initialize Supabase admin client with service_role key to bypass RLS and create users
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
+    const admin = createAdminClient()
+    if (storeId && storeId !== 'NONE') {
+      const { data: store, error: storeError } = await admin
+        .from('stores')
+        .select('id')
+        .eq('id', storeId)
+        .eq('company_id', companyId)
+        .maybeSingle()
+      if (storeError || !store) {
+        return Response.json({ error: 'STORE_NOT_IN_COMPANY' }, { status: 400 })
       }
-    })
+    }
 
-    // 1. Create the user account in auth.users
-    const { data: authUser, error: authErr } = await adminClient.auth.admin.createUser({
+    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
-      user_metadata: { name }
+      user_metadata: { name },
     })
+    if (authError) return Response.json({ error: authError.message }, { status: 400 })
+    createdUserId = authUser.user.id
 
-    if (authErr) {
-      console.error('Admin Auth createUser error:', authErr)
-      return NextResponse.json({ error: authErr.message }, { status: 400 })
-    }
+    const { error: profileError } = await admin.from('profiles').upsert({
+      id: createdUserId,
+      email,
+      name,
+      role: 'cashier',
+    })
+    if (profileError) throw profileError
 
-    const newUserId = authUser.user.id
+    const { error: membershipError } = await admin.from('company_memberships').insert({
+      company_id: companyId,
+      user_id: createdUserId,
+      role_code: roleCode,
+      status: 'ACTIVE',
+    })
+    if (membershipError) throw membershipError
 
-    // 2. Ensure profile is inserted (the handle_new_user trigger should run, but we make sure role and name are correct)
-    const { error: profileErr } = await adminClient
-      .from('profiles')
-      .upsert({
-        id: newUserId,
-        email,
-        name,
-        role: (role_code === 'CASHIER' ? 'cashier' : 'cashier') // Map fallback role enum if needed
+    if (storeId && storeId !== 'NONE') {
+      const { error: storeMembershipError } = await admin.from('store_memberships').insert({
+        company_id: companyId,
+        store_id: storeId,
+        user_id: createdUserId,
+        role_code: roleCode,
+        status: 'ACTIVE',
       })
-
-    if (profileErr) {
-      console.error('Profile upsert error:', profileErr)
-      return NextResponse.json({ error: profileErr.message }, { status: 400 })
+      if (storeMembershipError) throw storeMembershipError
     }
 
-    // 3. Create Company Membership (Role: COMPANY_OWNER, COMPANY_ADMIN, etc.)
-    const { error: cmErr } = await adminClient
-      .from('company_memberships')
-      .insert({
-        company_id,
-        user_id: newUserId,
-        role_code,
-        status: 'ACTIVE'
-      })
-
-    if (cmErr) {
-      console.error('Company membership creation error:', cmErr)
-      return NextResponse.json({ error: cmErr.message }, { status: 400 })
-    }
-
-    // 4. Create Store Membership if store_id is provided
-    if (store_id && store_id !== 'NONE') {
-      const { error: smErr } = await adminClient
-        .from('store_memberships')
-        .insert({
-          company_id,
-          store_id,
-          user_id: newUserId,
-          status: 'ACTIVE'
-        })
-
-      if (smErr) {
-        console.error('Store membership creation error:', smErr)
-        return NextResponse.json({ error: smErr.message }, { status: 400 })
+    return Response.json({ success: true, userId: createdUserId }, { status: 201 })
+  } catch (error) {
+    if (createdUserId) {
+      try {
+        await createAdminClient().auth.admin.deleteUser(createdUserId)
+      } catch {
+        // Preserve the original provisioning error. Orphan cleanup can be retried manually.
       }
     }
-
-    return NextResponse.json({ success: true, userId: newUserId })
-  } catch (error: any) {
-    console.error('Staff creation API error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 }

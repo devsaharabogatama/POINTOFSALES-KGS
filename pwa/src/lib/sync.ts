@@ -6,7 +6,7 @@ import { supabase } from './supabase';
  * Downloads products, customers, and warehouses from Supabase 
  * and caches them into Dexie IndexedDB.
  */
-export async function syncMasterData() {
+export async function syncMasterData(companyId: string) {
   try {
     console.log('Starting Master Data Sync from Supabase...');
 
@@ -14,6 +14,7 @@ export async function syncMasterData() {
     const { data: warehouses, error: whError } = await supabase
       .from('warehouses')
       .select('*')
+      .eq('company_id', companyId)
       .eq('is_active', true);
     
     if (whError) throw whError;
@@ -28,8 +29,9 @@ export async function syncMasterData() {
       .from('products')
       .select(`
         *,
-        product_stocks(warehouse_id, stock_qty)
+        product_stocks!product_stocks_product_id_fkey(warehouse_id, stock_qty)
       `)
+      .eq('company_id', companyId)
       .eq('is_active', true);
 
     if (prodError) throw prodError;
@@ -39,6 +41,7 @@ export async function syncMasterData() {
         const totalStock = p.product_stocks?.reduce((sum: number, ps: any) => sum + (ps.stock_qty || 0), 0) || 0;
         return {
           id: p.id,
+          company_id: companyId,
           sku: p.sku,
           name: p.name,
           category: p.category,
@@ -47,6 +50,7 @@ export async function syncMasterData() {
           price: Number(p.price) || 0,
           cogs: Number(p.cogs) || 0,
           uom: p.uom || 'pcs',
+          weight_per_uom_kg: Number(p.weight_per_uom_kg) || 0,
           is_bundle: p.is_bundle || false,
           is_active: p.is_active || true,
           stock: totalStock
@@ -61,7 +65,8 @@ export async function syncMasterData() {
     // 3. Fetch Customers
     const { data: customers, error: custError } = await supabase
       .from('customers')
-      .select('*');
+      .select('*')
+      .eq('company_id', companyId);
 
     if (custError) throw custError;
     if (customers) {
@@ -121,7 +126,7 @@ export async function saveSaleOffline(
 /**
  * Syncs all pending transactions to the backend server endpoint
  */
-export async function syncPendingSales(backendUrl: string) {
+export async function syncPendingSales(backendUrl: string, accessToken: string) {
   try {
     const unsyncedHeaders = await db.sales_headers.where('is_synced').equals(0).toArray();
     if (unsyncedHeaders.length === 0) {
@@ -145,7 +150,8 @@ export async function syncPendingSales(backendUrl: string) {
       const response = await fetch(`${backendUrl}/api/pos/sync`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify(payload)
       });

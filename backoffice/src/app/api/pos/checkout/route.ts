@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { apiError, requireCaller } from '@/lib/server-auth'
 
 export async function POST(request: Request) {
   try {
+    const caller = await requireCaller(request)
     const body = await request.json()
 
     // Validate essential fields
-    if (!body.invoice_no || !body.session_id || !body.created_by || !body.details || !body.payments) {
+    if (!body.invoice_no || !body.session_id || !body.details || !body.payments) {
       return NextResponse.json({ error: 'Missing required checkout parameters.' }, { status: 400 })
     }
 
     // Call PostgreSQL Stored Procedure (RPC) to guarantee ACID transaction
-    const { data, error } = await supabase.rpc('create_sales_transaction', {
+    const { data, error } = await caller.client.rpc('create_sales_transaction', {
       p_invoice_no: body.invoice_no,
       p_session_id: body.session_id,
       p_customer_id: body.customer_id || null,
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       p_paid_amount: Number(body.paid_amount) || 0,
       p_sisa_piutang: Number(body.sisa_piutang) || 0,
       p_payment_status: body.payment_status || 'DRAFT',
-      p_created_by: body.created_by,
+      p_created_by: caller.user.id,
       p_payload_snapshot: body.payload_snapshot || body,
       p_details: body.details,
       p_payments: body.payments
@@ -38,8 +39,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, sales_id: data })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Checkout endpoint error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 }

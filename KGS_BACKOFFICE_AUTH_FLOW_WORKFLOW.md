@@ -8,6 +8,8 @@ Dokumen ini menjelaskan alur kerja (*workflow*) autentikasi, pembatasan hak akse
 
 KGS Mini-ERP dirancang sebagai sistem **SaaS Multi-Company** di mana satu database fisik menampung banyak perusahaan (*companies*). Data antarperusahaan disekat ketat menggunakan **Row Level Security (RLS)** di Supabase.
 
+Pendaftaran perusahaan tidak dibuka untuk publik. Hanya `super_admin` platform yang dapat membuat tenant baru. Company owner/admin hanya dapat membuat staf pada company aktif yang sudah dimilikinya. `company_id` dari frontend selalu dianggap sebagai konteks pilihan dan wajib divalidasi ulang oleh backend/RLS.
+
 ### 🔑 Pembagian Tanggung Jawab Kunci API (Supabase Keys)
 
 | Kunci API | Lokasi Konfigurasi | Siapa yang Mengakses? | Peran Keamanan |
@@ -58,12 +60,27 @@ sequenceDiagram
 
 ## 3. Tingkatan Peran & Otorisasi (*Authorization Levels*)
 
-Setiap akun pengguna diikat ke satu perusahaan melalui tabel `company_memberships` dengan salah satu peran berikut:
+Setiap akun pengguna dapat memiliki satu atau beberapa membership perusahaan melalui tabel `company_memberships`. Role dan izin selalu dievaluasi pada company aktif; `super_admin` platform dapat memilih lintas company tanpa menghapus scope company asal data.
+
+Hierarki authorization target:
+
+```text
+SUPER_ADMIN
+└── COMPANY_OWNER / COMPANY_ADMIN
+    ├── FINANCE / ACCOUNTING
+    ├── STORE_MANAGER
+    ├── WAREHOUSE_ADMIN
+    └── CASHIER
+```
+
+`COMPANY_ADMIN` memiliki seluruh kewenangan role di bawahnya, tetapi hanya untuk company dengan membership aktif. `SUPER_ADMIN` memiliki kewenangan lintas company. Pewarisan kewenangan tidak mengizinkan siapa pun mengedit stock movement, ledger, atau jurnal final secara langsung; koreksi tetap melalui workflow reversal/adjustment resmi.
+
+Pengecualian hierarchy: seluruh aktivasi/penonaktifan dan hak memunculkan/meniadakan feature entitlement hanya boleh dilakukan `SUPER_ADMIN` per company. `COMPANY_ADMIN` tidak mewarisi hak toggle entitlement dan hanya mengatur konfigurasi operasional setelah feature aktif. Feature yang memiliki liability/dokumen belum selesai wajib memakai fase `WIND_DOWN` sebelum `DISABLED`.
 
 | Peran (Role Code) | Hak Akses Utama | Aplikasi yang Digunakan |
 | :--- | :--- | :--- |
 | **`COMPANY_OWNER`** | Hak akses penuh: Keuangan, Jurnal, Stok, Pembelian (PO), dan Manajemen Staf (Membuat/Menghapus User Staf). | Backoffice |
-| **`COMPANY_ADMIN`** | Mengelola Katalog Produk, Lokasi Gudang, PO, dan melihat Jurnal Umum. | Backoffice |
+| **`COMPANY_ADMIN`** | Seluruh kewenangan operasional dan Finance dalam company miliknya: master, user/staff, store/gudang, stok, purchase, POS oversight, approval, laporan, dan jurnal. | Backoffice; POS bila memenuhi prasyarat sesi/terminal |
 | **`FINANCE` / `ACCOUNTING`** | Melihat Event Finansial, entri Jurnal Umum, Laporan Keuangan Laba/Rugi, dan Audit FIFO. | Backoffice |
 | **`STORE_MANAGER`** | Mengelola stok lokal toko, menyetujui *Stock Opname* lokal, dan melihat riwayat POS toko. | Backoffice & PWA Kasir |
 | **`CASHIER`** | Melakukan checkout penjualan (*POS sales checkout*) dan membuka/menutup sesi kasir (*cashier sessions*). | PWA Kasir (POS) |

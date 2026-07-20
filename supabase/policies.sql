@@ -16,7 +16,7 @@ BEGIN
         WHERE id = p_user_id AND role = 'super_admin'::user_role
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Helper to check company access
 CREATE OR REPLACE FUNCTION private_user_has_company_access(p_company_id UUID)
@@ -38,7 +38,7 @@ BEGIN
           AND status = 'ACTIVE'
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Helper to check role in company context
 CREATE OR REPLACE FUNCTION get_user_role_in_company(p_company_id UUID) 
@@ -59,7 +59,7 @@ BEGIN
 
     RETURN v_role;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Trigger to automatically create profile on Auth signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -74,7 +74,7 @@ BEGIN
     );
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Re-create trigger safely
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -94,16 +94,26 @@ CREATE POLICY "Profiles are viewable by owner, manager, or self" ON profiles
         auth.uid() = id 
         OR private_is_super_admin(auth.uid())
         OR EXISTS (
-            SELECT 1 FROM company_memberships WHERE user_id = auth.uid() AND role_code IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+            SELECT 1
+            FROM company_memberships mine
+            JOIN company_memberships theirs ON theirs.company_id = mine.company_id
+            WHERE mine.user_id = auth.uid()
+              AND mine.status = 'ACTIVE'
+              AND mine.role_code IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+              AND theirs.user_id = profiles.id
+              AND theirs.status = 'ACTIVE'
         )
     );
 
 DROP POLICY IF EXISTS "Profiles can be updated by owners or self" ON profiles;
 CREATE POLICY "Profiles can be updated by owners or self" ON profiles
     FOR UPDATE TO authenticated USING (
-        auth.uid() = id 
-        OR private_is_super_admin(auth.uid())
-    );
+        auth.uid() = id
+    ) WITH CHECK (auth.uid() = id);
+
+-- Do not allow a user to promote their own global role.
+REVOKE UPDATE ON profiles FROM authenticated;
+GRANT UPDATE (name) ON profiles TO authenticated;
 
 DROP POLICY IF EXISTS "Profiles can be inserted by self" ON profiles;
 CREATE POLICY "Profiles can be inserted by self" ON profiles
@@ -125,7 +135,7 @@ DROP POLICY IF EXISTS "Companies manageable by super admin" ON companies;
 CREATE POLICY "Companies manageable by super admin" ON companies
     FOR ALL TO authenticated USING (
         private_is_super_admin(auth.uid())
-    );
+    ) WITH CHECK (private_is_super_admin(auth.uid()));
 
 -- Warehouses
 DROP POLICY IF EXISTS "Warehouses viewable by authenticated users" ON warehouses;
@@ -439,56 +449,46 @@ CREATE POLICY "Movements viewable by company members" ON stock_movements
 
 
 -- -----------------------------------------------------
--- 8. SECURITY DEFINER RPC TO BYPASS RLS FOR BOOTSTRAPPING (SEED-COMPLIANT FLOW)
+-- TENANT CORE TABLES
 -- -----------------------------------------------------
-CREATE OR REPLACE FUNCTION public.bootstrap_tenant_data(p_user_id UUID)
-RETURNS BOOLEAN AS $$
-DECLARE
-    v_email TEXT;
-BEGIN
-    -- Get user email to create name
-    SELECT email INTO v_email FROM auth.users WHERE id = p_user_id;
-    IF v_email IS NULL THEN
-        v_email := 'admin@kgs.com';
-    END IF;
+ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pos_terminals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_memberships ENABLE ROW LEVEL SECURITY;
 
-    -- 1. Ensure profile exists in profiles table
-    INSERT INTO public.profiles (id, email, name, role)
-    VALUES (
-        p_user_id, 
-        v_email, 
-        initcap(split_part(v_email, '@', 1)),
-        'cashier'::user_role
-    )
-    ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Stores readable in accessible companies" ON stores;
+CREATE POLICY "Stores readable in accessible companies" ON stores
+    FOR SELECT TO authenticated
+    USING (private_user_has_company_access(company_id));
 
-    -- 2. Ensure default Company A exists (Matches seed_company_data.sql)
-    INSERT INTO companies (id, company_code, company_name, company_slug, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', 'COMP-A', 'Company A', 'company-a', 'ACTIVE')
-    ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Stores manageable by company admins" ON stores;
+CREATE POLICY "Stores manageable by company admins" ON stores
+    FOR ALL TO authenticated
+    USING (get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN'))
+    WITH CHECK (get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN'));
 
-    -- 3. Ensure default Store A exists
-    INSERT INTO stores (id, company_id, store_code, store_name, status)
-    VALUES ('11111111-1111-1111-1111-111111111112', '11111111-1111-1111-1111-111111111111', 'STORE-A', 'Store A', 'ACTIVE')
-    ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "POS terminals readable in accessible companies" ON pos_terminals;
+CREATE POLICY "POS terminals readable in accessible companies" ON pos_terminals
+    FOR SELECT TO authenticated
+    USING (private_user_has_company_access(company_id));
 
-    -- 4. Ensure default Warehouses (GDS & KGS) exist under Company A
-    INSERT INTO warehouses (company_id, code, name, is_active)
-    VALUES 
-        ('11111111-1111-1111-1111-111111111111', 'GDS', 'Gudang Utama GDS', true),
-        ('11111111-1111-1111-1111-111111111111', 'KGS', 'Toko Kasir KGS', true)
-    ON CONFLICT DO NOTHING;
+DROP POLICY IF EXISTS "Company memberships readable by authorized users" ON company_memberships;
+CREATE POLICY "Company memberships readable by authorized users" ON company_memberships
+    FOR SELECT TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR private_is_super_admin(auth.uid())
+        OR get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
 
-    -- 5. Link this User to Company A as OWNER
-    INSERT INTO company_memberships (company_id, user_id, role_code, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', p_user_id, 'COMPANY_OWNER', 'ACTIVE')
-    ON CONFLICT (company_id, user_id) DO NOTHING;
+DROP POLICY IF EXISTS "Store memberships readable by authorized users" ON store_memberships;
+CREATE POLICY "Store memberships readable by authorized users" ON store_memberships
+    FOR SELECT TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR private_is_super_admin(auth.uid())
+        OR get_user_role_in_company(company_id) IN ('COMPANY_OWNER', 'COMPANY_ADMIN')
+    );
 
-    -- 6. Link this User to Store A
-    INSERT INTO store_memberships (company_id, store_id, user_id, status)
-    VALUES ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111112', p_user_id, 'ACTIVE')
-    ON CONFLICT (company_id, store_id, user_id) DO NOTHING;
-
-    RETURN TRUE;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- The temporary login bootstrap assigned every user as Company A owner.
+DROP FUNCTION IF EXISTS public.bootstrap_tenant_data(UUID);

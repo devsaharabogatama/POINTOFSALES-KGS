@@ -59,6 +59,7 @@ CREATE TABLE products (
     price NUMERIC NOT NULL DEFAULT 0,
     cogs NUMERIC NOT NULL DEFAULT 0,
     uom TEXT NOT NULL DEFAULT 'pcs',
+    weight_per_uom_kg NUMERIC(14,3) NOT NULL DEFAULT 0 CHECK (weight_per_uom_kg >= 0),
     is_bundle BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

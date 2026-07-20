@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie';
 
 export interface LocalProduct {
   id: string;
+  company_id: string;
   sku: string;
   name: string;
   category: string;
@@ -10,6 +11,7 @@ export interface LocalProduct {
   price: number;
   cogs: number;
   uom: string;
+  weight_per_uom_kg: number;
   is_bundle: boolean;
   is_active: boolean;
   stock: number;
@@ -17,6 +19,7 @@ export interface LocalProduct {
 
 export interface LocalCustomer {
   id: string;
+  company_id: string;
   code: string;
   name: string;
   phone?: string;
@@ -27,6 +30,7 @@ export interface LocalCustomer {
 
 export interface LocalWarehouse {
   id: string;
+  company_id: string;
   code: string;
   name: string;
   is_active: boolean;
@@ -34,6 +38,7 @@ export interface LocalWarehouse {
 
 export interface LocalCashierSession {
   id: string;
+  company_id: string;
   session_code: string;
   cashier_id: string;
   opened_at: string;
@@ -47,6 +52,7 @@ export interface LocalCashierSession {
 
 export interface LocalSalesHeader {
   id: string;
+  company_id: string;
   invoice_no: string;
   session_id: string;
   customer_id?: string;
@@ -109,6 +115,15 @@ export class KGSPOSDatabase extends Dexie {
       warehouses: 'id, code, is_active',
       cashier_sessions: 'id, session_code, status',
       sales_headers: 'id, invoice_no, session_id, customer_id, is_synced, transaction_date',
+      sales_details: 'id, sales_id, product_id, warehouse_id',
+      sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
+    });
+    this.version(2).stores({
+      products: 'id, company_id, [company_id+sku], name, category, is_active',
+      customers: 'id, company_id, [company_id+code], name',
+      warehouses: 'id, company_id, [company_id+code], is_active',
+      cashier_sessions: 'id, company_id, session_code, status',
+      sales_headers: 'id, company_id, invoice_no, session_id, customer_id, is_synced, transaction_date',
       sales_details: 'id, sales_id, product_id, warehouse_id',
       sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
     });

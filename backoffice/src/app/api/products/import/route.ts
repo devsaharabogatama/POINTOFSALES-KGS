@@ -1,217 +1,121 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { apiError, requireCaller } from '@/lib/server-auth'
+
+type ImportRequest = { csvText?: string; companyId?: string }
+
+const REQUIRED_HEADERS = [
+  'sku',
+  'nama_produk',
+  'kategori',
+  'harga_jual_umum',
+  'harga_beli_awal_hpp',
+  'satuan_uom',
+  'berat_per_uom_kg',
+  'stok_awal',
+  'kode_gudang',
+]
+
+function detectDelimiter(header: string) {
+  return (header.match(/;/g)?.length ?? 0) > (header.match(/,/g)?.length ?? 0) ? ';' : ','
+}
+
+function parseCsv(text: string, delimiter: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let quoted = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    const next = text[index + 1]
+    if (character === '"' && quoted && next === '"') {
+      field += '"'
+      index += 1
+    } else if (character === '"') {
+      quoted = !quoted
+    } else if (character === delimiter && !quoted) {
+      row.push(field.trim())
+      field = ''
+    } else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && next === '\n') index += 1
+      row.push(field.trim())
+      if (row.some(Boolean)) rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += character
+    }
+  }
+  row.push(field.trim())
+  if (row.some(Boolean)) rows.push(row)
+  return rows
+}
+
+function parseNumber(value: string): number {
+  const normalized = value.trim().replace(/\s/g, '')
+  if (!normalized) return 0
+  const decimal = normalized.includes(',')
+    ? normalized.replace(/\./g, '').replace(',', '.')
+    : normalized
+  const result = Number(decimal)
+  if (!Number.isFinite(result)) throw new Error(`INVALID_NUMBER: ${value}`)
+  return result
+}
 
 export async function POST(request: Request) {
   try {
-    const { csvText, companyId } = await request.json()
-    if (!csvText) {
-      return NextResponse.json({ error: 'CSV data is required.' }, { status: 400 })
+    const caller = await requireCaller(request)
+    const { csvText, companyId } = (await request.json()) as ImportRequest
+    if (!csvText || !companyId) {
+      return Response.json({ error: 'CSV_AND_COMPANY_REQUIRED' }, { status: 400 })
     }
 
-    // Set fallback company_id if not supplied
-    const targetCompanyId = companyId || '11111111-1111-1111-1111-111111111111'
-
-    // Retrieve auth token from Authorization header to respect RLS
-    const authHeader = request.headers.get('Authorization')
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''
-    
-    const client = authHeader && authHeader.startsWith('Bearer ')
-      ? createClient(supabaseUrl, supabaseAnonKey, {
-          global: {
-            headers: {
-              Authorization: authHeader
-            }
-          }
-        })
-      : supabase
-
-    const lines = csvText.split('\n').map((line: string) => line.trim()).filter(Boolean)
-    if (lines.length <= 1) {
-      return NextResponse.json({ error: 'CSV file contains no data rows.' }, { status: 400 })
+    const firstLine = csvText.split(/\r?\n/, 1)[0] ?? ''
+    const delimiter = detectDelimiter(firstLine)
+    const parsed = parseCsv(csvText.replace(/^\uFEFF/, ''), delimiter)
+    if (parsed.length < 2) {
+      return Response.json({ error: 'CSV_HAS_NO_DATA_ROWS' }, { status: 400 })
     }
 
-    // Robust CSV parser supporting commas and semicolons (Indonesian Excel standard)
-    const firstLine = lines[0]
-    const commaCount = (firstLine.match(/,/g) || []).length
-    const semicolonCount = (firstLine.match(/;/g) || []).length
-    const delimiter = commaCount >= semicolonCount ? ',' : ';'
+    const headers = parsed[0].map((header) => header.trim().toLowerCase())
+    const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header))
+    if (missing.length) {
+      return Response.json({ error: `MISSING_HEADERS: ${missing.join(', ')}` }, { status: 400 })
+    }
 
-    const parseCSVRow = (text: string, delim: string): string[] => {
-      const result = []
-      let insideQuote = false
-      let currentField = ''
-      for (let idx = 0; idx < text.length; idx++) {
-        const char = text[idx]
-        if (char === '"') {
-          insideQuote = !insideQuote
-        } else if (char === delim && !insideQuote) {
-          result.push(currentField.trim())
-          currentField = ''
-        } else {
-          currentField += char
-        }
+    const at = (row: string[], header: string) => row[headers.indexOf(header)] ?? ''
+    const rows = parsed.slice(1).map((row, index) => {
+      if (row.length !== headers.length) throw new Error(`COLUMN_MISMATCH_AT_ROW_${index + 2}`)
+      return {
+        sku: at(row, 'sku'),
+        name: at(row, 'nama_produk'),
+        category: at(row, 'kategori'),
+        price: parseNumber(at(row, 'harga_jual_umum')),
+        cogs: parseNumber(at(row, 'harga_beli_awal_hpp')),
+        uom_code: at(row, 'satuan_uom'),
+        weight_per_uom_kg: parseNumber(at(row, 'berat_per_uom_kg')),
+        initial_stock: parseNumber(at(row, 'stok_awal')),
+        warehouse_code: at(row, 'kode_gudang'),
       }
-      result.push(currentField.trim())
-      return result.map(f => f.replace(/^"|"$/g, ''))
-    }
-
-    const headers = parseCSVRow(firstLine, delimiter).map((h: string) => h.toLowerCase())
-    
-    // Check if essential headers are present
-    const requiredHeaders = ['sku', 'nama_produk', 'kategori', 'harga_jual_umum', 'harga_beli_awal_hpp', 'satuan_uom', 'stok_awal', 'kode_gudang']
-    const missingHeaders = requiredHeaders.filter(rh => !headers.includes(rh))
-    if (missingHeaders.length > 0) {
-      return NextResponse.json({ error: `Missing required headers: ${missingHeaders.join(', ')}. Detected delimiter: "${delimiter}"` }, { status: 400 })
-    }
-
-    const skuIdx = headers.indexOf('sku')
-    const nameIdx = headers.indexOf('nama_produk')
-    const catIdx = headers.indexOf('kategori')
-    const priceIdx = headers.indexOf('harga_jual_umum')
-    const cogsIdx = headers.indexOf('harga_beli_awal_hpp')
-    const uomIdx = headers.indexOf('satuan_uom')
-    const stockIdx = headers.indexOf('stok_awal')
-    const whIdx = headers.indexOf('kode_gudang')
-
-    const importResults = []
-    let successCount = 0
-    let failureCount = 0
-
-    // Process rows sequentially
-    for (let i = 1; i < lines.length; i++) {
-      const row = parseCSVRow(lines[i], delimiter)
-      if (row.length < headers.length) {
-        failureCount++
-        importResults.push({ row: i, sku: row[skuIdx] || 'UNKNOWN', status: 'FAILED', reason: 'Column length mismatch' })
-        continue
-      }
-
-      const sku = row[skuIdx]
-      const name = row[nameIdx]
-      const category = row[catIdx]
-      const price = Number(row[priceIdx]) || 0
-      const cogs = Number(row[cogsIdx]) || 0
-      const uomCode = row[uomIdx].toUpperCase()
-      const initialStock = Number(row[stockIdx]) || 0
-      const warehouseCode = row[whIdx].toUpperCase()
-
-      try {
-        // 1. Get or create UOM
-        let uomId = null
-        const { data: existingUom } = await client.from('uoms').select('id').eq('code', uomCode).single()
-        if (existingUom) {
-          uomId = existingUom.id
-        } else {
-          const { data: newUom, error: uomErr } = await client
-            .from('uoms')
-            .insert({ code: uomCode, name: uomCode, company_id: targetCompanyId })
-            .select('id')
-            .single()
-          if (uomErr) throw uomErr
-          uomId = newUom.id
-        }
-
-        // 2. Upsert Product
-        let productId = null
-        const { data: existingProduct } = await client.from('products').select('id').eq('sku', sku).single()
-        if (existingProduct) {
-          productId = existingProduct.id
-          await client.from('products').update({
-            name, category, price, cogs, uom: uomCode, uom_id: uomId, company_id: targetCompanyId
-          }).eq('id', productId)
-        } else {
-          const { data: newProduct, error: prodErr } = await client
-            .from('products')
-            .insert({ sku, name, category, price, cogs, uom: uomCode, uom_id: uomId, company_id: targetCompanyId })
-            .select('id')
-            .single()
-          if (prodErr) throw prodErr
-          productId = newProduct.id
-        }
-
-        // 3. Find or Create Warehouse
-        let warehouseId = null
-        const { data: existingWh } = await client.from('warehouses').select('id').eq('code', warehouseCode).single()
-        if (existingWh) {
-          warehouseId = existingWh.id
-        } else {
-          const { data: newWh, error: whErr } = await client
-            .from('warehouses')
-            .insert({ code: warehouseCode, name: `Gudang ${warehouseCode}`, company_id: targetCompanyId })
-            .select('id')
-            .single()
-          if (whErr) throw whErr
-          warehouseId = newWh.id
-        }
-
-        // 4. Upsert Product Stock
-        const { data: existingStock } = await client
-          .from('product_stocks')
-          .select('id, stock_qty')
-          .eq('product_id', productId)
-          .eq('warehouse_id', warehouseId)
-          .single()
-        
-        if (existingStock) {
-          await client.from('product_stocks').update({
-            stock_qty: existingStock.stock_qty + initialStock,
-            updated_at: new Date().toISOString(),
-            company_id: targetCompanyId
-          }).eq('id', existingStock.id)
-        } else {
-          await client.from('product_stocks').insert({
-            product_id: productId,
-            warehouse_id: warehouseId,
-            stock_qty: initialStock,
-            company_id: targetCompanyId
-          })
-        }
-
-        // 5. Create Initial FIFO batch if stock > 0
-        if (initialStock > 0) {
-          const { data: batch, error: batchErr } = await client.from('product_batches').insert({
-            product_id: productId,
-            warehouse_id: warehouseId,
-            qty_purchased: initialStock,
-            qty_remaining: initialStock,
-            cogs_unit: cogs,
-            company_id: targetCompanyId
-          }).select('id').single()
-
-          if (batchErr) throw batchErr
-
-          // 6. Log Stock Movement
-          await client.from('stock_movements').insert({
-            product_id: productId,
-            warehouse_id: warehouseId,
-            qty_change: initialStock,
-            movement_type: 'PURCHASE',
-            reference_table: 'product_batches',
-            reference_id: batch.id,
-            company_id: targetCompanyId
-          })
-        }
-
-        successCount++
-        importResults.push({ row: i, sku, status: 'SUCCESS' })
-      } catch (err: any) {
-        console.error(`Error importing row ${i}:`, err)
-        failureCount++
-        importResults.push({ row: i, sku, status: 'FAILED', reason: err.message })
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      processed: lines.length - 1,
-      successCount,
-      failureCount,
-      details: importResults
     })
-  } catch (error: any) {
-    console.error('Import API error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const duplicateSkus = rows
+      .map((row) => row.sku.trim().toUpperCase())
+      .filter((sku, index, list) => list.indexOf(sku) !== index)
+    if (duplicateSkus.length) {
+      return Response.json(
+        { error: `DUPLICATE_SKU_IN_FILE: ${[...new Set(duplicateSkus)].join(', ')}` },
+        { status: 400 },
+      )
+    }
+
+    const { data, error } = await caller.client.rpc('import_products_for_company', {
+      p_company_id: companyId,
+      p_rows: rows,
+    })
+    if (error) return Response.json({ error: error.message }, { status: 400 })
+
+    return Response.json({ success: true, result: data })
+  } catch (error) {
+    return apiError(error)
   }
 }

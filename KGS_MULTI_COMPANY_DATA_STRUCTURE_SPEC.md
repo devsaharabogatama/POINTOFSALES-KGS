@@ -661,6 +661,7 @@ product_code
 product_name
 category_id
 unit_id
+weight_per_uom_kg
 cost_price
 selling_price
 is_stock_item
@@ -674,6 +675,10 @@ Unique:
 ```sql
 unique (company_id, product_code)
 ```
+
+`weight_per_uom_kg` menyimpan berat kilogram untuk satu unit UOM utama produk.
+Contoh: produk semen dengan UOM `SAK` dan nilai `50` berarti satu sak berbobot 50 kg.
+Perhitungan berat pengiriman menggunakan `qty × weight_per_uom_kg`; nilai wajib non-negatif.
 
 Harga tidak boleh dianggap satu nilai global jika existing memiliki harga per customer atau price list.
 
