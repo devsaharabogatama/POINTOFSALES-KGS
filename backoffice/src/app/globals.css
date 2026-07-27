@@ -43,3 +43,9 @@ select:disabled {
   border-color: #10b981;
   box-shadow: 0 0 0 4px rgb(16 185 129 / 0.1);
 }
+
+/* UOM code is an integration key; operational users identify units by name. */
+[data-master-kind='uom'] table th:first-child,
+[data-master-kind='uom'] table td:first-child {
+  display: none;
+}

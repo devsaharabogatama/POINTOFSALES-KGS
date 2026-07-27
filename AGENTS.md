@@ -22,3 +22,17 @@ Aturan ringkas:
 
 File `backoffice/AGENTS.md` tetap berlaku sebagai instruksi tambahan untuk pekerjaan Next.js di dalam folder `backoffice`.
 
+## Handoff Wajib Antar-Agent
+
+- Setiap agent wajib membaca `docs/ACTIVE_DEVELOPMENT_HANDOFF.md` sebelum mulai bekerja.
+- Setiap agent yang membuat perubahan wajib memperbarui file tersebut sebelum
+  menyerahkan pekerjaan: status terakhir, file yang diubah, evidence test,
+  manual gate yang menunggu user, dan next safe step.
+- Setiap build yang mengubah status modul, runtime/setup, migration chain,
+  compatibility, atau roadmap wajib sekaligus memperbarui root `README.md`.
+  Jangan menulis fitur sebagai aktif bila baru tersedia pada schema/local code.
+- Jangan menandai fase `COMPLETE` hanya karena file sudah dibuat; cantumkan
+  secara terpisah status local verification, manual Supabase rollout, dan smoke
+  test user.
+- Jika context/limit hampir habis, hentikan pada boundary aman dan tulis handoff
+  yang dapat dijalankan agent berikutnya tanpa menebak keputusan bisnis.

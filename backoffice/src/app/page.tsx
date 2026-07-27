@@ -1,33 +1,47 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
-  BarChart3,
+  BadgePercent,
   Boxes,
   Building2,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   ContactRound,
+  CreditCard,
   DollarSign,
-  FileUp,
+  FileSpreadsheet,
+  Landmark,
   LayoutDashboard,
   Loader2,
   LogOut,
   Menu,
-  PackagePlus,
-  Search,
+  PackageSearch,
   ShieldCheck,
+  Settings2,
   Store,
+  Tags,
   Truck,
   UserPlus,
   Users,
-  Weight,
   X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { MasterDataView } from '@/components/MasterDataView'
+import { CanonicalProductsView } from '@/components/CanonicalProductsView'
+import { SupplierMasterView } from '@/components/SupplierMasterView'
+import { CustomerMasterView } from '@/components/CustomerMasterView'
+import { PricelistMasterView } from '@/components/PricelistMasterView'
+import { PaymentMethodMasterView } from '@/components/PaymentMethodMasterView'
+import { FinanceMasterView } from '@/components/FinanceMasterView'
+import { TaxMasterView } from '@/components/TaxMasterView'
+import { ModuleSettingsView } from '@/components/ModuleSettingsView'
+import { MasterImportView } from '@/components/MasterImportView'
+import { useEscapeClose } from '@/lib/use-escape-close'
 
-type View = 'dashboard' | 'products' | 'customers' | 'finance' | 'staff' | 'companies'
+type View = 'dashboard' | 'masters' | 'master-imports' | 'products' | 'suppliers' | 'customers' | 'pricelists' | 'payment-methods' | 'finance-masters' | 'tax-rules' | 'finance' | 'staff' | 'companies' | 'module-settings'
 
 type CompanyContext = {
   id: string
@@ -41,6 +55,7 @@ type CompanyContext = {
 type UserContext = {
   profile: { id: string; name: string; email: string; role: string }
   isSuperAdmin: boolean
+  activeCompanyId: string | null
   companies: CompanyContext[]
 }
 
@@ -57,6 +72,7 @@ type ProductRow = {
   price: number | string
   cogs: number | string
   uom: string
+  base_uom?: { name: string } | null
   weight_per_uom_kg?: number | string
   product_stocks: ProductStockRow[] | null
 }
@@ -90,17 +106,56 @@ type Staff = {
 }
 
 type StoreOption = { id: string; store_code: string; store_name: string }
-type Customer = { id: string; code: string; name: string; phone: string; balance: number }
 type JournalEntry = { id: string; journalNo: string; date: string; account: string; debit: number; credit: number; note: string }
 
-const navigation: { id: View; label: string; icon: typeof LayoutDashboard; superOnly?: boolean }[] = [
-  { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
-  { id: 'products', label: 'Produk & Stok', icon: Boxes },
-  { id: 'customers', label: 'Pelanggan', icon: ContactRound },
-  { id: 'finance', label: 'Keuangan', icon: DollarSign },
-  { id: 'staff', label: 'Tim & Akses', icon: Users },
+type NavigationItem = {
+  id: View
+  label: string
+  icon: typeof LayoutDashboard
+  roles?: string[]
+  superOnly?: boolean
+}
+
+const INVENTORY_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN']
+const SUPPLIER_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
+const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
+const FINANCE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING']
+const OWNER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN']
+
+const navigation: NavigationItem[] = [
+  { id: 'dashboard', label: 'Aplikasi', icon: LayoutDashboard },
+  { id: 'masters', label: 'Master Inventory', icon: Truck, roles: INVENTORY_ROLES },
+  { id: 'master-imports', label: 'Import & Export', icon: FileSpreadsheet, roles: OWNER_ROLES },
+  { id: 'products', label: 'Produk & Stok', icon: Boxes, roles: INVENTORY_ROLES },
+  { id: 'customers', label: 'Pelanggan', icon: ContactRound, roles: SALES_ROLES },
+  { id: 'suppliers', label: 'Supplier', icon: PackageSearch, roles: SUPPLIER_ROLES },
+  { id: 'staff', label: 'User & Akses', icon: Users, roles: OWNER_ROLES },
+  { id: 'pricelists', label: 'Pricelist', icon: Tags, roles: SALES_ROLES },
+  { id: 'payment-methods', label: 'Metode Pembayaran', icon: CreditCard, roles: FINANCE_ROLES },
+  { id: 'tax-rules', label: 'Aturan Pajak', icon: BadgePercent, roles: FINANCE_ROLES },
+  { id: 'finance-masters', label: 'Kategori & COA', icon: Landmark, roles: FINANCE_ROLES },
+  { id: 'finance', label: 'Jurnal Keuangan', icon: DollarSign, roles: FINANCE_ROLES },
   { id: 'companies', label: 'Perusahaan', icon: Building2, superOnly: true },
+  { id: 'module-settings', label: 'Pengaturan Modul', icon: Settings2, superOnly: true },
 ]
+
+const appModules: {
+  id: string; name: string; description: string; icon: typeof Boxes
+  color: string; views: View[]
+}[] = [
+  { id: 'inventory', name: 'Inventory', description: 'Produk, UOM, gudang, stok, serta alat import master.', icon: Boxes, color: 'bg-blue-600', views: ['products', 'masters', 'master-imports'] },
+  { id: 'contacts', name: 'Kontak', description: 'Data pelanggan, supplier, serta user Company.', icon: ContactRound, color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
+  { id: 'sales', name: 'Sales', description: 'Pricelist dan konfigurasi penjualan. Promo serta bundling menyusul saat modulnya dibangun.', icon: Tags, color: 'bg-emerald-600', views: ['pricelists'] },
+  { id: 'finance', name: 'Finance', description: 'Metode pembayaran, pajak, kategori transaksi, COA, dan jurnal.', icon: Landmark, color: 'bg-violet-600', views: ['payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
+  { id: 'platform', name: 'Platform', description: 'Company dan entitlement modul.', icon: Settings2, color: 'bg-slate-800', views: ['companies', 'module-settings'] },
+]
+
+function visibleNavigation(isSuperAdmin: boolean, roleCode: string) {
+  return navigation.filter((item) =>
+    (!item.superOnly || isSuperAdmin) &&
+    (!item.roles || isSuperAdmin || item.roles.includes(roleCode)),
+  )
+}
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Platform Super Admin',
@@ -143,17 +198,15 @@ export default function Home() {
   const [checkingSession, setCheckingSession] = useState(true)
   const [context, setContext] = useState<UserContext | null>(null)
   const [activeCompanyId, setActiveCompanyId] = useState('')
+  const [switchingCompany, setSwitchingCompany] = useState(false)
   const [activeView, setActiveView] = useState<View>('dashboard')
-  const [mobileNav, setMobileNav] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [staff, setStaff] = useState<Staff[]>([])
   const [stores, setStores] = useState<StoreOption[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
   const [journal, setJournal] = useState<JournalEntry[]>([])
   const [loadingData, setLoadingData] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [showImport, setShowImport] = useState(false)
   const [showStaff, setShowStaff] = useState(false)
   const [showTenant, setShowTenant] = useState(false)
 
@@ -177,15 +230,30 @@ export default function Home() {
     const response = await fetch('/api/me/context', { headers: authHeaders(activeSession) })
     const payload = (await response.json()) as UserContext & { error?: string }
     if (!response.ok) throw new Error(payload.error ?? 'Gagal memuat konteks akun')
-    setContext(payload)
 
     const storageKey = `kgs-active-company:${activeSession.user.id}`
     const savedCompany = localStorage.getItem(storageKey)
     const selected =
+      payload.companies.find((company) => company.id === payload.activeCompanyId) ??
       payload.companies.find((company) => company.id === savedCompany) ??
       payload.companies.find((company) => company.isDefault) ??
       payload.companies[0]
-    setActiveCompanyId(selected?.id ?? '')
+    const selectedId = selected?.id ?? ''
+    if (selectedId && selectedId !== payload.activeCompanyId) {
+      const selectResponse = await fetch('/api/me/active-company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(activeSession) },
+        body: JSON.stringify({ companyId: selectedId, source: 'BACKOFFICE_INIT' }),
+      })
+      const selectPayload = (await selectResponse.json()) as { error?: string }
+      if (!selectResponse.ok) {
+        throw new Error(selectPayload.error ?? 'Gagal menyimpan konteks perusahaan')
+      }
+    }
+
+    if (selectedId) localStorage.setItem(storageKey, selectedId)
+    setContext({ ...payload, activeCompanyId: selectedId || null })
+    setActiveCompanyId(selectedId)
   }, [])
 
   useEffect(() => {
@@ -203,7 +271,7 @@ export default function Home() {
     try {
       const initialProductQuery = await supabase
         .from('products')
-        .select('id, sku, name, category, price, cogs, uom, weight_per_uom_kg, product_stocks!product_stocks_product_id_fkey(stock_qty, warehouses!product_stocks_warehouse_id_fkey(code, name))')
+        .select('id, sku, name, category, price, cogs, uom, weight_per_uom_kg, base_uom:uoms!fk_products_company_uom(name), product_stocks!product_stocks_product_id_fkey(stock_qty, warehouses!product_stocks_warehouse_id_fkey(code, name))')
         .eq('company_id', activeCompanyId)
         .eq('is_active', true)
         .order('name')
@@ -232,7 +300,7 @@ export default function Home() {
           category: product.category ?? 'Tanpa kategori',
           price: Number(product.price) || 0,
           cogs: Number(product.cogs) || 0,
-          uom: product.uom,
+          uom: product.base_uom?.name ?? product.uom,
           weightPerUomKg: Number(product.weight_per_uom_kg) || 0,
           stock: (product.product_stocks ?? []).reduce(
             (total, item) => total + (Number(item.stock_qty) || 0),
@@ -248,7 +316,6 @@ export default function Home() {
       const [
         { data: membershipRows, error: staffError },
         { data: storeRows, error: storeError },
-        { data: customerRows, error: customerError },
         { data: journalRows, error: journalError },
       ] =
         await Promise.all([
@@ -264,11 +331,6 @@ export default function Home() {
             .eq('status', 'ACTIVE')
             .order('store_name'),
           supabase
-            .from('customers')
-            .select('id, code, name, phone, current_balance')
-            .eq('company_id', activeCompanyId)
-            .order('name'),
-          supabase
             .from('journal_entries')
             .select('id, journal_no, transaction_date, coa_code, coa_name, debit, kredit, note')
             .eq('company_id', activeCompanyId)
@@ -277,7 +339,6 @@ export default function Home() {
         ])
       if (staffError) throw staffError
       if (storeError) throw storeError
-      if (customerError) throw customerError
       if (journalError) throw journalError
 
       setStaff(
@@ -290,15 +351,6 @@ export default function Home() {
         })),
       )
       setStores((storeRows ?? []) as StoreOption[])
-      setCustomers(
-        ((customerRows ?? []) as { id: string; code: string; name: string; phone: string | null; current_balance: number | string }[]).map((customer) => ({
-          id: customer.id,
-          code: customer.code,
-          name: customer.name,
-          phone: customer.phone ?? '-',
-          balance: Number(customer.current_balance) || 0,
-        })),
-      )
       setJournal(
         ((journalRows ?? []) as { id: string; journal_no: string; transaction_date: string; coa_code: string; coa_name: string; debit: number | string; kredit: number | string; note: string | null }[]).map((entry) => ({
           id: entry.id,
@@ -324,21 +376,67 @@ export default function Home() {
 
   const activeCompany = context?.companies.find((company) => company.id === activeCompanyId)
   const canManage = context?.isSuperAdmin || ['COMPANY_OWNER', 'COMPANY_ADMIN'].includes(activeCompany?.roleCode ?? '')
-
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    if (!query) return products
-    return products.filter((product) =>
-      [product.sku, product.name, product.category].some((value) => value.toLowerCase().includes(query)),
+  const canManageMaster =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN'].includes(
+      activeCompany?.roleCode ?? '',
     )
-  }, [products, search])
+  const canManageSupplier =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canManageProductSupplier =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canManageCustomerIdentity =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'].includes(activeCompany?.roleCode ?? '')
+  const canManageCustomerCredit =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canManagePricelist =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'].includes(activeCompany?.roleCode ?? '')
+  const canManagePaymentMethod =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canManageFinanceMaster =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING'].includes(
+      activeCompany?.roleCode ?? '',
+    )
 
-  function changeCompany(companyId: string) {
-    if (!session) return
-    localStorage.setItem(`kgs-active-company:${session.user.id}`, companyId)
-    setActiveCompanyId(companyId)
-    setSearch('')
-    setActiveView('dashboard')
+  async function changeCompany(companyId: string) {
+    if (!session || companyId === activeCompanyId || switchingCompany) return
+    setSwitchingCompany(true)
+    setNotice(null)
+    try {
+      const response = await fetch('/api/me/active-company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+        body: JSON.stringify({ companyId, source: 'BACKOFFICE_SELECTOR' }),
+      })
+      const payload = (await response.json()) as { activeCompanyId?: string; error?: string }
+      if (!response.ok || payload.activeCompanyId !== companyId) {
+        throw new Error(payload.error ?? 'Gagal mengganti perusahaan aktif')
+      }
+
+      localStorage.setItem(`kgs-active-company:${session.user.id}`, companyId)
+      setContext((current) => current ? { ...current, activeCompanyId: companyId } : current)
+      setActiveCompanyId(companyId)
+      setActiveView('dashboard')
+    } catch (error) {
+      setNotice(messageFromError(error, 'Gagal mengganti perusahaan aktif'))
+    } finally {
+      setSwitchingCompany(false)
+    }
   }
 
   async function logout() {
@@ -372,19 +470,24 @@ export default function Home() {
     )
   }
 
+  const availableNavigation = visibleNavigation(
+    context.isSuperAdmin,
+    activeCompany.roleCode,
+  )
+
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-slate-900">
       <Sidebar
         view={activeView}
         setView={setActiveView}
-        isSuperAdmin={context.isSuperAdmin}
-        mobileOpen={mobileNav}
-        closeMobile={() => setMobileNav(false)}
+        items={availableNavigation}
+        open={sidebarOpen}
+        close={() => setSidebarOpen(false)}
       />
 
-      <div className="lg:pl-64">
+      <div>
         <header className="sticky top-0 z-30 flex h-20 items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur md:px-8">
-          <button onClick={() => setMobileNav(true)} className="rounded-xl border border-slate-200 p-2.5 lg:hidden" aria-label="Buka navigasi">
+          <button onClick={() => setSidebarOpen((current) => !current)} className="rounded-xl border border-slate-200 p-2.5" aria-label={sidebarOpen ? 'Tutup fast link' : 'Buka fast link'} aria-expanded={sidebarOpen}>
             <Menu className="h-5 w-5" />
           </button>
 
@@ -394,7 +497,8 @@ export default function Home() {
               <Building2 className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
               <select
                 value={activeCompanyId}
-                onChange={(event) => changeCompany(event.target.value)}
+                onChange={(event) => void changeCompany(event.target.value)}
+                disabled={switchingCompany}
                 className="max-w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-500"
               >
                 {context.companies.map((company) => (
@@ -424,26 +528,55 @@ export default function Home() {
           )}
 
           {activeView === 'dashboard' && (
-            <Dashboard
+            <AppLauncher
               company={activeCompany}
+              profileName={context.profile.name}
+              items={availableNavigation}
               products={products}
-              staff={staff}
               loading={loadingData}
-              goProducts={() => setActiveView('products')}
-              openImport={() => setShowImport(true)}
-              canManage={Boolean(canManage)}
+              openView={setActiveView}
             />
           )}
 
           {activeView === 'products' && (
-            <ProductsView
-              products={filteredProducts}
-              totalProducts={products.length}
-              search={search}
-              setSearch={setSearch}
-              openImport={() => setShowImport(true)}
-              loading={loadingData}
-              canManage={Boolean(canManage)}
+            <CanonicalProductsView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+              onChanged={loadTenantData}
+            />
+          )}
+
+          {activeView === 'masters' && (
+            <MasterDataView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              stores={stores}
+              canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'master-imports' && canManage && (
+            <MasterImportView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'suppliers' && (
+            <SupplierMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManageSupplier={Boolean(canManageSupplier)}
+              canManageRelation={Boolean(canManageProductSupplier)}
+              notify={setNotice}
             />
           )}
 
@@ -451,28 +584,74 @@ export default function Home() {
             <StaffView staff={staff} canManage={Boolean(canManage)} openCreate={() => setShowStaff(true)} />
           )}
 
-          {activeView === 'customers' && <CustomersView customers={customers} />}
+          {activeView === 'customers' && (
+            <CustomerMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManageIdentity={Boolean(canManageCustomerIdentity)}
+              canManageCredit={Boolean(canManageCustomerCredit)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'pricelists' && (
+            <PricelistMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManagePricelist)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'payment-methods' && (
+            <PaymentMethodMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManagePaymentMethod)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'finance-masters' && (
+            <FinanceMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageFinanceMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'tax-rules' && (
+            <TaxMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageFinanceMaster)}
+              notify={setNotice}
+            />
+          )}
 
           {activeView === 'finance' && <FinanceView journal={journal} />}
 
           {activeView === 'companies' && context.isSuperAdmin && (
             <CompaniesView companies={context.companies} openCreate={() => setShowTenant(true)} />
           )}
+
+          {activeView === 'module-settings' && context.isSuperAdmin && (
+            <ModuleSettingsView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              companyName={activeCompany.company_name}
+              notify={setNotice}
+            />
+          )}
         </main>
       </div>
-
-      {showImport && (
-        <ImportModal
-          session={session}
-          company={activeCompany}
-          close={() => setShowImport(false)}
-          complete={async (message) => {
-            setShowImport(false)
-            setNotice(message)
-            await loadTenantData()
-          }}
-        />
-      )}
 
       {showStaff && (
         <StaffModal
@@ -559,35 +738,47 @@ function LoginScreen() {
   )
 }
 
-function Sidebar({ view, setView, isSuperAdmin, mobileOpen, closeMobile }: { view: View; setView: (view: View) => void; isSuperAdmin: boolean; mobileOpen: boolean; closeMobile: () => void }) {
+function Sidebar({ view, setView, items, open, close }: {
+  view: View
+  setView: (view: View) => void
+  items: NavigationItem[]
+  open: boolean
+  close: () => void
+}) {
   return (
     <>
-      {mobileOpen && <button onClick={closeMobile} className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" aria-label="Tutup navigasi" />}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-800 bg-slate-950 text-white transition-transform lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex h-20 items-center justify-between px-6">
-          <div className="flex items-center gap-3 font-black tracking-tight">
+      {open && <button onClick={close} className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" aria-label="Tutup fast link" />}
+      <aside aria-hidden={!open} className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-72 flex-col border-r border-slate-800 bg-slate-950 text-white shadow-2xl shadow-slate-950/30 transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-20 shrink-0 items-center justify-between border-b border-white/5 px-6">
+          <button
+            type="button"
+            onClick={() => { setView('dashboard'); close() }}
+            className="flex items-center gap-3 rounded-xl text-left font-black tracking-tight outline-none transition hover:text-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            aria-label="Kembali ke halaman awal"
+            title="Kembali ke halaman awal"
+          >
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500"><Store className="h-5 w-5" /></span>
             KGS POS
-          </div>
-          <button onClick={closeMobile} className="lg:hidden" aria-label="Tutup"><X className="h-5 w-5" /></button>
+          </button>
+          <button onClick={close} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Tutup fast link"><X className="h-5 w-5" /></button>
         </div>
-        <nav className="px-3 py-5">
-          <p className="px-3 text-[10px] font-bold uppercase tracking-[.18em] text-slate-600">Operasional</p>
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-5">
+          <p className="px-3 text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Fast link</p>
           <div className="mt-3 space-y-1">
-            {navigation.filter((item) => !item.superOnly || isSuperAdmin).map((item) => {
+            {items.map((item) => {
               const Icon = item.icon
               const active = view === item.id
               return (
-                <button key={item.id} onClick={() => { setView(item.id); closeMobile() }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+                <button key={item.id} onClick={() => { setView(item.id); close() }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
                   <Icon className="h-4 w-4" />{item.label}
                 </button>
               )
             })}
           </div>
         </nav>
-        <div className="absolute inset-x-3 bottom-4 rounded-2xl border border-white/5 bg-white/[.03] p-4">
+        <div className="m-3 shrink-0 rounded-2xl border border-white/5 bg-white/[.03] p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-emerald-300"><ShieldCheck className="h-4 w-4" /> Tenant protection</div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-500">Company context diverifikasi kembali oleh RLS dan backend.</p>
+          <p className="mt-2 text-[11px] leading-5 text-slate-500">Fast link hanya menampilkan menu sesuai role. API dan RLS tetap menjadi pengaman utama.</p>
         </div>
       </aside>
     </>
@@ -598,26 +789,30 @@ function PageTitle({ eyebrow, title, description, action }: { eyebrow: string; t
   return <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-600">{eyebrow}</p><h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{title}</h1><p className="mt-2 text-sm text-slate-500">{description}</p></div>{action}</div>
 }
 
-function Dashboard({ company, products, staff, loading, goProducts, openImport, canManage }: { company: CompanyContext; products: Product[]; staff: Staff[]; loading: boolean; goProducts: () => void; openImport: () => void; canManage: boolean }) {
+function AppLauncher({ company, profileName, items, products, loading, openView }: {
+  company: CompanyContext
+  profileName: string
+  items: NavigationItem[]
+  products: Product[]
+  loading: boolean
+  openView: (view: View) => void
+}) {
   const totalStock = products.reduce((sum, product) => sum + product.stock, 0)
   const inventoryValue = products.reduce((sum, product) => sum + product.stock * product.cogs, 0)
-  const totalWeight = products.reduce((sum, product) => sum + product.stock * product.weightPerUomKg, 0)
-  const stats = [
-    { label: 'Produk aktif', value: products.length.toLocaleString('id-ID'), icon: Boxes, color: 'text-blue-600 bg-blue-50' },
-    { label: 'Total unit stok', value: totalStock.toLocaleString('id-ID'), icon: PackagePlus, color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Nilai persediaan', value: rupiah(inventoryValue), icon: BarChart3, color: 'text-violet-600 bg-violet-50' },
-    { label: 'Estimasi berat stok', value: `${totalWeight.toLocaleString('id-ID', { maximumFractionDigits: 2 })} kg`, icon: Weight, color: 'text-amber-600 bg-amber-50' },
-  ]
-  return <><PageTitle eyebrow={company.company_code} title={`Halo, ${company.company_name}`} description="Ringkasan operasional berdasarkan company yang sedang aktif." action={canManage ? <button onClick={openImport} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-600"><FileUp className="h-4 w-4" />Impor produk</button> : undefined} />
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map((stat) => <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className={`grid h-10 w-10 place-items-center rounded-xl ${stat.color}`}><stat.icon className="h-5 w-5" /></div><p className="mt-5 text-xs font-semibold text-slate-500">{stat.label}</p><p className="mt-1 text-xl font-black text-slate-950">{loading ? '—' : stat.value}</p></div>)}</div>
-    <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_.6fr]"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-bold">Produk dengan stok terendah</h2><p className="mt-1 text-xs text-slate-500">Prioritaskan pembelian dan pemindahan stok.</p></div><button onClick={goProducts} className="text-xs font-bold text-emerald-600">Lihat semua</button></div><div className="mt-5 space-y-3">{products.slice().sort((a,b) => a.stock-b.stock).slice(0,5).map((product) => <div key={product.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-500"><Boxes className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{product.name}</p><p className="text-xs text-slate-500">{product.sku} · {product.locations || 'Belum ada lokasi'}</p></div><p className={`text-sm font-black ${product.stock <= 5 ? 'text-rose-600' : 'text-slate-800'}`}>{product.stock} {product.uom}</p></div>)}{!products.length && <Empty label="Belum ada produk. Mulai dari impor template CSV." />}</div></div>
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-bold">Akses tim</h2><p className="mt-1 text-xs text-slate-500">{staff.length} pengguna terhubung ke company ini.</p><div className="mt-5 space-y-3">{staff.slice(0,5).map((member) => <div key={member.id} className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-xs font-black text-slate-600">{member.name.slice(0,2).toUpperCase()}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{member.name}</p><p className="truncate text-xs text-slate-500">{roleLabels[member.role] ?? member.role}</p></div></div>)}</div></div></div></>
+  const itemByView = new Map(items.map((item) => [item.id, item]))
+  const modules = appModules.map((module) => ({
+    ...module,
+    links: module.views.map((view) => itemByView.get(view)).filter(Boolean) as NavigationItem[],
+  })).filter((module) => module.links.length > 0)
+  return <>
+    <div className="mb-8 rounded-3xl bg-slate-950 p-6 text-white shadow-xl shadow-slate-950/10 md:p-8"><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-400">{company.company_code} · Workspace aplikasi</p><h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Halo, {profileName}</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Pilih modul yang ingin dibuka. Hanya aplikasi yang tersedia untuk role <b className="text-slate-200">{roleLabels[company.roleCode] ?? company.roleCode}</b> yang ditampilkan.</p></div>
+    <div className="mb-5 flex items-end justify-between gap-4"><div><h2 className="text-xl font-black text-slate-950">Aplikasi Anda</h2><p className="mt-1 text-sm text-slate-500">Modul dikelompokkan berdasarkan pekerjaan, seperti app launcher ERP.</p></div></div>
+    {modules.length > 0 ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{modules.map((module) => { const ModuleIcon = module.icon; return <article key={module.id} className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"><button onClick={() => openView(module.links[0].id)} className="w-full p-6 text-left"><div className="flex items-start gap-4"><div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-white shadow-lg ${module.color}`}><ModuleIcon className="h-6 w-6" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="text-lg font-black text-slate-950">{module.name}</h3><ChevronRight className="ml-auto h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-emerald-500" /></div><p className="mt-1 text-sm leading-6 text-slate-500">{module.description}</p></div></div></button><div className="flex flex-wrap gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">{module.links.map((link) => { const LinkIcon = link.icon; return <button key={link.id} onClick={() => openView(link.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-2 text-xs font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:text-emerald-600"><LinkIcon className="h-3.5 w-3.5" />{link.label}</button> })}</div></article>})}</div> : <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-slate-300" /><h3 className="mt-4 font-bold text-slate-700">Belum ada aplikasi Backoffice untuk role ini</h3><p className="mt-2 text-sm text-slate-500">Hubungi Company Admin bila akses kerja perlu ditambahkan.</p></div>}
+    {items.some((item) => item.id === 'products') && <div className="mt-8 grid gap-4 sm:grid-cols-3"><MiniStat label="Produk aktif" value={loading ? '—' : products.length.toLocaleString('id-ID')} /><MiniStat label="Total unit stok" value={loading ? '—' : totalStock.toLocaleString('id-ID')} /><MiniStat label="Nilai persediaan" value={loading ? '—' : rupiah(inventoryValue)} /></div>}
+  </>
 }
 
-function ProductsView({ products, totalProducts, search, setSearch, openImport, loading, canManage }: { products: Product[]; totalProducts: number; search: string; setSearch: (value: string) => void; openImport: () => void; loading: boolean; canManage: boolean }) {
-  return <><PageTitle eyebrow="Inventory" title="Produk & stok" description={`${totalProducts} produk pada company aktif. Berat dihitung untuk setiap satu UOM produk.`} action={canManage ? <button onClick={openImport} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white"><FileUp className="h-4 w-4" />Impor CSV</button> : undefined} />
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center gap-3 border-b border-slate-100 p-4"><Search className="h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari SKU, produk, atau kategori..." className="w-full bg-transparent text-sm outline-none" /></div><div className="overflow-x-auto"><table className="w-full min-w-[880px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Produk</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4 text-right">Harga</th><th className="px-5 py-4 text-right">Stok</th><th className="px-5 py-4 text-right">Berat / UOM</th><th className="px-5 py-4">Lokasi</th></tr></thead><tbody className="divide-y divide-slate-100">{products.map((product) => <tr key={product.id} className="hover:bg-slate-50/70"><td className="px-5 py-4"><p className="font-bold text-slate-900">{product.name}</p><p className="mt-1 text-xs font-medium text-slate-400">{product.sku}</p></td><td className="px-5 py-4 text-slate-600">{product.category}</td><td className="px-5 py-4 text-right font-semibold">{rupiah(product.price)}</td><td className="px-5 py-4 text-right font-black">{product.stock.toLocaleString('id-ID')} {product.uom}</td><td className="px-5 py-4 text-right"><span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 font-bold text-amber-700"><Weight className="h-3.5 w-3.5" />{product.weightPerUomKg.toLocaleString('id-ID')} kg</span></td><td className="px-5 py-4 text-slate-600">{product.locations || '-'}</td></tr>)}</tbody></table>{loading && <div className="p-10 text-center text-sm text-slate-500">Memuat produk...</div>}{!loading && !products.length && <Empty label="Produk tidak ditemukan." />}</div></div></>
-}
+function MiniStat({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-2 text-xl font-black text-slate-950">{value}</p></div> }
 
 function StaffView({ staff, canManage, openCreate }: { staff: Staff[]; canManage: boolean; openCreate: () => void }) {
   return <><PageTitle eyebrow="Access control" title="Tim & akses" description="Kelola pengguna hanya pada company yang sedang aktif." action={canManage ? <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white"><UserPlus className="h-4 w-4" />Tambah anggota</button> : undefined} /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{staff.map((member) => <div key={member.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 font-black text-slate-600">{member.name.slice(0,2).toUpperCase()}</div><div className="min-w-0"><p className="truncate font-bold text-slate-950">{member.name}</p><p className="truncate text-sm text-slate-500">{member.email}</p><span className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{roleLabels[member.role] ?? member.role}</span></div></div></div>)}{!staff.length && <div className="md:col-span-2 xl:col-span-3"><Empty label="Belum ada anggota yang dapat ditampilkan." /></div>}</div></>
@@ -627,32 +822,21 @@ function CompaniesView({ companies, openCreate }: { companies: CompanyContext[];
   return <><PageTitle eyebrow="Platform control" title="Perusahaan" description="Daftar seluruh tenant aktif yang dapat dikelola super admin." action={<button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white"><Building2 className="h-4 w-4" />Perusahaan baru</button>} /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{companies.map((company) => <div key={company.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-600"><Building2 className="h-5 w-5" /></div><div><p className="font-bold">{company.company_name}</p><p className="mt-1 text-xs font-semibold text-slate-400">{company.company_code}</p></div></div><div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-xs"><span className="text-slate-500">Status tenant</span><span className="rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700">{company.status}</span></div></div>)}</div></>
 }
 
-function CustomersView({ customers }: { customers: Customer[] }) {
-  const totalBalance = customers.reduce((sum, customer) => sum + customer.balance, 0)
-  return <><PageTitle eyebrow="Customer" title="Pelanggan" description={`${customers.length} pelanggan pada company aktif · total saldo ${rupiah(totalBalance)}.`} /><div className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Telepon</th><th className="px-5 py-4 text-right">Saldo</th></tr></thead><tbody className="divide-y divide-slate-100">{customers.map((customer) => <tr key={customer.id}><td className="px-5 py-4 font-semibold text-slate-500">{customer.code}</td><td className="px-5 py-4 font-bold">{customer.name}</td><td className="px-5 py-4 text-slate-600">{customer.phone}</td><td className="px-5 py-4 text-right font-black text-emerald-700">{rupiah(customer.balance)}</td></tr>)}</tbody></table>{!customers.length && <Empty label="Belum ada pelanggan pada company ini." />}</div></div></>
-}
-
 function FinanceView({ journal }: { journal: JournalEntry[] }) {
   const debit = journal.reduce((sum, entry) => sum + entry.debit, 0)
   const credit = journal.reduce((sum, entry) => sum + entry.credit, 0)
   return <><PageTitle eyebrow="Finance" title="Jurnal umum" description="Entri jurnal terbaru yang lolos akses accounting company aktif." /><div className="mb-5 grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold text-slate-500">Total debit terlihat</p><p className="mt-2 text-xl font-black">{rupiah(debit)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold text-slate-500">Total kredit terlihat</p><p className="mt-2 text-xl font-black">{rupiah(credit)}</p></div></div><div className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Jurnal</th><th className="px-5 py-4">Akun</th><th className="px-5 py-4">Catatan</th><th className="px-5 py-4 text-right">Debit</th><th className="px-5 py-4 text-right">Kredit</th></tr></thead><tbody className="divide-y divide-slate-100">{journal.map((entry) => <tr key={entry.id}><td className="px-5 py-4"><p className="font-bold">{entry.journalNo}</p><p className="mt-1 text-xs text-slate-400">{new Date(entry.date).toLocaleDateString('id-ID')}</p></td><td className="px-5 py-4 text-slate-600">{entry.account}</td><td className="max-w-xs truncate px-5 py-4 text-slate-500">{entry.note}</td><td className="px-5 py-4 text-right font-semibold">{entry.debit ? rupiah(entry.debit) : '-'}</td><td className="px-5 py-4 text-right font-semibold">{entry.credit ? rupiah(entry.credit) : '-'}</td></tr>)}</tbody></table>{!journal.length && <Empty label="Belum ada jurnal yang dapat ditampilkan." />}</div></div></>
 }
 
-function ImportModal({ session, company, close, complete }: { session: Session; company: CompanyContext; close: () => void; complete: (message: string) => Promise<void> }) {
-  const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  async function submit(event: React.FormEvent) { event.preventDefault(); if (!file) return; setLoading(true); setError(''); try { const response = await fetch('/api/products/import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(session) }, body: JSON.stringify({ csvText: await file.text(), companyId: company.id }) }); const payload = (await response.json()) as { error?: string; result?: { processed?: number } }; if (!response.ok) throw new Error(payload.error ?? 'Import gagal'); await complete(`${payload.result?.processed ?? 'Semua'} baris produk berhasil diimpor.`) } catch (caught) { setError(caught instanceof Error ? caught.message : 'Import gagal') } finally { setLoading(false) } }
-  return <Modal title="Impor produk & stok awal" description={`Data akan masuk ke ${company.company_name}. Import ulang dengan stok berbeda akan ditolak agar stok tidak terduplikasi.`} close={close}><a href="/import_template.csv" download className="mb-5 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700"><span>Unduh template dengan berat / UOM</span><FileUp className="h-4 w-4" /></a><form onSubmit={submit}><input type="file" accept=".csv,text/csv" required onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm" />{error && <FormError message={error} />}<ModalActions close={close} loading={loading} submit="Mulai impor" /></form></Modal>
-}
-
 function StaffModal({ session, company, stores, close, complete }: { session: Session; company: CompanyContext; stores: StoreOption[]; close: () => void; complete: () => Promise<void> }) {
+  useEscapeClose(close)
   const [form, setForm] = useState({ name: '', email: '', password: '', role_code: 'CASHIER', store_id: 'NONE' }); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { const response = await fetch('/api/staff/create', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(session) }, body: JSON.stringify({ ...form, company_id: company.id }) }); const payload = (await response.json()) as { error?: string }; if (!response.ok) throw new Error(payload.error ?? 'Gagal membuat anggota'); await complete() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal membuat anggota') } finally { setLoading(false) } }
   return <Modal title="Tambah anggota tim" description={`Akun hanya akan mendapat akses ke ${company.company_name}.`} close={close}><form onSubmit={submit} className="space-y-4"><Field label="Nama"><input required value={form.name} onChange={(e) => setForm({...form,name:e.target.value})} className="input" /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(e) => setForm({...form,email:e.target.value})} className="input" /></Field><Field label="Password sementara"><input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({...form,password:e.target.value})} className="input" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Role"><select value={form.role_code} onChange={(e) => setForm({...form,role_code:e.target.value})} className="input">{['CASHIER','STORE_MANAGER','WAREHOUSE_ADMIN','FINANCE','ACCOUNTING','COMPANY_ADMIN'].map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></Field><Field label="Toko"><select value={form.store_id} onChange={(e) => setForm({...form,store_id:e.target.value})} className="input"><option value="NONE">Semua / tidak spesifik</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.store_name}</option>)}</select></Field></div>{error && <FormError message={error} />}<ModalActions close={close} loading={loading} submit="Buat akun" /></form></Modal>
 }
 
 function TenantModal({ session, close, complete }: { session: Session; close: () => void; complete: () => Promise<void> }) {
+  useEscapeClose(close)
   const [form, setForm] = useState({ company_name: '', company_code: '', name: '', email: '', password: '' }); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { const response = await fetch('/api/tenant/register', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(session) }, body: JSON.stringify(form) }); const payload = (await response.json()) as { error?: string }; if (!response.ok) throw new Error(payload.error ?? 'Gagal membuat perusahaan'); await complete() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal membuat perusahaan') } finally { setLoading(false) } }
   return <Modal title="Perusahaan baru" description="Sistem sekaligus membuat toko utama, gudang default, dan akun company owner." close={close}><form onSubmit={submit} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Nama perusahaan"><input required value={form.company_name} onChange={(e) => setForm({...form,company_name:e.target.value})} className="input" /></Field><Field label="Kode"><input required value={form.company_code} onChange={(e) => setForm({...form,company_code:e.target.value.toUpperCase()})} className="input uppercase" /></Field></div><Field label="Nama owner"><input required value={form.name} onChange={(e) => setForm({...form,name:e.target.value})} className="input" /></Field><Field label="Email owner"><input required type="email" value={form.email} onChange={(e) => setForm({...form,email:e.target.value})} className="input" /></Field><Field label="Password sementara"><input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({...form,password:e.target.value})} className="input" /></Field>{error && <FormError message={error} />}<ModalActions close={close} loading={loading} submit="Buat perusahaan" /></form></Modal>

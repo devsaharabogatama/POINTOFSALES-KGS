@@ -1,8 +1,8 @@
 # Spesifikasi Master Customer KGS
 
-**Status:** Active Design Draft 0.2 — Identitas, kategori, quick-create, walk-in, dan sumber saldo telah dikonfirmasi  
-**Tanggal:** 2026-07-15  
-**Scope aktif:** Identitas Customer retail, akses POS/Backoffice, Pricelist, dan batas awal saldo/piutang  
+**Status:** Active Design Draft 0.3 — reusable Pricelist assignment telah dikonfirmasi
+**Tanggal:** 2026-07-22
+**Scope aktif:** Identitas Customer retail, akses POS/Backoffice, Pricelist, dan batas awal saldo/piutang
 
 ---
 
@@ -112,6 +112,23 @@ Kandidat lanjutan yang belum masuk scope awal:
 - Satu Customer memiliki satu kategori utama pada scope awal.
 - Kategori yang sudah dipakai tidak dihapus; gunakan status inactive.
 
+### 5.1A Customer Induk dan Customer Cabang
+
+- Satu Customer induk dapat mempunyai banyak Customer cabang/toko.
+- Hierarki v1 dibatasi satu tingkat: Customer cabang tidak dapat menjadi induk
+  Customer lain dan relasi cycle wajib ditolak server-side.
+- Customer induk dan setiap Customer cabang tetap mempunyai `customer_id`,
+  kode, nama, transaksi, saldo, limit, dan histori sendiri.
+- Dokumen transaksi selalu menyimpan Customer yang benar-benar bertransaksi;
+  sistem tidak memindahkan transaksi cabang ke Customer induk.
+- Laporan dapat melakukan roll-up dengan
+  `COALESCE(parent_customer_id, id)` agar seluruh cabang dapat dilihat sebagai
+  satu grup tanpa menghilangkan rincian per toko.
+- Parent wajib berada pada Company yang sama, aktif, bukan Walk-In, dan bukan
+  Customer cabang.
+- Customer yang sudah memiliki cabang tidak dapat dijadikan cabang sebelum
+  seluruh relasi anak dilepas.
+
 ### 5.2 Kode, Scope, dan Quick Create
 
 - Kode dibuat otomatis dengan sequence company, misalnya `CUST-000001`.
@@ -120,6 +137,18 @@ Kandidat lanjutan yang belum masuk scope awal:
 - Cashier dapat quick-create Customer dari POS dengan minimum nama, kategori, dan telepon opsional.
 - Quick-create Cashier wajib melalui RPC/API server terkontrol yang memvalidasi membership, company, kategori, normalisasi nama, uniqueness, dan idempotency; Cashier tidak mendapat hak INSERT langsung bebas ke tabel Customer.
 - Form lengkap dan pengeditan master dilakukan Company Admin/Store Manager melalui Backoffice sesuai company assignment.
+
+### 5.2.1 Assignment Pricelist Customer
+
+- `default_pricelist_id` dipilih dari menu/form Customer dan hanya boleh
+  menunjuk Pricelist `CUSTOMER` aktif pada company yang sama.
+- Nilai nullable berarti Customer mengikuti Pricelist Global default.
+- Banyak Customer boleh menunjuk Pricelist yang sama; Pricelist bukan dibuat
+  ulang per Customer.
+- Satu Customer hanya menunjuk maksimal satu Pricelist khusus pada satu waktu.
+- Customer Walk-In wajib selalu `NULL` dan memakai Global default.
+- Perubahan assignment memengaruhi transaksi baru; transaksi lama tetap memakai
+  snapshot Pricelist dan harga yang tersimpan.
 
 ### 5.3 Customer Walk-In
 

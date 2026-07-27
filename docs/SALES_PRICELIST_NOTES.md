@@ -1,8 +1,8 @@
 # Catatan Master Data Sales dan Pricelist KGS
 
-**Status:** Active Design Draft 0.3 — Store assignment, manual selection, discount stacking, dan tax-inclusive telah dikonfirmasi  
-**Tanggal:** 2026-07-15  
-**Scope aktif:** Pricelist global/customer, quantity tier, diskon manual POS, dan hubungan promo dengan Bundle  
+**Status:** Active Design Draft 0.4 — reusable Customer assignment telah dikonfirmasi
+**Tanggal:** 2026-07-22
+**Scope aktif:** Pricelist global/customer, quantity tier, diskon manual POS, dan hubungan promo dengan Bundle
 
 ---
 
@@ -40,7 +40,11 @@ Pricelist Global tidak ikut diterapkan ketika customer memiliki Pricelist Eksklu
 
 Hierarki tersebut berlaku pada mode pemilihan otomatis (`AUTO`). Bila Cashier secara eksplisit memilih Pricelist Global yang eligible, transaksi memakai cabang Global untuk seluruh cart dan menyimpan `pricing_selection_source = CASHIER_OVERRIDE`; sistem tidak mencampur rule Customer Eksklusif dan Global dalam satu resolusi otomatis.
 
-Satu company memiliki maksimal satu Pricelist Global default aktif dan satu customer memiliki maksimal satu Pricelist Eksklusif default aktif pada waktu yang sama. Pricelist lain tetap boleh disimpan untuk periode/alternatif lain. Jika beberapa kandidat aktif dan cocok karena periode overlap, kandidat dengan `priority` tertinggi dipilih secara deterministik.
+Satu company memiliki tepat satu Pricelist Global default aktif. Setiap Customer
+reguler dapat menunjuk maksimal satu Pricelist Eksklusif aktif melalui
+`customers.default_pricelist_id`; banyak Customer boleh menunjuk header yang
+sama. Pricelist lain tetap boleh disimpan sebagai template/periode alternatif
+dan baru berlaku bagi Customer setelah dipilih pada master Customer.
 
 ---
 
@@ -54,7 +58,6 @@ company_id
 code
 name
 scope: GLOBAL / CUSTOMER
-customer_id nullable
 priority
 is_default
 applies_all_stores
@@ -69,8 +72,14 @@ updated_at/by
 Aturan:
 
 - Kode unik per company.
-- Pricelist `CUSTOMER` wajib terkait customer yang valid pada company yang sama.
-- Satu customer hanya dapat memiliki satu Pricelist Eksklusif default aktif.
+- Pricelist `CUSTOMER` merupakan template harga reusable dan tidak dimiliki oleh
+  satu Customer tertentu.
+- Assignment dilakukan dari `customers.default_pricelist_id`; banyak Customer
+  boleh menunjuk Pricelist `CUSTOMER` yang sama.
+- Satu Customer hanya dapat menunjuk satu Pricelist Eksklusif aktif pada satu
+  waktu.
+- Walk-In tidak boleh menunjuk Pricelist `CUSTOMER` dan selalu memakai Global
+  default yang eligible.
 - Satu company hanya dapat memiliki satu Pricelist Global default aktif.
 - Pricelist lain boleh tetap aktif/tersimpan untuk periode berbeda; overlap diselesaikan dengan priority tertinggi.
 - Pricelist Global dapat berlaku untuk seluruh store pada company (`applies_all_stores = true`) atau hanya store tertentu melalui assignment terpisah.
@@ -126,6 +135,10 @@ Quantity tier hanya berlaku pada Pricelist Global. Pricelist Customer Eksklusif 
 ## 5. Pricelist Customer
 
 - Customer dapat memiliki harga khusus melalui pricelist `CUSTOMER`.
+- Pemilihan Pricelist Customer dilakukan pada menu/form Customer, bukan pada
+  form header Pricelist.
+- Satu Pricelist Customer dapat digunakan oleh banyak Customer; perubahan rule
+  berlaku pada transaksi baru seluruh Customer yang menunjuknya.
 - Pricelist Customer bersifat eksklusif: ketika aktif, seluruh rule/tier Pricelist Global dilewati.
 - Saat customer dipilih pada cart, POS meminta server menghitung ulang seluruh line.
 - Saat customer dihapus/diganti, server menghitung ulang harga menggunakan hierarchy yang baru.
@@ -268,9 +281,10 @@ Aturan Draft/Hold final:
 | 2026-07-15 | Pricelist berada di Sales Master Data; harga Produk-UOM menjadi fallback | APPROVED |
 | 2026-07-15 | Customer Eksklusif -> product base; tanpa customer exclusive memakai Global -> product base | APPROVED |
 | 2026-07-15 | Pricelist mendukung quantity tier | APPROVED |
+| 2026-07-22 | Header Pricelist Customer reusable; banyak Customer boleh memilih Pricelist yang sama melalui `customers.default_pricelist_id` pada menu Customer | APPROVED |
 | 2026-07-15 | Diskon line dan transaksi mendukung nominal/persentase tanpa limit role awal | APPROVED |
 | 2026-07-15 | Promo 2+1 dimodelkan sebagai Bundle dengan seluruh komponen stock dan harga bundle manual | APPROVED |
-| 2026-07-15 | Satu Global default per company dan satu Customer Eksklusif default per customer; overlap memakai priority | APPROVED |
+| 2026-07-15 | Satu Global default per company; priority menentukan kandidat Global yang eligible | APPROVED; Customer assignment diperbarui 2026-07-22 |
 | 2026-07-15 | Tier hanya Global dan basis SALES_UOM/BASE_UOM_EQUIVALENT configurable per rule produk | APPROVED |
 | 2026-07-15 | DISCOUNT_AMOUNT tier merupakan potongan per unit | APPROVED |
 | 2026-07-15 | Bundle promo memakai SKU khusus dan dipilih/scan eksplisit tanpa auto-convert | APPROVED |

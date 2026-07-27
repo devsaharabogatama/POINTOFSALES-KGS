@@ -166,9 +166,20 @@ Catat:
 3. jalankan negative authorization/cross-tenant test;
 4. jalankan retry/idempotency/concurrency test untuk mutation penting;
 5. verifikasi build/typecheck/lint tanpa mematikan pemeriksaan;
-6. update README modul, requirement evidence, dan decision log yang benar-benar berubah;
+6. update root `README.md`, README modul, requirement evidence, dan decision log
+   yang benar-benar berubah; root README wajib ikut berubah bila status modul,
+   setup/runtime, migration chain, compatibility, atau roadmap berubah;
 7. tulis deployment/manual review/rollback checklist;
 8. jangan menyebut fitur implemented bila execution path aktif belum terbukti.
+
+### D. Environment deployment project ini
+
+- Selama G1, runtime masih lokal; GitHub hanya versioning dan Supabase adalah backend aktif.
+- Jangan menyarankan Vercel deploy pada setiap patch lokal.
+- Vercel Preview baru disiapkan setelah G2 exit criteria lulus.
+- Internal Preview UAT dimulai setelah G3/G4 lokal lulus.
+- Production pilot menunggu G5/G6 dan cutover checklist lengkap.
+- Agent tidak boleh menghubungkan GitHub ke auto-deploy Production atau mengubah Vercel/Supabase environment tanpa instruksi user eksplisit.
 
 ---
 
@@ -303,4 +314,3 @@ Saat update:
 - tambahkan pointer, bukan duplikasi source-of-truth;
 - catat tanggal dan alasan perubahan material;
 - jangan menurunkan security, tenant isolation, audit, idempotency, atau rollback requirement demi mempercepat delivery.
-

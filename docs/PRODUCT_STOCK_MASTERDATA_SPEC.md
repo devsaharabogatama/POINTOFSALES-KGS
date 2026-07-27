@@ -241,7 +241,7 @@ Field awal yang diusulkan:
 | Harga | Harga beli | Wajib per UOM yang digunakan, tidak negatif | Disepakati; metode costing masih perlu detail |
 | Harga | Harga jual | Wajib per UOM yang dijual, tidak negatif | Disepakati |
 | UOM | UOM produk | Minimal satu, dapat ditambah beberapa UOM turunan secara manual | Disepakati |
-| UOM | UOM terbesar/referensi | Wajib ditentukan sebagai acuan berat | Disepakati |
+| UOM | UOM terbesar/referensi | Diturunkan otomatis dari faktor terbesar dan menjadi acuan berat | Disepakati |
 | Logistik | Berat UOM terbesar | Wajib diisi manual | Disepakati |
 | Logistik | Panjang/lebar/tinggi | Belum dibutuhkan | Ditunda |
 | Inventory | Dapat memiliki stok | Diturunkan dari tipe produk | Diusulkan |
@@ -284,7 +284,10 @@ Berat UOM Terbesar
 Status Aktif
 ```
 
-Bagian UOM bersifat repeatable. User dapat menekan **Tambah UOM** untuk menambah kemasan/turunan.
+Base UOM dipilih satu kali pada identitas Product dan tidak diulang sebagai baris
+turunan. Bagian UOM turunan bersifat repeatable. User dapat menekan **Tambah
+Kemasan** untuk menambah satuan di atas base, lalu mengisi hubungan langsung
+seperti `1 DUS = 10 KETUL`. UI mengurutkan grading berdasarkan faktor ke base.
 
 Contoh:
 
@@ -450,7 +453,8 @@ Aturan awal:
 - Seluruh UOM lain wajib menyimpan faktor konversi langsung ke base UOM terkecil.
 - Konversi tidak disimpan sebagai rantai bertingkat antar-UOM non-base. Contoh: jika base `PCS`, maka `PACK = 10 PCS` dan `DUS = 120 PCS`, bukan hanya `DUS = 12 PACK`.
 - UI boleh menampilkan hubungan kemasan yang mudah dibaca, tetapi kalkulasi dan penyimpanan selalu menggunakan faktor langsung ke base.
-- UOM terbesar dipilih secara eksplisit pada produk dan menjadi acuan berat.
+- UOM terbesar diturunkan otomatis dari faktor aktif terbesar pada produk dan
+  menjadi acuan berat. User tidak memilih radio acuan berat secara manual.
 - Berat UOM terbesar diisi manual.
 - Berat UOM turunan dihitung proporsional dari berat UOM terbesar dan faktor konversi. Jika `1 DUS = 12 PACK` dan berat `1 DUS = 6 kg`, berat kalkulasi `1 PACK = 0,5 kg`.
 - Berat turunan merupakan estimasi operasional/ongkir dan boleh tidak 100% sama dengan berat fisik akibat kemasan luar atau pembulatan.
@@ -561,7 +565,10 @@ Aturan awal:
 - Gudang bertipe `STORE` wajib terhubung ke tepat satu store.
 - Gudang bertipe `CENTRAL` boleh tidak terhubung ke store.
 - Gudang `DAMAGED` dan `TRANSIT` boleh company-level tanpa store atau dihubungkan ke store bila dibutuhkan.
+- Lokasi/alamat gudang bersifat opsional. Beberapa gudang fungsional seperti Gudang Bahan Baku dan Gudang Packaging boleh berada pada lokasi/alamat yang sama.
 - Gudang hanya menyimpan lokasi/alamat umum. Master rak, bin, aisle, atau sublokasi tidak dibutuhkan pada scope ini.
+- `is_purchase_destination` menandai gudang yang boleh dipilih sebagai tujuan penerimaan stok pada Purchase/receipt dari vendor. Field ini bukan alamat vendor dan tidak berarti vendor tertentu wajib selalu mengirim ke gudang tersebut.
+- `is_sale_source` menandai gudang yang stoknya boleh dipilih sebagai sumber pemenuhan/penjualan.
 - Import tidak boleh otomatis membuat gudang.
 - Gudang yang memiliki histori tidak dihapus.
 - Master Gudang dapat dikelola oleh Company Owner/Admin, Warehouse Admin, dan Store Manager/SPV Toko sesuai scope aksesnya.

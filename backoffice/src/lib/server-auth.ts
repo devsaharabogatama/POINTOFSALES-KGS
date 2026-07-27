@@ -12,6 +12,16 @@ export type CallerContext = {
   client: SupabaseClient
 }
 
+export class ApiRouteError extends Error {
+  status: number
+
+  constructor(code: string, status: number) {
+    super(code)
+    this.name = 'ApiRouteError'
+    this.status = status
+  }
+}
+
 export function getBearerToken(request: Request): string | null {
   const header = request.headers.get('authorization')
   if (!header?.startsWith('Bearer ')) return null
@@ -65,14 +75,41 @@ export async function canManageCompany(
   return Boolean(membership)
 }
 
+export async function requireActiveCompany(caller: CallerContext): Promise<string> {
+  const { data, error } = await caller.client
+    .from('user_active_company_contexts')
+    .select('company_id')
+    .eq('user_id', caller.user.id)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data?.company_id) throw new ApiRouteError('ACTIVE_COMPANY_NOT_FOUND', 400)
+  return data.company_id
+}
+
 export function apiError(error: unknown) {
-  const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' &&
+          error !== null &&
+          'message' in error &&
+          typeof error.message === 'string'
+        ? error.message
+        : 'UNKNOWN_ERROR'
   const status =
-    message === 'AUTHENTICATION_REQUIRED' || message === 'INVALID_SESSION'
-      ? 401
-      : message.endsWith('_REQUIRED') || message === 'FORBIDDEN'
-        ? 403
-        : 500
+    error instanceof ApiRouteError
+      ? error.status
+      : message === 'AUTHENTICATION_REQUIRED' || message === 'INVALID_SESSION'
+        ? 401
+        : message.endsWith('_REQUIRED') ||
+            message === 'FORBIDDEN' ||
+            message === 'COMPANY_ACCESS_DENIED'
+          ? 403
+          : message === 'ACTIVE_COMPANY_NOT_FOUND' ||
+              message === 'INVALID_CONTEXT_SOURCE'
+            ? 400
+            : 500
 
   return Response.json({ error: message }, { status })
 }

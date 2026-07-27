@@ -1,7 +1,7 @@
 # G1 Fase 2 — PostgREST Relationship Compatibility
 
 **Tanggal:** 2026-07-20  
-**Status:** CODE FIX VERIFIED; deployment/smoke user pending
+**Status:** COMPLETE — CODE FIX, LOCAL RESTART, DAN BACKOFFICE SMOKE PASS; Vercel deferred
 
 ## Gejala
 
@@ -36,8 +36,12 @@ FK legacy dipakai sebagai API hint karena tersedia sebelum dan sesudah migration
 
 ## Manual Exit
 
-1. Deploy/restart Backoffice dan PWA build terbaru.
-2. Hard refresh Backoffice.
-3. Pastikan Product/Stock data termuat tanpa notification error.
-4. Jalankan PWA master-data sync jika PWA sudah dipakai.
-5. Jika masih gagal, simpan exact toast baru dan request Network terkait.
+User mengonfirmasi setelah restart/reload lokal:
+
+- notification `Gagal memuat data perusahaan` tidak muncul lagi;
+- Backoffice kembali termuat dengan aman;
+- tidak ada regression lanjutan yang dilaporkan.
+
+PWA master-data sync tetap perlu di-smoke saat PWA execution path mulai dipakai aktif.
+
+GitHub push pada fase ini hanya untuk versioning. Vercel Preview mengikuti deployment timing pada `POS_V1_IMPLEMENTATION_GATES.md` setelah G2 lulus.

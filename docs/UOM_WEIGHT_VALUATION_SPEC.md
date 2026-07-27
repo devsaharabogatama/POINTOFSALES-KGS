@@ -45,7 +45,8 @@ base_quantity = transaction_quantity x conversion_factor_to_base
 
 ## 4. Berat
 
-- Produk memilih UOM terbesar sebagai weight reference.
+- Sistem menentukan UOM dengan faktor aktif terbesar sebagai weight reference;
+  UI tidak meminta user memilih acuan berat secara terpisah.
 - Berat UOM terbesar diisi manual.
 - Berat UOM lain dihitung proporsional memakai faktor conversion ke base UOM.
 

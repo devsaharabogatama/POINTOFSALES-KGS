@@ -87,6 +87,29 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 - Opening Stock dipisahkan dari Product import;
 - no auto-create reference saat Product import kecuali mode eksplisit yang belum diaktifkan pada v1.
 
+### Gate aktif Import/Export
+
+- empat import sederhana (Product Category, UOM, Warehouse, Supplier) sudah
+  mencapai API/UI;
+- Phase-35 readiness, Phase-36/37 automatic-code DB/UI, dan Phase-38 code-less
+  validator sudah PASS; Phase-39 template/export UI dan smoke user selesai;
+- Phase-40 migration, forward fix `20260727100000`, postflight, behavioral
+  test, dan Phase-38 regression sudah PASS; Phase-41 template/export/preview
+  UI untuk Customer Category, COA, dan Transaction Category local-ready dan
+  menunggu authenticated smoke;
+- ekspansi ke seluruh master yang dapat dibuat user memakai kontrak versioned
+  pada `MASTER_IMPORT_FIXED_CSV_CONTRACTS.md`;
+- sebelum ekspansi schema/job processor, wajib lulus
+  `g2_phase35_full_master_import_preflight.sql`;
+- Product, Pricelist, dan Payment Method diproses sebagai atomic group;
+- kode teknis Category/UOM/Warehouse/Supplier/Customer Category/Pricelist/
+  Payment Method/custom Transaction Category dibuat server-side dan tidak
+  diminta pada create template; UUID tetap canonical;
+- Product SKU, Customer code, COA account code, Tax code, barcode, dan kode
+  Product milik Supplier tetap business-facing;
+- Company, Staff/password, Opening Stock, transaksi, stock movement, dan journal
+  tidak boleh masuk generic master import.
+
 ### Test minimum
 
 - typo reference tidak membuat UOM/Gudang/Kategori baru;
@@ -235,6 +258,20 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 ---
 
 ## 9. Pilot, Cutover, dan Rollback
+
+### Deployment timing
+
+Kondisi project saat G1 adalah **runtime lokal + GitHub untuk versioning + Supabase**. Belum ada Vercel project dan tidak perlu membuat deployment hanya untuk menyelesaikan migration gate.
+
+Urutan deployment yang disetujui:
+
+1. **G1 berjalan:** Backoffice/PWA tetap lokal. Push GitHub dipakai untuk versioning/review, bukan tanda siap deploy.
+2. **Setelah G2 lulus:** buat Vercel project dan environment **Preview** untuk Backoffice serta PWA. Konfigurasi environment variable, Supabase Auth redirect/allowlist, domain preview, dan server-only secret. Preview hanya memakai test/UAT data dan belum menerima transaksi operasional.
+3. **Setelah G3 dan G4 lulus lokal:** gunakan Preview untuk internal end-to-end UAT Product/Stock/Session/Checkout, pengukuran network/function/egress, serta retry/concurrency. Feature optional tetap disabled kecuali UAT-nya sendiri sudah lulus.
+4. **Setelah G5 dan G6 serta seluruh cutover checklist lulus:** buat deployment **Production pilot** untuk satu Company, satu Store, dan satu POS Terminal.
+5. **Setelah pilot reconciliation stabil:** perluas Store/Terminal bertahap. Jangan menganggap GitHub push, Vercel build PASS, atau Preview URL sebagai production approval.
+
+Auto-deploy Production dari branch kerja tidak boleh diaktifkan. Production harus memakai protected branch/tag atau approval manual dan selalu merujuk migration manifest + rollout evidence yang sesuai.
 
 ### Pilot scope
 

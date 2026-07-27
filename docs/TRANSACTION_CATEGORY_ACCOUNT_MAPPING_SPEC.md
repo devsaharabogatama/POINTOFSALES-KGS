@@ -305,3 +305,5 @@ Sebelum enforcement production:
 | 2026-07-20 | Mapping versioned/effective-dated dan tidak mengubah jurnal historis | APPROVED |
 | 2026-07-20 | Server memvalidasi scope, account, currency, balance, dimension, entitlement, dan period | APPROVED |
 | 2026-07-20 | Finance/Company Admin mengatur company mapping; Super Admin mengatur semua/template; Store Manager/Cashier tidak | APPROVED |
+| 2026-07-22 | Setiap Company memperoleh satu kategori bawaan aktif per System Event; label boleh diedit, tetapi event/status wajib dikunci; custom category tetap boleh | APPROVED |
+| 2026-07-22 | Provisioning kategori bawaan tidak boleh menebak Account ID, membuat mapping, atau mengaktifkan jurnal | APPROVED |

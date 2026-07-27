@@ -116,6 +116,14 @@ Agent tidak perlu membaca semua spesifikasi lain kecuali README menyatakan depen
 
 ## 5. Pedoman Hemat Vercel/Supabase
 
+### Tahap environment dan deployment
+
+- **Sekarang/G1:** jalankan Backoffice dan PWA secara lokal; GitHub hanya untuk versioning. Supabase tetap menjadi backend yang perubahan schemanya mengikuti migration/runbook manual.
+- **Setelah G2:** setup Vercel Preview. Jangan isi `SUPABASE_SERVICE_ROLE_KEY` pada variable yang dapat diekspos client dan jangan menyalin `.env.local` ke repository.
+- **Setelah G3/G4:** lakukan internal UAT dan capacity measurement pada Preview; hentikan preview deployment yang tidak diperlukan agar quota free tier tidak terbuang.
+- **Setelah G5/G6:** Production pilot baru boleh dibuat setelah security, stock, checkout, purchase, Finance, backup, rollback, dan reconciliation evidence lengkap.
+- GitHub push tidak identik dengan deploy approval. Preview dan Production wajib mempunyai environment variable serta Supabase redirect URL yang terpisah dan terdokumentasi.
+
 ### Request dan compute
 
 - Gunakan satu RPC transactional untuk checkout/posting kompleks.
