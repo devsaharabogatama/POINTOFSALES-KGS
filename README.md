@@ -8,8 +8,8 @@ serta React/Vite PWA untuk kasir.
 > status modul, cara menjalankan aplikasi, migration chain, compatibility, atau
 > roadmap wajib memperbarui file ini bersama kode dan handoff.
 
-**Status terakhir:** 27 Juli 2026  
-**Gate aktif:** G2 — canonical master data  
+**Status terakhir:** 29 Juli 2026
+**Gate aktif:** G4 Phase 10 — true-concurrent Post stress staging
 **Runtime:** lokal; Supabase aktif; Vercel Preview belum dibuka
 
 ## Kondisi Aplikasi Saat Ini
@@ -21,18 +21,18 @@ serta React/Vite PWA untuk kasir.
 | Product + multi-UOM | Complete | Atomic Product/Product-UOM, base UOM, harga per UOM |
 | Supplier + Product-Supplier | Complete | Preferred Supplier, purchase UOM, audit |
 | Customer + Customer Category | Complete | Walk-In system, credit boundary, grouping induk/cabang |
-| Pricelist | Complete pada master | Global/Customer reusable; resolver checkout belum aktif |
-| Payment Method | Complete pada master | Store scope, fee configuration; checkout/settlement belum aktif |
+| Pricelist | Complete pada online core | Global/Customer reusable; resolver aktif pada canonical Draft/Post |
+| Payment Method | Online split-payment ready for smoke | Store scope, fee/proof snapshot, stable payment-leg identity, dan tablet multi-metode UI aktif |
 | Transaction Category + minimum COA | Complete pada master | 26 kategori, guarded COA, dan explicit fallback PASS; posting tetap nonaktif |
-| Tax Sales/Purchase | Master dan assignment complete | Guarded master/version/assignment sudah user-smoke; resolver dan kalkulasi transaksi belum aktif |
+| Tax Sales/Purchase | Sales resolver aktif pada online core | Guarded master/version/assignment; Purchase/jurnal tetap belum dibuka |
 | Pengaturan Modul | API/UI local ready; Super Admin smoke menunggu | Entitlement per Company melalui guarded RPC dan audit; detail konfigurasi tetap di menu modul |
 | App Launcher & shell | Complete pada role boundary saat ini | Inventory, Kontak, Sales, Finance, Platform; brand KGS POS kembali ke Home; granular permission tetap deferred |
-| Tax assignment Product/Category | Complete pada master boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver tetap disabled |
-| Tax resolver/calculator | Complete pada private server boundary | Effective-dated resolver + deterministic PER_LINE/PER_DOCUMENT calculator PASS; checkout/Purchase/jurnal belum dicutover |
-| Master Import/Export | Phase 40 DB complete; Phase 41 UI local-ready | Tujuh simple master didukung; tiga tipe baru menunggu authenticated smoke setelah lint/build PASS |
-| Generic import framework | Complete pada database untuk 7 simple master | Tenant/role/version/audit server-side; UI tiga master terbaru menunggu smoke. Grouped import wajib additive; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
-| Stock ledger/FIFO production | Belum dibuka | Gate G3 |
-| POS checkout/offline production | Belum dibuka | Gate G4; PWA existing masih prototype/compatibility surface |
+| Tax assignment Product/Category | Complete pada Sales online boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver aktif saat Draft/Post |
+| Tax resolver/calculator | Complete pada Sales online boundary | Effective-dated resolver + deterministic calculation dipakai Draft/Post; Purchase/jurnal belum dicutover |
+| Master Import/Export | Complete untuk 7 simple master | Phase 40 DB dan Phase 41 authenticated UI smoke PASS |
+| Generic import framework | Phase 47 UI local-ready | Grouped Product, Product-Supplier, dan Minimum Stock Produk–Gudang database PASS; Minimum Stock guarded API/UI serta fixed import-export lint/build PASS dan menunggu authenticated smoke; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
+| Stock ledger/FIFO production | Complete pada G3 core boundary | Integrated stress/regression diteruskan tanpa error dan Phase-14 rerun seluruh invariant PASS; Sale/Return/Receipt coverage pindah ke gate transaksi |
+| POS checkout/offline production | Online single-payment + Draft UI local-ready | Session, real catalog, server Draft/Post, FIFO/Bundle, payment/tax snapshot, Pricelist override, receipt print-tab, shortage, same-Store Draft list, edit-lock/heartbeat/takeover/cancel aktif; authenticated Draft UI smoke menunggu; offline diblokir |
 | Purchasing end-to-end | Belum dibuka | Gate G5 |
 | Finance posting/reconciliation | Belum dibuka | Gate G6 |
 
@@ -43,7 +43,7 @@ Status operasional detail dan manual gate terbaru ada di
 
 ```text
 backoffice/   Next.js Backoffice untuk master dan administrasi
-pwa/          React/Vite PWA kasir; belum menjadi production checkout
+pwa/          React/Vite PWA kasir; online canonical checkout local-ready
 supabase/     migration, diagnostic, behavioral test, dan schema reference
 docs/         requirement, spesifikasi, audit, runbook, dan handoff
 ```
@@ -105,6 +105,26 @@ NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY atau NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY  # server-only; tidak boleh masuk client
 ```
+
+PWA memakai nama environment yang terdapat pada `pwa/.env.example`:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Pada development monorepo, placeholder PWA otomatis fallback hanya ke
+`NEXT_PUBLIC_SUPABASE_URL` dan public publishable key dari
+`backoffice/.env.local`. Deployment PWA tetap wajib mengisi variable `VITE_*`;
+service-role key tidak pernah diteruskan ke bundle browser.
+
+Cashier biasa dibuat dari `Kontak > User & Akses` dan wajib dipasangkan ke
+Toko. Super Admin serta Company Owner/Admin mewarisi aksi Cashier sesuai
+kontrak. Store Manager dapat memakai POS hanya pada Toko assignment aktifnya.
+Seluruh operator tetap harus memilih Terminal aktif dan Gudang sale-source.
+Jika access token browser sudah ditolak Supabase sebagai `INVALID_SESSION`,
+Backoffice membersihkan sesi lokal dan kembali ke layar login; restart server
+tidak lagi membiarkan aplikasi terkunci pada token kedaluwarsa.
 
 ## Database dan Rollout
 
@@ -172,6 +192,18 @@ Requirement lengkap:
 - Code-less simple master import rollout: [`docs/runbooks/G2_PHASE38_CODELESS_MASTER_IMPORT_ROLLOUT.md`](docs/runbooks/G2_PHASE38_CODELESS_MASTER_IMPORT_ROLLOUT.md)
 - Code-less Import UI cutover: [`docs/runbooks/G2_PHASE39_CODELESS_MASTER_IMPORT_UI_CUTOVER.md`](docs/runbooks/G2_PHASE39_CODELESS_MASTER_IMPORT_UI_CUTOVER.md)
 - Fixed CSV contracts: [`docs/MASTER_IMPORT_FIXED_CSV_CONTRACTS.md`](docs/MASTER_IMPORT_FIXED_CSV_CONTRACTS.md)
+- Kartu Stok API/UI smoke: [`docs/runbooks/G3_PHASE5_STOCK_MOVEMENT_API_UI.md`](docs/runbooks/G3_PHASE5_STOCK_MOVEMENT_API_UI.md)
+- Stock Transfer preflight: [`docs/runbooks/G3_PHASE6_STOCK_TRANSFER_PREFLIGHT.md`](docs/runbooks/G3_PHASE6_STOCK_TRANSFER_PREFLIGHT.md)
+- Stock Transfer database rollout: [`docs/runbooks/G3_PHASE6_STOCK_TRANSFER_FOUNDATION_ROLLOUT.md`](docs/runbooks/G3_PHASE6_STOCK_TRANSFER_FOUNDATION_ROLLOUT.md)
+- Stock Transfer API/UI smoke: [`docs/runbooks/G3_PHASE7_STOCK_TRANSFER_API_UI.md`](docs/runbooks/G3_PHASE7_STOCK_TRANSFER_API_UI.md)
+- Stock Adjustment preflight: [`docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_PREFLIGHT.md`](docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_PREFLIGHT.md)
+- Stock Adjustment database rollout: [`docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_FOUNDATION_ROLLOUT.md`](docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_FOUNDATION_ROLLOUT.md)
+- Stock Adjustment API/UI smoke: [`docs/runbooks/G3_PHASE9_STOCK_ADJUSTMENT_API_UI.md`](docs/runbooks/G3_PHASE9_STOCK_ADJUSTMENT_API_UI.md)
+- Stock Opname preflight: [`docs/runbooks/G3_PHASE10_STOCK_OPNAME_PREFLIGHT.md`](docs/runbooks/G3_PHASE10_STOCK_OPNAME_PREFLIGHT.md)
+- Stock Opname database rollout: [`docs/runbooks/G3_PHASE10_STOCK_OPNAME_FOUNDATION_ROLLOUT.md`](docs/runbooks/G3_PHASE10_STOCK_OPNAME_FOUNDATION_ROLLOUT.md)
+- Stock Opname Backoffice review/report smoke: [`docs/runbooks/G3_PHASE11_STOCK_OPNAME_BACKOFFICE_API_UI.md`](docs/runbooks/G3_PHASE11_STOCK_OPNAME_BACKOFFICE_API_UI.md)
+- Bundle foundation preflight: [`docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md`](docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md)
+- Bundle foundation database rollout: [`docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md`](docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md)
 
 ## Aturan Pembaruan README
 

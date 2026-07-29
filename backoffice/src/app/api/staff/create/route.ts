@@ -44,6 +44,12 @@ export async function POST(request: Request) {
     if (!ALLOWED_ROLES.has(roleCode)) {
       return Response.json({ error: 'ROLE_NOT_ALLOWED' }, { status: 400 })
     }
+    if (roleCode === 'CASHIER' && (!storeId || storeId === 'NONE')) {
+      return Response.json(
+        { error: 'CASHIER_STORE_ASSIGNMENT_REQUIRED' },
+        { status: 400 },
+      )
+    }
     if (!(await canManageCompany(caller, companyId))) {
       return Response.json({ error: 'FORBIDDEN' }, { status: 403 })
     }

@@ -125,21 +125,23 @@ INSERT INTO public.store_memberships(
 );
 
 INSERT INTO public.cashier_sessions(
-    id,session_code,cashier_id,company_id,store_id,pos_id
+    id,session_code,cashier_id,company_id,store_id,pos_id,status
 ) VALUES
     (
         '00000000-0000-0000-0000-000000009051','G9-SA',
         '00000000-0000-0000-0000-000000009092',
         '00000000-0000-0000-0000-000000009001',
         '00000000-0000-0000-0000-000000009011',
-        '00000000-0000-0000-0000-000000009021'
+        '00000000-0000-0000-0000-000000009021',
+        'CLOSED'::session_status
     ),
     (
         '00000000-0000-0000-0000-000000009052','G9-SB',
         '00000000-0000-0000-0000-000000009092',
         '00000000-0000-0000-0000-000000009002',
         '00000000-0000-0000-0000-000000009012',
-        '00000000-0000-0000-0000-000000009022'
+        '00000000-0000-0000-0000-000000009022',
+        'CLOSED'::session_status
     );
 
 INSERT INTO public.sales_headers(
@@ -281,14 +283,14 @@ INSERT INTO public.stock_movements(
     (
         '00000000-0000-0000-0000-000000009041',
         '00000000-0000-0000-0000-000000009031',-2,
-        'ADJUSTMENT'::stock_movement_type,'stock_adjustments',
+        'PURCHASE_RETURN'::stock_movement_type,'stock_adjustments',
         '00000000-0000-0000-0000-000000009111',
         '00000000-0000-0000-0000-000000009001'
     ),
     (
         '00000000-0000-0000-0000-000000009042',
         '00000000-0000-0000-0000-000000009032',-3,
-        'ADJUSTMENT'::stock_movement_type,'stock_adjustments',
+        'PURCHASE_RETURN'::stock_movement_type,'stock_adjustments',
         '00000000-0000-0000-0000-000000009113',
         '00000000-0000-0000-0000-000000009002'
     );
@@ -304,7 +306,7 @@ BEGIN
         ) VALUES (
             '00000000-0000-0000-0000-000000009042',
             '00000000-0000-0000-0000-000000009031',1,
-            'ADJUSTMENT'::stock_movement_type,'G1_PHASE5E_TEST',
+            'PURCHASE'::stock_movement_type,'G1_PHASE5E_TEST',
             '00000000-0000-0000-0000-000000009111',
             '00000000-0000-0000-0000-000000009001'
         );

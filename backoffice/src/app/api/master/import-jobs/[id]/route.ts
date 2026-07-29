@@ -21,7 +21,7 @@ export async function GET(request: Request, context: RouteContext) {
       caller.client.from('master_import_jobs').select(jobFields)
         .eq('company_id', companyId).eq('id', id).maybeSingle(),
       caller.client.from('master_import_rows')
-        .select('row_number,source_data,operation,row_status,warnings,errors,before_state,after_state')
+        .select('row_number,group_key,source_data,operation,row_status,warnings,errors,before_state,after_state')
         .eq('company_id', companyId).eq('job_id', id).order('row_number').limit(5000),
       caller.client.from('master_import_job_events')
         .select('event_type,after_state,created_at')

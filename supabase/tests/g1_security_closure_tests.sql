@@ -142,21 +142,23 @@ INSERT INTO public.store_memberships(
 );
 
 INSERT INTO public.cashier_sessions(
-    id,session_code,cashier_id,company_id,store_id,pos_id
+    id,session_code,cashier_id,company_id,store_id,pos_id,status
 ) VALUES
     (
         '00000000-0000-0000-0000-000000010051','G10-SA',
         '00000000-0000-0000-0000-000000010093',
         '00000000-0000-0000-0000-000000010001',
         '00000000-0000-0000-0000-000000010011',
-        '00000000-0000-0000-0000-000000010021'
+        '00000000-0000-0000-0000-000000010021',
+        'CLOSED'::session_status
     ),
     (
         '00000000-0000-0000-0000-000000010052','G10-SB',
         '00000000-0000-0000-0000-000000010093',
         '00000000-0000-0000-0000-000000010002',
         '00000000-0000-0000-0000-000000010012',
-        '00000000-0000-0000-0000-000000010022'
+        '00000000-0000-0000-0000-000000010022',
+        'CLOSED'::session_status
     );
 
 INSERT INTO public.sales_headers(
@@ -204,17 +206,20 @@ INSERT INTO public.stock_movements(
     product_id,warehouse_id,qty_change,movement_type,
     reference_table,reference_id,company_id
 ) VALUES
+    -- These are rollback-only tenant-visibility fixtures, not canonical
+    -- Adjustment documents. PURCHASE keeps the positive movement semantically
+    -- valid without bypassing the G3 Adjustment snapshot/source constraint.
     (
         '00000000-0000-0000-0000-000000010041',
         '00000000-0000-0000-0000-000000010031',1,
-        'ADJUSTMENT'::stock_movement_type,'G1_CLOSURE_TEST',
+        'PURCHASE'::stock_movement_type,'G1_CLOSURE_TEST',
         '00000000-0000-0000-0000-000000010061',
         '00000000-0000-0000-0000-000000010001'
     ),
     (
         '00000000-0000-0000-0000-000000010042',
         '00000000-0000-0000-0000-000000010032',1,
-        'ADJUSTMENT'::stock_movement_type,'G1_CLOSURE_TEST',
+        'PURCHASE'::stock_movement_type,'G1_CLOSURE_TEST',
         '00000000-0000-0000-0000-000000010062',
         '00000000-0000-0000-0000-000000010002'
     );

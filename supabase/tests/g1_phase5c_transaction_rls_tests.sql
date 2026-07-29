@@ -52,9 +52,11 @@ INSERT INTO public.company_memberships(company_id,user_id,role_code,status,is_de
 INSERT INTO public.store_memberships(company_id,store_id,user_id,role_code,status) VALUES
     ('00000000-0000-0000-0000-000000007001','00000000-0000-0000-0000-000000007011','00000000-0000-0000-0000-000000007092','CASHIER','ACTIVE');
 
-INSERT INTO public.cashier_sessions(id,session_code,cashier_id,company_id,store_id,pos_id) VALUES
-    ('00000000-0000-0000-0000-000000007051','G7-SA','00000000-0000-0000-0000-000000007092','00000000-0000-0000-0000-000000007001','00000000-0000-0000-0000-000000007011','00000000-0000-0000-0000-000000007021'),
-    ('00000000-0000-0000-0000-000000007052','G7-SB','00000000-0000-0000-0000-000000007092','00000000-0000-0000-0000-000000007002','00000000-0000-0000-0000-000000007012','00000000-0000-0000-0000-000000007022');
+INSERT INTO public.cashier_sessions(
+    id,session_code,cashier_id,company_id,store_id,pos_id,status
+) VALUES
+    ('00000000-0000-0000-0000-000000007051','G7-SA','00000000-0000-0000-0000-000000007092','00000000-0000-0000-0000-000000007001','00000000-0000-0000-0000-000000007011','00000000-0000-0000-0000-000000007021','CLOSED'::session_status),
+    ('00000000-0000-0000-0000-000000007052','G7-SB','00000000-0000-0000-0000-000000007092','00000000-0000-0000-0000-000000007002','00000000-0000-0000-0000-000000007012','00000000-0000-0000-0000-000000007022','CLOSED'::session_status);
 
 INSERT INTO public.sales_headers(id,invoice_no,session_id,company_id,store_id,pos_id,created_by) VALUES
     ('00000000-0000-0000-0000-000000007061','G7-INV-A-C','00000000-0000-0000-0000-000000007051','00000000-0000-0000-0000-000000007001','00000000-0000-0000-0000-000000007011','00000000-0000-0000-0000-000000007021','00000000-0000-0000-0000-000000007092'),
@@ -140,20 +142,33 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: direct transaction mutation privilege remains';
     END IF;
 
-    BEGIN
-        PERFORM public.create_sales_transaction(
-            'G7-CROSS-CHECKOUT','00000000-0000-0000-0000-000000007052',
-            NULL,FALSE,NULL,FALSE,NULL,0,0,0,0,0,0,
-            'DRAFT'::payment_status,'00000000-0000-0000-0000-000000007092',
-            '{}'::jsonb,'[]'::jsonb,'[]'::jsonb
-        );
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'ACTIVE_COMPANY_MISMATCH' THEN
-            v_blocked := TRUE;
-        ELSE
-            RAISE EXCEPTION 'TEST_FAILED with unexpected checkout error: %',SQLERRM;
-        END IF;
-    END;
+    -- G4 retires browser execution of the public legacy wrapper. Before G4,
+    -- this branch still verifies the older active-Company rejection.
+    IF NOT has_function_privilege(
+        'authenticated',
+        'public.create_sales_transaction(text,uuid,uuid,boolean,timestamp with time zone,boolean,text,numeric,numeric,numeric,numeric,numeric,numeric,payment_status,uuid,jsonb,jsonb,jsonb)',
+        'EXECUTE'
+    ) THEN
+        v_blocked := TRUE;
+    ELSE
+        BEGIN
+            PERFORM public.create_sales_transaction(
+                'G7-CROSS-CHECKOUT',
+                '00000000-0000-0000-0000-000000007052',
+                NULL,FALSE,NULL,FALSE,NULL,0,0,0,0,0,0,
+                'DRAFT'::payment_status,
+                '00000000-0000-0000-0000-000000007092',
+                '{}'::jsonb,'[]'::jsonb,'[]'::jsonb
+            );
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLERRM = 'ACTIVE_COMPANY_MISMATCH' THEN
+                v_blocked := TRUE;
+            ELSE
+                RAISE EXCEPTION
+                    'TEST_FAILED with unexpected checkout error: %',SQLERRM;
+            END IF;
+        END;
+    END IF;
 
     IF NOT v_blocked THEN
         RAISE EXCEPTION 'TEST_FAILED: checkout ignored active Company';

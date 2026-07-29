@@ -51,6 +51,7 @@ type Job = {
 
 type ImportRow = {
   row_number: number
+  group_key: string | null
   source_data: Record<string, unknown>
   operation: 'PENDING' | 'CREATE' | 'UPDATE' | 'SKIP' | 'ERROR'
   row_status: string
@@ -99,6 +100,23 @@ const fieldLabels: Record<string, string> = {
   allowManualPosting: 'Boleh jurnal manual',
   allowReconciliation: 'Boleh rekonsiliasi',
   systemKey: 'System Event', description: 'Deskripsi',
+  sku: 'SKU', productName: 'Nama Product', categoryId: 'Kategori',
+  baseUomId: 'UOM dasar', weightReferenceUomId: 'UOM acuan berat',
+  weightPerReferenceUomKg: 'Berat UOM terbesar', uoms: 'Daftar UOM',
+  imageUrl: 'URL gambar', salesTaxRuleId: 'Pajak penjualan',
+  purchaseTaxRuleId: 'Pajak pembelian',
+  productKey: 'Kunci grup Product', categoryName: 'Nama kategori',
+  uomName: 'Nama satuan', factorToBase: 'Isi satuan dalam UOM dasar',
+  purchaseAllowed: 'Dapat dibeli', salesAllowed: 'Dapat dijual',
+  purchasePrice: 'Harga beli', salePrice: 'Harga jual', barcode: 'Barcode',
+  salesTaxRuleName: 'Pajak penjualan',
+  purchaseTaxRuleName: 'Pajak pembelian',
+  weightPerLargestUomKg: 'Berat UOM terbesar',
+  productId: 'Product', supplierId: 'Supplier',
+  purchaseUomId: 'UOM pembelian',
+  supplierProductCode: 'Kode Product dari Supplier',
+  referencePurchasePrice: 'Harga beli referensi',
+  isPreferredSupplier: 'Supplier utama',
 }
 const errorLabels: Record<string, string> = {
   CODE_REQUIRED: 'Identitas sistem belum dapat dibuat.', NAME_REQUIRED: 'Nama wajib diisi.',
@@ -132,6 +150,69 @@ const errorLabels: Record<string, string> = {
   SYSTEM_CUSTOMER_CATEGORY_IMMUTABLE: 'Kategori pelanggan bawaan sistem tidak boleh diubah.',
   REQUIRED_TRANSACTION_CATEGORY_CANNOT_BE_DISABLED: 'Kategori transaksi wajib tidak boleh dinonaktifkan.',
   REQUIRED_TRANSACTION_CATEGORY_SYSTEM_EVENT_LOCKED: 'System Event kategori transaksi wajib tidak boleh diubah.',
+  INVALID_PRODUCT_KEY: 'Kunci grup Product wajib diisi.',
+  INVALID_PRODUCT_SKU: 'SKU Product wajib dan maksimal 100 karakter.',
+  INVALID_PRODUCT_NAME: 'Nama Product wajib dan maksimal 200 karakter.',
+  PRODUCT_CATEGORY_NAME_REQUIRED: 'Nama kategori Product wajib diisi.',
+  UOM_NAME_REQUIRED: 'Nama satuan wajib diisi.',
+  PRODUCT_UOM_FACTOR_BELOW_BASE: 'Isi satuan minimal 1 UOM dasar.',
+  POSITIVE_REFERENCE_WEIGHT_REQUIRED: 'Berat UOM terbesar harus lebih dari nol.',
+  PRODUCT_UOM_PRICE_NEGATIVE: 'Harga beli/jual tidak boleh negatif.',
+  PURCHASE_PRICE_REQUIRED: 'Harga beli wajib diisi untuk UOM pembelian.',
+  SALE_PRICE_REQUIRED: 'Harga jual wajib diisi untuk UOM penjualan.',
+  ACTIVE_PRODUCT_CATEGORY_NOT_FOUND: 'Kategori aktif tidak ditemukan pada Company ini.',
+  ACTIVE_PRODUCT_UOM_NOT_FOUND: 'Nama UOM aktif tidak ditemukan pada Company ini.',
+  ACTIVE_SALES_TAX_RULE_NOT_FOUND: 'Aturan pajak penjualan aktif tidak ditemukan.',
+  ACTIVE_PURCHASE_TAX_RULE_NOT_FOUND: 'Aturan pajak pembelian aktif tidak ditemukan.',
+  PRODUCT_GROUP_HAS_INVALID_ROW: 'Satu atau lebih baris dalam grup Product bermasalah.',
+  PRODUCT_UOM_ROW_LIMIT_EXCEEDED: 'Satu Product maksimal memiliki 20 baris UOM.',
+  INCONSISTENT_PRODUCT_GROUP_HEADER: 'SKU, nama, kategori, status, pajak, dan berat harus sama pada seluruh baris grup.',
+  DUPLICATE_PRODUCT_UOM: 'Nama UOM tidak boleh berulang dalam satu Product.',
+  EXACTLY_ONE_BASE_UOM_REQUIRED: 'Tepat satu UOM harus memiliki isi satuan 1.',
+  ACTIVE_SALES_UOM_REQUIRED: 'Product wajib memiliki minimal satu UOM penjualan.',
+  ACTIVE_PURCHASE_UOM_REQUIRED: 'Product wajib memiliki minimal satu UOM pembelian.',
+  DUPLICATE_PRODUCT_BARCODE: 'Barcode UOM duplikat dalam satu Product.',
+  LARGEST_PRODUCT_UOM_FACTOR_NOT_UNIQUE: 'UOM terbesar harus tunggal; jangan gunakan faktor terbesar yang sama.',
+  AMBIGUOUS_PRODUCT_MATCH: 'Nama Product cocok dengan lebih dari satu data existing.',
+  IMPORT_UPDATE_TARGET_NOT_FOUND: 'Data existing untuk update tidak ditemukan.',
+  DUPLICATE_PRODUCT_SKU: 'SKU sudah digunakan Product lain.',
+  IMPORT_CREATE_ONLY_MATCHED_EXISTING: 'Data sudah ada sementara mode hanya membuat data baru.',
+  BUNDLE_PRODUCT_IMPORT_NOT_SUPPORTED: 'Product Bundle hanya dapat diekspor dan belum dapat diubah lewat import ini.',
+  PRODUCT_STRUCTURE_LOCKED_BY_TRANSACTION_HISTORY: 'SKU, Base UOM, dan struktur konversi tidak dapat diubah karena Product sudah memiliki histori transaksi.',
+  DUPLICATE_PRODUCT_GROUP_IDENTITY: 'SKU atau nama Product dipakai oleh lebih dari satu product_key dalam file.',
+  PRODUCT_GROUP_COMMIT_FAILED: 'Grup Product gagal disimpan. Periksa kembali preview dan data master referensi.',
+  INVALID_SUPPLIER_NAME: 'Nama Supplier wajib dan maksimal 200 karakter.',
+  INVALID_PURCHASE_UOM_NAME: 'Nama UOM pembelian wajib dan maksimal 200 karakter.',
+  SUPPLIER_PRODUCT_CODE_TOO_LONG: 'Kode Product dari Supplier maksimal 200 karakter.',
+  INVALID_PRODUCT_SUPPLIER_VALUE: 'Harga atau status relasi Product–Supplier tidak valid.',
+  REFERENCE_PURCHASE_PRICE_NEGATIVE: 'Harga beli referensi tidak boleh negatif.',
+  PREFERRED_SUPPLIER_MUST_BE_ACTIVE: 'Supplier utama harus menggunakan relasi aktif.',
+  ACTIVE_STOCK_PRODUCT_NOT_FOUND: 'Product stock aktif dengan SKU tersebut tidak ditemukan pada Company ini.',
+  AMBIGUOUS_PRODUCT_REFERENCE: 'SKU Product cocok dengan lebih dari satu data.',
+  ACTIVE_SUPPLIER_NOT_FOUND: 'Supplier aktif tidak ditemukan pada Company ini.',
+  AMBIGUOUS_SUPPLIER_REFERENCE: 'Nama Supplier cocok dengan lebih dari satu data.',
+  ACTIVE_PURCHASE_PRODUCT_UOM_NOT_FOUND: 'Nama UOM tersebut tidak aktif atau tidak diizinkan untuk pembelian Product ini.',
+  AMBIGUOUS_PURCHASE_UOM_REFERENCE: 'Nama UOM pembelian cocok dengan lebih dari satu data.',
+  PRODUCT_SUPPLIER_ID_NOT_FOUND: 'ID internal relasi Product–Supplier tidak ditemukan pada Company ini.',
+  IMPORT_INTERNAL_ID_REQUIRED_FOR_UPDATE: 'Gunakan ID internal dari hasil export untuk memperbarui relasi existing pada mode ID.',
+  PRODUCT_SUPPLIER_IDENTITY_MISMATCH: 'ID relasi tidak cocok dengan Product dan Supplier pada baris ini.',
+  DUPLICATE_PRODUCT_SUPPLIER_IN_FILE: 'Relasi Product dan Supplier yang sama muncul lebih dari sekali dalam file.',
+  MULTIPLE_ACTIVE_PREFERRED_SUPPLIER: 'Satu Product hanya boleh memiliki satu Supplier utama aktif.',
+  PRODUCT_SUPPLIER_COMMIT_FAILED: 'Relasi gagal disimpan. Muat ulang data referensi lalu validasi kembali.',
+  INVALID_WAREHOUSE_NAME: 'Nama Gudang wajib dan maksimal 200 karakter.',
+  INVALID_MINIMUM_STOCK_VALUE: 'Minimum Stock harus berupa angka yang valid.',
+  MINIMUM_STOCK_NEGATIVE: 'Minimum Stock tidak boleh negatif.',
+  MINIMUM_STOCK_TOO_LARGE: 'Nilai Minimum Stock terlalu besar.',
+  MINIMUM_STOCK_REQUIRED_WHEN_ALERT_ENABLED: 'Minimum Stock wajib diisi ketika notifikasi aktif.',
+  ACTIVE_STOCK_PRODUCT_WITH_BASE_UOM_NOT_FOUND: 'Product stok aktif dengan Base UOM valid tidak ditemukan.',
+  ACTIVE_WAREHOUSE_NOT_FOUND: 'Gudang aktif tidak ditemukan pada Company ini.',
+  AMBIGUOUS_WAREHOUSE_REFERENCE: 'Nama Gudang cocok dengan lebih dari satu data.',
+  MINIMUM_STOCK_BASE_UOM_REQUIRES_INTEGER: 'Base UOM Product hanya menerima quantity bilangan bulat.',
+  MINIMUM_STOCK_BASE_UOM_PRECISION_EXCEEDED: 'Jumlah desimal melebihi presisi Base UOM Product.',
+  MINIMUM_STOCK_SETTING_ID_NOT_FOUND: 'ID internal pengaturan Minimum Stock tidak ditemukan.',
+  MINIMUM_STOCK_SETTING_IDENTITY_MISMATCH: 'ID pengaturan tidak cocok dengan Product dan Gudang pada baris.',
+  DUPLICATE_PRODUCT_WAREHOUSE_IN_FILE: 'Pasangan Product dan Gudang muncul lebih dari sekali dalam file.',
+  MINIMUM_STOCK_COMMIT_FAILED: 'Pengaturan Minimum Stock gagal disimpan. Validasi ulang data terbaru.',
 }
 
 function authHeaders(session: Session, json = false) {
@@ -220,6 +301,9 @@ function friendlyError(code?: string) {
     IMPORT_INTERNAL_ID_MAPPING_REQUIRED: 'Mode identitas internal wajib memetakan kolom ID internal.',
     IMPORT_CODE_NAME_MAPPING_REQUIRED: 'Database Import belum menerima template tanpa kode. Terapkan rollout terbaru.',
     IMPORT_NAME_MAPPING_REQUIRED: 'Kolom nama wajib dipetakan.',
+    IMPORT_PRODUCT_MAPPING_REQUIRED: 'Kolom wajib template Product belum dipetakan.',
+    IMPORT_PRODUCT_SUPPLIER_MAPPING_REQUIRED: 'Kolom wajib template Relasi Produk–Supplier belum dipetakan.',
+    IMPORT_MINIMUM_STOCK_MAPPING_REQUIRED: 'Kolom wajib template Minimum Stock belum dipetakan.',
   }
   return messages[first ?? ''] ?? errorLabels[first ?? ''] ?? first ?? 'Proses import gagal.'
 }
@@ -401,6 +485,22 @@ export function MasterImportView({
 
   const storeNames = Object.fromEntries((detail?.stores ?? []).map((store) => [store.id, store.store_name]))
   const activeMapping = detail?.data?.mapping ?? mapping
+  const isProductPreview = detail?.data?.import_type === 'PRODUCT'
+  const isProductSupplierPreview = detail?.data?.import_type === 'PRODUCT_SUPPLIER'
+  const isMinimumStockPreview =
+    detail?.data?.import_type === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK'
+  const productPreviewGroups = (() => {
+    if (!isProductPreview) return [] as { key: string; rows: ImportRow[] }[]
+    const grouped = new Map<string, ImportRow[]>()
+    for (const row of detail?.rows ?? []) {
+      const sourceKey = activeMapping.productKey
+        ? String(row.source_data[activeMapping.productKey] ?? '')
+        : ''
+      const key = row.group_key || sourceKey || `Baris ${row.row_number}`
+      grouped.set(key, [...(grouped.get(key) ?? []), row])
+    }
+    return Array.from(grouped, ([key, rows]) => ({ key, rows }))
+  })()
 
   function displayValue(key: string, value: unknown) {
     if (key === 'storeId') return value ? storeNames[String(value)] ?? 'Toko terkait' : '-'
@@ -415,6 +515,79 @@ export function MasterImportView({
     return Object.keys(after).filter((key) => !['id', 'code', 'masterVersion'].includes(key))
       .filter((key) => row.operation !== 'UPDATE' || JSON.stringify(after[key]) !== JSON.stringify(before[key]))
       .slice(0, 5)
+  }
+
+  function sourceValue(row: ImportRow, field: string) {
+    const column = activeMapping[field]
+    const value = column ? row.source_data[column] : undefined
+    return value === null || value === undefined || value === '' ? '-' : String(value)
+  }
+
+  function productRowSummary(row: ImportRow) {
+    const isTrue = (value: string) =>
+      ['true', 't', '1', 'yes', 'ya', 'aktif'].includes(value.trim().toLowerCase())
+    const uses = [
+      isTrue(sourceValue(row, 'purchaseAllowed')) ? 'Beli' : '',
+      isTrue(sourceValue(row, 'salesAllowed')) ? 'Jual' : '',
+    ].filter(Boolean).join(' & ') || 'Tidak dipakai transaksi'
+    return `Isi ${sourceValue(row, 'factorToBase')} UOM dasar · ${uses} · Harga beli ${sourceValue(row, 'purchasePrice')} · Harga jual ${sourceValue(row, 'salePrice')}`
+  }
+
+  function productSupplierRowSummary(row: ImportRow) {
+    const preferred = ['true', 't', '1', 'yes', 'ya', 'aktif']
+      .includes(sourceValue(row, 'isPreferredSupplier').trim().toLowerCase())
+    const active = !['false', 'f', '0', 'no', 'tidak', 'nonaktif']
+      .includes(sourceValue(row, 'isActive').trim().toLowerCase())
+    return `Product ${sourceValue(row, 'productSku')} · UOM beli ${sourceValue(row, 'purchaseUomName')} · Harga referensi ${sourceValue(row, 'referencePurchasePrice')} · ${preferred ? 'Supplier utama' : 'Supplier alternatif'} · ${active ? 'Aktif' : 'Nonaktif'}`
+  }
+
+  function minimumStockRowSummary(row: ImportRow) {
+    const alert = ['true', 't', '1', 'yes', 'ya', 'aktif']
+      .includes(sourceValue(row, 'lowStockAlertEnabled').trim().toLowerCase())
+    return `Gudang ${sourceValue(row, 'warehouseName')} · Minimum ${sourceValue(row, 'minimumStockBaseQty')} Base UOM · Notifikasi ${alert ? 'aktif' : 'nonaktif'}`
+  }
+
+  function previewRow(
+    row: ImportRow,
+    product = false,
+    productSupplier = false,
+    minimumStock = false,
+  ) {
+    const name = minimumStock
+      ? `SKU ${sourceValue(row, 'productSku')}`
+      : productSupplier
+      ? sourceValue(row, 'supplierName')
+      : product
+        ? sourceValue(row, 'uomName')
+        : String(row.after_state?.name ?? row.before_state?.name ?? row.source_data[activeMapping.name] ?? '-')
+    return <tr key={row.row_number} className="align-top">
+      <td className="px-4 py-3 font-semibold text-slate-500">{row.row_number}</td>
+      <td className="px-4 py-3">
+        <p className="font-bold text-slate-900">{name}</p>
+        {product && <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{productRowSummary(row)}</p>}
+        {productSupplier && <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{productSupplierRowSummary(row)}</p>}
+        {minimumStock && <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{minimumStockRowSummary(row)}</p>}
+      </td>
+      <td className="px-4 py-3">
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${operationStyles[row.operation] ?? 'bg-slate-100 text-slate-600'}`}>
+          {operationText[row.operation] ?? row.operation}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-slate-600">
+        {row.errors.length > 0
+          ? <ul className="space-y-1 text-rose-700">{row.errors.map((item, index) => <li key={`${item.code}-${index}`}>{errorLabels[item.code ?? ''] ?? item.code}</li>)}</ul>
+          : product
+            ? <span>{row.operation === 'SKIP' ? 'Tidak ada perubahan.' : 'Baris UOM valid dan akan disimpan bersama seluruh grup Product.'}</span>
+            : productSupplier
+              ? <span>{row.operation === 'SKIP' ? 'Tidak ada perubahan.' : row.operation === 'UPDATE' ? 'Relasi existing akan diperbarui sesuai nilai di atas.' : 'Relasi Product–Supplier baru siap disimpan.'}</span>
+              : minimumStock
+                ? <span>{row.operation === 'SKIP' ? 'Tidak ada perubahan.' : row.operation === 'UPDATE' ? 'Batas dan status notifikasi akan diperbarui.' : 'Pengaturan Minimum Stock baru siap disimpan.'}</span>
+            : <div className="space-y-1">
+                {changes(row).map((key) => <p key={key}><span className="font-semibold">{fieldLabels[key] ?? key}:</span> {row.operation === 'UPDATE' && <><span className="line-through opacity-60">{displayValue(key, row.before_state?.[key])}</span> → </>}{displayValue(key, row.after_state?.[key])}</p>)}
+                {row.operation === 'SKIP' && <span>Tidak ada perubahan.</span>}
+              </div>}
+      </td>
+    </tr>
   }
 
   return (
@@ -452,6 +625,12 @@ export function MasterImportView({
               <option value="REFERENCE_BY_NAME">
                 {importType === 'CHART_OF_ACCOUNT'
                   ? 'Cocokkan berdasarkan kode akun'
+                  : importType === 'PRODUCT'
+                    ? 'Cocokkan berdasarkan SKU atau nama Product'
+                  : importType === 'PRODUCT_SUPPLIER'
+                    ? 'Cocokkan berdasarkan Product + Supplier'
+                    : importType === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK'
+                      ? 'Cocokkan berdasarkan Product + Gudang'
                   : 'Cocokkan berdasarkan nama'}
               </option>
               <option value="REFERENCE_BY_ID">Cocokkan ID internal dari hasil export</option>
@@ -468,6 +647,23 @@ export function MasterImportView({
           {referenceMode === 'REFERENCE_BY_ID' && <p className="mt-1 text-amber-700">Gunakan ID internal hanya dari file export aplikasi; user tidak perlu membuat atau menghafalnya.</p>}
           {['CUSTOMER_CATEGORY', 'CHART_OF_ACCOUNT', 'TRANSACTION_CATEGORY'].includes(importType)
             && <p className="mt-1 text-amber-700">Baris bawaan sistem ikut tersedia di export untuk referensi, tetapi akan ditolak bila dicoba diubah lewat import.</p>}
+          {importType === 'PRODUCT' && <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3 text-emerald-900">
+            <p className="font-bold">Cara mengisi Product:</p>
+            <p className="mt-1">Gunakan product_key yang sama untuk seluruh satuan milik satu Product. Satu baris harus berisi faktor 1 sebagai UOM dasar; faktor terbesar menjadi UOM acuan berat.</p>
+            <p className="mt-1 font-semibold text-amber-700">Stok dan Saldo Awal tidak ikut diimpor dari file ini.</p>
+            <p className="mt-1 text-amber-700">Product Bundle tersedia di export sebagai referensi, tetapi belum dapat dibuat atau diubah lewat import ini.</p>
+          </div>}
+          {importType === 'PRODUCT_SUPPLIER' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
+            <p className="font-bold">Cara mengisi relasi Product–Supplier:</p>
+            <p className="mt-1">Isi SKU Product, nama Supplier, dan nama UOM yang memang aktif untuk pembelian Product tersebut. Product, Supplier, dan UOM harus dibuat lebih dahulu.</p>
+            <p className="mt-1">Untuk mengganti Supplier utama dalam satu file: set Supplier lama menjadi <span className="font-bold">false</span>, lalu Supplier baru menjadi <span className="font-bold">true</span>.</p>
+            <p className="mt-1 font-semibold text-amber-700">Harga ini hanya referensi master. Harga pembelian terakhir, transaksi, dan stok tidak ikut berubah.</p>
+          </div>}
+          {importType === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK' && <div className="mt-3 rounded-xl border border-amber-200 bg-white p-3 text-amber-950">
+            <p className="font-bold">Cara mengisi Minimum Stock:</p>
+            <p className="mt-1">Isi SKU Product, nama Gudang, batas stok dalam Base UOM Product, dan status notifikasi. Product serta Gudang harus aktif dan sudah dibuat.</p>
+            <p className="mt-1 font-semibold">File ini hanya mengatur batas notifikasi. Saldo stok, movement, Stock Request, dan Supplier Order tidak dibuat atau diubah.</p>
+          </div>}
         </div>
 
         <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void chooseFile(event.target.files?.[0])} />
@@ -509,19 +705,59 @@ export function MasterImportView({
             {(detail.data.error_rows > 0) && <button onClick={downloadErrors} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-700 hover:bg-rose-50"><Download className="h-4 w-4" /> Unduh baris error</button>}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-            {[
-              { label: 'Total', count: detail.data.total_rows, className: 'bg-slate-50' },
-              { label: 'Data baru', count: detail.data.created_rows, className: 'bg-emerald-50' },
-              { label: 'Diperbarui', count: detail.data.updated_rows, className: 'bg-blue-50' },
-              { label: 'Tidak berubah', count: detail.data.skipped_rows, className: 'bg-slate-50' },
-              { label: 'Error', count: detail.data.error_rows, className: 'bg-rose-50' },
-            ].map((card) => <div key={card.label} className={`rounded-2xl p-4 ${card.className}`}><p className="text-xs font-bold text-slate-500">{card.label}</p><p className="mt-1 text-2xl font-black text-slate-900">{card.count}</p></div>)}
+            {(isProductPreview
+              ? [
+                  { label: 'Baris UOM', count: detail.data.total_rows, className: 'bg-slate-50' },
+                  { label: 'Product baru', count: detail.data.created_rows, className: 'bg-emerald-50' },
+                  { label: 'Product diperbarui', count: detail.data.updated_rows, className: 'bg-blue-50' },
+                  { label: 'Product tetap', count: detail.data.skipped_rows, className: 'bg-slate-50' },
+                  { label: 'Grup error', count: detail.data.error_rows, className: 'bg-rose-50' },
+                ]
+              : isProductSupplierPreview
+                ? [
+                    { label: 'Total relasi', count: detail.data.total_rows, className: 'bg-slate-50' },
+                    { label: 'Relasi baru', count: detail.data.created_rows, className: 'bg-emerald-50' },
+                    { label: 'Relasi diperbarui', count: detail.data.updated_rows, className: 'bg-blue-50' },
+                    { label: 'Tidak berubah', count: detail.data.skipped_rows, className: 'bg-slate-50' },
+                    { label: 'Error', count: detail.data.error_rows, className: 'bg-rose-50' },
+                  ]
+                : isMinimumStockPreview
+                  ? [
+                      { label: 'Total pasangan', count: detail.data.total_rows, className: 'bg-slate-50' },
+                      { label: 'Pengaturan baru', count: detail.data.created_rows, className: 'bg-emerald-50' },
+                      { label: 'Diperbarui', count: detail.data.updated_rows, className: 'bg-blue-50' },
+                      { label: 'Tidak berubah', count: detail.data.skipped_rows, className: 'bg-slate-50' },
+                      { label: 'Error', count: detail.data.error_rows, className: 'bg-rose-50' },
+                    ]
+              : [
+                  { label: 'Total', count: detail.data.total_rows, className: 'bg-slate-50' },
+                  { label: 'Data baru', count: detail.data.created_rows, className: 'bg-emerald-50' },
+                  { label: 'Diperbarui', count: detail.data.updated_rows, className: 'bg-blue-50' },
+                  { label: 'Tidak berubah', count: detail.data.skipped_rows, className: 'bg-slate-50' },
+                  { label: 'Error', count: detail.data.error_rows, className: 'bg-rose-50' },
+                ]
+            ).map((card) => <div key={card.label} className={`rounded-2xl p-4 ${card.className}`}><p className="text-xs font-bold text-slate-500">{card.label}</p><p className="mt-1 text-2xl font-black text-slate-900">{card.count}</p></div>)}
           </div>
+          {isProductPreview && <p className="mt-3 text-xs leading-5 text-slate-500">Ringkasan Product dihitung per <span className="font-bold">product_key</span>; tabel di bawah tetap menampilkan setiap baris UOM agar konversi dan harga dapat diperiksa.</p>}
           <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Baris</th><th className="px-4 py-3">Nama data</th><th className="px-4 py-3">Hasil</th><th className="px-4 py-3">Perubahan / masalah</th></tr></thead>
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Baris</th><th className="px-4 py-3">{isProductPreview ? 'Nama UOM' : isProductSupplierPreview ? 'Nama Supplier' : isMinimumStockPreview ? 'Product & Gudang' : 'Nama data'}</th><th className="px-4 py-3">Hasil</th><th className="px-4 py-3">Perubahan / masalah</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {(detail.rows ?? []).map((row) => <tr key={row.row_number} className="align-top"><td className="px-4 py-3 font-semibold text-slate-500">{row.row_number}</td><td className="px-4 py-3"><p className="font-bold text-slate-900">{String(row.after_state?.name ?? row.before_state?.name ?? row.source_data[activeMapping.name] ?? '-')}</p></td><td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${operationStyles[row.operation] ?? 'bg-slate-100 text-slate-600'}`}>{operationText[row.operation] ?? row.operation}</span></td><td className="px-4 py-3 text-slate-600">{row.errors.length > 0 ? <ul className="space-y-1 text-rose-700">{row.errors.map((item, index) => <li key={`${item.code}-${index}`}>{errorLabels[item.code ?? ''] ?? item.code}</li>)}</ul> : <div className="space-y-1">{changes(row).map((key) => <p key={key}><span className="font-semibold">{fieldLabels[key] ?? key}:</span> {row.operation === 'UPDATE' && <><span className="line-through opacity-60">{displayValue(key, row.before_state?.[key])}</span> → </>}{displayValue(key, row.after_state?.[key])}</p>)}{row.operation === 'SKIP' && <span>Tidak ada perubahan.</span>}</div>}</td></tr>)}
+                {isProductPreview
+                  ? productPreviewGroups.flatMap((group) => {
+                      const firstRow = group.rows[0]
+                      return [
+                        <tr key={`group-${group.key}`} className="bg-blue-50/70">
+                          <td className="px-4 py-3 text-xs font-black uppercase tracking-wide text-blue-700" colSpan={4}>
+                            {sourceValue(firstRow, 'productName')} · SKU {sourceValue(firstRow, 'sku')} · product_key {group.key} · {group.rows.length} UOM
+                          </td>
+                        </tr>,
+                        ...group.rows.map((row) => previewRow(row, true)),
+                      ]
+                    })
+                  : (detail.rows ?? []).map((row) =>
+                      previewRow(row, false, isProductSupplierPreview, isMinimumStockPreview),
+                    )}
               </tbody>
             </table>
           </div>
@@ -529,8 +765,8 @@ export function MasterImportView({
           {detail.data.status === 'VALIDATED' && (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <h3 className="font-black text-amber-950">Konfirmasi sebelum menyimpan</h3>
-              <p className="mt-1 text-sm leading-6 text-amber-900">Yang disimpan hanya {detail.data.created_rows} data baru dan {detail.data.updated_rows} perubahan valid. {detail.data.error_rows} baris bermasalah tidak akan disimpan.</p>
-              {detail.data.updated_rows > 0 && <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-amber-950"><input type="checkbox" checked={confirmUpdate} onChange={(event) => setConfirmUpdate(event.target.checked)} className="mt-1 h-4 w-4" />Saya mengonfirmasi tepat {detail.data.updated_rows} data existing akan diperbarui sesuai preview.</label>}
+              <p className="mt-1 text-sm leading-6 text-amber-900">Yang disimpan hanya {detail.data.created_rows} {isProductPreview ? 'Product baru' : isProductSupplierPreview ? 'relasi baru' : 'data baru'} dan {detail.data.updated_rows} {isProductPreview ? 'Product existing' : isProductSupplierPreview ? 'relasi existing' : 'perubahan valid'}. {detail.data.error_rows} {isProductPreview ? 'grup Product' : 'baris'} bermasalah tidak akan disimpan.</p>
+              {detail.data.updated_rows > 0 && <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-amber-950"><input type="checkbox" checked={confirmUpdate} onChange={(event) => setConfirmUpdate(event.target.checked)} className="mt-1 h-4 w-4" />Saya mengonfirmasi tepat {detail.data.updated_rows} {isProductPreview ? 'Product existing' : isProductSupplierPreview ? 'relasi existing' : 'data existing'} akan diperbarui sesuai preview.</label>}
               <button disabled={busy || (detail.data.updated_rows > 0 && !confirmUpdate)} onClick={() => void commit()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-3 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />} Simpan data valid</button>
             </div>
           )}

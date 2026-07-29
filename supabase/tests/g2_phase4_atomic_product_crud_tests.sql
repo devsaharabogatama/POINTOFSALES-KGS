@@ -225,7 +225,7 @@ BEGIN
         reference_table,reference_id,company_id
     ) VALUES (
         v_product_id,'00000000-0000-0000-0000-000000012031',1,
-        'ADJUSTMENT'::stock_movement_type,'G2_PHASE4_TEST',
+        'PURCHASE'::stock_movement_type,'G2_PHASE4_TEST',
         '00000000-0000-0000-0000-000000012061',
         '00000000-0000-0000-0000-000000012001'
     );

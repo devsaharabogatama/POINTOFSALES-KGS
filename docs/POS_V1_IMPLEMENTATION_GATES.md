@@ -95,8 +95,30 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
   validator sudah PASS; Phase-39 template/export UI dan smoke user selesai;
 - Phase-40 migration, forward fix `20260727100000`, postflight, behavioral
   test, dan Phase-38 regression sudah PASS; Phase-41 template/export/preview
-  UI untuk Customer Category, COA, dan Transaction Category local-ready dan
-  menunggu authenticated smoke;
+  UI untuk Customer Category, COA, dan Transaction Category sudah lulus
+  authenticated smoke;
+- Phase-42 grouped Product Import database, forward fix, postflight,
+  behavioral test, dan regression sudah PASS. Product dan seluruh Product-UOM
+  diproses sebagai satu atomic group melalui guarded Product RPC;
+- Phase-43 Backoffice template/export dan preview grouped Product local-ready
+  untuk authenticated smoke. Ringkasan dihitung per `product_key`, detail
+  memakai nama UOM, dan Opening Stock tetap workflow terpisah;
+- Phase-44 Product-Supplier migration, 11-check postflight, behavioral test,
+  dan regression suite dikonfirmasi PASS. Phase-45 template/export/preview UI
+  lint/build dan authenticated smoke PASS; relasi wajib memakai
+  Product, Supplier, dan UOM pembelian existing, serta preferred Supplier
+  tetap maksimal satu aktif per Product;
+- Phase-46 Minimum Stock Produk–Gudang sudah `COMPLETE`. Threshold menjadi
+  konfigurasi tenant-scoped terpisah dari `product_stocks`, memakai base UOM,
+  bersifat opsional, dan tidak membuat movement, Stock Request, atau Supplier
+  Order otomatis;
+- live Phase-46 preflight seluruhnya `PASS`/`INFO`: satu Product, tiga Gudang,
+  tiga eligible pair, zero balance/movement, zero ambiguity/orphan/job aktif.
+  Migration `20260728090000`, 12-check postflight, behavioral test, dan
+  regression suite dikonfirmasi aman oleh user;
+- Phase-47 Backoffice Minimum Stock guarded API/UI dan fixed CSV
+  template/export/preview local-ready. Threshold ditampilkan dalam nama Base
+  UOM dan tetap stock-neutral; authenticated smoke menunggu user;
 - ekspansi ke seluruh master yang dapat dibuat user memakai kontrak versioned
   pada `MASTER_IMPORT_FIXED_CSV_CONTRACTS.md`;
 - sebelum ekspansi schema/job processor, wajib lulus
@@ -130,6 +152,12 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 
 ## 5. G3 — Stock Ledger, FIFO, Bundle, Opname, dan Adjustment
 
+**Status 2026-07-28:** `COMPLETE AT G3 CORE BOUNDARY`. Integrated stress dan
+regression diteruskan tanpa error; rerun Phase-14 menunjukkan seluruh invariant
+core PASS, `SETUP` tetap expected karena fixture di-rollback, serta coverage
+G4/G5 tetap `DEFERRED`. Sale/Bundle checkout deduction/Sales Return sekarang
+masuk G4; Receipt/Purchase Return tetap G5.
+
 ### Deliverable
 
 - satu atomic stock-posting service/RPC untuk semua movement source;
@@ -162,6 +190,75 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 ---
 
 ## 6. G4 — POS Online/Offline dan Operasional Kasir
+
+**Status aktif 2026-07-29:** Phase 10 true-concurrent Post stress
+`READY FOR STAGING EXECUTION`. User mengonfirmasi migration Phase-4,
+17-check postflight, behavioral test, dan regression clear. PWA production
+entrypoint sekarang memakai login/context, Cashier Session, real Product-UOM,
+canonical Draft/Post, server pricing, shortage Draft, satu payment leg, dan
+receipt snapshot. Checkout offline diblokir eksplisit; offline queue, split
+payment UI, Return, Expense, Deposit, Customer Balance, dan
+Ketul tetap belum dibuka.
+
+Smoke pertama menemukan predicate Session/PWA masih exact-Cashier dan belum
+mengikuti inheritance Super Admin serta Company Owner/Admin yang sudah
+disetujui. Forward fix `20260729080000` dan UI provisioning Cashier dengan Toko
+wajib sudah local-ready; rollout manual dan smoke ulang menjadi gate aktif.
+Smoke Store Manager kemudian membuktikan Store role tersebut belum ikut
+predicate POS walaupun matrix mengizinkan checkout. Forward fix
+`20260729090000` membatasi Store Manager hanya pada Store assignment aktifnya.
+
+User mengonfirmasi Terminal/Gudang sudah terbaca. Phase 5 kemudian menutup
+empat UX gap sebelum roadmap dilanjutkan: layout tablet-first, receipt fallback
+ke tab cetak, reset transaksi segera setelah POSTED, dan pilihan Pricelist
+Cashier. Forward migration `20260729100000` menjaga mode AUTO assignment
+Customer serta membatasi override pada Global eligible atau Pricelist khusus
+Customer terpilih. User kemudian mengonfirmasi rollout dan authenticated tablet
+smoke clear. Phase 6 dimulai dari diagnostic SELECT-only untuk side-effect-free
+Draft, cross-session same-Store access, lifecycle metadata, stale age,
+single-editor heartbeat lock, takeover/force release, cancel, audit, guarded
+RPC, dan direct-write boundary. Split payment tetap belum dibuka.
+
+Live Phase-6 preflight diterima bersih: dependency dan seluruh Draft
+side-effect/identity/snapshot invariant `PASS`, direct browser write seluruhnya
+`false`, zero existing Draft, sedangkan 11 kolom, lima routine, same-Store
+visibility, dan audit action tepat berstatus `SETUP`. Foundation
+`20260729120000` sudah lolos rollout manual dengan nomor/metadata Draft, guarded
+same-Store list, heartbeat lock lima menit, confirmed stale takeover,
+Manager/Admin force release, cancel, audit, serta public Save/Post wrapper yang
+menutup bypass ke private core. PWA sekarang menyediakan daftar Draft per Store,
+resume dengan server repricing dan payment reconfirm, heartbeat, takeover,
+Manager/Admin force release, serta cancel historis. Lint/build lokal PASS;
+authenticated tablet smoke menjadi gate aktif. Split payment belum dibuka.
+
+User kemudian menerima Draft UI dan custom modal sebagai good. Phase 8 dimulai
+dengan diagnostic SELECT-only untuk array payment server, fee per leg,
+minimal dua metode eligible per Store, histori total/snapshot/tender, duplicate
+method, payment-leg idempotency identity, serta browser write boundary. Belum
+ada schema, checkout, stock, event, atau receipt mutation.
+
+Live preflight Phase 8 bersih: tiga dependency dan server multi-leg/per-leg fee
+`PASS`, satu Store memiliki minimal dua metode dari tipe berbeda, satu posted
+Sale/payment konsisten, browser write tertutup, dan belum ada histori split.
+Satu-satunya expected `SETUP` adalah `client_payment_key`. Forward migration
+`20260729150000` menambah stable per-leg UUID, compatibility normalization,
+duplicate key/metode guard, unique persisted identity, serta receipt
+traceability tanpa mengubah calculation. User mengonfirmasi rollout, postflight,
+behavior, dan regression sukses. PWA kini mendukung pembagian exact-total ke
+beberapa metode, per-leg Cash/proof, stable retry key, serta fee estimate yang
+tetap server-authoritative. Setelah user meminta lanjut sesuai rundown, gate
+berpindah ke SELECT-only audit lock/idempotency, single final effect,
+Payment–Movement–FIFO reconciliation, nonnegative stock, dan fixture dua Kasir
+sebelum true concurrent double-post. Offline queue tetap belum dibuka.
+
+Live Phase-10 preflight kemudian seluruhnya `PASS`: fixture mempunyai dua user
+efektif, Terminal, Payment, serta stok/FIFO; public wrapper mengunci Sale;
+private core mengunci stok, memakai FIFO, dan mengembalikan replay idempotent;
+seluruh identity, Payment, Movement, FIFO, balance, dan single-final-effect
+reconciliation bersih. Harness staging-only
+`pwa/scripts/g4-phase10-concurrent-post.mjs` local-ready untuk mengirim hingga
+20 Post bersamaan pada satu Draft disposable dengan satu idempotency key.
+Harness belum dijalankan dan tidak boleh diarahkan ke transaksi produksi.
 
 ### Deliverable
 

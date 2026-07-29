@@ -2,7 +2,7 @@
 
 ## Status
 
-`LOCAL READY — AUTHENTICATED SMOKE TEST PENDING`
+`COMPLETE`
 
 ## Outcome
 
@@ -84,6 +84,6 @@ baris create/update/error; commit hanya menyimpan baris valid.
 ## Compatibility dan Next Safe Step
 
 Phase 40 database dan Phase 38 compatibility regression sudah dikonfirmasi
-PASS oleh user. Setelah smoke di atas diterima, tandai Phase 41 `COMPLETE`.
-Ekspansi master grouped wajib memakai gate terpisah karena mutation-nya atomic.
-
+PASS oleh user. Authenticated smoke Phase 41 juga dikonfirmasi aman oleh user
+pada 2026-07-27. Ekspansi master grouped memakai gate terpisah karena
+mutation-nya atomic.

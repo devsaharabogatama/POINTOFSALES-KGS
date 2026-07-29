@@ -97,6 +97,26 @@ type ProductDraft = {
 
 type ApiList<T> = { data?: T[]; error?: string }
 
+type StockBalance = {
+  product_id: string
+  warehouse_id: string
+  stock_qty: number | string
+}
+
+type StockWarehouse = {
+  id: string
+  name: string
+  warehouse_type: string | null
+  location: string | null
+  is_active: boolean
+}
+
+type StockOverview = {
+  balances?: StockBalance[]
+  warehouses?: StockWarehouse[]
+  error?: string
+}
+
 function authHeaders(session: Session) {
   return { Authorization: `Bearer ${session.access_token}` }
 }
@@ -144,6 +164,8 @@ export function CanonicalProductsView({
     salesEnabled: false,
     purchaseEnabled: false,
   })
+  const [stockBalances, setStockBalances] = useState<StockBalance[]>([])
+  const [stockWarehouses, setStockWarehouses] = useState<StockWarehouse[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -155,6 +177,7 @@ export function CanonicalProductsView({
       '/api/master/product-categories?includeInactive=true',
       '/api/master/uoms?includeInactive=true',
       '/api/master/tax-assignment-options',
+      '/api/inventory/stock-overview',
     ]
     const responses = await Promise.all(
       paths.map((path) => fetch(path, { headers: authHeaders(session) })),
@@ -164,6 +187,7 @@ export function CanonicalProductsView({
       ApiList<Category>,
       ApiList<UomMaster>,
       TaxOptions,
+      StockOverview,
     ]
     const failed = responses.findIndex((response) => !response.ok)
     if (failed >= 0) throw new Error(friendlyError(payloads[failed].error))
@@ -175,7 +199,7 @@ export function CanonicalProductsView({
     fetchData()
       .then((payloads) => {
         if (cancelled) return
-        setProducts(payloads[0].data ?? [])
+        setProducts((payloads[0].data ?? []).filter((product) => !product.is_bundle))
         setCategories(payloads[1].data ?? [])
         setUoms(payloads[2].data ?? [])
         setTaxRules(payloads[3].data ?? [])
@@ -183,6 +207,8 @@ export function CanonicalProductsView({
           salesEnabled: false,
           purchaseEnabled: false,
         })
+        setStockBalances(payloads[4].balances ?? [])
+        setStockWarehouses(payloads[4].warehouses ?? [])
       })
       .catch((caught) => {
         if (!cancelled) setError(caught instanceof Error ? caught.message : 'Gagal memuat Product.')
@@ -200,7 +226,7 @@ export function CanonicalProductsView({
     setError('')
     try {
       const payloads = await fetchData()
-      setProducts(payloads[0].data ?? [])
+      setProducts((payloads[0].data ?? []).filter((product) => !product.is_bundle))
       setCategories(payloads[1].data ?? [])
       setUoms(payloads[2].data ?? [])
       setTaxRules(payloads[3].data ?? [])
@@ -208,6 +234,8 @@ export function CanonicalProductsView({
         salesEnabled: false,
         purchaseEnabled: false,
       })
+      setStockBalances(payloads[4].balances ?? [])
+      setStockWarehouses(payloads[4].warehouses ?? [])
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal memuat Product.')
     } finally {
@@ -228,6 +256,20 @@ export function CanonicalProductsView({
   const readyToCreate = categories.some((item) => item.is_active) && uoms.some((item) => item.is_active)
   const ruleName = (id: string | null | undefined) =>
     taxRules.find((rule) => rule.id === id)?.name ?? 'Tanpa pajak'
+  const warehouseById = useMemo(
+    () => new Map(stockWarehouses.map((warehouse) => [warehouse.id, warehouse])),
+    [stockWarehouses],
+  )
+  const balancesByProduct = useMemo(() => {
+    const grouped = new Map<string, StockBalance[]>()
+    for (const balance of stockBalances) {
+      grouped.set(balance.product_id, [
+        ...(grouped.get(balance.product_id) ?? []),
+        balance,
+      ])
+    }
+    return grouped
+  }, [stockBalances])
 
   return (
     <>
@@ -268,19 +310,34 @@ export function CanonicalProductsView({
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari SKU, nama, atau kategori..." className="w-full bg-transparent text-sm outline-none" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left text-sm">
+          <table className="w-full min-w-[1250px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
-              <tr><th className="px-5 py-4">Product</th><th className="px-5 py-4">Category</th><th className="px-5 py-4">Base UOM</th><th className="px-5 py-4">UOM tersedia</th><th className="px-5 py-4">Acuan berat</th><th className="px-5 py-4">Pajak efektif</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr>
+              <tr><th className="px-5 py-4">Product</th><th className="px-5 py-4">Category</th><th className="px-5 py-4">Base UOM</th><th className="px-5 py-4">Stok aktual</th><th className="px-5 py-4">Per Gudang</th><th className="px-5 py-4">UOM tersedia</th><th className="px-5 py-4">Acuan berat</th><th className="px-5 py-4">Pajak efektif</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((product) => {
                 const base = product.product_uoms.find((row) => row.uom_id === product.uom_id)
                 const weight = product.product_uoms.find((row) => row.uom_id === product.weight_reference_uom_id)
+                const productBalances = balancesByProduct.get(product.id) ?? []
+                const actualStock = productBalances.reduce(
+                  (total, balance) => total + (Number(balance.stock_qty) || 0),
+                  0,
+                )
                 return (
                   <tr key={product.id}>
                     <td className="px-5 py-4"><p className="font-bold">{product.name}</p><p className="mt-1 text-xs font-semibold text-slate-400">{product.sku}</p></td>
                     <td className="px-5 py-4 text-slate-600">{product.category?.category_name ?? '-'}</td>
                     <td className="px-5 py-4 font-semibold">{base?.uom?.name ?? '-'}</td>
+                    <td className="px-5 py-4 font-black text-slate-900">{actualStock.toLocaleString('id-ID', { maximumFractionDigits: 6 })} {base?.uom?.name ?? ''}</td>
+                    <td className="px-5 py-4 text-xs leading-5 text-slate-600">
+                      {productBalances.length
+                        ? productBalances.map((balance) => (
+                            <span key={balance.warehouse_id} className="block">
+                              {warehouseById.get(balance.warehouse_id)?.name ?? 'Gudang'}: <b>{Number(balance.stock_qty).toLocaleString('id-ID', { maximumFractionDigits: 6 })}</b>
+                            </span>
+                          ))
+                        : 'Belum ada saldo'}
+                    </td>
                     <td className="px-5 py-4 text-slate-600">{product.product_uoms.filter((row) => row.is_active).length}</td>
                     <td className="px-5 py-4 text-slate-600">{weight?.uom?.name ?? '-'} · {Number(product.weight_per_uom_kg).toLocaleString('id-ID')} kg</td>
                     <td className="px-5 py-4 text-xs leading-5 text-slate-600"><span className="block">Jual: {ruleName(product.sales_tax_rule_id ?? product.category?.default_sales_tax_rule_id)}</span><span className="block">Beli: {ruleName(product.purchase_tax_rule_id ?? product.category?.default_purchase_tax_rule_id)}</span></td>
@@ -289,7 +346,7 @@ export function CanonicalProductsView({
                   </tr>
                 )
               })}
-              {!loading && !filtered.length && <tr><td colSpan={canManage ? 8 : 7} className="p-10 text-center text-sm text-slate-400">Belum ada Product canonical.</td></tr>}
+              {!loading && !filtered.length && <tr><td colSpan={canManage ? 10 : 9} className="p-10 text-center text-sm text-slate-400">Belum ada Product canonical.</td></tr>}
             </tbody>
           </table>
           {loading && <div className="p-10 text-center text-sm text-slate-500">Memuat Product...</div>}

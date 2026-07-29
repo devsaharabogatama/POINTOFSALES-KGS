@@ -6,6 +6,9 @@ export type MasterImportType =
   | 'CUSTOMER_CATEGORY'
   | 'CHART_OF_ACCOUNT'
   | 'TRANSACTION_CATEGORY'
+  | 'PRODUCT'
+  | 'PRODUCT_SUPPLIER'
+  | 'PRODUCT_WAREHOUSE_MINIMUM_STOCK'
 export type ImportReferenceMode = 'REFERENCE_BY_ID' | 'REFERENCE_BY_NAME'
 export type ImportOperationMode = 'CREATE_ONLY' | 'UPDATE_ONLY' | 'CREATE_AND_UPDATE'
 
@@ -132,6 +135,86 @@ export const importDefinitions: Record<MasterImportType, ImportDefinition> = {
     ],
     templateHeaders: ['name', 'system_key', 'description', 'is_active'],
     exportHeaders: ['internal_id', 'name', 'system_key', 'description', 'is_active'],
+  },
+  PRODUCT: {
+    label: 'Produk + Satuan',
+    description: 'Satu product_key adalah satu Produk. Isi satu baris untuk setiap satuan jual/beli. Import ini tidak mengisi stok atau Saldo Awal.',
+    fields: [
+      { key: 'internalId', label: 'ID internal Product (opsional)', required: false, aliases: ['internal_id', 'product_id', 'id'] },
+      { key: 'productKey', label: 'Kunci grup Product', required: true, aliases: ['product_key', 'kunci_produk', 'group_key'] },
+      { key: 'sku', label: 'SKU Product', required: true, aliases: ['sku', 'product_sku', 'kode_produk'] },
+      { key: 'productName', label: 'Nama Product', required: true, aliases: ['product_name', 'nama_produk', 'name'] },
+      { key: 'categoryName', label: 'Nama kategori', required: true, aliases: ['category_name', 'nama_kategori', 'category'] },
+      { key: 'imageUrl', label: 'URL gambar eksternal', required: false, aliases: ['image_url', 'url_gambar'] },
+      { key: 'isActive', label: 'Product aktif', required: false, aliases: ['is_active', 'aktif', 'status_aktif'] },
+      { key: 'uomName', label: 'Nama satuan (UOM)', required: true, aliases: ['uom_name', 'nama_uom', 'nama_satuan', 'satuan'] },
+      { key: 'factorToBase', label: 'Isi satuan dalam UOM dasar', required: true, aliases: ['factor_to_base', 'faktor_ke_base', 'qty_base'] },
+      { key: 'purchaseAllowed', label: 'Dapat dipakai untuk pembelian', required: true, aliases: ['purchase_allowed', 'boleh_beli', 'beli'] },
+      { key: 'salesAllowed', label: 'Dapat dipakai untuk penjualan', required: true, aliases: ['sales_allowed', 'boleh_jual', 'jual'] },
+      { key: 'purchasePrice', label: 'Harga beli per UOM', required: true, aliases: ['purchase_price', 'harga_beli'] },
+      { key: 'salePrice', label: 'Harga jual per UOM', required: true, aliases: ['sale_price', 'harga_jual'] },
+      { key: 'barcode', label: 'Barcode UOM', required: false, aliases: ['barcode', 'kode_barcode'] },
+      { key: 'salesTaxRuleName', label: 'Nama aturan pajak penjualan', required: false, aliases: ['sales_tax_rule_name', 'pajak_penjualan'] },
+      { key: 'purchaseTaxRuleName', label: 'Nama aturan pajak pembelian', required: false, aliases: ['purchase_tax_rule_name', 'pajak_pembelian'] },
+      { key: 'weightPerLargestUomKg', label: 'Berat UOM terbesar (kg)', required: true, aliases: ['weight_per_largest_uom_kg', 'berat_uom_terbesar_kg'] },
+    ],
+    templateHeaders: [
+      'product_key', 'sku', 'product_name', 'category_name', 'image_url',
+      'is_active', 'uom_name', 'factor_to_base', 'purchase_allowed',
+      'sales_allowed', 'purchase_price', 'sale_price', 'barcode',
+      'sales_tax_rule_name', 'purchase_tax_rule_name',
+      'weight_per_largest_uom_kg',
+    ],
+    exportHeaders: [
+      'internal_id', 'product_key', 'sku', 'product_name', 'category_name',
+      'image_url', 'is_active', 'uom_name', 'factor_to_base',
+      'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
+      'barcode', 'sales_tax_rule_name', 'purchase_tax_rule_name',
+      'weight_per_largest_uom_kg',
+    ],
+  },
+  PRODUCT_SUPPLIER: {
+    label: 'Relasi Produk–Supplier',
+    description: 'Hubungkan Product existing ke Supplier dan satuan pembelian existing. Import ini tidak membuat Product, Supplier, UOM, transaksi pembelian, atau stok.',
+    fields: [
+      { key: 'internalId', label: 'ID internal relasi (opsional)', required: false, aliases: ['internal_id', 'product_supplier_id', 'id'] },
+      { key: 'productSku', label: 'SKU Product', required: true, aliases: ['product_sku', 'sku', 'kode_produk'] },
+      { key: 'supplierName', label: 'Nama Supplier', required: true, aliases: ['supplier_name', 'nama_supplier', 'supplier'] },
+      { key: 'purchaseUomName', label: 'Nama UOM pembelian', required: true, aliases: ['purchase_uom_name', 'nama_uom_pembelian', 'uom_name', 'nama_satuan'] },
+      { key: 'supplierProductCode', label: 'Kode Product dari Supplier (boleh kosong)', required: true, aliases: ['supplier_product_code', 'kode_produk_supplier'] },
+      { key: 'referencePurchasePrice', label: 'Harga beli referensi (boleh kosong)', required: true, aliases: ['reference_purchase_price', 'harga_beli_referensi'] },
+      { key: 'isPreferredSupplier', label: 'Supplier utama', required: true, aliases: ['is_preferred_supplier', 'supplier_utama', 'preferred'] },
+      { key: 'isActive', label: 'Relasi aktif', required: true, aliases: ['is_active', 'aktif', 'status_aktif'] },
+    ],
+    templateHeaders: [
+      'product_sku', 'supplier_name', 'purchase_uom_name',
+      'supplier_product_code', 'reference_purchase_price',
+      'is_preferred_supplier', 'is_active',
+    ],
+    exportHeaders: [
+      'internal_id', 'product_sku', 'supplier_name', 'purchase_uom_name',
+      'supplier_product_code', 'reference_purchase_price',
+      'is_preferred_supplier', 'is_active',
+    ],
+  },
+  PRODUCT_WAREHOUSE_MINIMUM_STOCK: {
+    label: 'Minimum Stock Produk–Gudang',
+    description: 'Atur batas stok menipis dalam Base UOM untuk pasangan Product dan Gudang existing. Import ini tidak membuat saldo, movement, Stock Request, atau Supplier Order.',
+    fields: [
+      { key: 'internalId', label: 'ID internal pengaturan (opsional)', required: false, aliases: ['internal_id', 'setting_id', 'id'] },
+      { key: 'productSku', label: 'SKU Product', required: true, aliases: ['product_sku', 'sku', 'kode_produk'] },
+      { key: 'warehouseName', label: 'Nama Gudang', required: true, aliases: ['warehouse_name', 'nama_gudang', 'warehouse'] },
+      { key: 'minimumStockBaseQty', label: 'Minimum Stock dalam Base UOM', required: true, aliases: ['minimum_stock_base_qty', 'minimum_stock', 'stok_minimum'] },
+      { key: 'lowStockAlertEnabled', label: 'Notifikasi stok menipis aktif', required: true, aliases: ['low_stock_alert_enabled', 'notifikasi_stok_menipis', 'alert_enabled'] },
+    ],
+    templateHeaders: [
+      'product_sku', 'warehouse_name', 'minimum_stock_base_qty',
+      'low_stock_alert_enabled',
+    ],
+    exportHeaders: [
+      'internal_id', 'product_sku', 'warehouse_name',
+      'minimum_stock_base_qty', 'low_stock_alert_enabled',
+    ],
   },
 }
 

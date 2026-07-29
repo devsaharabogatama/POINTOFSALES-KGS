@@ -1,7 +1,7 @@
 # Active Development Handoff — KGS POS
 
 **Status dokumen:** ACTIVE — wajib diperbarui setiap agent
-**Terakhir diperbarui:** 2026-07-27
+**Terakhir diperbarui:** 2026-07-29
 **Workspace:** `C:\Users\sbi_l\OneDrive\Documents\POINT OF SALES`
 
 Dokumen ini adalah catatan operasional tunggal untuk meneruskan pekerjaan ketika
@@ -83,7 +83,7 @@ Status yang digunakan:
 | Product/Category Tax assignment preflight | COMPLETE | User result: seluruh invariant PASS; no Rule/assignment, entitlement disabled, one Product/Category |
 | Guarded Product/Category Tax assignment | COMPLETE | User confirmed migration, postflight, dan behavioral test all pass |
 | Tax assignment API/UI | COMPLETE | User menyatakan seluruh UI aman; Category default dan Product inheritance/override memakai nama Tax Rule |
-| App shell Home navigation | LOCAL READY | Brand ikon hijau + KGS POS kembali ke launcher tanpa reload dan menutup fast link; lint/build PASS, authenticated click smoke menunggu user |
+| App shell Home/Back/breadcrumb navigation | READY FOR SMOKE TEST | Brand kembali ke launcher; seluruh view non-dashboard mendapat Back berbasis history aplikasi dan breadcrumb Beranda/Modul/Halaman; lint/build PASS, authenticated click smoke menunggu user |
 | Tax resolver/snapshot preflight | COMPLETE | User result: seluruh invariant PASS; no Rule/history; two enabled scopes resolve no tax; checkout untouched |
 | Private Tax resolver/calculator | COMPLETE | User confirmed migration, postflight, dan behavioral test all pass; transaction cutover tetap disabled |
 | Master Import/Export preflight | COMPLETE | Live result clean; expected legacy REVIEW only; identities/canonical Product-UOM/history safe |
@@ -97,7 +97,47 @@ Status yang digunakan:
 | Code-less simple master import | COMPLETE | User mengonfirmasi Phase-38 migration, 7-check postflight, dan behavioral test all good |
 | Code-less Import UI cutover | COMPLETE | Template create/export/preview empat master tanpa kode teknis; Gudang memakai referensi Toko user-facing; user mengonfirmasi smoke aman |
 | Remaining simple master import DB | COMPLETE | Main migration, UUID forward fix, 4-check postflight, Phase-40 behavior, dan Phase-38 regression dikonfirmasi PASS |
-| Remaining simple master import UI | LOCAL READY; SMOKE PENDING | Template/export/mapping/preview tiga tipe baru selesai; lint/build PASS |
+| Remaining simple master import UI | COMPLETE | Template/export/mapping/preview tiga tipe baru; lint/build dan authenticated smoke user PASS |
+| Grouped Product Import preflight | COMPLETE | User mengonfirmasi seluruh live preflight PASS |
+| Grouped Product Import database | COMPLETE | `20260727130000` + forward fix `20260727140000`; postflight, behavior, dan Phase-40/38 regression seluruhnya PASS |
+| Grouped Product Import UI | READY FOR SMOKE TEST | Template/export `product_v1`, grouped preview per Product, nama UOM user-facing; lint/build PASS |
+| Product-Supplier Import preflight | COMPLETE | User mengonfirmasi seluruh blocker live PASS; satu relation existing valid dan tidak ada job nonterminal |
+| Product-Supplier Import database | COMPLETE | User mengonfirmasi migration `20260727160000`, 11-check postflight, behavioral test, dan regression seluruhnya PASS |
+| Product-Supplier Import UI | COMPLETE | Fixed template/export, preview nama tanpa UUID, preferred-switch guidance; lint/build dan user smoke PASS |
+| Minimum Stock Produk–Gudang preflight | COMPLETE | Live output seluruhnya PASS/INFO; 1 Product, 3 Gudang, 3 eligible pair, zero balance/movement/ambiguity/orphan/job aktif |
+| Minimum Stock Produk–Gudang database | COMPLETE | User mengonfirmasi rollout aman dan melanjutkan; `20260728090000`, 12-check postflight, behavior + Phase-44/42/40/38 regression ditutup |
+| Minimum Stock API/UI + fixed Import/Export | READY FOR SMOKE TEST | Guarded list/create/update route, Inventory page, Base-UOM label/precision UX, fixed template/export/preview; lint/build PASS |
+| G3 Opening Stock preflight | COMPLETE | User mengirim seluruh hasil: 13 invariant PASS; 3 eligible pair; zero balance/movement/batch; expected enum/schema absent |
+| G3 Opening Stock database | COMPLETE | User mengonfirmasi migration `20260728120000`, postflight, behavioral test, dan regression seluruhnya sukses |
+| G3 Opening Stock API/UI | READY FOR SMOKE TEST | Guarded Draft/Posting, stok aktual total/per Gudang, serta indikator Minimum Stock local-ready; Backoffice lint/build PASS |
+| G3 Stock Real API/UI | READY FOR SMOKE TEST | Halaman read-only sesuai spec: On Hand/Available per Product–Gudang, Reserved explicit deferred, FIFO valuation, last movement, serta minimum filter; lint/build PASS |
+| G3 Stock Movement preflight | COMPLETE | User mengirim seluruh invariant PASS; satu Opening movement/pair/source, saldo cocok, browser direct write false; expected 8 column dan 5 enum gap |
+| G3 canonical Stock Movement database | COMPLETE | User mengonfirmasi migration `20260728150000`, postflight, behavior, dan regression seluruhnya all good |
+| G3 Stock Movement / Kartu Stok API/UI | COMPLETE | Read-only tenant-scoped ledger, nama bisnis tanpa UUID, Base-UOM/balance snapshot, source/actor aman, filter; lint/build dan user smoke PASS |
+| G3 Stock Transfer preflight | COMPLETE | Live result seluruh blocker PASS; expected legacy RPC REVIEW; zero Transfer history; satu saldo sumber positif dan tiga Gudang aktif |
+| G3 canonical Stock Transfer database | COMPLETE | User mengonfirmasi `20260728180000`, seluruh 15 postflight, behavior, dan Phase-4/1/46/G1 regression sukses |
+| G3 Stock Transfer API/UI | COMPLETE | Guarded create/edit/post/cancel, saldo/FIFO proof, role-aware menu, nomor Transfer di Kartu Stok, dan authenticated user smoke PASS |
+| G3 Stock Adjustment preflight | COMPLETE | User mengirim seluruh blocker PASS; zero legacy Adjustment/backfill, 2 positive FIFO layers/pairs, Finance dan Base UOM siap |
+| G3 canonical Stock Adjustment database | COMPLETE | User mengonfirmasi migration `20260728210000`, 16-check postflight, rollback-safe behavior, dan regression seluruhnya sukses |
+| G3 Stock Adjustment API/UI | COMPLETE | Guarded Draft/Edit/Post/Cancel, final physical quantity UX, reason arah selisih, gain cost override, FIFO/value proof, Kartu Stok source; lint/build dan user smoke PASS |
+| G3 Stock Opname preflight | COMPLETE | User mengirim seluruh invariant PASS; legacy session/detail kosong, zero overlap/backfill/link error, balance/FIFO dan canonical Adjustment siap |
+| G3 canonical Stock Opname database | COMPLETE | User mengonfirmasi migration `20260728230000`, 14-check postflight, rollback-safe behavior, serta regression seluruhnya sukses |
+| G3 Stock Opname Backoffice API/UI | COMPLETE | Tenant-scoped report/review, attempt timeline, Adjustment proof, guarded recount/post/cancel, role-aware menu, Escape modal, dan user continuation smoke accepted |
+| G3 Bundle foundation preflight | COMPLETE | User mengirim seluruh invariant PASS; zero Bundle/component/backfill/physical stock dan schema/RPC gap sesuai expected |
+| G3 canonical Bundle foundation database | COMPLETE | User mengonfirmasi migration `20260729010000`, postflight, behavior, dan regression seluruhnya all good |
+| G3 Bundle master API/UI | COMPLETE | Guarded create/edit dan availability, Sales UI dengan nama Product/UOM, harga final, derived weight, pemisahan Product stok; lint/build dan continuation smoke accepted |
+| G3 inventory-core exit/stress preflight | COMPLETE | User mengirim seluruh core invariant PASS; `SETUP` hanya fixture stress, `DEFERRED` G4/G5 expected, dan live inventory tetap konsisten |
+| G3 integrated inventory-core stress behavior | COMPLETE AT CORE BOUNDARY | User melanjutkan tanpa error dan Phase-14 rerun tetap seluruh core PASS; rollback menjelaskan fixture live tetap `SETUP` |
+| G4 POS checkout readiness preflight | COMPLETE | User output: seluruh dependency/config/data PASS; blocker tepat pada legacy client-authoritative checkout, missing price resolver, dan missing canonical runtime |
+| G4 canonical Cashier Session database | COMPLETE | User mengonfirmasi migration, 13-check postflight, behavioral test, dan regression seluruhnya sukses; checkout tetap tertutup |
+| G4 Atomic Sale runtime preflight | COMPLETE | User output sesuai baseline: seluruh data/invariant PASS, dua blocker hanya checkout legacy, empat setup tepat pada runtime canonical |
+| G4 Atomic Sale runtime database | COMPLETE | User mengonfirmasi migration, 17-check postflight, behavioral test, dan regression clear |
+| G4 POS online integration | COMPLETE AT ONLINE SINGLE-PAYMENT BOUNDARY | User mengonfirmasi rollout dan PWA smoke clear; POS dua panel, reset POSTED, receipt print-tab, serta guarded Customer Pricelist AUTO/override aktif |
+| G4 Sale Draft list/edit-lock | DATABASE FOUNDATION READY; MANUAL DB GATE PENDING | Live preflight bersih; nomor/metadata Draft, same-Store list, five-minute heartbeat lock, confirmed takeover, force release, cancel, audit, dan guarded Save/Post local-ready |
+| G4 Payment-Leg identity | COMPLETE | User mengonfirmasi migration `20260729150000`, postflight, corrected behavior, dan regression sukses |
+| G4 Split Payment PWA UI | READY FOR AUTHENTICATED TABLET SMOKE | Multi-leg exact-total UI, stable retry key, per-leg Cash/proof, server fee estimate, duplicate-method prevention; PWA lint/build PASS |
+| G4 Online Checkout stress preflight | COMPLETE | User mengirim seluruh check PASS/INFO; fixture dua-user siap, lock/FIFO/idempotency core PASS, dan seluruh final-effect reconciliation bersih |
+| G4 true-concurrent Post stress | COMPLETE | Setelah stok ditambah, 20-response concurrency assertions, POSTED state, posting key, Movement, Payment, audit, dan identity lolos; service read-only membuktikan tepat satu `SALE_POSTED` Event HOLD |
 
 Catatan UX aktif:
 
@@ -109,7 +149,332 @@ Catatan UX aktif:
 
 ## 3. Fase Aktif
 
-**G2 Phase 41 — remaining simple master Import/Export UI**
+**G4 Phase 10 — True-concurrent Post stress**
+
+Payment-Leg identity rollout, corrected behavioral test, dan regression telah
+dikonfirmasi sukses oleh user. PWA sekarang membagi total server ke satu atau
+lebih Payment Method dengan stable `clientPaymentKey`, duplicate-method
+prevention, Cash tender/change, proof per leg, serta fee estimate. Server tetap
+menjadi authority untuk total, fee, persisted Payment, stock, FIFO, dan
+Financial Event.
+
+Boundary aktif:
+
+- `pwa/scripts/g4-phase10-concurrent-post.mjs`;
+- `pwa/package.json`;
+- `docs/runbooks/G4_PHASE10_TRUE_CONCURRENT_POST_STRESS.md`.
+
+User telah menjalankan preflight terbaru dan seluruh check yang menentukan
+kelayakan berstatus `PASS`; baris `INFO` mengonfirmasi browser tidak memiliki
+direct final write. Percobaan harness staging belum membuktikan concurrency.
+Live audit read-only atas `DRF-20260729-000005` menemukan kebutuhan Base UOM 7
+sementara stok Gudang hanya 1. Request pertama benar masuk jalur Post lalu
+menulis audit `STOCK_SHORTAGE` dan mempertahankan Draft; 19 request lain memakai
+versi lama dan ditolak. Harness sebelumnya salah memprioritaskan daftar error
+sehingga shortage terlihat seperti kegagalan version menyeluruh. Harness
+sekarang memeriksa stok sebelum fan-out dan melaporkan shortage sebelum error
+concurrent. Setelah stok ditambah, harness melewati seluruh assertion
+concurrency dan final effect sampai pemeriksaan Financial Event. Pemeriksaan itu
+melihat `0` hanya karena akun Kasir tidak mempunyai visibilitas Finance.
+Read-only server audit membuktikan Sale `POSTED`, tepat 1 Movement, 1 Payment,
+1 POST audit, dan 1 `SALE_POSTED` Financial Event berstatus `HOLD`. Gate
+true-concurrent dinyatakan `COMPLETE`; harness tidak lagi mengassert tabel
+Finance dari akun Kasir. Offline sync tetap mengembalikan
+`OFFLINE_SYNC_NOT_ENABLED` tanpa mutation. Customer Balance/Ketul, Return,
+Expense, Deposit, settlement, refund, dan Finance journal tetap tertutup.
+
+Riwayat integrasi online yang mendasari phase aktif:
+
+Smoke login pertama menemukan `Failed to fetch`. Root cause terverifikasi bukan
+password/RLS: `pwa/.env` masih berisi URL dan key placeholder, sedangkan
+`backoffice/.env.local` mempunyai konfigurasi publik yang valid. Vite PWA
+sekarang fallback hanya ke `NEXT_PUBLIC_SUPABASE_URL` dan public publishable
+key Backoffice ketika nilai PWA placeholder; deployment tetap membutuhkan
+`VITE_*`. `supabase.ts` juga menolak konfigurasi kosong/placeholder dengan pesan
+yang actionable. PWA lint/build PASS dan inspeksi bundle membuktikan URL/public
+key aktif terpasang serta service-role key tidak ikut. Manual gate: restart
+proses PWA, login ulang, lalu lanjutkan smoke; user tetap perlu assignment
+Cashier/Store/Terminal yang valid setelah Auth berhasil.
+
+Setelah login berhasil, PWA masih menampilkan Terminal/Gudang kosong untuk akun
+Admin. Audit membuktikan ini bukan schema-cache atau data Backoffice: PWA dan
+`open_cashier_session(...)` hanya menerima Store role persis `CASHIER`,
+sedangkan spesifikasi menyatakan Super Admin serta Company Owner/Admin
+mewarisi aksi Cashier. Forward migration `20260729080000` memperbaiki predicate
+server tanpa melewati active Company/Terminal/Gudang/single-session guard.
+PWA memakai role aktif yang sama untuk menampilkan Terminal. Provisioning
+Cashier biasa di Backoffice sekarang mewajibkan Toko. Local PWA dan Backoffice
+lint/build PASS; manual migration, 4-check postflight, behavior, regression,
+restart, dan authenticated smoke masih menunggu user.
+
+User berikutnya menguji akun `STORE_MANAGER` yang sudah di-assign ke Toko dan
+tetap mendapat Terminal/Gudang kosong. Root cause: fix sebelumnya hanya
+Super/Admin inheritance, sedangkan PWA dan RPC belum memasukkan Store Manager
+walau role matrix menyatakan Store Manager boleh checkout bila memakai POS.
+Migration forward `20260729090000`, postflight, behavior cross-Store negative,
+dan PWA filter sudah local-ready. Store Manager hanya memperoleh Terminal pada
+Store membership aktif; Gudang tetap wajib sale-source dan Store-compatible.
+PWA lint/build PASS. Manual rollout kedua fix berurutan, regression, restart,
+dan smoke masih menunggu user.
+
+Sesudah restart, Backoffice user melaporkan `INVALID_SESSION`. Migration
+Cashier tidak menyentuh Auth; root cause pada bootstrap UI adalah session object
+lokal tetap dianggap aktif walaupun `/api/me/context` sudah menolak access
+token. Catch khusus sekarang menjalankan local sign-out, membersihkan context,
+dan mengembalikan UI ke Login. Backoffice lint dan production build PASS.
+Manual gate: restart/refresh sekali, login ulang; bila browser masih memuat
+bundle lama, hard refresh atau hapus site data localhost. Jangan mengubah
+Auth user/password atau migration database untuk menangani token client ini.
+
+User kemudian mengonfirmasi Terminal dan Gudang penjualan sudah terbaca. Empat
+closure PWA berikut telah dibuat: layout tablet-first, cart/form langsung
+direset setelah transaksi `POSTED`, receipt dibuka sebagai halaman print di tab
+baru, serta pemilihan Pricelist di bawah Customer dengan mode otomatis dan
+override Kasir. Migration forward `20260729100000` menambah wrapper guarded dan
+resolver server-side; pilihan eksplisit hanya menerima Pricelist aktif yang
+berlaku pada Store serta Global atau milik Customer terpilih. Bridge checkout
+Backoffice memakai wrapper yang sama, sedangkan signature RPC lama dipertahankan
+untuk kompatibilitas AUTO. PWA dan Backoffice lint/build PASS. Migration,
+postflight, behavior/regression, hard refresh, dan tablet smoke masih menunggu
+user. Browser preview connector gagal attach pada sesi ini sehingga belum ada
+evidence visual otomatis; verifikasi visual harus dilakukan pada smoke manual.
+
+Review user terhadap versi tablet pertama menyatakan hierarchy, keterbacaan,
+dan affordance tombol masih terlalu lemah. PWA kemudian disusun ulang mengikuti
+pola umum Moka-like tablet POS tanpa menyalin aset/brand: katalog/Product grid
+dominan di kiri, Order panel tegas di kanan, header putih, tiga tahap form
+bernomor, Total berkontras tinggi, category tab rectangular, Product add control
+solid, serta action Draft/Post besar dan sticky. Kontras label/input/tombol
+diperkuat dan icon-only Printer/Keluar mendapat label pada viewport yang cukup.
+Tidak ada dependency visual baru. PWA lint dan production build PASS; visual
+authenticated tablet smoke masih menunggu user karena browser preview connector
+tidak dapat attach pada sesi ini.
+
+User meminta pekerjaan diteruskan sampai terbentuk satu relasi stok aktual yang
+bisa dipakai menguji Minimum Stock. Boundary aman pertama sudah dibuat sebagai
+diagnostic SELECT-only:
+
+- `supabase/diagnostics/g3_phase1_opening_stock_preflight.sql`;
+- `docs/runbooks/G3_PHASE1_OPENING_STOCK_PREFLIGHT.md`.
+
+Preflight mengaudit dependency G2, Base UOM Product aktif, pasangan
+Product-Gudang eligible, konsistensi saldo terhadap movement, FIFO remaining,
+Finance function `INVENTORY_ASSET`/`OPENING_BALANCE_CLEARING`, Transaction
+Category `STOCK_OPENING`, enum, serta schema Opening Stock yang belum tersedia.
+File ini tidak membuat saldo, movement, batch, event, atau dokumen.
+
+Live preflight, migration `20260728120000`, postflight, behavioral test, dan
+regression sudah ditutup sukses oleh user. Database menyediakan Draft/Posted
+Opening Stock, guarded role boundary, atomic movement/balance/FIFO, event
+Finance `HOLD`, audit, idempotency, serta hard guard prior movement.
+
+Backoffice sekarang menyediakan menu `Inventory > Stok Awal`, Draft yang belum
+mengubah saldo, konfirmasi Posting final, dan detail bukti stok aktual,
+movement, serta FIFO. Seluruh referensi menampilkan nama Product, Gudang, dan
+Base UOM; UUID tetap internal. Manual gate aktif mengikuti
+`docs/runbooks/G3_PHASE2_OPENING_STOCK_API_UI.md`.
+
+Follow-up read model sudah ditambahkan setelah user menemukan saldo belum
+terlihat: `Produk & Stok` membaca saldo aktual total/per Gudang, sedangkan
+`Minimum Stock` membandingkan saldo aktual terhadap batas dan menandai
+`Stok menipis` bila notifikasi aktif serta `actual <= minimum`. Ini adalah
+indikator saat halaman dimuat/refresh, belum push/background notification.
+
+Audit ulang roadmap mengonfirmasi struktur resmi: Stock Real merupakan halaman
+operasional utama di Inventory; Minimum Stock hanya konfigurasi; Stock Movement
+adalah halaman ledger read-only berikutnya; notice Cashier/inbox/Stock Request
+baru G4 dan Purchasing baru G5. Karena itu menu `Produk & Stok` dikoreksi
+menjadi `Produk & UOM`, dan `Inventory > Stock Real` dibuat terpisah dengan
+On Hand, Reserved explicit belum aktif, Available sementara sama dengan On
+Hand, nilai FIFO, threshold, movement terakhir, serta filter Gudang/menipis.
+
+Audit langkah Kartu Stok menemukan schema `stock_movements` existing belum
+menyimpan seluruh minimum contract: actor, Base UOM snapshot, status,
+source-line identity, notes, dan balance-after. Karena field audit tidak boleh
+ditebak dari UI, boundary aktif dipindahkan ke diagnostic SELECT-only
+`supabase/diagnostics/g3_phase4_stock_movement_preflight.sql` dan runbook
+`docs/runbooks/G3_PHASE4_STOCK_MOVEMENT_PREFLIGHT.md`.
+
+Live result user seluruhnya bersih: satu movement Opening, satu source/pair,
+saldo cocok, tidak ada duplicate/orphan/negative/missing coverage, dan browser
+write false. Delapan missing snapshot serta lima missing future enum sesuai
+ekspektasi. Migration `20260728150000`, postflight, behavioral test, dan
+regression sudah ditutup sukses oleh user. Backoffice sekarang menyediakan
+menu `Inventory > Kartu Stok` sebagai ledger read-only dengan snapshot Base
+UOM, quantity masuk/keluar, saldo setelah movement, jenis, dokumen sumber,
+actor aman, waktu posting, catatan, serta filter. UUID tidak ditampilkan dan
+tidak ada jalur mutation baru.
+
+User mengonfirmasi Kartu Stok aman. Urutan target Inventory berikutnya adalah
+Transfer Stok. Audit repo menemukan RPC legacy masih sengaja server-only sejak
+G1 karena menerima quantity negatif, tidak memiliki row-lock/idempotency/source
+document canonical, dan tidak memindahkan FIFO dengan contract production.
+Boundary aktif adalah SELECT-only preflight:
+
+- `supabase/diagnostics/g3_phase6_stock_transfer_preflight.sql`;
+- `docs/runbooks/G3_PHASE6_STOCK_TRANSFER_PREFLIGHT.md`.
+
+Live preflight seluruh blocker PASS: tidak ada Transfer history/backfill,
+saldo/FIFO/Base UOM/category valid, browser stock write false, dan legacy RPC
+tetap non-executable bagi browser. Migration `20260728180000` sekarang
+local-ready dengan Draft/Posted/Canceled document, positive quantity, atomic
+balance/FIFO relocation, source-batch lineage, paired canonical movement,
+operator guard, idempotency, audit, dan full application-role revoke untuk RPC
+legacy. User kemudian mengonfirmasi migration, 15-check postflight, behavioral
+test, dan seluruh regression sukses. Backoffice sekarang menyediakan
+`Inventory > Transfer Stok`, guarded Draft/Edit/Post/Cancel, stok tersedia dari
+Gudang asal, bukti saldo/movement/FIFO setelah Posting, serta lookup nomor
+Transfer pada Kartu Stok. UUID tidak ditampilkan. Authenticated smoke mengikuti
+`docs/runbooks/G3_PHASE7_STOCK_TRANSFER_API_UI.md`; user mengonfirmasi seluruh
+smoke sukses.
+
+Roadmap berikutnya adalah Stock Adjustment sebelum Stock Opname karena Posting
+Opname menghasilkan Adjustment otomatis untuk line variance. Diagnostic
+SELECT-only:
+
+- `supabase/diagnostics/g3_phase8_stock_adjustment_preflight.sql`;
+- `docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_PREFLIGHT.md`.
+
+Diagnostic mengaudit legacy `stock_adjustments`, linkage dan snapshot Movement,
+reason backfill, balance/FIFO, Base UOM, kategori/fungsi Finance, privilege, dan
+missing canonical document/RPC. User mengonfirmasi seluruh blocker PASS, zero
+legacy Adjustment/backfill, dua positive balance/FIFO pair bersih, dan Finance
+siap.
+
+Database foundation telah dikonfirmasi user seluruhnya sukses:
+
+- `supabase/migrations/20260728210000_g3_phase8_stock_adjustment_foundation.sql`;
+- `supabase/diagnostics/g3_phase8_stock_adjustment_postflight.sql`;
+- `supabase/tests/g3_phase8_stock_adjustment_foundation_tests.sql`;
+- `docs/runbooks/G3_PHASE8_STOCK_ADJUSTMENT_FOUNDATION_ROLLOUT.md`.
+
+Kontrak memakai stok fisik akhir, server-derived difference, reason reusable,
+FIFO gain/loss, immutable canonical Movement, Finance `STOCK_GAIN`/`STOCK_LOSS`
+berstatus `HOLD`, optimistic version, idempotency, audit, serta Store Manager
+yang hanya dapat memproses Gudang Store assignment. Browser direct write tetap
+tertutup.
+
+Backoffice Phase 9 sekarang local-ready:
+
+- helper validation `backoffice/src/lib/stock-adjustment.ts`;
+- empat guarded route di
+  `backoffice/src/app/api/inventory/stock-adjustments`;
+- UI `backoffice/src/components/StockAdjustmentView.tsx`;
+- menu role-aware serta Kartu Stok source lookup;
+- runbook `docs/runbooks/G3_PHASE9_STOCK_ADJUSTMENT_API_UI.md`.
+
+Form menjelaskan bahwa user memasukkan stok fisik akhir, menampilkan stok sistem
+dan selisih otomatis, memakai nama Base UOM, menyaring reason berdasarkan arah,
+serta meminta alasan bila gain cost dioverride. Draft/Edit/Post/Cancel dan
+seluruh modal Escape tersedia. Lint dan production build 34 pages PASS.
+User melanjutkan setelah authenticated smoke, sehingga Phase 9 ditutup.
+
+Preflight Stock Opname sudah ditutup bersih:
+
+- `supabase/diagnostics/g3_phase10_stock_opname_preflight.sql`;
+- `docs/runbooks/G3_PHASE10_STOCK_OPNAME_PREFLIGHT.md`.
+
+Kontrak target adalah blind count nonblocking oleh kasir, movement watermark
+pada `counted_at`, recount bila ada movement dalam window count, supersede
+per-line untuk sesi overlap, review/post sesuai assignment, dan variance yang
+diposting atomic melalui canonical Stock Adjustment. Preflight hanya membaca
+aggregate legacy session/detail, linkage Adjustment, balance/FIFO, Base UOM,
+channel Store/POS/Cashier, privilege, enum, dan gap schema. Preflight tidak
+membuat mutation; G4 dan G5 tetap tertutup.
+
+Database foundation sudah `COMPLETE` berdasarkan konfirmasi user:
+
+- `supabase/migrations/20260728230000_g3_phase10_stock_opname_foundation.sql`;
+- `supabase/diagnostics/g3_phase10_stock_opname_postflight.sql`;
+- `supabase/tests/g3_phase10_stock_opname_foundation_tests.sql`;
+- `docs/runbooks/G3_PHASE10_STOCK_OPNAME_FOUNDATION_ROLLOUT.md`.
+
+Foundation menjaga detail direct-read reviewer-only dan menyediakan
+`get_stock_opname_blind_session(...)` untuk kasir agar system/expected/variance,
+physical count lama, HPP, dan nilai tidak bocor. Posting memakai satu canonical
+Adjustment secara atomic; zero variance tidak membuat Adjustment line.
+Membership Cashier aktif belum ada pada hasil preflight, sehingga tidak
+memblokir migration tetapi harus disiapkan sebelum smoke POS. Checksum migration
+local `23e5026157f21dec4ee8d6df93f2363baffd67a79ee598b1831d8ced4814322d`.
+
+User kemudian mengonfirmasi seluruh rollout database berhasil. Migration Phase
+10 tidak boleh diedit atau dijalankan ulang. Backoffice Phase 11 sekarang
+menyediakan route read-only tenant-scoped, guarded action `recount`, `post`, dan
+`cancel`, helper error contract, serta UI `Inventory > Stock Opname`. Report
+menampilkan snapshot, expected saat hitung, fisik, variance, counter, attempt
+timeline, dan bukti Adjustment memakai nama bisnis tanpa UUID. Finance dan
+Accounting read-only; reviewer mutation tetap divalidasi oleh RPC.
+
+Lint dan production build PASS; build mendeteksi empat route Opname sebagai
+dynamic API. Pembuatan sesi dan blind count POS sengaja tidak dipasang pada PWA
+prototype. Requirement STK-004 melintasi G3/G4 dan jalur kasir baru boleh
+dibuka setelah G4 menyediakan production auth, Company/Store/Terminal context,
+Cashier Session, dan offline queue. Database sudah menyediakan
+`get_stock_opname_blind_session(...)` sebagai contract aman untuk G4.
+
+User menyatakan halaman report belum dapat diuji end-to-end karena belum ada
+POS production yang membuat sesi. Ini expected dependency STK-004 lintas G3/G4,
+bukan error dan bukan alasan memasang flow kasir pada PWA mock. Sisa roadmap G3
+berpindah ke Bundle STK-006. Boundary aktif:
+
+- `supabase/diagnostics/g3_phase12_bundle_foundation_preflight.sql`;
+- `docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md`.
+
+Diagnostic hanya membaca aggregate dependency, Bundle/component existing,
+nested/self reference, quantity, duplicate, canonical Base UOM, sales/purchase
+UOM, physical stock/Movement/FIFO yang ilegal pada Bundle virtual, browser
+privilege, serta gap column/audit/RPC. Existing Product RPC masih sengaja
+menolak `BUNDLE_COMPONENTS_REQUIRED_G3`; tidak ada schema, stock, checkout,
+Import, atau allocation mutation pada fase preflight ini.
+
+User mengirim seluruh hasil: dependencies dan seluruh invariant PASS, zero
+Bundle/component/backfill/physical stock, dua sale-source warehouse, serta
+schema/RPC/audit gap sesuai expected. Direct INSERT/UPDATE legacy pada
+composition masih terbuka dan menjadi bagian boundary migration.
+
+Database foundation sekarang local-ready:
+
+- `supabase/migrations/20260729010000_g3_phase12_bundle_foundation.sql`;
+- `supabase/diagnostics/g3_phase12_bundle_foundation_postflight.sql`;
+- `supabase/tests/g3_phase12_bundle_foundation_tests.sql`;
+- `docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md`.
+
+Migration membuat Product Bundle dan composition sebagai satu mutation atomic,
+menurunkan berat dari UOM/berat komponen, melarang nested/self/cross-Company,
+mengunci Product type, menjaga Bundle tanpa physical stock/FIFO, menyimpan
+audit/version, serta menyediakan private expansion untuk G4 dan availability
+reviewer per Gudang. Direct browser write composition dicabut. Checkout,
+allocation, Return, Import, dan PWA tetap tidak dibuka.
+
+### Boundary sebelumnya: G2 Phase 47
+
+**G2 Phase 47 — Backoffice Minimum Stock + fixed Import/Export UI**
+
+Phase 46 database sudah ditutup `COMPLETE` berdasarkan konfirmasi user bahwa
+seluruh rollout aman dan pekerjaan boleh dilanjutkan. Jangan mengedit atau
+menjalankan ulang migration `20260728090000`.
+
+Sebelum Phase 47 dilanjutkan, app shell mendapat follow-up navigasi global:
+
+- tombol `Kembali` pada seluruh halaman non-dashboard memakai history view
+  internal Backoffice dan tidak bergantung pada browser Back;
+- breadcrumb menampilkan `Beranda / Modul / Halaman`;
+- breadcrumb Beranda dan nama Modul dapat dipakai untuk berpindah konteks;
+- tombol brand tetap kembali ke app launcher dan mereset history;
+- pergantian Company juga mereset history agar user tidak kembali ke halaman
+  tenant sebelumnya.
+
+Phase 47 kini local-ready. Modul Inventory memiliki halaman **Minimum Stock**
+untuk create/edit pasangan Product–Gudang. UI hanya menampilkan Product,
+Gudang, nama Base UOM, threshold, serta status notifikasi; UUID tetap internal.
+Create/update melewati guarded RPC Phase 46 dengan optimistic master version.
+
+Import & Export mendukung tipe `PRODUCT_WAREHOUSE_MINIMUM_STOCK`: template
+create memakai SKU Product dan nama Gudang; export update menambahkan
+`internal_id`; preview menjelaskan threshold Base UOM dan status notifikasi.
+API export menggabungkan settings/Product/Gudang melalui query terpisah agar
+tidak bergantung pada PostgREST embedded relationship. Tidak ada saldo,
+movement, request, order, atau Opening Stock yang dimutasi.
 
 User mengonfirmasi Phase-40 main migration, UUID forward fix, postflight,
 behavioral test, dan Phase-38 compatibility regression seluruhnya PASS pada
@@ -140,8 +505,139 @@ Phase-41 Backoffice menambahkan Kategori Pelanggan, Chart of Account, dan
 Kategori Transaksi ke tipe Import & Export. Template create tidak menampilkan
 kode teknis Customer/Transaction Category; COA tetap memakai kode akun bisnis.
 Export memuat `internal_id` untuk update. System-owned rows tetap tampil sebagai
-referensi export namun validator menolak mutasinya. Local lint dan production
-build PASS; authenticated smoke user masih menunggu.
+referensi export namun validator menolak mutasinya. Local lint, production
+build, dan authenticated smoke user PASS. Phase 41 dinyatakan `COMPLETE`.
+
+Phase 42 memulai grouped Product Import melalui diagnostic SELECT-only.
+Kontrak fixed memakai beberapa row per Product: satu row per UOM dan seluruh
+row dengan `product_key` yang sama diproses atomic. Tepat satu faktor base `1`,
+UOM aktif berfaktor terbesar menjadi acuan berat, minimal satu UOM jual/beli
+aktif, dan reference Category/UOM/Tax harus sudah tersedia. Product import
+tidak membuat master referensi, stock, FIFO, movement, atau Opening Stock.
+
+User mengonfirmasi seluruh hasil live Phase-42 preflight PASS. Migration
+`20260727130000` menambahkan job type `PRODUCT`, grouped validator,
+optimistic preview capture, dan per-group partial commit ditambahkan tanpa
+mengubah signature public import RPC. Tujuh simple master existing tetap
+didelegasikan ke implementation Phase 40 yang dipindahkan ke private.
+
+Validator menyelesaikan Category/UOM/Tax berdasarkan nama tenant yang aktif,
+menolak group header yang tidak konsisten, duplicate UOM/barcode, Base UOM
+selain tepat satu faktor `1`, acuan berat yang ambigu, serta Product tanpa UOM
+jual/beli. Commit hanya memanggil overload atomic
+`save_product_with_uoms(..., sales_tax_rule_id, purchase_tax_rule_id)`.
+Product Bundle, stock, Opening Stock, dan auto-create reference tetap ditolak.
+SKU, Base UOM, struktur UOM, dan faktor terkunci bila sudah ada Sales,
+Purchase, atau stock-movement history.
+
+Migration Phase 42 kemudian berhasil applied. Behavioral test mencapai commit
+tetapi rollback pada constraint `master_import_job_events_type_check` karena
+private Product commit menulis event `COMMIT`, sementara vocabulary canonical
+adalah `COMPLETE`. Seluruh fixture/write test rollback; migration utama tetap
+applied. Forward migration `20260727140000` hanya mengganti literal audit
+tersebut tanpa mengubah signature atau business behavior.
+
+User kemudian mengonfirmasi forward migration, 4-check postflight, behavioral
+test Phase 42, serta regression Phase 40 dan Phase 38 seluruhnya PASS. Database
+Grouped Product Import kini `COMPLETE`; migration utama maupun forward fix
+tidak boleh dijalankan ulang.
+
+Phase 43 menambahkan tipe **Produk + Satuan** pada Backoffice Import & Export.
+Template fixed memakai satu baris per Product-UOM dan `product_key` yang sama
+untuk seluruh satuan Product. Export menambahkan `internal_id` hanya untuk mode
+update dan mereferensikan Category/UOM/Tax berdasarkan nama. Preview
+mengelompokkan baris berdasarkan Product, menampilkan nama Product, SKU, nama
+UOM, faktor langsung ke Base UOM, fungsi beli/jual, dan harga. Ringkasan
+create/update/skip/error dihitung per Product group. Tidak ada stock, Opening
+Stock, movement, FIFO, atau auto-create master reference.
+
+Phase 44 melanjutkan dependency order fixed import ke Product-Supplier. Kontrak
+create memakai `product_sku`, `supplier_name`, `purchase_uom_name`,
+`supplier_product_code`, reference price, preferred flag, dan status. Diagnostic
+baru hanya membaca aggregate live state. Ia memblokir reference aktif ambigu,
+Product stok tanpa UOM pembelian, orphan/cross-Company relation, relasi aktif
+ke master nonaktif/UOM non-pembelian/Bundle, preferred Supplier ganda, nilai
+existing invalid, guarded RPC hilang, serta import job nonterminal.
+
+User mengirim seluruh hasil live Phase-44 preflight: semua blocker `PASS`,
+job type `PRODUCT_SUPPLIER` belum ada sesuai expected pre-migration, tidak ada
+job nonterminal, dan satu relation existing valid. Migration
+`20260727160000` menambahkan job type/dispatcher secara additive, validator
+tenant-scoped, optimistic version capture, dan partial commit melalui
+`save_product_supplier(...)`. Pergantian preferred memproses row `false`
+sebelum `true`; final preview tetap menolak lebih dari satu preferred aktif.
+Import tidak menyentuh `last_purchase_price`, Purchase, stock, FIFO, movement,
+atau Opening Stock.
+
+User kemudian mengonfirmasi seluruh rollout Phase 44 PASS. Phase 45 menambah
+tipe **Relasi Produk–Supplier** pada Backoffice Import & Export. Template create
+berisi tujuh header fixed tanpa ID; export update menambahkan `internal_id`.
+Product ditampilkan sebagai SKU, sedangkan Supplier dan UOM pembelian selalu
+ditampilkan sebagai nama. Preview tidak memperlihatkan UUID dan menjelaskan
+harga referensi, preferred/alternatif, serta status. Export menggabungkan query
+relation/Product/Supplier/UOM secara terpisah agar tidak bergantung pada nested
+PostgREST relationship schema cache. Lint dan production build PASS.
+
+User melanjutkan setelah verifikasi tersebut sehingga Phase 45 ditutup
+`COMPLETE`. Phase 46 mengaudit Minimum Stock per Produk–Gudang sebelum schema
+ditulis. Kontrak approved menyimpan threshold opsional dalam base UOM dan
+memisahkan lifecycle konfigurasi dari saldo `product_stocks`. Dengan demikian,
+pasangan Product–Gudang tanpa movement/saldo tetap dapat dikonfigurasi tanpa
+membuat row saldo nol palsu.
+
+Diagnostic Phase 46 hanya membaca aggregate state. Ia memeriksa dependency
+Phase 44, SKU Product dan nama Gudang aktif yang kosong/ambigu, tepat satu base
+Product-UOM aktif berfaktor `1`, orphan/duplicate/negative saldo, movement pair
+tanpa materialized balance, import job nonterminal, direct browser stock write,
+eligible pair inventory, serta state schema/job/RPC yang memang belum tersedia.
+Tidak ada threshold, stock mutation, movement, Stock Request, Supplier Order,
+atau Opening Stock yang dibuat.
+
+User mengirim hasil live: seluruh check hanya `PASS`/`INFO`. Satu Product stock
+aktif dan tiga Gudang aktif menghasilkan tiga eligible pair; belum ada balance
+atau movement. Tidak ada reference kosong/ambigu, base UOM invalid,
+orphan/duplicate/negative balance, movement tanpa balance, browser write, atau
+job nonterminal. Schema/RPC/job type belum ada sesuai expected pre-migration.
+
+Migration `20260728090000` kini local-ready. Ia membuat tabel settings dan
+audit terpisah dari `product_stocks`, guarded optimistic RPC dengan advisory
+pair lock, RLS read boundary, serta fixed import
+`PRODUCT_WAREHOUSE_MINIMUM_STOCK`. Template memakai SKU Product dan nama
+Gudang; threshold memakai base UOM. Validator/partial commit bersifat
+tenant-safe dan tidak membuat balance, movement, Stock Request, Supplier
+Order, atau Opening Stock.
+
+File aktif:
+
+- `supabase/diagnostics/g2_phase42_grouped_product_import_preflight.sql`;
+- `supabase/migrations/20260727130000_g2_phase42_grouped_product_import.sql`;
+- `supabase/diagnostics/g2_phase42_grouped_product_import_postflight.sql`;
+- `supabase/tests/g2_phase42_grouped_product_import_tests.sql`;
+- `supabase/migrations/20260727140000_g2_phase42_product_import_complete_event_fix.sql`;
+- `supabase/diagnostics/g2_phase42_product_import_complete_event_fix_postflight.sql`;
+- `docs/runbooks/G2_PHASE42_GROUPED_PRODUCT_IMPORT_PREFLIGHT.md`;
+- `docs/runbooks/G2_PHASE42_GROUPED_PRODUCT_IMPORT_ROLLOUT.md`;
+- `docs/runbooks/G2_PHASE42_PRODUCT_IMPORT_COMPLETE_EVENT_FIX.md`;
+- `docs/runbooks/G2_PHASE43_GROUPED_PRODUCT_IMPORT_UI.md`;
+- `supabase/diagnostics/g2_phase44_product_supplier_import_preflight.sql`;
+- `docs/runbooks/G2_PHASE44_PRODUCT_SUPPLIER_IMPORT_PREFLIGHT.md`;
+- `supabase/migrations/20260727160000_g2_phase44_product_supplier_import.sql`;
+- `supabase/diagnostics/g2_phase44_product_supplier_import_postflight.sql`;
+- `supabase/tests/g2_phase44_product_supplier_import_tests.sql`;
+- `docs/runbooks/G2_PHASE44_PRODUCT_SUPPLIER_IMPORT_ROLLOUT.md`;
+- `docs/runbooks/G2_PHASE45_PRODUCT_SUPPLIER_IMPORT_UI.md`;
+- `supabase/diagnostics/g2_phase46_product_warehouse_minimum_stock_preflight.sql`;
+- `docs/runbooks/G2_PHASE46_PRODUCT_WAREHOUSE_MINIMUM_STOCK_PREFLIGHT.md`;
+- `supabase/migrations/20260728090000_g2_phase46_product_warehouse_minimum_stock.sql`;
+- `supabase/diagnostics/g2_phase46_product_warehouse_minimum_stock_postflight.sql`;
+- `supabase/tests/g2_phase46_product_warehouse_minimum_stock_tests.sql`;
+- `docs/runbooks/G2_PHASE46_PRODUCT_WAREHOUSE_MINIMUM_STOCK_ROLLOUT.md`;
+- `backoffice/src/lib/master-import.ts`;
+- `backoffice/src/app/api/master/import-export/route.ts`;
+- `backoffice/src/app/api/master/import-jobs/[id]/route.ts`;
+- `backoffice/src/components/MasterImportView.tsx`;
+- `docs/MASTER_IMPORT_FIXED_CSV_CONTRACTS.md`;
+- `docs/PRODUCT_STOCK_MASTERDATA_SPEC.md`.
 
 Prompt handoff siap-copas tersedia pada
 `docs/AGENT_CONTINUATION_COPY_PASTE_PROMPT.md`. Prompt tersebut selalu
@@ -434,20 +930,11 @@ membentuk stock/FIFO/AP provisional.
 
 ## 5. Manual Gate Terakhir
 
-Database Phase 40 tidak perlu dijalankan ulang. Manual gate sekarang adalah
-authenticated Backoffice smoke Phase 41:
-
-1. restart Backoffice dan buka **Import & Export** sebagai Owner/Admin;
-2. cek template dan export Kategori Pelanggan, Chart of Account, dan Kategori
-   Transaksi;
-3. preview/commit satu row custom tiap tipe;
-4. untuk COA child, letakkan parent pada baris sebelumnya;
-5. uji update memakai `internal_id` dari export;
-6. pastikan system-owned row ditolak di preview tanpa menggagalkan row custom;
-7. ulangi satu smoke salah satu dari empat tipe lama.
-
-Detail expected ada di
-`docs/runbooks/G2_PHASE41_REMAINING_SIMPLE_MASTER_IMPORT_UI.md`.
+Database dan authenticated UI Sale Draft sudah ditutup user sebagai all-good.
+Payment-Leg identity rollout, corrected behavior fixture, dan regression juga
+telah dikonfirmasi sukses. Gate aktif sekarang adalah authenticated tablet
+smoke Split Payment sesuai
+`docs/runbooks/G4_PHASE9_SPLIT_PAYMENT_PWA_UI.md`.
 
 File Pricelist yang sudah ditutup:
 
@@ -477,13 +964,15 @@ menjadi Rp4.000 diisi `4000`; potongan per UOM hanya untuk tier Global.
 
 ## 6. Next Safe Step
 
-Tunggu authenticated smoke Phase 41. Setelah aman, tandai UI tujuh simple
-master `COMPLETE`. Jangan memulai grouped Product/Pricelist/Payment Method
-sebelum UI simple-master tersebut ditutup.
+Phase-10 sudah tertutup; jangan rerun Draft yang kini `POSTED`. Next safe step
+adalah melanjutkan gate G4 berikutnya sesuai roadmap. Receipt
+Supplier/Purchase Return tetap G5.
+
+Jangan rerun migration Phase 46, Phase 44, atau migration/forward fix Phase 42.
 
 Jangan mengubah migration Phase 30–33 yang sudah applied; explicit-code CSV
 lama tetap compatibility surface selama transisi.
-Opening Stock tetap menunggu G3 dan Product Brand menunggu canonical master.
+Product Brand tetap menunggu canonical master.
 Permission granular per-user/submodule tetap follow-up access-control terpisah.
 Jangan mengaktifkan resolver, checkout calculation, journal, e-Faktur, atau
 official tax reporting.
@@ -550,4 +1039,63 @@ baru aktif setelah minimal dua Customer non-sistem tersedia.
 | 2026-07-27 | Codex — Phase-40 remaining simple master import database gate | Preflight ditutup bersih; additive job type, validator, guarded partial commit, system-row protection, postflight/test/runbook/manifest dibuat | User preflight seluruh invariant PASS; SQL delimiter/parenthesis/diff checks local; Supabase rollout pending | Migration `20260727090000` → 10 PASS → behavioral test → Phase-38 regression |
 | 2026-07-27 | Codex — Phase-40 COA UUID aggregate forward fix | Applied migration dipertahankan immutable; unsupported `min(uuid)` diganti secara forward-only menjadi `min(id::text)::uuid` | User error PostgreSQL 42883 tepat pada parent lookup; forward migration/postflight static-ready | Migration `20260727100000` → 4 PASS → rerun Phase-40 test → Phase-38 regression |
 | 2026-07-27 | Codex — Phase-41 remaining simple master Import UI | Customer Category, COA, dan Transaction Category ditambahkan ke template/export/mapping/preview; system rows dijelaskan export-only | User menutup Phase-40 DB all success; Backoffice lint/build PASS | Authenticated smoke sesuai runbook Phase 41 |
+| 2026-07-27 | Codex — Phase-42 grouped Product Import preflight | Phase-41 smoke ditutup PASS; diagnostic atomic Product/Product-UOM, reference, Tax, history, RPC, dan job readiness dibuat | SELECT-only static review; live Supabase result pending | Jalankan Phase-42 preflight dan kirim seluruh output |
 | 2026-07-27 | Codex — Phase-40 forward-fix diagnostic correction | Postflight diubah dari full function-definition pattern menjadi direct `pg_proc.prosrc` inspection tanpa menjalankan validator | User reached step 2 and reported relation `v_parent_id`; forward migration treated applied | Rerun latest 4-check postflight only, then both behavioral tests |
+| 2026-07-27 | Codex — Phase-42 grouped Product Import database | Live preflight ditutup PASS; grouped Product/Product-UOM validator, atomic guarded commit, history lock, postflight/test/runbook dibuat | User: preflight all pass; `git diff --check` clean; local SQL structural review; manual DB execution pending | Migration `20260727130000` → 11 PASS → behavioral test → Phase-40/38 regression |
+| 2026-07-27 | Codex — Phase-42 create-job whitelist fix | Rollout pertama rollback pada brittle `pg_get_functiondef` text match; migration unapplied. Dynamic rewrite diganti full stable RPC body dengan signature/behavior lama dan tambahan `PRODUCT` | User error `MIGRATION_PRECONDITION_FAILED: create job whitelist changed`; transaction rollback menjaga schema/data lama | Rerun seluruh migration Phase 42 terbaru dari awal |
+| 2026-07-27 | Codex — Phase-42 COMPLETE event forward fix | Migration utama applied; behavioral test rollback saat audit memakai event `COMMIT` yang tidak ada dalam constraint canonical | User error PostgreSQL 23514; canonical Phase-33/40 implementation memakai `COMPLETE`; forward migration/postflight local-ready | Migration `20260727140000` → 4 PASS → rerun Phase-42 test → Phase-40/38 regression |
+| 2026-07-27 | Codex — Phase-43 grouped Product Import UI | Phase-42 database ditutup COMPLETE; Product ditambahkan ke template/export/mapping, preview dikelompokkan per `product_key`, dan semua referensi operasional memakai nama | User: forward fix/postflight/behavior/regression all pass; Backoffice lint PASS; production build PASS | Restart dan authenticated smoke sesuai runbook Phase 43 |
+| 2026-07-27 | Codex — Phase-44 Product-Supplier Import preflight | Diagnostic SELECT-only untuk dependency Phase 42, reference aktif, UOM pembelian, existing relation, preferred uniqueness, guarded RPC, privilege, dan job readiness dibuat | Contract/source/RPC review; SQL aggregate-only; manual Supabase result pending | Jalankan preflight Phase 44 dan kirim seluruh output |
+| 2026-07-27 | Codex — Phase-44 Product-Supplier Import database | Live preflight ditutup bersih; additive job type/dispatcher, guarded validator/partial commit, preferred switch ordering, postflight/test/runbook/manifest dibuat | User output seluruh blocker PASS; local checksum/diff/SQL structural checks; manual Supabase pending | Migration `20260727160000` → 11 PASS → behavioral test → Phase-42/40/38 regression |
+| 2026-07-27 | Codex — Phase-45 Product-Supplier Import UI | Phase-44 DB ditutup COMPLETE; fixed template/export, SKU/nama references, preferred-switch UX, preview/error labels tanpa UUID ditambahkan | User: seluruh Phase-44 rollout PASS; Backoffice lint PASS; production build PASS | Restart dan authenticated smoke sesuai runbook Phase 45 |
+| 2026-07-28 | Codex — Phase-46 Minimum Stock Produk-Gudang preflight | Phase-45 smoke ditutup; kontrak konfigurasi terpisah dari saldo dan diagnostic aggregate-only untuk pair/base UOM/saldo/movement/reference/job/schema dibuat | User melanjutkan setelah Phase-45; SQL tanpa mutation; manual live result pending | Jalankan Phase-46 preflight dan kirim seluruh output |
+| 2026-07-28 | Codex — Phase-46 Minimum Stock database | Live preflight ditutup bersih; settings/audit, guarded optimistic RPC, fixed import dispatcher/validator/commit, postflight/test/runbook/manifest dibuat | User: seluruh preflight PASS/INFO, 3 eligible pair, zero balance/movement; checksum manifest recorded; manual rollout pending | Migration `20260728090000` → 12 PASS → behavior → Phase-44/42/40/38 regression |
+| 2026-07-28 | Codex — app shell Back + breadcrumb | Phase-46 rollout ditutup dari konfirmasi user; history view internal, tombol Kembali, dan breadcrumb Beranda/Modul/Halaman diterapkan global serta direset saat Home/Company berubah | Backoffice lint PASS; production build PASS (28 static/dynamic app routes); authenticated click smoke menunggu user | Restart Backoffice, smoke navigation, lalu Phase-47 Minimum Stock UI |
+| 2026-07-28 | Codex — Phase-47 Minimum Stock API/UI | Guarded API list/create/update, Inventory page, Base-UOM threshold UX, fixed template/export/preview/error guidance, dan runbook dibuat tanpa schema/stock mutation | Backoffice lint PASS; production build PASS (29 pages, dua route Minimum Stock); authenticated smoke pending | Restart dan jalankan smoke Phase 47, lalu audit exit G2 |
+| 2026-07-28 | Codex — G3 Phase-1 Opening Stock preflight | SELECT-only audit dependency, Product-Gudang eligibility, saldo/movement/FIFO, Finance readiness, enum, dan missing canonical schema dibuat | Static review against current schema; live Supabase result pending | Jalankan preflight penuh dan kirim seluruh hasil sebelum migration Opening Stock |
+| 2026-07-28 | Codex — G3 Phase-1 Opening Stock database | Live preflight ditutup bersih; Draft/Posted schema, guarded save/post RPC, atomic movement-balance-FIFO-HOLD event, audit/idempotency, postflight/test/runbook dibuat | User: 13 invariant PASS, 3 eligible pair, zero stock history; local static/diff checks; manual Supabase pending | Migration `20260728120000` → all postflight PASS → behavior → Phase-46/44/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-2 Opening Stock API/UI | User menutup seluruh database gate; guarded Draft/Posting API, Inventory UI, dan detail bukti saldo/movement/FIFO dibuat | DB user all success; Backoffice lint PASS; production build PASS (30 pages); `git diff --check` PASS | Restart Backoffice dan jalankan authenticated smoke runbook Phase 2 |
+| 2026-07-28 | Codex — G3 stock actual/minimum alert read model | Gap smoke ditemukan: canonical Product dan Minimum Stock belum membaca saldo hasil Posting; stock overview API, total/per-Gudang display, dan low-stock indicator ditambahkan | Backoffice lint PASS; production build PASS (31 pages) | Restart, pastikan dokumen POSTED, cek Produk & Stok lalu Minimum Stock |
+| 2026-07-28 | Codex — G3 Phase-3 Stock Real roadmap alignment | Source-of-truth diaudit ulang; Stock Real dipisahkan dari Product/Minimum config dan dibuat read-only dengan On Hand/Available/FIFO/last movement/filter | Backoffice lint PASS; production build PASS (31 pages); `git diff --check` PASS | Smoke Stock Real; setelah PASS lanjut Kartu Stok, bukan G4/G5 |
+| 2026-07-28 | Codex — G3 Phase-4 Stock Movement preflight | Existing ledger dibandingkan dengan minimum Kartu Stok contract; SELECT-only audit dan runbook dibuat tanpa mutation | Static SQL review; live Supabase result pending | Jalankan preflight penuh dan kirim seluruh output |
+| 2026-07-28 | Codex — G3 Phase-4 canonical Stock Movement database | Live preflight ditutup bersih; additive snapshot/backfill/enrichment, immutable guard, source uniqueness, postflight/test/runbook dibuat | User: 11 invariant PASS, 1 Opening row/pair/source, zero mismatch; static checks pending | Migration `20260728150000` → postflight → behavior → Phase-1/46/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-5 Stock Movement API/UI | User menutup canonical database all good; API tenant-scoped dan read-only Kartu Stok dengan snapshot, nama bisnis, source/actor aman, serta filter dibuat | Backoffice lint PASS; production build PASS (32 pages); authenticated smoke pending | Restart dan jalankan smoke Phase 5; G4/G5 tetap tertutup |
+| 2026-07-28 | Codex — G3 Phase-6 Stock Transfer preflight | Kartu Stok smoke ditutup PASS; SELECT-only audit dibuat untuk legacy unsafe RPC, transfer pair/snapshot, balance/FIFO, Base UOM, Finance category, privilege, dan missing canonical document schema | SQL aggregate-only; no mutation; local static/diff checks | Jalankan seluruh preflight dan kirim output; Transfer mutation belum dibuka |
+| 2026-07-28 | Codex — G3 Phase-6 canonical Stock Transfer database | Live preflight ditutup bersih; Draft/Posted/Canceled document, atomic Base-UOM balance, FIFO relocation/lineage, paired movement, role/idempotency/audit, legacy RPC retirement, postflight/test/runbook dibuat | User: all blockers PASS, zero Transfer history, 1 positive source/3 warehouses; checksum/static checks local | Migration `20260728180000` → 15 PASS → behavior → Phase-4/1/46/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-7 Stock Transfer API/UI | Database gate ditutup all success; guarded create/edit/post/cancel, source balance UX, movement/FIFO proof, role-aware Inventory menu, dan nomor Transfer di Kartu Stok dibuat | User: DB rollout/regression all success; Backoffice lint PASS; production build PASS (33 pages); `git diff --check` PASS | Restart dan authenticated smoke sesuai runbook Phase 7 |
+| 2026-07-28 | Codex — G3 Phase-8 Stock Adjustment preflight | Transfer authenticated smoke ditutup; roadmap menempatkan canonical Adjustment sebelum Opname; diagnostic legacy/reason/balance/FIFO/Finance/privilege/schema dibuat | User menyatakan Transfer all success; 16 checks, forbidden mutation 0, dan `git diff --check` PASS | Jalankan preflight Phase 8 dan kirim seluruh output |
+| 2026-07-28 | Codex — G3 Phase-8 canonical Stock Adjustment database | Live preflight ditutup bersih; reason master, final-quantity Draft/Posted/Canceled document, FIFO gain/loss, immutable Movement, Finance HOLD, role/idempotency/audit, postflight/test/runbook dibuat | User: seluruh blocker PASS, zero legacy/backfill, 2 positive FIFO layers/pairs; SHA-256 `602259e7...`; delimiter dan `git diff --check` PASS | Migration `20260728210000` → 16 PASS → behavior → Transfer/Movement/Opening/Minimum/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-9 Stock Adjustment API/UI | User menutup seluruh database gate; guarded API/UI final-quantity, reason direction, gain-cost override, Draft/Post/Cancel, FIFO/value proof, serta Kartu Stok source dibuat | User: DB all good; Backoffice lint PASS; production build PASS (34 pages); authenticated smoke pending | Restart dan jalankan smoke Phase 9; setelah PASS baru preflight Opname |
+| 2026-07-28 | Codex — G3 Phase-10 Stock Opname preflight | User melanjutkan setelah Adjustment smoke; kontrak blind count nonblocking, recount, per-line supersede, dan posting via canonical Adjustment diaudit; diagnostic/runbook dibuat tanpa mutation | 22 aggregate checks; static SQL dan diff verification lokal | Jalankan preflight penuh dan kirim seluruh output; migration Opname belum dibuka |
+| 2026-07-28 | Codex — G3 Phase-10 canonical Stock Opname database | Live preflight ditutup bersih; legacy table diperluas dengan blind-safe RPC, movement-window recount, attempt audit, supersede, dan atomic Adjustment posting | User: seluruh invariant PASS, zero legacy/overlap/backfill; checksum `23e50261...`; 14-check postflight dan behavior local-ready | Migration `20260728230000` → 14 PASS → behavior → Phase-8/6/4/1/46/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-11 Stock Opname Backoffice API/UI | Database gate ditutup all success; tenant-scoped report/review, recount/post/cancel RPC bridge, attempt timeline, Adjustment proof, role-aware Inventory menu, dan Escape modal dibuat | User: Phase-10 rollout/regression all success; Backoffice lint PASS; production build PASS (35 pages); four Opname routes detected | Restart dan authenticated smoke sesuai runbook Phase 11; POS blind count tetap G4 |
+| 2026-07-28 | Codex — G3 Phase-12 Bundle foundation preflight | SO end-to-end smoke dicatat menunggu POS G4; sisa G3 dialihkan ke SELECT-only audit Bundle composition, UOM, virtual stock, privilege, dan guarded RPC gap | Existing Bundle table/RPC/spec audit; diagnostic aggregate-only; no schema/stock/checkout mutation | Jalankan Phase-12 preflight penuh dan kirim seluruh output |
+| 2026-07-28 | Codex — G3 Phase-12 canonical Bundle foundation database | Live preflight ditutup bersih; atomic Product+composition, derived weight, immutable type, hard virtual-stock guard, audit/version, private expansion, reviewer availability, postflight/test/runbook dibuat | User: all invariant PASS, zero Bundle/component/backfill/physical stock; checksum `7a5c1fbd...`; local delimiter/diff verification | Migration `20260729010000` → 14 PASS → behavior → Product/Opname/Adjustment/Transfer/Movement/Opening/G1 regression |
+| 2026-07-28 | Codex — G3 Phase-13/14 Bundle UI closure dan inventory-core exit preflight | Bundle DB/UI ditutup dari continuation user; SELECT-only reconciliation saldo–Movement–FIFO, source coverage, Bundle/Opname/browser invariant, fixture stress, serta explicit G4/G5 deferral dibuat | User: Bundle all good; diagnostic mutation scan dan diff check lokal | Jalankan Phase-14 preflight penuh dan kirim semua row |
+| 2026-07-28 | Codex — G3 Phase-15 inventory-core stress behavior | Phase-14 live preflight ditutup PASS; rollback-safe fixture menguji two-layer FIFO, idempotent retry, 20 repeated Transfer contenders, Adjustment gain, reconciliation, dan Bundle virtual | User: seluruh core invariant PASS; `SETUP` dan G4/G5 `DEFERRED` expected; delimiter/diff check PASS; test SHA-256 `09CEBC17...0742` | Jalankan Phase-15 test, rerun Phase-14 preflight dan G1 closure |
+| 2026-07-28 | Codex — G1/G2/G3 regression fixture compatibility fix | Rollback-only synthetic Movement fixtures memakai `PURCHASE`/`PURCHASE_RETURN`; canonical Adjustment hanya boleh berasal dari dokumen Adjustment lengkap; assertion history/RLS/FIFO tetap identik | User mengonfirmasi G1 closure terbaru SUCCESS setelah error PostgreSQL 23514 diperbaiki; audit juga menutup lima regression fixture lama dengan pola sama | Jalankan Phase-15 stress, lalu rerun Phase-14 preflight; tidak ada migration |
+| 2026-07-28 | Codex — G3 closure dan G4 Phase-1 POS readiness preflight | Phase-14 rerun ditutup aman; SELECT-only audit dibuat untuk config POS, Session, Product-UOM/Bundle, Payment/Pricelist/Tax, Sale history, runtime snapshot, direct-write, dan legacy checkout authority | User: seluruh G3 core invariant PASS, `SETUP` rollback-expected, G4/G5 `DEFERRED`; diagnostic mutation scan 0 dan `git diff --check` PASS | Jalankan G4 Phase-1 preflight dan kirim seluruh output |
+| 2026-07-28 | Codex — G4 Phase-2 canonical Cashier Session foundation | Phase-1 output direview valid; additive Session warehouse/cash/version, one-open guard, opening/closing stock snapshots, guarded open/close RPC, idempotent retry, RLS/audit, postflight/test/runbook dibuat tanpa checkout cutover | User: dependency/config/data PASS; expected blockers hanya legacy checkout/price/runtime; delimiter/mutation scan, manifest hash, dan `git diff --check` PASS; live rollout pending | Migration `20260729040000` → 13 PASS → behavioral test → G3/G1 regression |
+| 2026-07-29 | Codex — G4 Phase-3 Atomic Sale runtime preflight | Phase-2 ditutup COMPLETE; diagnostic SELECT-only memetakan Session, legacy authority, pricing/payment/tax, Product-UOM/Bundle, Stock–Movement–FIFO, Finance category, snapshot/allocation, dan Draft/Post RPC gap | User mengonfirmasi Phase-2 all success; SQL static verification lokal | Jalankan Phase-3 preflight penuh dan kirim seluruh output; checkout tetap tertutup |
+| 2026-07-29 | Codex — G4 Phase-4 Atomic Sale runtime database | Live preflight ditutup sesuai baseline; server price/Draft/Post, shortage-safe no-effect, FIFO/Bundle, Payment/Tax/rounding, receipt, Finance HOLD, idempotency, postflight/test/runbook dibuat; legacy browser checkout retired | User: seluruh prerequisite/data invariant PASS, expected 2 legacy blocker + 4 setup; migration SHA-256 cocok manifest; delimiter/parenthesis seimbang; postflight SELECT-only 17 checks; behavioral test rollback-safe; `git diff --check` bersih | Migration `20260729070000` → 17 PASS → behavioral test → G4/G3/G2/G1 regression |
+| 2026-07-29 | Codex — G4 Phase-5 POS online integration | Phase-4 user gate ditutup clear; PWA mock diganti login/context/Session/real catalog/canonical Draft/Post/shortage/receipt; Backoffice legacy checkout route diganti canonical action dan offline sync dikarantina | PWA lint/build PASS; Backoffice lint/build PASS (36 app routes); active-path scan zero `MOCK_PRODUCTS`/legacy checkout; authenticated smoke pending | Jalankan smoke Phase-5; setelah PASS lanjut Draft lock/list + split payment |
+| 2026-07-29 | Codex — G4 Phase-5 PWA tablet/Pricelist/receipt closure | Terminal/Gudang user smoke diterima; PWA tablet-first, reset POSTED, receipt print-tab, Customer Pricelist AUTO/override, guarded wrapper/resolver, postflight/test/runbook dibuat | PWA lint/build PASS; Backoffice lint/build PASS (36 routes); SQL structural/diff check PASS; browser preview connector gagal attach; live DB/UI smoke pending | Migration `20260729100000` → 4 PASS → behavior/regression → hard refresh + tablet smoke |
+| 2026-07-29 | Codex — G4 Phase-5 Moka-like tablet hierarchy revision | Redesign pertama ditolak user karena hierarchy/tombol lemah; shell POS dirombak menjadi two-pane high-contrast, numbered checkout stages, solid add/category/actions, dan sticky total/action tanpa dependency baru | PWA lint PASS; production build PASS; browser preview connector tidak dapat attach; authenticated visual smoke pending | Restart/hard refresh PWA dan validasi hierarchy pada tablet sebelum rollout closure dilanjutkan |
+| 2026-07-29 | Codex — G4 Phase-6 Sale Draft edit-lock preflight | Phase-5 rollout/PWA smoke ditutup all clear; SELECT-only diagnostic dan runbook dibuat untuk Draft lifecycle, same-Store continuation, stale age, side effects, lock/audit/RPC/schema/privilege | Source-of-truth audit terhadap canonical Sale runtime dan approved Draft contract; local SQL safety verification pending | Jalankan Phase-6 preflight penuh dan kirim seluruh output |
+| 2026-07-29 | Codex — G4 Phase-6 Sale Draft edit-lock foundation | Live preflight ditutup bersih; Draft numbering/metadata, same-Store visibility/list, heartbeat lock, confirmed takeover, force release, cancel, guarded Save/Post core boundary, postflight/test/runbook dibuat | User: all data invariant PASS, zero Draft, expected SETUP only; migration checksum/static checks local; manual rollout pending | Migration `20260729120000` → all postflight PASS → behavior → Phase-5/4/Store Manager/G1 regression |
+| 2026-07-29 | Codex — G4 Phase-7 Sale Draft PWA UI | User menutup rollout Phase-6 all-good; PWA mendapat daftar Draft per Store, metadata user-facing, resume+server repricing, payment reconfirm, heartbeat, stale takeover, force release, cancel, dan Escape panel | PWA lint PASS; production build PASS; browser visual connector gagal tersambung sehingga authenticated tablet smoke menunggu user | Restart/hard refresh dan jalankan runbook Phase-7; split payment tetap tertutup |
+| 2026-07-29 | Codex — G4 Phase-7 custom action dialog | Native browser confirm/prompt dihapus dari PWA; takeover, force release, cancel Draft, transaksi baru, dan tutup sesi memakai modal konsisten dengan textarea alasan tervalidasi dan Escape | Scan `window.confirm/prompt` zero; PWA lint PASS; production build PASS | Hard refresh lalu smoke seluruh modal Phase-7 |
+| 2026-07-29 | Codex — G4 Phase-8 Split Payment preflight | User menerima Draft/custom modal; audit SELECT-only dibuat untuk multi-leg server loop, fee per leg, Store eligibility, posted snapshot/total/tender, duplicate method, payment-leg identity, dan privilege | SQL single-statement SELECT-only; no schema/data mutation; user execution pending | Jalankan Phase-8 preflight dan kirim seluruh output |
+| 2026-07-29 | Codex — G4 Phase-8 Payment-Leg identity foundation | Live preflight bersih; forward migration menambah stable UUID per leg, legacy normalization, duplicate key/metode guard, unique payment identity, receipt traceability, postflight/test/runbook | User: dependency/runtime/data PASS, 3 active methods, 1 posted Sale/payment, expected identity SETUP only; static SQL/hash verification local | Migration `20260729150000` → 10 PASS → behavior → Phase-6/5/4/G1 regression |
+| 2026-07-29 | Codex — Phase-8 behavior fixture correction | Behavior pertama berhenti pada precondition karena Company sintetis hanya mendapat Cash mandatory; fixture sekarang menambah metode `CUSTOM` kedua secara rollback-only dan memilih kedua ID secara deterministik | Error terjadi sebelum assertion/runtime mutation; migration tidak diubah dan tidak perlu direrun; test static/diff check PASS | Rerun behavior Phase-8 terbaru, lalu regression bila PASS |
+| 2026-07-29 | Codex — G4 Phase-9 Split Payment PWA UI | User menutup Payment-Leg rollout sukses; PWA memakai stable key per leg, exact base-total split, duplicate-method prevention, Cash tender/change, per-leg proof, fee estimate, dan tablet-friendly summary | PWA lint PASS; production build PASS; browser connector gagal attach sehingga authenticated visual smoke belum diklaim | Restart/hard refresh dan jalankan runbook Phase-9; setelah PASS lanjut online E2E + true concurrent double-post |
+| 2026-07-29 | Codex — Phase-9 POS visual correction | User menemukan field overlap, istilah membingungkan, dan icon action tidak center; dua kolom checkout dihapus, input mendapat padding/containment, copy diganti bahasa Kasir, Cash auto-fill, dan seluruh icon-only Keranjang/modal/struk memakai ukuran tetap + grid centering tanpa baseline/transform | PWA lint PASS; production build PASS; browser connector masih gagal attach, jadi visual smoke tetap manual | Restart/hard refresh PWA dan validasi icon Keranjang serta satu/dua cara bayar pada tablet |
+| 2026-07-29 | Codex — G4 Phase-10 Online Checkout stress preflight | User meminta lanjut sesuai rundown; diagnostic SELECT-only dibuat untuk server lock/idempotency, identity uniqueness, posted final effect, Payment/Movement/FIFO/stock reconciliation, dan fixture dua Kasir | Parenthesis balanced; mutation scan hanya menemukan kata dalam function definition/index privilege strings; `git diff --check` PASS | Jalankan preflight Phase-10 penuh dan kirim seluruh output |
+| 2026-07-29 | Codex — Phase-10 preflight execution-chain correction | Live result menunjukkan false blocker karena diagnostic membaca public wrapper saja; revision membaca wrapper Sale lock + private core stock/FIFO/idempotency dan menghitung Company Owner/Admin/Super Admin sebagai effective POS users | Seluruh live data invariant lain PASS; one Store punya Terminal/payment/stock-FIFO; static balance dan diff check PASS | Rerun preflight terbaru; jangan membuat migration dari false blocker lama |
+| 2026-07-29 | Codex — G4 Phase-10 true-concurrent Post harness | User menutup preflight seluruhnya PASS; staging-only CLI mengirim 2–20 Post dengan satu key dan memverifikasi single final effect, Payment identity, Movement, Event, serta audit tanpa service role | `node --check`, PWA lint, production build PASS; harness sengaja belum dieksekusi karena mem-post Draft/stok sungguhan | Buat Draft disposable staging, jalankan runbook, kirim JSON saja, lalu rerun preflight |
+| 2026-07-29 | Codex — Phase-10 harness Supabase config fix | Eksekusi pertama gagal sebelum Auth karena script membaca placeholder `pwa/.env`; loader sekarang menolak placeholder dan fallback ke public config `backoffice/.env.local` seperti runtime PWA | Error `ENOTFOUND your-project-id.supabase.co` tidak mencapai Auth/RPC dan tidak membuat mutation; syntax/lint/build diverifikasi ulang | Jalankan ulang command yang sama; tidak perlu membuat ulang Draft akibat error konfigurasi ini |
+| 2026-07-29 | Codex — Phase-10 harness Draft payment preparation fix | Instruksi awal keliru mewajibkan Draft sudah mempunyai payment intent, padahal `Simpan Draft` normal mengosongkan Payment; harness sekarang memilih metode non-proof eligible, memprioritaskan Cash, menyimpan payment intent sebesar total, lalu menjalankan Post concurrent | Dua eksekusi user berhenti pada assertion sebelum Save/Post sehingga tidak membuat final effect; contract diselaraskan dengan `handlePostSale` PWA | Jalankan ulang Draft normal yang sama; tidak perlu membayar Draft lewat UI |
+| 2026-07-29 | Codex — Phase-10 harness authoritative version fix | Percobaan setelah payment preparation membuat semua Post ditolak `MASTER_VERSION_CONFLICT`; harness tidak lagi mempercayai version response intermediate dan membaca ulang row Draft authoritative setelah Save sebelum fan-out | Semua 20 Post ditolak sebelum final effect; payment intent Draft mungkin sudah tersimpan tetapi Sale/stock/payment final belum dibuat | Jalankan ulang Draft yang sama setelah local syntax/lint/build PASS |
+| 2026-07-29 | Codex — Phase-10 stress gate paused | Authoritative reread tetap menghasilkan 20 `MASTER_VERSION_CONFLICT`; repeated user execution dihentikan dan harness tidak lagi diklaim local-ready | Tidak ada response Post sukses, jadi tidak ada final Sale/stock/payment effect dari percobaan ini; root cause orchestration belum terbukti | Jangan rerun; lanjutkan development independen, tetapi blok offline/pilot/deploy sampai concurrency gate diperbaiki |
+| 2026-07-29 | Codex — Phase-10 live root-cause audit | Service-role read-only audit membuktikan Draft tetap DRAFT v6 dengan satu payment intent; audit terakhir `STOCK_SHORTAGE`; requirement 7 versus stock 1. Satu shortage response tertutup oleh 19 stale-version errors | Query hanya SELECT; tidak ada data berubah. Harness ditambah stock precheck dan shortage-first reporting | Gunakan fixture baru qty ≤ stok bila gate dilanjutkan; Draft lama jangan direrun |
+| 2026-07-29 | Codex — Phase-10 concurrent gate closure | User menambah stok dan harness mencapai final verification; Kasir melihat Event count 0 karena Finance RLS, bukan Event hilang. Server read-only membuktikan POSTED, 1 Movement, 1 Payment, 1 POST audit, 1 SALE_POSTED Event HOLD | Seluruh concurrency assertions sebelum Event sudah lolos; service query SELECT-only; harness Finance assertion dihapus; syntax/lint/build PASS | Jangan rerun Sale POSTED; lanjut gate G4 berikutnya |

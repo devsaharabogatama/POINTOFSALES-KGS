@@ -39,6 +39,7 @@
 | 2 | Payment Method | method plus Store assignments and fee configuration |
 | 3 | Customer | Customer plus parent and reusable Pricelist assignment |
 | 3 | Product-Supplier | one Product/Supplier/purchase-UOM relation |
+| 3 | Product-Warehouse Minimum Stock | one Product/Warehouse setting |
 | 3 | Transaction Account Rule | category/function/account effective rule |
 | 3 | Company Account Fallback | function/account effective fallback |
 
@@ -108,6 +109,34 @@ Rules:
 product_supplier_v1:
 product_sku,supplier_name,purchase_uom_name,supplier_product_code,reference_purchase_price,is_preferred_supplier,is_active
 ```
+
+One row represents one Product-Supplier relation. Product is resolved from its
+tenant-scoped SKU; Supplier and purchase UOM are resolved from active,
+unambiguous names. The selected UOM must belong to the Product and be enabled
+for purchase. The import does not create any of those references.
+
+`reference_purchase_price` may be blank but cannot be negative.
+`last_purchase_price` is transaction-owned and is never importable. At most one
+active preferred Supplier is allowed per Product. To switch preferred Supplier
+in one file, include the old relation with `is_preferred_supplier=false` and
+the new relation with `is_preferred_supplier=true`.
+
+### Product-Warehouse Minimum Stock
+
+```text
+product_warehouse_minimum_stock_v1:
+product_sku,warehouse_name,minimum_stock_base_qty,low_stock_alert_enabled
+```
+
+One row represents one Product-Warehouse pair. Product is resolved from its
+tenant-scoped SKU and Warehouse from its active, unambiguous user-facing name.
+The Product must be active, non-bundle, and have one active Base Product-UOM
+with factor `1`.
+
+`minimum_stock_base_qty` always uses the Product Base UOM, may be blank only
+when the alert is disabled, and cannot be negative. Importing this setting
+never creates a stock balance, movement, Stock Request, Supplier Order, or
+another master.
 
 ### Customer
 

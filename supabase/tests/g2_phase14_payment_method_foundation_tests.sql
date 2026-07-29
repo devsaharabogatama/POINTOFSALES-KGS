@@ -190,12 +190,13 @@ BEGIN
     END IF;
 
     INSERT INTO public.cashier_sessions(
-        id,session_code,cashier_id,company_id,store_id,pos_id
+        id,session_code,cashier_id,company_id,store_id,pos_id,status
     ) VALUES (
         '00000000-0000-0000-0000-000000014031','G14-SA',v_actor,
         '00000000-0000-0000-0000-000000014001',
         '00000000-0000-0000-0000-000000014011',
-        '00000000-0000-0000-0000-000000014021'
+        '00000000-0000-0000-0000-000000014021',
+        'CLOSED'::session_status
     );
     INSERT INTO public.sales_headers(
         id,invoice_no,session_id,company_id,store_id,pos_id,created_by

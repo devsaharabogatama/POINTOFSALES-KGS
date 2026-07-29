@@ -3,22 +3,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
+  ArrowLeft,
+  ArrowRightLeft,
   BadgePercent,
+  BellRing,
   Boxes,
   Building2,
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  ClipboardCheck,
+  ClipboardPenLine,
   ContactRound,
   CreditCard,
   DollarSign,
   FileSpreadsheet,
+  House,
   Landmark,
   LayoutDashboard,
   Loader2,
   LogOut,
   Menu,
   PackageSearch,
+  PackagePlus,
+  ScrollText,
   ShieldCheck,
   Settings2,
   Store,
@@ -39,9 +47,17 @@ import { FinanceMasterView } from '@/components/FinanceMasterView'
 import { TaxMasterView } from '@/components/TaxMasterView'
 import { ModuleSettingsView } from '@/components/ModuleSettingsView'
 import { MasterImportView } from '@/components/MasterImportView'
+import { MinimumStockView } from '@/components/MinimumStockView'
+import { OpeningStockView } from '@/components/OpeningStockView'
+import { StockRealView } from '@/components/StockRealView'
+import { StockMovementView } from '@/components/StockMovementView'
+import { StockTransferView } from '@/components/StockTransferView'
+import { StockAdjustmentView } from '@/components/StockAdjustmentView'
+import { StockOpnameView } from '@/components/StockOpnameView'
+import { BundleMasterView } from '@/components/BundleMasterView'
 import { useEscapeClose } from '@/lib/use-escape-close'
 
-type View = 'dashboard' | 'masters' | 'master-imports' | 'products' | 'suppliers' | 'customers' | 'pricelists' | 'payment-methods' | 'finance-masters' | 'tax-rules' | 'finance' | 'staff' | 'companies' | 'module-settings'
+type View = 'dashboard' | 'masters' | 'master-imports' | 'products' | 'bundles' | 'stock-real' | 'stock-movements' | 'stock-transfers' | 'stock-adjustments' | 'stock-opnames' | 'opening-stock' | 'minimum-stock' | 'suppliers' | 'customers' | 'pricelists' | 'payment-methods' | 'finance-masters' | 'tax-rules' | 'finance' | 'staff' | 'companies' | 'module-settings'
 
 type CompanyContext = {
   id: string
@@ -117,6 +133,18 @@ type NavigationItem = {
 }
 
 const INVENTORY_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN']
+const STOCK_REAL_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
+const STOCK_TRANSFER_OPERATOR_ROLES = [
+  'COMPANY_OWNER',
+  'COMPANY_ADMIN',
+  'WAREHOUSE_ADMIN',
+]
+const STOCK_ADJUSTMENT_OPERATOR_ROLES = [
+  'COMPANY_OWNER',
+  'COMPANY_ADMIN',
+  'STORE_MANAGER',
+]
+const OPENING_STOCK_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 const SUPPLIER_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
 const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 const FINANCE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING']
@@ -126,11 +154,19 @@ const navigation: NavigationItem[] = [
   { id: 'dashboard', label: 'Aplikasi', icon: LayoutDashboard },
   { id: 'masters', label: 'Master Inventory', icon: Truck, roles: INVENTORY_ROLES },
   { id: 'master-imports', label: 'Import & Export', icon: FileSpreadsheet, roles: OWNER_ROLES },
-  { id: 'products', label: 'Produk & Stok', icon: Boxes, roles: INVENTORY_ROLES },
+  { id: 'products', label: 'Produk & UOM', icon: Boxes, roles: INVENTORY_ROLES },
+  { id: 'stock-real', label: 'Stock Real', icon: PackageSearch, roles: STOCK_REAL_ROLES },
+  { id: 'stock-movements', label: 'Kartu Stok', icon: ScrollText, roles: STOCK_REAL_ROLES },
+  { id: 'stock-transfers', label: 'Transfer Stok', icon: ArrowRightLeft, roles: STOCK_REAL_ROLES },
+  { id: 'stock-adjustments', label: 'Penyesuaian Stok', icon: ClipboardPenLine, roles: STOCK_REAL_ROLES },
+  { id: 'stock-opnames', label: 'Stock Opname', icon: ClipboardCheck, roles: STOCK_REAL_ROLES },
+  { id: 'opening-stock', label: 'Stok Awal', icon: PackagePlus, roles: OPENING_STOCK_ROLES },
+  { id: 'minimum-stock', label: 'Minimum Stock', icon: BellRing, roles: INVENTORY_ROLES },
   { id: 'customers', label: 'Pelanggan', icon: ContactRound, roles: SALES_ROLES },
   { id: 'suppliers', label: 'Supplier', icon: PackageSearch, roles: SUPPLIER_ROLES },
   { id: 'staff', label: 'User & Akses', icon: Users, roles: OWNER_ROLES },
   { id: 'pricelists', label: 'Pricelist', icon: Tags, roles: SALES_ROLES },
+  { id: 'bundles', label: 'Bundle', icon: Boxes, roles: SALES_ROLES },
   { id: 'payment-methods', label: 'Metode Pembayaran', icon: CreditCard, roles: FINANCE_ROLES },
   { id: 'tax-rules', label: 'Aturan Pajak', icon: BadgePercent, roles: FINANCE_ROLES },
   { id: 'finance-masters', label: 'Kategori & COA', icon: Landmark, roles: FINANCE_ROLES },
@@ -143,9 +179,9 @@ const appModules: {
   id: string; name: string; description: string; icon: typeof Boxes
   color: string; views: View[]
 }[] = [
-  { id: 'inventory', name: 'Inventory', description: 'Produk, UOM, gudang, stok, serta alat import master.', icon: Boxes, color: 'bg-blue-600', views: ['products', 'masters', 'master-imports'] },
+  { id: 'inventory', name: 'Inventory', description: 'Stock Real, Kartu Stok, Transfer, Penyesuaian, dan review Stock Opname; Product, gudang, stok awal, minimum stok, serta alat import master.', icon: Boxes, color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'products', 'opening-stock', 'minimum-stock', 'masters', 'master-imports'] },
   { id: 'contacts', name: 'Kontak', description: 'Data pelanggan, supplier, serta user Company.', icon: ContactRound, color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
-  { id: 'sales', name: 'Sales', description: 'Pricelist dan konfigurasi penjualan. Promo serta bundling menyusul saat modulnya dibangun.', icon: Tags, color: 'bg-emerald-600', views: ['pricelists'] },
+  { id: 'sales', name: 'Sales', description: 'Pricelist dan Bundle untuk konfigurasi penjualan.', icon: Tags, color: 'bg-emerald-600', views: ['pricelists', 'bundles'] },
   { id: 'finance', name: 'Finance', description: 'Metode pembayaran, pajak, kategori transaksi, COA, dan jurnal.', icon: Landmark, color: 'bg-violet-600', views: ['payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Company dan entitlement modul.', icon: Settings2, color: 'bg-slate-800', views: ['companies', 'module-settings'] },
 ]
@@ -200,6 +236,7 @@ export default function Home() {
   const [activeCompanyId, setActiveCompanyId] = useState('')
   const [switchingCompany, setSwitchingCompany] = useState(false)
   const [activeView, setActiveView] = useState<View>('dashboard')
+  const [viewHistory, setViewHistory] = useState<View[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [staff, setStaff] = useState<Staff[]>([])
@@ -259,7 +296,16 @@ export default function Home() {
   useEffect(() => {
     if (!session) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- account context follows the authenticated session
-    void loadContext(session).catch((error: unknown) => {
+    void loadContext(session).catch(async (error: unknown) => {
+      const code = error instanceof Error ? error.message : ''
+      if (code === 'INVALID_SESSION') {
+        await supabase.auth.signOut({ scope: 'local' })
+        setSession(null)
+        setContext(null)
+        setActiveCompanyId('')
+        setNotice('Sesi login sudah kedaluwarsa. Silakan masuk kembali.')
+        return
+      }
       setNotice(messageFromError(error, 'Gagal memuat akun'))
     })
   }, [session, loadContext])
@@ -376,6 +422,18 @@ export default function Home() {
 
   const activeCompany = context?.companies.find((company) => company.id === activeCompanyId)
   const canManage = context?.isSuperAdmin || ['COMPANY_OWNER', 'COMPANY_ADMIN'].includes(activeCompany?.roleCode ?? '')
+  const canPrepareOpeningStock =
+    context?.isSuperAdmin ||
+    OPENING_STOCK_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canOperateStockTransfer =
+    context?.isSuperAdmin ||
+    STOCK_TRANSFER_OPERATOR_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canOperateStockAdjustment =
+    context?.isSuperAdmin ||
+    STOCK_ADJUSTMENT_OPERATOR_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canReviewStockOpname =
+    context?.isSuperAdmin ||
+    STOCK_ADJUSTMENT_OPERATOR_ROLES.includes(activeCompany?.roleCode ?? '')
   const canManageMaster =
     context?.isSuperAdmin ||
     ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN'].includes(
@@ -413,6 +471,23 @@ export default function Home() {
       activeCompany?.roleCode ?? '',
     )
 
+  const navigateTo = useCallback((nextView: View) => {
+    if (nextView === activeView) return
+    setViewHistory((current) => [...current, activeView].slice(-20))
+    setActiveView(nextView)
+  }, [activeView])
+
+  const goBack = useCallback(() => {
+    const previousView = viewHistory.at(-1) ?? 'dashboard'
+    setViewHistory((current) => current.slice(0, -1))
+    setActiveView(previousView)
+  }, [viewHistory])
+
+  const goHome = useCallback(() => {
+    setViewHistory([])
+    setActiveView('dashboard')
+  }, [])
+
   async function changeCompany(companyId: string) {
     if (!session || companyId === activeCompanyId || switchingCompany) return
     setSwitchingCompany(true)
@@ -431,7 +506,7 @@ export default function Home() {
       localStorage.setItem(`kgs-active-company:${session.user.id}`, companyId)
       setContext((current) => current ? { ...current, activeCompanyId: companyId } : current)
       setActiveCompanyId(companyId)
-      setActiveView('dashboard')
+      goHome()
     } catch (error) {
       setNotice(messageFromError(error, 'Gagal mengganti perusahaan aktif'))
     } finally {
@@ -479,7 +554,8 @@ export default function Home() {
     <div className="min-h-screen bg-[#f6f7f9] text-slate-900">
       <Sidebar
         view={activeView}
-        setView={setActiveView}
+        navigate={navigateTo}
+        goHome={goHome}
         items={availableNavigation}
         open={sidebarOpen}
         close={() => setSidebarOpen(false)}
@@ -519,6 +595,16 @@ export default function Home() {
         </header>
 
         <main className="p-4 md:p-8">
+          {activeView !== 'dashboard' && (
+            <WorkspaceNavigation
+              view={activeView}
+              canGoBack={viewHistory.length > 0}
+              goBack={goBack}
+              goHome={goHome}
+              navigate={navigateTo}
+            />
+          )}
+
           {notice && (
             <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
@@ -534,7 +620,7 @@ export default function Home() {
               items={availableNavigation}
               products={products}
               loading={loadingData}
-              openView={setActiveView}
+              openView={navigateTo}
             />
           )}
 
@@ -549,6 +635,62 @@ export default function Home() {
             />
           )}
 
+          {activeView === 'bundles' && (
+            <BundleMasterView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'stock-real' && (
+            <StockRealView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+            />
+          )}
+
+          {activeView === 'stock-movements' && (
+            <StockMovementView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+            />
+          )}
+
+          {activeView === 'stock-transfers' && (
+            <StockTransferView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canOperate={Boolean(canOperateStockTransfer)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'stock-adjustments' && (
+            <StockAdjustmentView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canOperate={Boolean(canOperateStockAdjustment)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'stock-opnames' && (
+            <StockOpnameView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canReview={Boolean(canReviewStockOpname)}
+              notify={setNotice}
+            />
+          )}
+
           {activeView === 'masters' && (
             <MasterDataView
               key={activeCompanyId}
@@ -556,6 +698,27 @@ export default function Home() {
               companyId={activeCompanyId}
               stores={stores}
               canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'minimum-stock' && (
+            <MinimumStockView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'opening-stock' && (
+            <OpeningStockView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canPrepare={Boolean(canPrepareOpeningStock)}
+              canPost={Boolean(canManage)}
               notify={setNotice}
             />
           )}
@@ -738,9 +901,10 @@ function LoginScreen() {
   )
 }
 
-function Sidebar({ view, setView, items, open, close }: {
+function Sidebar({ view, navigate, goHome, items, open, close }: {
   view: View
-  setView: (view: View) => void
+  navigate: (view: View) => void
+  goHome: () => void
   items: NavigationItem[]
   open: boolean
   close: () => void
@@ -752,7 +916,7 @@ function Sidebar({ view, setView, items, open, close }: {
         <div className="flex h-20 shrink-0 items-center justify-between border-b border-white/5 px-6">
           <button
             type="button"
-            onClick={() => { setView('dashboard'); close() }}
+            onClick={() => { goHome(); close() }}
             className="flex items-center gap-3 rounded-xl text-left font-black tracking-tight outline-none transition hover:text-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             aria-label="Kembali ke halaman awal"
             title="Kembali ke halaman awal"
@@ -769,7 +933,7 @@ function Sidebar({ view, setView, items, open, close }: {
               const Icon = item.icon
               const active = view === item.id
               return (
-                <button key={item.id} onClick={() => { setView(item.id); close() }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+                <button key={item.id} onClick={() => { if (item.id === 'dashboard') goHome(); else navigate(item.id); close() }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
                   <Icon className="h-4 w-4" />{item.label}
                 </button>
               )
@@ -782,6 +946,64 @@ function Sidebar({ view, setView, items, open, close }: {
         </div>
       </aside>
     </>
+  )
+}
+
+function WorkspaceNavigation({ view, canGoBack, goBack, goHome, navigate }: {
+  view: View
+  canGoBack: boolean
+  goBack: () => void
+  goHome: () => void
+  navigate: (view: View) => void
+}) {
+  const page = navigation.find((item) => item.id === view)
+  const appModule = appModules.find((item) => item.views.includes(view))
+  const moduleLanding = appModule?.views[0]
+
+  return (
+    <div className="mb-6 flex min-w-0 items-center gap-3">
+      <button
+        type="button"
+        onClick={goBack}
+        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+        aria-label={canGoBack ? 'Kembali ke halaman sebelumnya' : 'Kembali ke halaman aplikasi'}
+        title={canGoBack ? 'Kembali ke halaman sebelumnya' : 'Kembali ke halaman aplikasi'}
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span className="hidden sm:inline">Kembali</span>
+      </button>
+
+      <nav
+        aria-label="Lokasi halaman"
+        className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
+      >
+        <button
+          type="button"
+          onClick={goHome}
+          className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-slate-500 transition hover:text-emerald-700"
+        >
+          <House className="h-4 w-4" />
+          <span>Beranda</span>
+        </button>
+        {appModule && moduleLanding && (
+          <>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+            <button
+              type="button"
+              onClick={() => navigate(moduleLanding)}
+              disabled={moduleLanding === view}
+              className="shrink-0 font-semibold text-slate-500 transition hover:text-emerald-700 disabled:cursor-default disabled:text-slate-500"
+            >
+              {appModule.name}
+            </button>
+          </>
+        )}
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+        <span className="truncate font-bold text-slate-900" aria-current="page">
+          {page?.label ?? view}
+        </span>
+      </nav>
+    </div>
   )
 }
 
@@ -830,9 +1052,9 @@ function FinanceView({ journal }: { journal: JournalEntry[] }) {
 
 function StaffModal({ session, company, stores, close, complete }: { session: Session; company: CompanyContext; stores: StoreOption[]; close: () => void; complete: () => Promise<void> }) {
   useEscapeClose(close)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role_code: 'CASHIER', store_id: 'NONE' }); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
+  const [form, setForm] = useState({ name: '', email: '', password: '', role_code: 'CASHIER', store_id: stores[0]?.id ?? 'NONE' }); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { const response = await fetch('/api/staff/create', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(session) }, body: JSON.stringify({ ...form, company_id: company.id }) }); const payload = (await response.json()) as { error?: string }; if (!response.ok) throw new Error(payload.error ?? 'Gagal membuat anggota'); await complete() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal membuat anggota') } finally { setLoading(false) } }
-  return <Modal title="Tambah anggota tim" description={`Akun hanya akan mendapat akses ke ${company.company_name}.`} close={close}><form onSubmit={submit} className="space-y-4"><Field label="Nama"><input required value={form.name} onChange={(e) => setForm({...form,name:e.target.value})} className="input" /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(e) => setForm({...form,email:e.target.value})} className="input" /></Field><Field label="Password sementara"><input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({...form,password:e.target.value})} className="input" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Role"><select value={form.role_code} onChange={(e) => setForm({...form,role_code:e.target.value})} className="input">{['CASHIER','STORE_MANAGER','WAREHOUSE_ADMIN','FINANCE','ACCOUNTING','COMPANY_ADMIN'].map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></Field><Field label="Toko"><select value={form.store_id} onChange={(e) => setForm({...form,store_id:e.target.value})} className="input"><option value="NONE">Semua / tidak spesifik</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.store_name}</option>)}</select></Field></div>{error && <FormError message={error} />}<ModalActions close={close} loading={loading} submit="Buat akun" /></form></Modal>
+  return <Modal title="Tambah anggota tim" description={`Akun hanya akan mendapat akses ke ${company.company_name}. Kasir wajib ditugaskan ke satu Toko agar Terminal POS tersedia.`} close={close}><form onSubmit={submit} className="space-y-4"><Field label="Nama"><input required value={form.name} onChange={(e) => setForm({...form,name:e.target.value})} className="input" /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(e) => setForm({...form,email:e.target.value})} className="input" /></Field><Field label="Password sementara"><input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({...form,password:e.target.value})} className="input" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Role"><select value={form.role_code} onChange={(e) => { const role = e.target.value; setForm({...form,role_code:role,store_id:role === 'CASHIER' && form.store_id === 'NONE' ? stores[0]?.id ?? 'NONE' : form.store_id}) }} className="input">{['CASHIER','STORE_MANAGER','WAREHOUSE_ADMIN','FINANCE','ACCOUNTING','COMPANY_ADMIN'].map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></Field><Field label={form.role_code === 'CASHIER' ? 'Toko assignment Kasir (wajib)' : 'Toko'}><select required={form.role_code === 'CASHIER'} value={form.store_id} onChange={(e) => setForm({...form,store_id:e.target.value})} className="input"><option value="NONE" disabled={form.role_code === 'CASHIER'}>Semua / tidak spesifik</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.store_name}</option>)}</select></Field></div>{form.role_code === 'CASHIER' && stores.length === 0 && <FormError message="Buat atau aktifkan Toko terlebih dahulu sebelum membuat akun Kasir." />}{error && <FormError message={error} />}<ModalActions close={close} loading={loading || (form.role_code === 'CASHIER' && stores.length === 0)} submit="Buat akun" /></form></Modal>
 }
 
 function TenantModal({ session, close, complete }: { session: Session; close: () => void; complete: () => Promise<void> }) {
