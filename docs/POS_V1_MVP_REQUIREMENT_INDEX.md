@@ -52,7 +52,8 @@ Deferred berarti tidak boleh diam-diam masuk schema/UI v1. Extensibility disiapk
 | MST-006 | Customer | Nama unik per Company; phone/email boleh sama; kategori Customer; status dan saldo terkontrol. | `SALES_CUSTOMER_MASTERDATA_SPEC.md` | G2 |
 | MST-007 | Pricing | Harga Produk hanya fallback; Customer Pricelist mengalahkan Global; tier hanya Global; scope all/specific Store. | `SALES_PRICELIST_NOTES.md` | G2/G4 |
 | MST-008 | Payment | Metode pembayaran adalah master Company; mendukung Cash, Transfer, QRIS, Card, TEMPO, split, fee, dan konfigurasi offline. | `PAYMENT_METHOD_MASTERDATA_SPEC.md` | G2/G4 |
-| STK-001 | Stock | `stock_real` tersimpan dalam base UOM per Product-Warehouse; tidak boleh negatif saat transaksi final. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G3 |
+| STK-001 | Stock | `stock_real` tersimpan dalam base UOM per Product-Warehouse; default transaksi final tidak boleh negatif. Exception POS hanya boleh dibuka melalui STK-006. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G3 |
+| STK-006 | Negative Stock | Fitur POS opsional default OFF; Company/Warehouse/actor harus berizin, online-only, audited, source-linked, idempotent, dan kekurangan FIFO/HPP wajib direkonsiliasi saat replenishment. | Keputusan user 2026-08-05; `POS_DEVELOPMENT_NOTES.md`, `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G4/G5/G6 |
 | STK-002 | Movement | Semua perubahan stok memiliki immutable movement dan source document yang jelas. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G3 |
 | STK-003 | Opening | Opening Stock hanya initial load; koreksi berikutnya melalui Adjustment. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G3 |
 | STK-004 | Opname | Kasir input blind count per sesi; Store Manager membandingkan/posting; transaksi tetap berjalan; adjustment memakai stock akhir. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G3/G4 |

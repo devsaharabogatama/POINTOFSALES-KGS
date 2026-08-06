@@ -98,6 +98,78 @@ export interface LocalSalesPayment {
   is_synced: number; // 0 = false, 1 = true
 }
 
+export type OfflineSaleQueueStatus =
+  | 'PENDING_SYNC'
+  | 'SUBMITTING'
+  | 'QUEUED'
+  | 'SYNCING'
+  | 'NEEDS_CONFIRMATION'
+  | 'FAILED'
+  | 'POSTED'
+  | 'INVALIDATED';
+
+export interface OfflineSaleQueueRecord {
+  clientTransactionId: string;
+  companyId: string;
+  storeId: string;
+  terminalId: string;
+  warehouseId: string;
+  cashierSessionId: string;
+  cashierId: string;
+  postingIdempotencyKey: string;
+  localMasterVersion: number;
+  payloadVersion: number;
+  localTransactionAt: string;
+  payloadHash: string;
+  salePayload: string;
+  status: OfflineSaleQueueStatus;
+  submissionId?: string;
+  acknowledgement?: string;
+  errorCode?: string;
+  processingAttempts: number;
+  createdAt: string;
+  updatedAt: string;
+  acknowledgedAt?: string;
+}
+
+export interface OfflineCatalogSnapshotRecord {
+  cashierSessionId: string;
+  companyId: string;
+  storeId: string;
+  terminalId: string;
+  warehouseId: string;
+  cashierId: string;
+  payloadVersion: number;
+  catalogVersion: number;
+  snapshotAt: string;
+  cachedAt: string;
+  payloadHash: string;
+  payload: string;
+  invalidatedAt?: string;
+  invalidationReason?: string;
+}
+
+export interface OfflineOperationalScopeRecord {
+  cashierSessionId: string;
+  companyId: string;
+  companyName: string;
+  companyRoleCode: string;
+  storeId: string;
+  storeName: string;
+  terminalId: string;
+  terminalCode: string;
+  terminalName: string;
+  warehouseId: string;
+  warehouseName: string;
+  cashierId: string;
+  sessionCode: string;
+  openingCash: number;
+  expectedCash: number;
+  sessionMasterVersion: number;
+  catalogVersion: number;
+  cachedAt: string;
+}
+
 export class KGSPOSDatabase extends Dexie {
   products!: Table<LocalProduct>;
   customers!: Table<LocalCustomer>;
@@ -106,6 +178,9 @@ export class KGSPOSDatabase extends Dexie {
   sales_headers!: Table<LocalSalesHeader>;
   sales_details!: Table<LocalSalesDetail>;
   sales_payments!: Table<LocalSalesPayment>;
+  offline_sale_queue!: Table<OfflineSaleQueueRecord>;
+  offline_catalog_snapshots!: Table<OfflineCatalogSnapshotRecord>;
+  offline_operational_scopes!: Table<OfflineOperationalScopeRecord>;
 
   constructor() {
     super('KGSPOSDatabase');
@@ -126,6 +201,45 @@ export class KGSPOSDatabase extends Dexie {
       sales_headers: 'id, company_id, invoice_no, session_id, customer_id, is_synced, transaction_date',
       sales_details: 'id, sales_id, product_id, warehouse_id',
       sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
+    });
+    this.version(3).stores({
+      products: 'id, company_id, [company_id+sku], name, category, is_active',
+      customers: 'id, company_id, [company_id+code], name',
+      warehouses: 'id, company_id, [company_id+code], is_active',
+      cashier_sessions: 'id, company_id, session_code, status',
+      sales_headers: 'id, company_id, invoice_no, session_id, customer_id, is_synced, transaction_date',
+      sales_details: 'id, sales_id, product_id, warehouse_id',
+      sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
+      offline_sale_queue:
+        'clientTransactionId, cashierSessionId, [companyId+cashierSessionId], status, createdAt, updatedAt',
+    });
+    this.version(4).stores({
+      products: 'id, company_id, [company_id+sku], name, category, is_active',
+      customers: 'id, company_id, [company_id+code], name',
+      warehouses: 'id, company_id, [company_id+code], is_active',
+      cashier_sessions: 'id, company_id, session_code, status',
+      sales_headers: 'id, company_id, invoice_no, session_id, customer_id, is_synced, transaction_date',
+      sales_details: 'id, sales_id, product_id, warehouse_id',
+      sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
+      offline_sale_queue:
+        'clientTransactionId, cashierSessionId, [companyId+cashierSessionId], status, createdAt, updatedAt',
+      offline_catalog_snapshots:
+        'cashierSessionId, [companyId+cashierSessionId], terminalId, warehouseId, catalogVersion, snapshotAt, invalidatedAt',
+    });
+    this.version(5).stores({
+      products: 'id, company_id, [company_id+sku], name, category, is_active',
+      customers: 'id, company_id, [company_id+code], name',
+      warehouses: 'id, company_id, [company_id+code], is_active',
+      cashier_sessions: 'id, company_id, session_code, status',
+      sales_headers: 'id, company_id, invoice_no, session_id, customer_id, is_synced, transaction_date',
+      sales_details: 'id, sales_id, product_id, warehouse_id',
+      sales_payments: 'id, payment_no, sales_id, session_id, is_synced',
+      offline_sale_queue:
+        'clientTransactionId, cashierSessionId, [companyId+cashierSessionId], status, createdAt, updatedAt',
+      offline_catalog_snapshots:
+        'cashierSessionId, [companyId+cashierSessionId], terminalId, warehouseId, catalogVersion, snapshotAt, invalidatedAt',
+      offline_operational_scopes:
+        'cashierSessionId, cashierId, [cashierId+cashierSessionId], companyId, cachedAt',
     });
   }
 }

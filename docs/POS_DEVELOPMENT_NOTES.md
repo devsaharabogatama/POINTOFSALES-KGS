@@ -309,6 +309,11 @@ expected_deposit_remaining
 
 - Semua penjualan `DRAFT` adalah catatan transaksi sementara dan masih dapat diedit sebelum berhasil diposting atau dibatalkan.
 - Draft dapat terbentuk otomatis karena `STOCK_SHORTAGE` atau dibuat sengaja melalui tombol **Simpan/Hold Order** walaupun stok mencukupi.
+- Keputusan user 2026-08-05 membuka roadmap STK-006 untuk exception Stock minus
+  POS yang berizin. Fitur default OFF, online-only, dan tidak mengubah behavior
+  Draft `STOCK_SHORTAGE` sampai server policy, Warehouse opt-in, actor
+  permission, reason/audit, provisional HPP, replenishment allocation, dan
+  regression telah lulus. Offline dan Bundle tetap fail-closed pada tahap awal.
 - Draft tidak mereservasi/mengurangi stok, tidak membuat payment final, financial event, atau jurnal.
 - Draft menyimpan `created_by`, `created_session_id`, `created_at`, `draft_reason`, serta snapshot line agar histori perubahan dapat diaudit.
 - Setiap draft memiliki nomor otomatis. Cashier dapat menambahkan label/nama draft, customer, dan catatan secara opsional agar mudah dicari.

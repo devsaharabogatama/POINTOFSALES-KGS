@@ -14,8 +14,12 @@ interface ReceiptData {
   grandTotal: number;
   paidAmount: number;
   change: number;
+  customerBalanceCredit?: number;
+  customerBalanceUsage?: number;
   paymentMethod: string;
   date: string;
+  documentLabel?: string;
+  warning?: string;
 }
 
 function escapeHtml(value: string) {
@@ -119,6 +123,9 @@ export class ESCPOSPrinter {
     receipt += INIT;
     receipt += CENTER + BOLD_ON + 'KGS MINI-ERP\n' + BOLD_OFF;
     receipt += 'Pasar Raya Padang\n';
+    if (data.documentLabel) {
+      receipt += BOLD_ON + data.documentLabel.toUpperCase() + '\n' + BOLD_OFF;
+    }
     receipt += '--------------------------------\n';
     receipt += LEFT;
     receipt += `Inv No: ${data.invoiceNo}\n`;
@@ -134,12 +141,22 @@ export class ESCPOSPrinter {
     });
     
     receipt += '--------------------------------\n';
+    if (data.warning) {
+      receipt += CENTER + BOLD_ON + data.warning + '\n' + BOLD_OFF + LEFT;
+      receipt += '--------------------------------\n';
+    }
     receipt += `Subtotal  : Rp ${data.subtotal.toLocaleString('id-ID')}\n`;
     receipt += BOLD_ON + `Grand Tot : Rp ${data.grandTotal.toLocaleString('id-ID')}\n` + BOLD_OFF;
     receipt += `Metode    : ${data.paymentMethod}\n`;
     receipt += `Bayar     : Rp ${data.paidAmount.toLocaleString('id-ID')}\n`;
-    if (data.paymentMethod === 'Cash') {
+    if (data.change > 0) {
       receipt += `Kembali   : Rp ${data.change.toLocaleString('id-ID')}\n`;
+    }
+    if ((data.customerBalanceCredit ?? 0) > 0) {
+      receipt += `Saldo +   : Rp ${(data.customerBalanceCredit ?? 0).toLocaleString('id-ID')}\n`;
+    }
+    if ((data.customerBalanceUsage ?? 0) > 0) {
+      receipt += `Pakai saldo: Rp ${(data.customerBalanceUsage ?? 0).toLocaleString('id-ID')}\n`;
     }
     receipt += '--------------------------------\n';
     receipt += CENTER + 'Terima Kasih atas Kunjungan Anda\n';
@@ -189,6 +206,14 @@ export class ESCPOSPrinter {
       data.change > 0
         ? `<div class="row"><span>Kembali</span><strong>${rupiah(data.change)}</strong></div>`
         : '';
+    const customerBalanceCredit =
+      (data.customerBalanceCredit ?? 0) > 0
+        ? `<div class="row"><span>Masuk Saldo Customer</span><strong>+${rupiah(data.customerBalanceCredit ?? 0)}</strong></div>`
+        : '';
+    const customerBalanceUsage =
+      (data.customerBalanceUsage ?? 0) > 0
+        ? `<div class="row"><span>Potongan Saldo Customer</span><strong>-${rupiah(data.customerBalanceUsage ?? 0)}</strong></div>`
+        : '';
     const html = `<!doctype html>
 <html lang="id">
   <head>
@@ -207,6 +232,7 @@ export class ESCPOSPrinter {
       .muted { color: #53605d; font-size: 11px; }
       .total { font-size: 15px; margin-top: 9px; }
       .thanks { margin-top: 20px; text-align: center; font-size: 11px; line-height: 1.6; }
+      .warning { margin: 10px 0 14px; border: 2px solid #b91c1c; padding: 8px; color: #991b1b; text-align: center; font: 800 11px/1.4 ui-sans-serif, system-ui, sans-serif; }
       .actions { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 8px; font-family: ui-sans-serif, system-ui, sans-serif; }
       button { border: 0; border-radius: 12px; padding: 12px 18px; background: #0f766e; color: white; font-weight: 700; cursor: pointer; }
       @media print {
@@ -219,7 +245,12 @@ export class ESCPOSPrinter {
   <body>
     <main>
       <h1>KGS POS</h1>
-      <p class="subtitle">Struk transaksi</p>
+      <p class="subtitle">${escapeHtml(data.documentLabel ?? 'Struk transaksi')}</p>
+      ${
+        data.warning
+          ? `<div class="warning">${escapeHtml(data.warning)}</div>`
+        : ''
+      }
       <div class="row"><span>Invoice</span><strong>${escapeHtml(data.invoiceNo)}</strong></div>
       <div class="row"><span>Tanggal</span><span>${escapeHtml(data.date)}</span></div>
       <div class="rule"></div>
@@ -229,6 +260,8 @@ export class ESCPOSPrinter {
       <div class="row total"><strong>Total</strong><strong>${rupiah(data.grandTotal)}</strong></div>
       <div class="row"><span>${escapeHtml(data.paymentMethod)}</span><span>${rupiah(data.paidAmount)}</span></div>
       ${change}
+      ${customerBalanceCredit}
+      ${customerBalanceUsage}
       <div class="rule"></div>
       <p class="thanks">Terima kasih atas kunjungan Anda.<br />Simpan struk ini sebagai bukti transaksi.</p>
     </main>

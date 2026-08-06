@@ -10,11 +10,32 @@ async function requireSuperAdmin(
   if (data.role !== 'super_admin') throw new ApiRouteError('SUPER_ADMIN_REQUIRED', 403)
 }
 
+async function requireSettingsViewer(
+  caller: Awaited<ReturnType<typeof requireCaller>>,
+  companyId: string,
+) {
+  const { data: profile, error: profileError } = await caller.client
+    .from('profiles').select('role').eq('id', caller.user.id).single()
+  if (profileError) throwDatabaseError(profileError)
+  if (profile.role === 'super_admin') return
+
+  const { data: membership, error: membershipError } = await caller.client
+    .from('company_memberships')
+    .select('role_code')
+    .eq('company_id', companyId)
+    .eq('user_id', caller.user.id)
+    .eq('status', 'ACTIVE')
+    .in('role_code', ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'])
+    .maybeSingle()
+  if (membershipError) throwDatabaseError(membershipError)
+  if (!membership) throw new ApiRouteError('MODULE_SETTINGS_ACCESS_REQUIRED', 403)
+}
+
 export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
-    await requireSuperAdmin(caller)
     const companyId = await requireActiveCompany(caller)
+    await requireSettingsViewer(caller, companyId)
     const [catalog, settings] = await Promise.all([
       caller.client.from('platform_features')
         .select('feature_code,feature_name,module_code,description,is_active')

@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   BadgePercent,
+  BanknoteArrowUp,
   BellRing,
   Boxes,
   Building2,
@@ -26,7 +27,10 @@ import {
   Menu,
   PackageSearch,
   PackagePlus,
+  PackageMinus,
   ScrollText,
+  ShoppingCart,
+  RotateCcw,
   ShieldCheck,
   Settings2,
   Store,
@@ -34,6 +38,7 @@ import {
   Truck,
   UserPlus,
   Users,
+  WalletCards,
   X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -55,9 +60,16 @@ import { StockTransferView } from '@/components/StockTransferView'
 import { StockAdjustmentView } from '@/components/StockAdjustmentView'
 import { StockOpnameView } from '@/components/StockOpnameView'
 import { BundleMasterView } from '@/components/BundleMasterView'
+import { SalesReturnApprovalView } from '@/components/SalesReturnApprovalView'
+import { ExpenseApprovalView } from '@/components/ExpenseApprovalView'
+import { CashDepositApprovalView } from '@/components/CashDepositApprovalView'
+import { DepositVarianceResolutionView } from '@/components/DepositVarianceResolutionView'
+import { CustomerBalanceView } from '@/components/CustomerBalanceView'
+import { SupplierOrderView } from '@/components/SupplierOrderView'
+import { PurchaseReturnApprovalView } from '@/components/PurchaseReturnApprovalView'
 import { useEscapeClose } from '@/lib/use-escape-close'
 
-type View = 'dashboard' | 'masters' | 'master-imports' | 'products' | 'bundles' | 'stock-real' | 'stock-movements' | 'stock-transfers' | 'stock-adjustments' | 'stock-opnames' | 'opening-stock' | 'minimum-stock' | 'suppliers' | 'customers' | 'pricelists' | 'payment-methods' | 'finance-masters' | 'tax-rules' | 'finance' | 'staff' | 'companies' | 'module-settings'
+type View = 'dashboard' | 'masters' | 'master-imports' | 'products' | 'bundles' | 'sales-returns' | 'expense-approvals' | 'cash-deposits' | 'deposit-variances' | 'customer-balances' | 'stock-real' | 'stock-movements' | 'stock-transfers' | 'stock-adjustments' | 'stock-opnames' | 'opening-stock' | 'minimum-stock' | 'suppliers' | 'supplier-orders' | 'purchase-returns' | 'customers' | 'pricelists' | 'payment-methods' | 'finance-masters' | 'tax-rules' | 'finance' | 'staff' | 'companies' | 'module-settings'
 
 type CompanyContext = {
   id: string
@@ -146,8 +158,13 @@ const STOCK_ADJUSTMENT_OPERATOR_ROLES = [
 ]
 const OPENING_STOCK_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 const SUPPLIER_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
+const PURCHASE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
 const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
+const SALES_RETURN_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
+const EXPENSE_REVIEW_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
+const EXPENSE_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE']
 const FINANCE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING']
+const CASH_DEPOSIT_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE']
 const OWNER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN']
 
 const navigation: NavigationItem[] = [
@@ -164,15 +181,22 @@ const navigation: NavigationItem[] = [
   { id: 'minimum-stock', label: 'Minimum Stock', icon: BellRing, roles: INVENTORY_ROLES },
   { id: 'customers', label: 'Pelanggan', icon: ContactRound, roles: SALES_ROLES },
   { id: 'suppliers', label: 'Supplier', icon: PackageSearch, roles: SUPPLIER_ROLES },
+  { id: 'supplier-orders', label: 'Supplier Order', icon: ShoppingCart, roles: PURCHASE_ROLES },
+  { id: 'purchase-returns', label: 'Retur Pembelian', icon: PackageMinus, roles: PURCHASE_ROLES },
   { id: 'staff', label: 'User & Akses', icon: Users, roles: OWNER_ROLES },
   { id: 'pricelists', label: 'Pricelist', icon: Tags, roles: SALES_ROLES },
   { id: 'bundles', label: 'Bundle', icon: Boxes, roles: SALES_ROLES },
+  { id: 'sales-returns', label: 'Approval Return', icon: RotateCcw, roles: SALES_RETURN_APPROVER_ROLES },
+  { id: 'expense-approvals', label: 'Expense', icon: DollarSign, roles: EXPENSE_REVIEW_ROLES },
+  { id: 'cash-deposits', label: 'Setor Kas', icon: BanknoteArrowUp, roles: FINANCE_ROLES },
+  { id: 'deposit-variances', label: 'Selisih Setoran', icon: CircleAlert, roles: FINANCE_ROLES },
+  { id: 'customer-balances', label: 'Saldo Customer', icon: WalletCards, roles: FINANCE_ROLES },
   { id: 'payment-methods', label: 'Metode Pembayaran', icon: CreditCard, roles: FINANCE_ROLES },
   { id: 'tax-rules', label: 'Aturan Pajak', icon: BadgePercent, roles: FINANCE_ROLES },
   { id: 'finance-masters', label: 'Kategori & COA', icon: Landmark, roles: FINANCE_ROLES },
   { id: 'finance', label: 'Jurnal Keuangan', icon: DollarSign, roles: FINANCE_ROLES },
   { id: 'companies', label: 'Perusahaan', icon: Building2, superOnly: true },
-  { id: 'module-settings', label: 'Pengaturan Modul', icon: Settings2, superOnly: true },
+  { id: 'module-settings', label: 'Pengaturan Modul', icon: Settings2, roles: ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'] },
 ]
 
 const appModules: {
@@ -181,8 +205,9 @@ const appModules: {
 }[] = [
   { id: 'inventory', name: 'Inventory', description: 'Stock Real, Kartu Stok, Transfer, Penyesuaian, dan review Stock Opname; Product, gudang, stok awal, minimum stok, serta alat import master.', icon: Boxes, color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'products', 'opening-stock', 'minimum-stock', 'masters', 'master-imports'] },
   { id: 'contacts', name: 'Kontak', description: 'Data pelanggan, supplier, serta user Company.', icon: ContactRound, color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
-  { id: 'sales', name: 'Sales', description: 'Pricelist dan Bundle untuk konfigurasi penjualan.', icon: Tags, color: 'bg-emerald-600', views: ['pricelists', 'bundles'] },
-  { id: 'finance', name: 'Finance', description: 'Metode pembayaran, pajak, kategori transaksi, COA, dan jurnal.', icon: Landmark, color: 'bg-violet-600', views: ['payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
+  { id: 'purchase', name: 'Purchase', description: 'Permintaan stok, Supplier Order, penerimaan, dan approval Retur Pembelian.', icon: ShoppingCart, color: 'bg-amber-600', views: ['supplier-orders', 'purchase-returns'] },
+  { id: 'sales', name: 'Sales', description: 'Pricelist, Bundle, dan approval Return Penjualan.', icon: Tags, color: 'bg-emerald-600', views: ['pricelists', 'bundles', 'sales-returns'] },
+  { id: 'finance', name: 'Finance', description: 'Approval Expense, Setor Kas, selisih, Saldo Customer, metode pembayaran, pajak, kategori transaksi, COA, dan jurnal.', icon: Landmark, color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Company dan entitlement modul.', icon: Settings2, color: 'bg-slate-800', views: ['companies', 'module-settings'] },
 ]
 
@@ -449,6 +474,9 @@ export default function Home() {
     ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN'].includes(
       activeCompany?.roleCode ?? '',
     )
+  const canOperateSupplierOrder =
+    context?.isSuperAdmin ||
+    PURCHASE_ROLES.includes(activeCompany?.roleCode ?? '')
   const canManageCustomerIdentity =
     context?.isSuperAdmin ||
     ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'].includes(activeCompany?.roleCode ?? '')
@@ -460,6 +488,33 @@ export default function Home() {
   const canManagePricelist =
     context?.isSuperAdmin ||
     ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'].includes(activeCompany?.roleCode ?? '')
+  const canApproveSalesReturn =
+    context?.isSuperAdmin ||
+    SALES_RETURN_APPROVER_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canApproveExpense =
+    context?.isSuperAdmin ||
+    EXPENSE_APPROVER_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canApproveCashDeposit =
+    context?.isSuperAdmin ||
+    CASH_DEPOSIT_APPROVER_ROLES.includes(activeCompany?.roleCode ?? '')
+  const canManageDepositVariance =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canReviewDepositVariance =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN'].includes(activeCompany?.roleCode ?? '')
+  const canCancelExpenseAdministrative =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'].includes(
+      activeCompany?.roleCode ?? '',
+    )
+  const canDisburseExpenseNonCash =
+    context?.isSuperAdmin ||
+    ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE'].includes(
+      activeCompany?.roleCode ?? '',
+    )
   const canManagePaymentMethod =
     context?.isSuperAdmin ||
     ['COMPANY_OWNER', 'COMPANY_ADMIN', 'FINANCE', 'ACCOUNTING'].includes(
@@ -569,20 +624,26 @@ export default function Home() {
 
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600">Workspace aktif</p>
-            <div className="relative mt-1 inline-flex max-w-full items-center">
-              <Building2 className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
-              <select
-                value={activeCompanyId}
-                onChange={(event) => void changeCompany(event.target.value)}
-                disabled={switchingCompany}
-                className="max-w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-500"
-              >
-                {context.companies.map((company) => (
-                  <option key={company.id} value={company.id}>{company.company_name} ({company.company_code})</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" />
-            </div>
+            {context.companies.length > 1 ? (
+              <div className="relative mt-1 inline-flex max-w-full items-center">
+                <Building2 className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+                <select
+                  value={activeCompanyId}
+                  onChange={(event) => void changeCompany(event.target.value)}
+                  disabled={switchingCompany}
+                  className="max-w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-500"
+                >
+                  {context.companies.map((company) => (
+                    <option key={company.id} value={company.id}>{company.company_name} ({company.company_code})</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" />
+              </div>
+            ) : (
+              <p className="mt-1 truncate text-sm font-bold text-slate-800">
+                {activeCompany.company_name}
+              </p>
+            )}
           </div>
 
           <div className="hidden text-right sm:block">
@@ -641,6 +702,60 @@ export default function Home() {
               session={session}
               companyId={activeCompanyId}
               canManage={Boolean(canManageMaster)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'sales-returns' && (
+            <SalesReturnApprovalView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canApprove={Boolean(canApproveSalesReturn)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'expense-approvals' && (
+            <ExpenseApprovalView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canApprove={Boolean(canApproveExpense)}
+              canCancelAdministrative={Boolean(canCancelExpenseAdministrative)}
+              canDisburseNonCash={Boolean(canDisburseExpenseNonCash)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'cash-deposits' && (
+            <CashDepositApprovalView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canApprove={Boolean(canApproveCashDeposit)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'deposit-variances' && (
+            <DepositVarianceResolutionView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canManage={Boolean(canManageDepositVariance)}
+              canReview={Boolean(canReviewDepositVariance)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'customer-balances' && (
+            <CustomerBalanceView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canRequest={Boolean(canManageDepositVariance)}
+              canReview={Boolean(canManageDepositVariance)}
               notify={setNotice}
             />
           )}
@@ -743,6 +858,26 @@ export default function Home() {
             />
           )}
 
+          {activeView === 'supplier-orders' && (
+            <SupplierOrderView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canOperate={Boolean(canOperateSupplierOrder)}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === 'purchase-returns' && (
+            <PurchaseReturnApprovalView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canApprove={Boolean(canOperateSupplierOrder)}
+              notify={setNotice}
+            />
+          )}
+
           {activeView === 'staff' && (
             <StaffView staff={staff} canManage={Boolean(canManage)} openCreate={() => setShowStaff(true)} />
           )}
@@ -804,12 +939,13 @@ export default function Home() {
             <CompaniesView companies={context.companies} openCreate={() => setShowTenant(true)} />
           )}
 
-          {activeView === 'module-settings' && context.isSuperAdmin && (
+          {activeView === 'module-settings' && (
             <ModuleSettingsView
               key={activeCompanyId}
               session={session}
               companyId={activeCompanyId}
               companyName={activeCompany.company_name}
+              isSuperAdmin={context.isSuperAdmin}
               notify={setNotice}
             />
           )}

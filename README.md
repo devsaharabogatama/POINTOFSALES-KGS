@@ -8,8 +8,8 @@ serta React/Vite PWA untuk kasir.
 > status modul, cara menjalankan aplikasi, migration chain, compatibility, atau
 > roadmap wajib memperbarui file ini bersama kode dan handoff.
 
-**Status terakhir:** 29 Juli 2026
-**Gate aktif:** G4 Phase 10 — true-concurrent Post stress staging
+**Status terakhir:** 6 Agustus 2026
+**Gate aktif:** G5 Phase 11 Supplier Invoice matching foundation rollout
 **Runtime:** lokal; Supabase aktif; Vercel Preview belum dibuka
 
 ## Kondisi Aplikasi Saat Ini
@@ -25,15 +25,19 @@ serta React/Vite PWA untuk kasir.
 | Payment Method | Online split-payment ready for smoke | Store scope, fee/proof snapshot, stable payment-leg identity, dan tablet multi-metode UI aktif |
 | Transaction Category + minimum COA | Complete pada master | 26 kategori, guarded COA, dan explicit fallback PASS; posting tetap nonaktif |
 | Tax Sales/Purchase | Sales resolver aktif pada online core | Guarded master/version/assignment; Purchase/jurnal tetap belum dibuka |
-| Pengaturan Modul | API/UI local ready; Super Admin smoke menunggu | Entitlement per Company melalui guarded RPC dan audit; detail konfigurasi tetap di menu modul |
+| Pengaturan Modul | Entitlement + Offline/Stock Minus policy UI ready for smoke | Super Admin mengelola entitlement; Owner/Admin mengelola policy Company, opt-in Gudang penjualan, dan izin user melalui guarded RPC; Store Manager read-only untuk Stock Minus |
 | App Launcher & shell | Complete pada role boundary saat ini | Inventory, Kontak, Sales, Finance, Platform; brand KGS POS kembali ke Home; granular permission tetap deferred |
 | Tax assignment Product/Category | Complete pada Sales online boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver aktif saat Draft/Post |
 | Tax resolver/calculator | Complete pada Sales online boundary | Effective-dated resolver + deterministic calculation dipakai Draft/Post; Purchase/jurnal belum dicutover |
 | Master Import/Export | Complete untuk 7 simple master | Phase 40 DB dan Phase 41 authenticated UI smoke PASS |
 | Generic import framework | Phase 47 UI local-ready | Grouped Product, Product-Supplier, dan Minimum Stock Produk–Gudang database PASS; Minimum Stock guarded API/UI serta fixed import-export lint/build PASS dan menunggu authenticated smoke; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
 | Stock ledger/FIFO production | Complete pada G3 core boundary | Integrated stress/regression diteruskan tanpa error dan Phase-14 rerun seluruh invariant PASS; Sale/Return/Receipt coverage pindah ke gate transaksi |
-| POS checkout/offline production | Online single-payment + Draft UI local-ready | Session, real catalog, server Draft/Post, FIFO/Bundle, payment/tax snapshot, Pricelist override, receipt print-tab, shortage, same-Store Draft list, edit-lock/heartbeat/takeover/cancel aktif; authenticated Draft UI smoke menunggu; offline diblokir |
-| Purchasing end-to-end | Belum dibuka | Gate G5 |
+| POS checkout/offline production | Online checkout dan Offline core COMPLETE sampai Phase 24 | Retained queue/status-first recovery, time-bounded sync, controlled disconnect/reconnect, single final effect, allowance, dan Stock–Movement–FIFO closing diagnostics dikonfirmasi PASS |
+| Sales Return | Complete pada required-approval boundary | PWA Draft serta Backoffice review/post berhasil diuji user; guarded cancel/post, stock/FIFO/Movement/refund, dan Finance HOLD aktif. Posting Kasir/optional approval tetap deferred |
+| Expense & Cash In | Deposit variance operational UI complete | Actual/return/additional dan Setor Kas online tersedia sesuai channel. Phase 46 rollout serta Phase 47 authenticated UI smoke dikonfirmasi aman; bank matching, offline Expense/Deposit, reversal aktual, serta jurnal G6 tetap tertutup |
+| Customer Balance | Phase 56 COMPLETE; Phase 57 UI local-ready | Full-balance ONLINE tender database PASS. POS menampilkan saldo, auto-fill seluruh saldo, minimum tambah belanja, dan receipt; authenticated tablet smoke dapat digabung pada E2E berikutnya |
+| POS Stock Minus | Phase 60 database COMPLETE; Phase 61 operational UI accepted | User melanjutkan roadmap setelah guarded Backoffice config dan POS reason/retry tersedia. Default tetap OFF, online non-Bundle saja; replenishment dari Goods Receipt menjadi dependency G5 |
+| Purchasing end-to-end | Supplier Invoice matching foundation local-ready | Purchase Return/UOM rollout dan Phase 10 preflight diterima user. Phase 11 menambahkan guarded many-to-many Receipt/AP allocation, tolerance/Tax snapshot, AP residual, last purchase price, audit, dan Finance HOLD; Supplier Payment, valuation final, dan jurnal G6 tetap tertutup |
 | Finance posting/reconciliation | Belum dibuka | Gate G6 |
 
 Status operasional detail dan manual gate terbaru ada di
@@ -204,6 +208,41 @@ Requirement lengkap:
 - Stock Opname Backoffice review/report smoke: [`docs/runbooks/G3_PHASE11_STOCK_OPNAME_BACKOFFICE_API_UI.md`](docs/runbooks/G3_PHASE11_STOCK_OPNAME_BACKOFFICE_API_UI.md)
 - Bundle foundation preflight: [`docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md`](docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md)
 - Bundle foundation database rollout: [`docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md`](docs/runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md)
+- Offline Stock Allowance rollout: [`docs/runbooks/G4_PHASE11_OFFLINE_STOCK_ALLOWANCE_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE11_OFFLINE_STOCK_ALLOWANCE_FOUNDATION_ROLLOUT.md)
+- Offline Sale Sync rollout: [`docs/runbooks/G4_PHASE12_OFFLINE_SYNC_ROLLOUT.md`](docs/runbooks/G4_PHASE12_OFFLINE_SYNC_ROLLOUT.md)
+- Offline PWA queue foundation: [`docs/runbooks/G4_PHASE13_OFFLINE_PWA_QUEUE_FOUNDATION.md`](docs/runbooks/G4_PHASE13_OFFLINE_PWA_QUEUE_FOUNDATION.md)
+- Offline catalog cache preflight: [`docs/runbooks/G4_PHASE14_OFFLINE_CATALOG_CACHE_PREFLIGHT.md`](docs/runbooks/G4_PHASE14_OFFLINE_CATALOG_CACHE_PREFLIGHT.md)
+- POS Customer quick-create: [`docs/runbooks/G4_PHASE18_POS_CUSTOMER_QUICK_CREATE_ROLLOUT.md`](docs/runbooks/G4_PHASE18_POS_CUSTOMER_QUICK_CREATE_ROLLOUT.md)
+- Offline Allowance operations UI: [`docs/runbooks/G4_PHASE19_OFFLINE_ALLOWANCE_OPERATIONS_UI.md`](docs/runbooks/G4_PHASE19_OFFLINE_ALLOWANCE_OPERATIONS_UI.md)
+- Cashier Offline Allowance PWA UI: [`docs/runbooks/G4_PHASE20_CASHIER_OFFLINE_ALLOWANCE_PWA_UI.md`](docs/runbooks/G4_PHASE20_CASHIER_OFFLINE_ALLOWANCE_PWA_UI.md)
+- Offline checkout queue preflight: [`docs/runbooks/G4_PHASE21_OFFLINE_CHECKOUT_QUEUE_PREFLIGHT.md`](docs/runbooks/G4_PHASE21_OFFLINE_CHECKOUT_QUEUE_PREFLIGHT.md)
+- Offline checkout queue PWA UI: [`docs/runbooks/G4_PHASE22_OFFLINE_CHECKOUT_QUEUE_PWA_UI.md`](docs/runbooks/G4_PHASE22_OFFLINE_CHECKOUT_QUEUE_PWA_UI.md)
+- POS end-to-end UAT sampai Phase 22: [`docs/runbooks/G4_PHASE22_POS_END_TO_END_UAT.md`](docs/runbooks/G4_PHASE22_POS_END_TO_END_UAT.md)
+- Offline cold-start/conflict preflight: [`docs/runbooks/G4_PHASE23_OFFLINE_COLD_START_CONFLICT_PREFLIGHT.md`](docs/runbooks/G4_PHASE23_OFFLINE_COLD_START_CONFLICT_PREFLIGHT.md)
+- Offline cold-start/recovery PWA: [`docs/runbooks/G4_PHASE23_OFFLINE_COLD_START_RECOVERY_PWA.md`](docs/runbooks/G4_PHASE23_OFFLINE_COLD_START_RECOVERY_PWA.md)
+- Offline disconnect/reconnect stress: [`docs/runbooks/G4_PHASE24_OFFLINE_DISCONNECT_RECONNECT_STRESS.md`](docs/runbooks/G4_PHASE24_OFFLINE_DISCONNECT_RECONNECT_STRESS.md)
+- Sales Return readiness preflight: [`docs/runbooks/G4_PHASE25_SALES_RETURN_READINESS_PREFLIGHT.md`](docs/runbooks/G4_PHASE25_SALES_RETURN_READINESS_PREFLIGHT.md)
+- Sales Return foundation rollout: [`docs/runbooks/G4_PHASE26_SALES_RETURN_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE26_SALES_RETURN_FOUNDATION_ROLLOUT.md)
+- Sales Return PWA Draft UI: [`docs/runbooks/G4_PHASE27_SALES_RETURN_PWA_DRAFT_UI.md`](docs/runbooks/G4_PHASE27_SALES_RETURN_PWA_DRAFT_UI.md)
+- Sales Return Backoffice approval UI: [`docs/runbooks/G4_PHASE28_SALES_RETURN_BACKOFFICE_APPROVAL_UI.md`](docs/runbooks/G4_PHASE28_SALES_RETURN_BACKOFFICE_APPROVAL_UI.md)
+- Expense dan arus kas preflight: [`docs/runbooks/G4_PHASE29_EXPENSE_CASH_FLOW_PREFLIGHT.md`](docs/runbooks/G4_PHASE29_EXPENSE_CASH_FLOW_PREFLIGHT.md)
+- Expense request/approval foundation: [`docs/runbooks/G4_PHASE30_EXPENSE_REQUEST_APPROVAL_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE30_EXPENSE_REQUEST_APPROVAL_FOUNDATION_ROLLOUT.md)
+- Expense request PWA UI: [`docs/runbooks/G4_PHASE31_EXPENSE_REQUEST_PWA_UI.md`](docs/runbooks/G4_PHASE31_EXPENSE_REQUEST_PWA_UI.md)
+- Expense approval Backoffice UI: [`docs/runbooks/G4_PHASE32_EXPENSE_APPROVAL_BACKOFFICE_UI.md`](docs/runbooks/G4_PHASE32_EXPENSE_APPROVAL_BACKOFFICE_UI.md)
+- Expense disbursement preflight: [`docs/runbooks/G4_PHASE33_EXPENSE_DISBURSEMENT_PREFLIGHT.md`](docs/runbooks/G4_PHASE33_EXPENSE_DISBURSEMENT_PREFLIGHT.md)
+- Expense disbursement foundation: [`docs/runbooks/G4_PHASE34_EXPENSE_DISBURSEMENT_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE34_EXPENSE_DISBURSEMENT_FOUNDATION_ROLLOUT.md)
+- Expense disbursement operational UI: [`docs/runbooks/G4_PHASE35_EXPENSE_DISBURSEMENT_UI.md`](docs/runbooks/G4_PHASE35_EXPENSE_DISBURSEMENT_UI.md)
+- Expense settlement preflight: [`docs/runbooks/G4_PHASE36_EXPENSE_SETTLEMENT_PREFLIGHT.md`](docs/runbooks/G4_PHASE36_EXPENSE_SETTLEMENT_PREFLIGHT.md)
+- Expense settlement foundation: [`docs/runbooks/G4_PHASE37_EXPENSE_SETTLEMENT_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE37_EXPENSE_SETTLEMENT_FOUNDATION_ROLLOUT.md)
+- Expense settlement operational UI: [`docs/runbooks/G4_PHASE38_EXPENSE_SETTLEMENT_OPERATIONAL_UI.md`](docs/runbooks/G4_PHASE38_EXPENSE_SETTLEMENT_OPERATIONAL_UI.md)
+- Additional Expense disbursement preflight: [`docs/runbooks/G4_PHASE39_ADDITIONAL_EXPENSE_DISBURSEMENT_PREFLIGHT.md`](docs/runbooks/G4_PHASE39_ADDITIONAL_EXPENSE_DISBURSEMENT_PREFLIGHT.md)
+- Additional Expense disbursement foundation: [`docs/runbooks/G4_PHASE40_ADDITIONAL_EXPENSE_DISBURSEMENT_ROLLOUT.md`](docs/runbooks/G4_PHASE40_ADDITIONAL_EXPENSE_DISBURSEMENT_ROLLOUT.md)
+- Additional Expense operational UI: [`docs/runbooks/G4_PHASE41_ADDITIONAL_EXPENSE_OPERATIONAL_UI.md`](docs/runbooks/G4_PHASE41_ADDITIONAL_EXPENSE_OPERATIONAL_UI.md)
+- Cash Deposit multi-Session preflight: [`docs/runbooks/G4_PHASE42_CASH_DEPOSIT_PREFLIGHT.md`](docs/runbooks/G4_PHASE42_CASH_DEPOSIT_PREFLIGHT.md)
+- Cash Deposit multi-Session foundation: [`docs/runbooks/G4_PHASE43_CASH_DEPOSIT_FOUNDATION_ROLLOUT.md`](docs/runbooks/G4_PHASE43_CASH_DEPOSIT_FOUNDATION_ROLLOUT.md)
+- Cash Deposit operational UI: [`docs/runbooks/G4_PHASE44_CASH_DEPOSIT_OPERATIONAL_UI.md`](docs/runbooks/G4_PHASE44_CASH_DEPOSIT_OPERATIONAL_UI.md)
+- Deposit variance resolution preflight: [`docs/runbooks/G4_PHASE45_DEPOSIT_VARIANCE_RESOLUTION_PREFLIGHT.md`](docs/runbooks/G4_PHASE45_DEPOSIT_VARIANCE_RESOLUTION_PREFLIGHT.md)
+- Deposit variance resolution rollout: [`docs/runbooks/G4_PHASE46_DEPOSIT_VARIANCE_RESOLUTION_ROLLOUT.md`](docs/runbooks/G4_PHASE46_DEPOSIT_VARIANCE_RESOLUTION_ROLLOUT.md)
 
 ## Aturan Pembaruan README
 

@@ -55,7 +55,9 @@ Agent tidak boleh mengubah keputusan berikut tanpa instruksi eksplisit user:
 2. Super Admin tidak dibatasi antar-Company, sedangkan Company Admin penuh hanya pada Company miliknya;
 3. hanya Super Admin yang dapat mengaktifkan/menonaktifkan feature Company;
 4. stock disimpan pada base/smallest UOM dan transaksi menyimpan conversion snapshot;
-5. stock final tidak boleh negatif;
+5. stock final default tidak boleh negatif; exception POS hanya boleh dibuka
+   melalui STK-006 yang default OFF, server-authoritative, online-only,
+   Company/Warehouse/actor-scoped, audited, dan memiliki rekonsiliasi FIFO/HPP;
 6. Draft/Hold/Pending tidak membuat stock movement atau jurnal final;
 7. perubahan stock final wajib memiliki immutable movement dan source document;
 8. retry tidak boleh menggandakan sale, payment, stock movement, AP/AR, atau jurnal;

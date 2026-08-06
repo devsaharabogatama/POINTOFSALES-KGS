@@ -1,30 +1,54 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   AlertTriangle,
   Banknote,
+  BanknoteArrowUp,
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Database,
   FileText,
   LockKeyhole,
   LogIn,
   LogOut,
   Minus,
   Package,
+  PackageMinus,
   Plus,
   Printer,
   RefreshCw,
+  RotateCcw,
   Search,
   ShoppingCart,
+  ClipboardList,
   Trash2,
   UserRound,
+  UserPlus,
   Wifi,
   WifiOff,
   X,
 } from 'lucide-react'
 import { printer } from './lib/printer'
 import { supabase, supabaseConfigurationError } from './lib/supabase'
+import type {
+  OfflineAllowanceAvailability,
+  OfflineCatalogReadResult,
+} from './lib/offlineCatalog'
+import type { OfflineSaleQueueRecord } from './lib/db'
+import {
+  buildOfflineSalePayload,
+  priceOfflineCheckout,
+  type OfflineCheckoutPreview,
+} from './lib/offlineCheckout'
 import './App.css'
 import {
   acquireSaleDraftLock,
@@ -40,6 +64,7 @@ import {
   loadResolvedSaleLines,
   openCashierSession,
   postSale,
+  quickCreatePosCustomer,
   releaseSaleDraftLock,
   saveSaleDraft,
   setActiveCompany,
@@ -56,6 +81,36 @@ import {
   type SaleReceipt,
 } from './lib/pos'
 
+const SalesReturnModal = lazy(() =>
+  import('./SalesReturnModal').then((module) => ({
+    default: module.SalesReturnModal,
+  })),
+)
+
+const ExpenseRequestModal = lazy(() =>
+  import('./ExpenseRequestModal').then((module) => ({
+    default: module.ExpenseRequestModal,
+  })),
+)
+
+const CashDepositModal = lazy(() =>
+  import('./CashDepositModal').then((module) => ({
+    default: module.CashDepositModal,
+  })),
+)
+
+const StockRequestModal = lazy(() =>
+  import('./StockRequestModal').then((module) => ({ default: module.StockRequestModal })),
+)
+
+const GoodsReceiptModal = lazy(() =>
+  import('./GoodsReceiptModal').then((module) => ({ default: module.GoodsReceiptModal })),
+)
+
+const PurchaseReturnModal = lazy(() =>
+  import('./PurchaseReturnModal').then((module) => ({ default: module.PurchaseReturnModal })),
+)
+
 type CartItem = {
   product: ProductOption
   quantity: number
@@ -69,6 +124,7 @@ type PaymentLeg = {
   amount: string
   tenderedAmount: string
   proofUrl: string
+  overpaymentDisposition: 'RETURNED' | 'CUSTOMER_BALANCE'
 }
 
 type ActionDialog = {
@@ -82,11 +138,26 @@ type ActionDialog = {
   onConfirm: (reason: string) => void | Promise<void>
 }
 
+type OfflineSlip = {
+  clientTransactionId: string
+  localTransactionAt: string
+  preview: OfflineCheckoutPreview
+  payments: Array<{
+    methodName: string
+    amount: number
+    tenderedAmount: number
+  }>
+}
+
 const EMPTY_CATALOG: CatalogData = {
   products: [],
   customers: [],
   pricelists: [],
   paymentMethods: [],
+  expenseCategories: [],
+  expenseEnabled: false,
+  customerBalanceCreditEnabled: false,
+  customerBalanceTenderEnabled: false,
 }
 
 function money(value: number) {
@@ -100,6 +171,7 @@ function createPaymentLeg(paymentMethodId = ''): PaymentLeg {
     amount: '',
     tenderedAmount: '',
     proofUrl: '',
+    overpaymentDisposition: 'RETURNED',
   }
 }
 
@@ -110,7 +182,25 @@ function errorMessage(error: unknown) {
   return 'Terjadi kesalahan yang tidak dikenali.'
 }
 
+function isConnectionFailure(error: unknown) {
+  const normalized = errorMessage(error).toLowerCase()
+  return (
+    normalized.includes('fetch') ||
+    normalized.includes('network') ||
+    normalized.includes('timeout') ||
+    normalized.includes('failed to fetch')
+  )
+}
+
 function friendlyError(code: string) {
+  if (code.startsWith('CUSTOMER_BALANCE_EXCEEDS_SALE_TOTAL:')) {
+    const shortfall = Number(code.split(':')[1] ?? 0)
+    return `Saldo Customer melebihi total transaksi. Tambahkan belanja minimal ${money(shortfall)}.`
+  }
+  if (code.startsWith('FULL_CUSTOMER_BALANCE_USAGE_REQUIRED:')) {
+    const balance = Number(code.split(':')[1] ?? 0)
+    return `Seluruh Saldo Customer ${money(balance)} wajib digunakan pada transaksi ini.`
+  }
   const labels: Record<string, string> = {
     ACTIVE_CASHIER_ASSIGNMENT_REQUIRED:
       'User ini belum memiliki assignment Cashier aktif pada Store.',
@@ -120,6 +210,17 @@ function friendlyError(code: string) {
     CASHIER_SESSION_ALREADY_OPEN:
       'User sudah mempunyai sesi terbuka. Muat ulang untuk melanjutkannya.',
     OPEN_CASHIER_SESSION_REQUIRED: 'Buka sesi kasir sebelum membuat transaksi.',
+    INVALID_CUSTOMER_NAME: 'Nama Customer wajib diisi dan maksimal 200 karakter.',
+    INVALID_CUSTOMER_TYPE: 'Tipe Customer tidak dikenali.',
+    INVALID_CUSTOMER_PHONE: 'Nomor telepon Customer maksimal 100 karakter.',
+    INVALID_CUSTOMER_EMAIL: 'Email Customer tidak valid atau terlalu panjang.',
+    INVALID_CUSTOMER_ADDRESS: 'Alamat Customer maksimal 1.000 karakter.',
+    ACTIVE_CUSTOMER_CATEGORY_NOT_FOUND:
+      'Company aktif belum memiliki kategori Customer yang dapat dipakai.',
+    DUPLICATE_CUSTOMER:
+      'Nama atau identitas Customer tersebut sudah digunakan di Company aktif.',
+    CUSTOMER_COMPANY_SCOPE_MISMATCH:
+      'Company Customer tidak sesuai sesi aktif. Muat ulang sebelum mencoba lagi.',
     ACTIVE_SALES_PRODUCT_UOM_NOT_FOUND:
       'Produk atau satuan jual sudah tidak aktif. Muat ulang katalog.',
     PAYMENT_TOTAL_MISMATCH:
@@ -163,6 +264,80 @@ function friendlyError(code: string) {
       'Data pembayaran terduplikasi. Hapus lalu tambahkan kembali cara bayar.',
     PAYMENT_TENDER_INSUFFICIENT:
       'Uang tunai dari pelanggan kurang dari jumlah pembayaran tunai.',
+    NEGATIVE_STOCK_REASON_REQUIRED:
+      'Alasan stok minus wajib diisi sebelum transaksi dapat diposting.',
+    COMPANY_NEGATIVE_STOCK_LIMIT_EXCEEDED:
+      'Jumlah stok minus melampaui batas Company.',
+    USER_NEGATIVE_STOCK_LIMIT_EXCEEDED:
+      'Jumlah stok minus melampaui batas izin kasir.',
+    CUSTOMER_BALANCE_CREDIT_DISABLED:
+      'Fitur Saldo Customer belum aktif untuk Company ini.',
+    CUSTOMER_BALANCE_ELIGIBLE_CUSTOMER_REQUIRED:
+      'Pilih Customer reguler untuk menyimpan kelebihan pembayaran sebagai saldo.',
+    OVERPAYMENT_DISPOSITION_REQUIRED:
+      'Pilih apakah kelebihan pembayaran dikembalikan atau disimpan sebagai saldo.',
+    OFFLINE_CUSTOMER_BALANCE_CREDIT_NOT_ENABLED:
+      'Simpan ke Saldo Customer hanya tersedia saat POS online.',
+    CUSTOMER_BALANCE_DEBIT_DISABLED:
+      'Pemakaian Saldo Customer belum aktif untuk Company ini.',
+    CUSTOMER_BALANCE_NOT_AVAILABLE:
+      'Customer ini tidak mempunyai saldo yang dapat digunakan.',
+    CUSTOMER_BALANCE_CUSTOMER_NOT_FOUND:
+      'Saldo Customer hanya dapat digunakan oleh Customer reguler aktif.',
+    OFFLINE_POS_FEATURE_DISABLED:
+      'Mode Offline belum diaktifkan oleh Super Admin untuk Company ini.',
+    OFFLINE_TERMINAL_NOT_ENABLED:
+      'Terminal ini belum dipilih sebagai Terminal Offline.',
+    OFFLINE_COMPANY_POLICY_NOT_ENABLED:
+      'Kebijakan cadangan Offline Company belum aktif.',
+    OFFLINE_ALLOWANCE_PRODUCT_REQUIRED:
+      'Pilih produk yang akan diberi cadangan stok.',
+    OFFLINE_ALLOWANCE_STOCK_UNAVAILABLE:
+      'Stok yang belum dicadangkan sudah tidak tersedia.',
+    OFFLINE_ALLOWANCE_QUANTITY_UNAVAILABLE:
+      'Jumlah cadangan tidak dapat dihitung dari stok yang tersedia.',
+    OFFLINE_ALLOWANCE_RELEASE_FORBIDDEN:
+      'Cadangan ini bukan milik sesi kasir aktif.',
+    CONSUMED_OFFLINE_ALLOWANCE_CANNOT_RELEASE:
+      'Cadangan yang sudah dipakai tidak dapat dilepaskan.',
+    OFFLINE_QUEUE_RESOLUTION_REQUIRED:
+      'Selesaikan antrean Offline sesi ini sebelum melepaskan cadangan.',
+    OFFLINE_CATALOG_CACHE_INTEGRITY_INVALID:
+      'Cache Offline tidak valid dan sudah diblokir. Perbarui snapshot saat online.',
+    OFFLINE_CUSTOMER_NOT_IN_SNAPSHOT:
+      'Customer tidak tersedia pada snapshot Offline. Sambungkan internet lalu perbarui snapshot.',
+    OFFLINE_PRICELIST_NOT_ELIGIBLE:
+      'Pricelist tidak tersedia untuk Customer pada snapshot Offline.',
+    OFFLINE_PRODUCT_UOM_NOT_ELIGIBLE:
+      'Salah satu produk tidak boleh dijual Offline. Hapus produk tersebut dari keranjang.',
+    OFFLINE_ALLOWANCE_REQUIRED:
+      'Produk belum mempunyai cadangan stok Offline untuk sesi ini.',
+    OFFLINE_ALLOWANCE_INSUFFICIENT:
+      'Cadangan stok Offline tidak cukup untuk jumlah di keranjang.',
+    OFFLINE_PAYMENT_METHOD_NOT_ELIGIBLE:
+      'Metode pembayaran tidak tersedia pada snapshot Offline.',
+    OFFLINE_CATALOG_CACHE_MISSING:
+      'Snapshot Offline belum tersedia atau sudah diblokir.',
+    OFFLINE_LOCAL_IDEMPOTENCY_CONFLICT:
+      'Identitas transaksi Offline sudah dipakai oleh payload berbeda.',
+    OFFLINE_EXISTING_DRAFT_REQUIRES_ONLINE:
+      'Draft server yang sedang terbuka harus diselesaikan saat online sebelum membuat transaksi Offline.',
+    OFFLINE_TEMPO_NOT_ALLOWED:
+      'Penjualan Tempo tidak tersedia dalam mode Offline.',
+    OFFLINE_CATALOG_SCOPE_MISMATCH:
+      'Scope snapshot tidak sama dengan Company, Terminal, Gudang, atau sesi aktif.',
+    OFFLINE_FINAL_RECEIPT_NOT_AVAILABLE:
+      'Invoice final belum tersedia. Periksa status sinkronisasi terlebih dahulu.',
+    OFFLINE_COLD_START_NOT_READY:
+      'POS belum memiliki scope Offline tersimpan untuk akun ini. Sambungkan internet, buka sesi, lalu siapkan snapshot terlebih dahulu.',
+    OFFLINE_OPERATIONAL_SCOPE_INVALID:
+      'Scope Offline tidak lengkap. Perbarui snapshot saat internet tersedia.',
+    OFFLINE_SYNC_SUBMIT_TIMEOUT:
+      'Pengiriman ke server melewati batas waktu. Periksa koneksi lalu cek status transaksi.',
+    OFFLINE_SYNC_PROCESS_TIMEOUT:
+      'Server belum menyelesaikan transaksi dalam 25 detik. Status wajib diperiksa sebelum mencoba lagi.',
+    OFFLINE_SYNC_STATUS_TIMEOUT:
+      'Pemeriksaan status server melewati batas waktu. Coba periksa kembali saat koneksi stabil.',
   }
   return labels[code] ?? code.replaceAll('_', ' ')
 }
@@ -204,6 +379,25 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Semua')
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [offlineCache, setOfflineCache] =
+    useState<OfflineCatalogReadResult | null>(null)
+  const [offlineAllowances, setOfflineAllowances] = useState<
+    OfflineAllowanceAvailability[]
+  >([])
+  const [offlineQueue, setOfflineQueue] = useState<OfflineSaleQueueRecord[]>([])
+  const [offlineSlip, setOfflineSlip] = useState<OfflineSlip | null>(null)
+  const [offlineCacheBusy, setOfflineCacheBusy] = useState(false)
+  const [offlineCacheMessage, setOfflineCacheMessage] = useState('')
+  const [offlinePanelOpen, setOfflinePanelOpen] = useState(false)
+  const [offlineProductId, setOfflineProductId] = useState('')
+  const [coldStartRestored, setColdStartRestored] = useState(false)
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+  const [salesReturnOpen, setSalesReturnOpen] = useState(false)
+  const [expenseRequestOpen, setExpenseRequestOpen] = useState(false)
+  const [cashDepositOpen, setCashDepositOpen] = useState(false)
+  const [stockRequestOpen, setStockRequestOpen] = useState(false)
+  const [goodsReceiptOpen, setGoodsReceiptOpen] = useState(false)
+  const [purchaseReturnOpen, setPurchaseReturnOpen] = useState(false)
   const [isPrinterConnected, setIsPrinterConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -211,6 +405,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [actionDialog, setActionDialog] = useState<ActionDialog | null>(null)
   const [actionDialogReason, setActionDialogReason] = useState('')
+  const offlineBootstrapAttemptRef = useRef('')
 
   const activeCompany = companies.find((item) => item.id === companyId)
   const canForceReleaseDraft = Boolean(
@@ -288,12 +483,78 @@ export default function App() {
       ),
     [cart],
   )
-  const paymentDue = draft?.grandTotalAfterRounding ?? 0
+  const offlineCalculation = useMemo(() => {
+    if (isOnline || !offlineCache || !customerId || cart.length === 0) {
+      return { preview: null, error: '' }
+    }
+    try {
+      return {
+        preview: priceOfflineCheckout({
+          snapshot: offlineCache.snapshot,
+          allowances: offlineAllowances,
+          customerId,
+          selectedPricelistId,
+          lines: cart.map((item) => ({
+            lineKey: item.product.productUomId,
+            productUomId: item.product.productUomId,
+            quantity: item.quantity,
+            discountType: item.discountType,
+            discountInput: item.discountInput,
+          })),
+          globalDiscount: Number(globalDiscount || 0),
+          roundingDirection,
+        }),
+        error: '',
+      }
+    } catch (reason) {
+      return {
+        preview: null,
+        error: friendlyError(errorMessage(reason)),
+      }
+    }
+  }, [
+    cart,
+    customerId,
+    globalDiscount,
+    isOnline,
+    offlineAllowances,
+    offlineCache,
+    roundingDirection,
+    selectedPricelistId,
+  ])
+  const offlinePreview = offlineCalculation.preview
+  const offlinePreviewError = offlineCalculation.error
+  const paymentDue =
+    draft?.grandTotalAfterRounding ?? offlinePreview?.grandTotal ?? 0
   const paymentBaseTotal = paymentLegs.reduce(
     (total, leg) => total + Number(leg.amount || 0),
     0,
   )
   const paymentRemaining = paymentDue - paymentBaseTotal
+  const returnedChangeTotal = paymentLegs.reduce((total, leg) => {
+    const method = catalog.paymentMethods.find(
+      (item) => item.id === leg.paymentMethodId,
+    )
+    if (
+      !['CASH', 'TRANSFER'].includes(method?.methodType ?? '') ||
+      leg.overpaymentDisposition !== 'RETURNED'
+    ) return total
+    const amount = Number(leg.amount || 0)
+    const tendered = Number(leg.tenderedAmount || amount)
+    return total + Math.max(tendered - amount, 0)
+  }, 0)
+  const customerBalanceCreditTotal = paymentLegs.reduce((total, leg) => {
+    const method = catalog.paymentMethods.find(
+      (item) => item.id === leg.paymentMethodId,
+    )
+    if (
+      !['CASH', 'TRANSFER'].includes(method?.methodType ?? '') ||
+      leg.overpaymentDisposition !== 'CUSTOMER_BALANCE'
+    ) return total
+    const amount = Number(leg.amount || 0)
+    const tendered = Number(leg.tenderedAmount || amount)
+    return total + Math.max(tendered - amount, 0)
+  }, 0)
   const customerSurchargeEstimate = paymentLegs.reduce((total, leg) => {
     const method = catalog.paymentMethods.find(
       (item) => item.id === leg.paymentMethodId,
@@ -312,6 +573,18 @@ export default function App() {
         : 0
     return total + Math.round((percent + fixed) * 10_000) / 10_000
   }, 0)
+  const customerBalanceDue =
+    isOnline &&
+    !isTempo &&
+    catalog.customerBalanceTenderEnabled &&
+    activeCustomer &&
+    !activeCustomer.isWalkIn
+      ? activeCustomer.currentBalance
+      : 0
+  const customerBalanceShortfall = Math.max(
+    customerBalanceDue - paymentDue,
+    0,
+  )
 
   const refreshCompanies = useCallback(async (activeSession: Session) => {
     const result = await loadCompanies(activeSession.user)
@@ -395,6 +668,94 @@ export default function App() {
     [],
   )
 
+  const loadOfflineCacheState = useCallback(async (cashierSessionId: string) => {
+    const {
+      getOfflineAllowanceAvailability,
+      readOfflineCatalogSnapshot,
+    } = await import('./lib/offlineCatalog')
+    const { listOfflineSaleQueue } = await import('./lib/offline')
+    const queue = await listOfflineSaleQueue(cashierSessionId)
+    setOfflineQueue(queue)
+    const cached = await readOfflineCatalogSnapshot(cashierSessionId)
+    setOfflineCache(cached ?? null)
+    if (!cached) {
+      setOfflineAllowances([])
+      return { cache: null, allowances: [], queue }
+    }
+    const allowances = await getOfflineAllowanceAvailability(
+      cashierSessionId,
+      cached,
+    )
+    setOfflineAllowances(allowances)
+    return { cache: cached, allowances, queue }
+  }, [])
+
+  const retainCurrentOfflineScope = useCallback(
+    async (cache: Pick<OfflineCatalogReadResult, 'snapshot'>) => {
+      if (
+        !session ||
+        !activeCompany ||
+        !activeTerminal ||
+        !activeWarehouse ||
+        !cashierSession
+      ) {
+        throw new Error('OFFLINE_OPERATIONAL_SCOPE_INVALID')
+      }
+      const { retainOfflineOperationalScope } = await import(
+        './lib/offlineBootstrap'
+      )
+      await retainOfflineOperationalScope({
+        company: activeCompany,
+        terminal: activeTerminal,
+        warehouse: activeWarehouse,
+        cashierSession,
+        cashierId: session.user.id,
+        catalogVersion: cache.snapshot.catalogVersion,
+      })
+    },
+    [
+      activeCompany,
+      activeTerminal,
+      activeWarehouse,
+      cashierSession,
+      session,
+    ],
+  )
+
+  const restoreOfflineColdStart = useCallback(
+    async (activeSession: Session) => {
+      const { restoreOfflineColdStart: restore } = await import(
+        './lib/offlineBootstrap'
+      )
+      const restored = await restore(activeSession.user.id)
+      if (!restored) return false
+      setCompanies([restored.company])
+      setCompanyId(restored.company.id)
+      setBootstrap(restored.bootstrap)
+      setCashierSession(restored.cashierSession)
+      setTerminalId(restored.cashierSession.terminalId)
+      setWarehouseId(restored.cashierSession.warehouseId)
+      setCatalog(restored.catalog)
+      const walkIn =
+        restored.catalog.customers.find((item) => item.isWalkIn) ??
+        restored.catalog.customers[0]
+      const defaultPayment =
+        restored.catalog.paymentMethods.find((item) => item.isDefault) ??
+        restored.catalog.paymentMethods[0]
+      setCustomerId(walkIn?.id ?? '')
+      setSelectedPricelistId('')
+      setPaymentLegs([createPaymentLeg(defaultPayment?.id ?? '')])
+      await loadOfflineCacheState(restored.cashierSession.id)
+      setColdStartRestored(true)
+      setOfflineCacheMessage(
+        'Scope, katalog, dan antrean dipulihkan dari perangkat. Saat internet kembali, status server diperiksa sebelum retry.',
+      )
+      setNotice('Mode Offline dipulihkan untuk sesi kasir terakhir.')
+      return true
+    },
+    [loadOfflineCacheState],
+  )
+
   useEffect(() => {
     if (supabaseConfigurationError) {
       setError(supabaseConfigurationError)
@@ -407,7 +768,25 @@ export default function App() {
       .then(async (current) => {
         if (!mounted) return
         setSession(current)
-        if (current) await refreshCompanies(current)
+        if (!current) return
+        if (!navigator.onLine) {
+          if (!(await restoreOfflineColdStart(current))) {
+            throw new Error('OFFLINE_COLD_START_NOT_READY')
+          }
+          return
+        }
+        try {
+          await refreshCompanies(current)
+        } catch (reason) {
+          if (
+            !isConnectionFailure(reason) ||
+            !(await restoreOfflineColdStart(current))
+          ) {
+            throw reason
+          }
+          offlineBootstrapAttemptRef.current = ''
+          setIsOnline(false)
+        }
       })
       .catch((reason) => setError(friendlyError(errorMessage(reason))))
       .finally(() => mounted && setLoading(false))
@@ -419,10 +798,20 @@ export default function App() {
         setBootstrap(null)
         setCashierSession(null)
         setCatalog(EMPTY_CATALOG)
+        setOfflineCache(null)
+        setOfflineAllowances([])
+        setOfflineQueue([])
+        setOfflineSlip(null)
+        setOfflineCacheMessage('')
+        setOfflineProductId('')
+        setColdStartRestored(false)
       }
     })
     const online = () => setIsOnline(true)
-    const offline = () => setIsOnline(false)
+    const offline = () => {
+      offlineBootstrapAttemptRef.current = ''
+      setIsOnline(false)
+    }
     window.addEventListener('online', online)
     window.addEventListener('offline', offline)
     return () => {
@@ -431,18 +820,33 @@ export default function App() {
       window.removeEventListener('online', online)
       window.removeEventListener('offline', offline)
     }
-  }, [refreshCompanies])
+  }, [refreshCompanies, restoreOfflineColdStart])
 
   useEffect(() => {
-    if (!session || !companyId || !activeCompany) return
+    if (
+      !isOnline ||
+      coldStartRestored ||
+      !session ||
+      !companyId ||
+      !activeCompany
+    ) {
+      return
+    }
     setLoading(true)
     refreshBootstrap(companyId, session.user.id, activeCompany.roleCode)
       .catch((reason) => setError(friendlyError(errorMessage(reason))))
       .finally(() => setLoading(false))
-  }, [activeCompany, companyId, refreshBootstrap, session])
+  }, [
+    activeCompany,
+    coldStartRestored,
+    companyId,
+    isOnline,
+    refreshBootstrap,
+    session,
+  ])
 
   useEffect(() => {
-    if (!cashierSession?.storeId) return
+    if (!isOnline || coldStartRestored || !cashierSession?.storeId) return
     setLoading(true)
     Promise.all([
       refreshCatalog(cashierSession),
@@ -450,7 +854,131 @@ export default function App() {
     ])
       .catch((reason) => setError(friendlyError(errorMessage(reason))))
       .finally(() => setLoading(false))
-  }, [cashierSession, refreshCatalog, refreshSaleDrafts])
+  }, [
+    cashierSession,
+    coldStartRestored,
+    isOnline,
+    refreshCatalog,
+    refreshSaleDrafts,
+  ])
+
+  useEffect(() => {
+    if (!isOnline || !session || !companyId || !coldStartRestored) return
+    let active = true
+    setActiveCompany(companyId)
+      .then(() => refreshCompanies(session))
+      .then(() => {
+        if (active) {
+          setColdStartRestored(false)
+          setOfflineCacheMessage(
+            'Koneksi kembali. Scope server sedang direkonsiliasi sebelum retry.',
+          )
+        }
+      })
+      .catch((reason) => {
+        if (active) {
+          setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [coldStartRestored, companyId, isOnline, refreshCompanies, session])
+
+  useEffect(() => {
+    if (!cashierSession) {
+      offlineBootstrapAttemptRef.current = ''
+      setOfflineCache(null)
+      setOfflineAllowances([])
+      setOfflineQueue([])
+      setOfflineCacheMessage('')
+      setOfflineProductId('')
+      return
+    }
+    const load = () => {
+      loadOfflineCacheState(cashierSession.id).catch((reason) => {
+        setOfflineCache(null)
+        setOfflineAllowances([])
+        setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+      })
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    return () => window.clearInterval(timer)
+  }, [cashierSession, loadOfflineCacheState])
+
+  useEffect(() => {
+    if (
+      !isOnline ||
+      coldStartRestored ||
+      !session ||
+      !cashierSession ||
+      !companyId ||
+      !activeTerminal ||
+      !activeWarehouse
+    ) {
+      return
+    }
+    const scopeKey = [
+      companyId,
+      cashierSession.id,
+      cashierSession.terminalId,
+      cashierSession.warehouseId,
+      session.user.id,
+    ].join(':')
+    if (offlineBootstrapAttemptRef.current === scopeKey) return
+    offlineBootstrapAttemptRef.current = scopeKey
+    let active = true
+    setOfflineCacheBusy(true)
+    Promise.all([
+      import('./lib/offline'),
+      import('./lib/offlineCatalog'),
+    ])
+      .then(async ([offline, offlineCatalog]) => {
+        await offline.recoverOfflineSaleQueue(cashierSession.id)
+        await loadOfflineCacheState(cashierSession.id)
+        return offlineCatalog.refreshOfflineCatalogSnapshot({
+          companyId,
+          storeId: cashierSession.storeId,
+          terminalId: cashierSession.terminalId,
+          warehouseId: cashierSession.warehouseId,
+          cashierSessionId: cashierSession.id,
+          cashierId: session.user.id,
+        })
+      })
+      .then(async (cache) => {
+        await retainCurrentOfflineScope(cache)
+        return loadOfflineCacheState(cashierSession.id)
+      })
+      .then(() => {
+        if (active) {
+          setOfflineCacheMessage(
+            'Status antrean diperiksa dan snapshot Offline disiapkan. Minta cadangan stok untuk Product yang akan dijual sebelum memutus internet.',
+          )
+        }
+      })
+      .catch((reason) => {
+        if (active) {
+          setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+        }
+      })
+      .finally(() => {
+        if (active) setOfflineCacheBusy(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [
+    activeTerminal,
+    activeWarehouse,
+    cashierSession,
+    coldStartRestored,
+    companyId,
+    isOnline,
+    loadOfflineCacheState,
+    retainCurrentOfflineScope,
+    session,
+  ])
 
   useEffect(() => {
     if (!draft || !cashierSession) return
@@ -478,19 +1006,172 @@ export default function App() {
   }, [availableWarehouses, cashierSession, warehouseId])
 
   useEffect(() => {
+    if (isTempo || paymentDue <= 0 || paymentLegs.length !== 1) return
+    setPaymentLegs((current) => {
+      if (current.length !== 1) return current
+      const leg = current[0]
+      const nextAmount = String(paymentDue)
+      const method = catalog.paymentMethods.find(
+        (item) => item.id === leg.paymentMethodId,
+      )
+      const tenderWasFollowingAmount =
+        !leg.tenderedAmount || leg.tenderedAmount === leg.amount
+      const nextTender =
+        ['CASH', 'TRANSFER'].includes(method?.methodType ?? '') &&
+        tenderWasFollowingAmount
+          ? nextAmount
+          : leg.tenderedAmount
+      if (leg.amount === nextAmount && leg.tenderedAmount === nextTender) {
+        return current
+      }
+      return [{ ...leg, amount: nextAmount, tenderedAmount: nextTender }]
+    })
+  }, [
+    catalog.paymentMethods,
+    isTempo,
+    paymentDue,
+    paymentLegs.length,
+  ])
+
+  useEffect(() => {
+    const balanceMethod = catalog.paymentMethods.find(
+      (method) => method.methodType === 'CUSTOMER_BALANCE',
+    )
+    const balance = activeCustomer?.currentBalance ?? 0
+    const canUseBalance = Boolean(
+      isOnline &&
+        !isTempo &&
+        catalog.customerBalanceTenderEnabled &&
+        activeCustomer &&
+        !activeCustomer.isWalkIn &&
+        balanceMethod &&
+        balance > 0 &&
+        paymentDue > 0 &&
+        balance <= paymentDue,
+    )
+    setPaymentLegs((current) => {
+      const existingBalance = current.find(
+        (leg) => leg.paymentMethodId === balanceMethod?.id,
+      )
+      const external = current.filter(
+        (leg) => leg.paymentMethodId !== balanceMethod?.id,
+      )
+      if (!canUseBalance || !balanceMethod) {
+        if (!existingBalance) return current
+        const fallback =
+          external[0] ??
+          createPaymentLeg(
+            catalog.paymentMethods.find(
+              (method) => method.methodType !== 'CUSTOMER_BALANCE',
+            )?.id ?? '',
+          )
+        return [{ ...fallback, amount: String(paymentDue) }]
+      }
+      const remainder = paymentDue - balance
+      const balanceLeg: PaymentLeg = {
+        ...(existingBalance ?? createPaymentLeg(balanceMethod.id)),
+        paymentMethodId: balanceMethod.id,
+        amount: String(balance),
+        tenderedAmount: String(balance),
+        proofUrl: '',
+        overpaymentDisposition: 'RETURNED',
+      }
+      if (remainder <= 0) return [balanceLeg]
+      const externalMethod =
+        external[0] ??
+        createPaymentLeg(
+          catalog.paymentMethods.find(
+            (method) => method.methodType !== 'CUSTOMER_BALANCE',
+          )?.id ?? '',
+        )
+      const expectedAmount = String(remainder)
+      const method = catalog.paymentMethods.find(
+        (item) => item.id === externalMethod.paymentMethodId,
+      )
+      return [
+        balanceLeg,
+        {
+          ...externalMethod,
+          amount: expectedAmount,
+          tenderedAmount: ['CASH', 'TRANSFER'].includes(
+            method?.methodType ?? '',
+          )
+            ? expectedAmount
+            : externalMethod.tenderedAmount,
+        },
+      ]
+    })
+  }, [
+    activeCustomer,
+    catalog.customerBalanceTenderEnabled,
+    catalog.paymentMethods,
+    isOnline,
+    isTempo,
+    paymentDue,
+  ])
+
+  useEffect(() => {
+    if (
+      isOnline &&
+      catalog.customerBalanceCreditEnabled &&
+      activeCustomer &&
+      !activeCustomer.isWalkIn
+    ) return
+    setPaymentLegs((current) => {
+      if (
+        !current.some(
+          (leg) => leg.overpaymentDisposition === 'CUSTOMER_BALANCE',
+        )
+      ) return current
+      return current.map((leg) => ({
+        ...leg,
+        overpaymentDisposition: 'RETURNED',
+      }))
+    })
+  }, [
+    activeCustomer,
+    catalog.customerBalanceCreditEnabled,
+    isOnline,
+  ])
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (actionDialog) {
         setActionDialog(null)
         setActionDialogReason('')
-      } else if (receipt) setReceipt(null)
+      } else if (offlineSlip) setOfflineSlip(null)
+      else if (receipt) setReceipt(null)
+      else if (purchaseReturnOpen) setPurchaseReturnOpen(false)
+      else if (goodsReceiptOpen) setGoodsReceiptOpen(false)
+      else if (stockRequestOpen) setStockRequestOpen(false)
+      else if (cashDepositOpen) setCashDepositOpen(false)
+      else if (expenseRequestOpen) setExpenseRequestOpen(false)
+      else if (salesReturnOpen) setSalesReturnOpen(false)
       else if (draftPanelOpen) setDraftPanelOpen(false)
+      else if (offlinePanelOpen) setOfflinePanelOpen(false)
+      else if (quickCustomerOpen) setQuickCustomerOpen(false)
       else if (error) setError('')
       else if (notice) setNotice('')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [actionDialog, draftPanelOpen, error, notice, receipt])
+  }, [
+    actionDialog,
+    draftPanelOpen,
+    error,
+    cashDepositOpen,
+    goodsReceiptOpen,
+    purchaseReturnOpen,
+    stockRequestOpen,
+    expenseRequestOpen,
+    notice,
+    offlineSlip,
+    offlinePanelOpen,
+    quickCustomerOpen,
+    receipt,
+    salesReturnOpen,
+  ])
 
   function openActionDialog(dialog: ActionDialog) {
     setActionDialogReason('')
@@ -590,6 +1271,23 @@ export default function App() {
         cashierSession.masterVersion,
         Number(closingCash || 0),
       )
+      const { invalidateOfflineCatalogSnapshot } = await import(
+        './lib/offlineCatalog'
+      )
+      const { removeOfflineOperationalScope } = await import(
+        './lib/offlineBootstrap'
+      )
+      await invalidateOfflineCatalogSnapshot(
+        cashierSession.id,
+        'SESSION_CLOSED',
+      ).catch(() => undefined)
+      await removeOfflineOperationalScope(cashierSession.id).catch(
+        () => undefined,
+      )
+      setOfflineCache(null)
+      setOfflineAllowances([])
+      setOfflineQueue([])
+      setOfflineCacheMessage('')
       setNotice(
         `Sesi ditutup. Expected ${money(Number(result.expectedCash ?? 0))}, ` +
           `selisih ${money(Number(result.difference ?? 0))}.`,
@@ -671,7 +1369,9 @@ export default function App() {
       amount: number
       tenderedAmount: number
       proofUrl?: string
+      overpaymentDisposition?: 'RETURNED' | 'CUSTOMER_BALANCE'
     }> = [],
+    negativeStockReason = '',
   ) {
     if (!cashierSession || !customerId || cart.length === 0) {
       throw new Error('SESSION_CUSTOMER_AND_CART_REQUIRED')
@@ -689,6 +1389,7 @@ export default function App() {
       roundingDirection,
       isTempo,
       dueDate: isTempo && dueDate ? new Date(dueDate).toISOString() : null,
+      negativeStockReason,
       payments,
     })
     setDraft(saved)
@@ -998,7 +1699,7 @@ export default function App() {
             ...current[0],
             amount,
             tenderedAmount:
-              method?.methodType === 'CASH'
+              ['CASH', 'TRANSFER'].includes(method?.methodType ?? '')
                 ? amount
                 : current[0].tenderedAmount,
           },
@@ -1028,7 +1729,7 @@ export default function App() {
   }
 
   function fillPaymentRemainder(clientPaymentKey: string) {
-    if (!draft) return
+    if (!draft && !offlinePreview) return
     const activeLeg = paymentLegs.find(
       (leg) => leg.clientPaymentKey === clientPaymentKey,
     )
@@ -1040,14 +1741,14 @@ export default function App() {
       0,
     )
     const amount = String(
-      Math.max(0, draft.grandTotalAfterRounding - otherTotal),
+      Math.max(0, paymentDue - otherTotal),
     )
     const method = catalog.paymentMethods.find(
       (item) => item.id === activeLeg?.paymentMethodId,
     )
     updatePaymentLeg(clientPaymentKey, {
       amount,
-      ...(method?.methodType === 'CASH' &&
+      ...(['CASH', 'TRANSFER'].includes(method?.methodType ?? '') &&
       (!activeLeg?.tenderedAmount ||
         activeLeg.tenderedAmount === activeLeg.amount)
         ? { tenderedAmount: amount }
@@ -1058,7 +1759,8 @@ export default function App() {
   function addPaymentLeg() {
     const used = new Set(paymentLegs.map((leg) => leg.paymentMethodId))
     const nextMethod = catalog.paymentMethods.find(
-      (method) => !used.has(method.id),
+      (method) =>
+        method.methodType !== 'CUSTOMER_BALANCE' && !used.has(method.id),
     )
     if (!nextMethod) return
     setPaymentLegs((current) => [
@@ -1092,18 +1794,228 @@ export default function App() {
     return Math.round((percent + fixed) * 10_000) / 10_000
   }
 
+  function handleQueueOfflineSale() {
+    if (!cashierSession || cart.length === 0) return
+    openActionDialog({
+      title: 'Simpan transaksi Offline?',
+      description:
+        'Transaksi disimpan tetap di perangkat dan memakai cadangan stok sesi ini. Slip Offline bukan invoice final; transaksi wajib disinkronkan saat internet kembali.',
+      confirmLabel: 'Simpan Offline',
+      tone: 'primary',
+      onConfirm: executeQueueOfflineSale,
+    })
+  }
+
+  async function executeQueueOfflineSale() {
+    if (
+      !session ||
+      !cashierSession ||
+      !offlineCache ||
+      !activeTerminal ||
+      !activeWarehouse
+    ) {
+      setError(friendlyError('OFFLINE_CATALOG_CACHE_MISSING'))
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      if (draft) throw new Error('OFFLINE_EXISTING_DRAFT_REQUIRES_ONLINE')
+      if (isTempo) throw new Error('OFFLINE_TEMPO_NOT_ALLOWED')
+      const scope = offlineCache.snapshot
+      if (
+        scope.companyId !== companyId ||
+        scope.storeId !== cashierSession.storeId ||
+        scope.terminalId !== cashierSession.terminalId ||
+        scope.warehouseId !== cashierSession.warehouseId ||
+        scope.cashierSessionId !== cashierSession.id ||
+        scope.cashierId !== session.user.id
+      ) {
+        throw new Error('OFFLINE_CATALOG_SCOPE_MISMATCH')
+      }
+      const offlineLines = cart.map((item) => ({
+        lineKey: item.product.productUomId,
+        productUomId: item.product.productUomId,
+        quantity: item.quantity,
+        discountType: item.discountType,
+        discountInput: item.discountInput,
+      }))
+      const preview = priceOfflineCheckout({
+        snapshot: scope,
+        allowances: offlineAllowances,
+        customerId,
+        selectedPricelistId,
+        lines: offlineLines,
+        globalDiscount: Number(globalDiscount || 0),
+        roundingDirection,
+      })
+      const salePayload = buildOfflineSalePayload({
+        preview,
+        clientTransactionId,
+        cashierSessionId: cashierSession.id,
+        lines: offlineLines,
+        payments: paymentLegs,
+        snapshot: scope,
+        roundingDirection,
+      })
+      const { queueOfflineSale } = await import('./lib/offline')
+      const record = await queueOfflineSale({
+        companyId,
+        storeId: cashierSession.storeId,
+        terminalId: cashierSession.terminalId,
+        warehouseId: cashierSession.warehouseId,
+        cashierSessionId: cashierSession.id,
+        cashierId: session.user.id,
+        localMasterVersion: scope.catalogVersion,
+        salePayload,
+      })
+      const methods = new Map(
+        scope.paymentMethods.map((method) => [method.id, method.name]),
+      )
+      setOfflineSlip({
+        clientTransactionId: record.clientTransactionId,
+        localTransactionAt: record.localTransactionAt,
+        preview,
+        payments: salePayload.payments.map((payment) => ({
+          methodName:
+            methods.get(payment.paymentMethodId) ?? 'Metode pembayaran',
+          amount: payment.amount,
+          tenderedAmount: payment.tenderedAmount,
+        })),
+      })
+      await loadOfflineCacheState(cashierSession.id)
+      resetSale()
+      setNotice(
+        'Transaksi tersimpan di antrean perangkat. Sinkronkan saat internet kembali.',
+      )
+    } catch (reason) {
+      setError(friendlyError(errorMessage(reason)))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function reconcileOfflineQueueAfterSync() {
+    if (!cashierSession || !session || !isOnline) return
+    const { refreshOfflineCatalogSnapshot } = await import(
+      './lib/offlineCatalog'
+    )
+    try {
+      const cache = await refreshOfflineCatalogSnapshot({
+        companyId,
+        storeId: cashierSession.storeId,
+        terminalId: cashierSession.terminalId,
+        warehouseId: cashierSession.warehouseId,
+        cashierSessionId: cashierSession.id,
+        cashierId: session.user.id,
+      })
+      await retainCurrentOfflineScope(cache)
+      await loadOfflineCacheState(cashierSession.id)
+    } catch (reason) {
+      const { invalidateOfflineCatalogSnapshot } = await import(
+        './lib/offlineCatalog'
+      )
+      await invalidateOfflineCatalogSnapshot(
+        cashierSession.id,
+        'OFFLINE_SYNC_RECONCILIATION_FAILED',
+      ).catch(() => undefined)
+      setOfflineCache(null)
+      setOfflineAllowances([])
+      setOfflineCacheMessage(
+        'Transaksi sudah diproses server, tetapi snapshot gagal direkonsiliasi. Cache diblokir sampai diperbarui.',
+      )
+      throw reason
+    }
+  }
+
+  async function handleSyncOfflineSale(clientTransactionId: string) {
+    if (!cashierSession || !isOnline) return
+    setOfflineCacheBusy(true)
+    setOfflineCacheMessage('Memeriksa transaksi Offline...')
+    try {
+      const { syncOfflineSale } = await import('./lib/offline')
+      const stageMessage = {
+        CHECKING_STATUS: 'Memeriksa status terakhir di server...',
+        SUBMITTING: 'Mengirim transaksi Offline ke server...',
+        PROCESSING: 'Membuat invoice dan memperbarui stok...',
+        CONFIRMING_STATUS:
+          'Respons lambat. Memastikan transaksi tidak diproses dua kali...',
+      } as const
+      const result = await syncOfflineSale(clientTransactionId, (stage) => {
+        setOfflineCacheMessage(stageMessage[stage])
+      })
+      await loadOfflineCacheState(cashierSession.id)
+      setOfflineCacheMessage(
+        result.status === 'POSTED'
+          ? 'Transaksi Offline sudah menjadi invoice final.'
+          : `Status transaksi diperbarui: ${result.status}.`,
+      )
+      if (result.status === 'POSTED') {
+        void reconcileOfflineQueueAfterSync().catch(() => undefined)
+      }
+    } catch (reason) {
+      await loadOfflineCacheState(cashierSession.id).catch(() => undefined)
+      setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+    } finally {
+      setOfflineCacheBusy(false)
+    }
+  }
+
+  async function handleRefreshOfflineSaleStatus(clientTransactionId: string) {
+    if (!cashierSession || !isOnline) return
+    setOfflineCacheBusy(true)
+    setOfflineCacheMessage('')
+    try {
+      const { refreshOfflineSaleStatus } = await import('./lib/offline')
+      const result = await refreshOfflineSaleStatus(clientTransactionId)
+      await loadOfflineCacheState(cashierSession.id)
+      setOfflineCacheMessage(`Status server: ${result.status}.`)
+    } catch (reason) {
+      setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+    } finally {
+      setOfflineCacheBusy(false)
+    }
+  }
+
+  async function handleOpenOfflineFinalReceipt(record: OfflineSaleQueueRecord) {
+    if (!isOnline) return
+    try {
+      const acknowledgement = record.acknowledgement
+        ? (JSON.parse(record.acknowledgement) as Record<string, unknown>)
+        : null
+      const salesId = String(
+        acknowledgement?.salesId ?? acknowledgement?.saleId ?? '',
+      )
+      if (!salesId) throw new Error('OFFLINE_FINAL_RECEIPT_NOT_AVAILABLE')
+      setReceipt(await loadReceipt(companyId, salesId))
+    } catch (reason) {
+      setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+    }
+  }
+
   async function handlePostSale() {
+    await postSaleWithNegativeReason()
+  }
+
+  async function postSaleWithNegativeReason(negativeStockReason = '') {
     if (!isOnline) {
-      setError('Checkout offline belum dibuka. Transaksi tidak diposting.')
+      handleQueueOfflineSale()
       return
     }
     if (!cashierSession || cart.length === 0) return
+    if (customerBalanceShortfall > 0) {
+      setError(
+        `Saldo Customer wajib dipakai seluruhnya. Tambahkan belanja minimal ${money(customerBalanceShortfall)}.`,
+      )
+      return
+    }
     setBusy(true)
     setError('')
     setNotice('')
     setShortages([])
     try {
-      const pricedDraft = await persistDraft(draft)
+      const pricedDraft = await persistDraft(draft, [], negativeStockReason)
       let finalDraft = pricedDraft
       if (!isTempo) {
         if (paymentLegs.length === 0) throw new Error('PAYMENT_LEGS_REQUIRED')
@@ -1117,18 +2029,33 @@ export default function App() {
               ? pricedDraft.grandTotalAfterRounding
               : Number(leg.amount || 0)
           if (!(amount > 0)) throw new Error('PAYMENT_LEG_AMOUNT_REQUIRED')
+          const supportsOverpayment = ['CASH', 'TRANSFER'].includes(
+            method.methodType,
+          )
           const tenderedAmount =
-            method.methodType === 'CASH'
+            supportsOverpayment
               ? Number(leg.tenderedAmount || amount)
               : amount
           if (tenderedAmount < amount) {
             throw new Error('PAYMENT_TENDER_INSUFFICIENT')
+          }
+          const overpayment = Math.max(tenderedAmount - amount, 0)
+          if (overpayment > 0 && leg.overpaymentDisposition === 'CUSTOMER_BALANCE') {
+            if (!catalog.customerBalanceCreditEnabled) {
+              throw new Error('CUSTOMER_BALANCE_CREDIT_DISABLED')
+            }
+            if (!activeCustomer || activeCustomer.isWalkIn) {
+              throw new Error('CUSTOMER_BALANCE_ELIGIBLE_CUSTOMER_REQUIRED')
+            }
           }
           return {
             clientPaymentKey: leg.clientPaymentKey,
             paymentMethodId: method.id,
             amount,
             tenderedAmount,
+            ...(overpayment > 0
+              ? { overpaymentDisposition: leg.overpaymentDisposition }
+              : {}),
             ...(leg.proofUrl.trim()
               ? { proofUrl: leg.proofUrl.trim() }
               : {}),
@@ -1149,9 +2076,13 @@ export default function App() {
         ) {
           throw new Error('PAYMENT_LEG_TOTAL_MISMATCH')
         }
-        finalDraft = await persistDraft(pricedDraft, normalizedPayments)
+        finalDraft = await persistDraft(
+          pricedDraft,
+          normalizedPayments,
+          negativeStockReason,
+        )
       } else {
-        finalDraft = await persistDraft(pricedDraft)
+        finalDraft = await persistDraft(pricedDraft, [], negativeStockReason)
       }
 
       const postResult = await postSale(
@@ -1182,7 +2113,29 @@ export default function App() {
       await refreshCatalog(cashierSession)
       await refreshSaleDrafts(cashierSession)
     } catch (reason) {
-      setError(friendlyError(errorMessage(reason)))
+      const code = errorMessage(reason)
+      if (
+        !negativeStockReason &&
+        code.includes('NEGATIVE_STOCK_REASON_REQUIRED')
+      ) {
+        setError('')
+        openActionDialog({
+          title: 'Otorisasi stok minus',
+          description:
+            'Stok tidak mencukupi, tetapi akun Anda memiliki izin exception online. Jelaskan alasan operasional. Tindakan ini diaudit dan stok masuk berikutnya akan merekonsiliasi biaya FIFO.',
+          confirmLabel: 'Post dengan izin',
+          tone: 'danger',
+          requireReason: true,
+          reasonLabel: 'Alasan stok minus',
+          reasonPlaceholder:
+            'Contoh: barang fisik tersedia, penerimaan supplier belum diposting',
+          onConfirm: async (confirmedReason) => {
+            await postSaleWithNegativeReason(confirmedReason)
+          },
+        })
+      } else {
+        setError(friendlyError(code))
+      }
     } finally {
       setBusy(false)
     }
@@ -1230,6 +2183,16 @@ export default function App() {
           (sum, payment) => sum + payment.changeAmount,
           0,
         ),
+        customerBalanceCredit: receipt.payments.reduce(
+          (sum, payment) =>
+            sum + Number(payment.customerBalanceCreditAmount ?? 0),
+          0,
+        ),
+        customerBalanceUsage: receipt.payments.reduce(
+          (sum, payment) =>
+            sum + Number(payment.customerBalanceUsageAmount ?? 0),
+          0,
+        ),
         paymentMethod:
           receipt.payments
             .map((payment) => payment.paymentMethodName)
@@ -1245,12 +2208,69 @@ export default function App() {
     }
   }
 
+  async function handlePrintOfflineSlip() {
+    if (!offlineSlip) return
+    try {
+      await printer.print({
+        invoiceNo: `OFF-${offlineSlip.clientTransactionId
+          .slice(0, 8)
+          .toUpperCase()}`,
+        documentLabel: 'Slip transaksi Offline',
+        warning: 'BELUM TERSINKRON — BUKAN INVOICE FINAL',
+        items: offlineSlip.preview.lines.map((line) => ({
+          product: {
+            name: `${line.productName} (${line.uomName})`,
+            price: line.unitPrice,
+          },
+          quantity: line.quantity,
+          lineTotal: line.lineTotal,
+        })),
+        subtotal: offlineSlip.preview.subtotal,
+        grandTotal: offlineSlip.preview.grandTotal,
+        paidAmount: offlineSlip.payments.reduce(
+          (total, payment) => total + payment.amount,
+          0,
+        ),
+        change: offlineSlip.payments.reduce(
+          (total, payment) =>
+            total + Math.max(payment.tenderedAmount - payment.amount, 0),
+          0,
+        ),
+        paymentMethod: offlineSlip.payments
+          .map((payment) => payment.methodName)
+          .join(' + '),
+        date: new Date(offlineSlip.localTransactionAt).toLocaleString('id-ID'),
+      })
+    } catch (reason) {
+      setError(
+        errorMessage(reason) === 'POPUP_BLOCKED'
+          ? 'Browser memblokir tab Slip Offline. Izinkan pop-up lalu coba lagi.'
+          : friendlyError(errorMessage(reason)),
+      )
+    }
+  }
+
   async function handleLogout() {
     setBusy(true)
     setError('')
     try {
       if (draft && cashierSession) {
         await releaseSaleDraftLock(draft.salesId, cashierSession.id)
+      }
+      if (cashierSession) {
+        const { invalidateOfflineCatalogSnapshot } = await import(
+          './lib/offlineCatalog'
+        )
+        const { removeOfflineOperationalScope } = await import(
+          './lib/offlineBootstrap'
+        )
+        await invalidateOfflineCatalogSnapshot(
+          cashierSession.id,
+          'USER_SIGNED_OUT',
+        ).catch(() => undefined)
+        await removeOfflineOperationalScope(cashierSession.id).catch(
+          () => undefined,
+        )
       }
       await signOut()
       setSession(null)
@@ -1260,6 +2280,203 @@ export default function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function handleRefreshOfflineCache() {
+    if (
+      !session ||
+      !cashierSession ||
+      !companyId ||
+      !activeTerminal ||
+      !activeWarehouse
+    ) {
+      return
+    }
+    if (!isOnline) {
+      setOfflineCacheMessage(
+        'Snapshot hanya dapat diperbarui saat terhubung ke server.',
+      )
+      return
+    }
+    setOfflineCacheBusy(true)
+    setOfflineCacheMessage('')
+    try {
+      const { refreshOfflineCatalogSnapshot } = await import(
+        './lib/offlineCatalog'
+      )
+      const cache = await refreshOfflineCatalogSnapshot({
+        companyId,
+        storeId: cashierSession.storeId,
+        terminalId: cashierSession.terminalId,
+        warehouseId: cashierSession.warehouseId,
+        cashierSessionId: cashierSession.id,
+        cashierId: session.user.id,
+      })
+      await retainCurrentOfflineScope(cache)
+      await loadOfflineCacheState(cashierSession.id)
+      setOfflineCacheMessage(
+        'Snapshot dan cadangan stok sudah direkonsiliasi. Checkout Offline hanya aktif bila seluruh item memiliki allowance cukup.',
+      )
+    } catch (reason) {
+      setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+    } finally {
+      setOfflineCacheBusy(false)
+    }
+  }
+
+  function handleIssueOfflineAllowance() {
+    if (!cashierSession || !offlineProductId || !isOnline) return
+    const selectedProduct = offlineCache?.snapshot.productUoms.find(
+      (item) => item.productId === offlineProductId,
+    )
+    openActionDialog({
+      title: 'Minta cadangan stok Offline?',
+      description:
+        `Server akan menghitung jumlah cadangan untuk ${selectedProduct?.name ?? 'produk ini'} ` +
+        'berdasarkan stok belum terpakai dan kebijakan Terminal. Stok aktual belum dipotong.',
+      confirmLabel: 'Minta cadangan',
+      tone: 'primary',
+      onConfirm: async () => {
+        if (!cashierSession) return
+        let mutationApplied = false
+        setOfflineCacheBusy(true)
+        setOfflineCacheMessage('')
+        try {
+          const {
+            issueOwnOfflineStockAllowance,
+            refreshOfflineCatalogSnapshot,
+          } = await import('./lib/offlineCatalog')
+          const result = await issueOwnOfflineStockAllowance(
+            cashierSession.id,
+            offlineProductId,
+          )
+          mutationApplied = true
+          await refreshOfflineCatalogSnapshot({
+            companyId,
+            storeId: cashierSession.storeId,
+            terminalId: cashierSession.terminalId,
+            warehouseId: cashierSession.warehouseId,
+            cashierSessionId: cashierSession.id,
+            cashierId: session?.user.id ?? '',
+          })
+          const reconciled = await loadOfflineCacheState(cashierSession.id)
+          if (
+            !reconciled.allowances.some(
+              (item) => item.allowanceId === result.allowanceId,
+            )
+          ) {
+            throw new Error('OFFLINE_ALLOWANCE_RECONCILIATION_FAILED')
+          }
+          setOfflineProductId('')
+          setOfflineCacheMessage(
+            result.replayed
+              ? 'Cadangan sudah aktif sebelumnya dan snapshot telah diselaraskan.'
+              : 'Cadangan stok berhasil dibuat dan snapshot telah diselaraskan.',
+          )
+        } catch (reason) {
+          if (mutationApplied) {
+            const { invalidateOfflineCatalogSnapshot } = await import(
+              './lib/offlineCatalog'
+            )
+            await invalidateOfflineCatalogSnapshot(
+              cashierSession.id,
+              'ALLOWANCE_ISSUE_RECONCILIATION_FAILED',
+            ).catch(() => undefined)
+            setOfflineCache(null)
+            setOfflineAllowances([])
+            setOfflineProductId('')
+            setOfflineCacheMessage(
+              'Cadangan sudah berubah di server, tetapi snapshot gagal diperbarui. Cache diblokir; sambungkan ke server lalu perbarui snapshot.',
+            )
+          } else {
+            setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+          }
+        } finally {
+          setOfflineCacheBusy(false)
+        }
+      },
+    })
+  }
+
+  function handleReleaseOfflineAllowance(
+    allowanceId: string,
+    productId: string,
+    masterVersion: number,
+  ) {
+    if (!cashierSession || !isOnline) return
+    const availability = offlineAllowances.find(
+      (item) => item.allowanceId === allowanceId,
+    )
+    if (!availability || availability.locallyQueuedBaseQty > 0) {
+      setOfflineCacheMessage(
+        'Cadangan masih dipakai antrean lokal dan belum dapat dilepaskan.',
+      )
+      return
+    }
+    const product = offlineCache?.snapshot.productUoms.find(
+      (item) => item.productId === productId,
+    )
+    openActionDialog({
+      title: 'Lepaskan cadangan stok?',
+      description:
+        `Cadangan ${product?.name ?? 'produk ini'} akan dikembalikan ke stok belum dicadangkan. ` +
+        'Tindakan ini tidak mengubah stok aktual.',
+      confirmLabel: 'Lepaskan cadangan',
+      tone: 'danger',
+      onConfirm: async () => {
+        if (!cashierSession) return
+        let mutationApplied = false
+        setOfflineCacheBusy(true)
+        setOfflineCacheMessage('')
+        try {
+          const {
+            releaseOwnOfflineStockAllowance,
+            refreshOfflineCatalogSnapshot,
+          } = await import('./lib/offlineCatalog')
+          await releaseOwnOfflineStockAllowance(allowanceId, masterVersion)
+          mutationApplied = true
+          await refreshOfflineCatalogSnapshot({
+            companyId,
+            storeId: cashierSession.storeId,
+            terminalId: cashierSession.terminalId,
+            warehouseId: cashierSession.warehouseId,
+            cashierSessionId: cashierSession.id,
+            cashierId: session?.user.id ?? '',
+          })
+          const reconciled = await loadOfflineCacheState(cashierSession.id)
+          if (
+            reconciled.allowances.some(
+              (item) => item.allowanceId === allowanceId,
+            )
+          ) {
+            throw new Error('OFFLINE_ALLOWANCE_RECONCILIATION_FAILED')
+          }
+          setOfflineCacheMessage(
+            'Cadangan berhasil dilepaskan dan snapshot telah diselaraskan.',
+          )
+        } catch (reason) {
+          if (mutationApplied) {
+            const { invalidateOfflineCatalogSnapshot } = await import(
+              './lib/offlineCatalog'
+            )
+            await invalidateOfflineCatalogSnapshot(
+              cashierSession.id,
+              'ALLOWANCE_RELEASE_RECONCILIATION_FAILED',
+            ).catch(() => undefined)
+            setOfflineCache(null)
+            setOfflineAllowances([])
+            setOfflineProductId('')
+            setOfflineCacheMessage(
+              'Cadangan sudah dilepaskan di server, tetapi snapshot gagal diperbarui. Cache diblokir; sambungkan ke server lalu perbarui snapshot.',
+            )
+          } else {
+            setOfflineCacheMessage(friendlyError(errorMessage(reason)))
+          }
+        } finally {
+          setOfflineCacheBusy(false)
+        }
+      },
+    })
   }
 
   if (loading && !session) {
@@ -1333,18 +2550,25 @@ export default function App() {
                 : 'Sesi kasir belum dibuka'}
             </p>
           </div>
-          <select
-            value={companyId}
-            disabled={busy || Boolean(cashierSession)}
-            onChange={(event) => handleCompanyChange(event.target.value)}
-            className="pos-company-select rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-          >
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>
-                {company.name}
-              </option>
-            ))}
-          </select>
+          {companies.length > 1 ? (
+            <select
+              value={companyId}
+              disabled={busy || Boolean(cashierSession)}
+              onChange={(event) => handleCompanyChange(event.target.value)}
+              className="pos-company-select rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              aria-label="Pilih Company aktif"
+            >
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="pos-single-company-name">
+              {activeCompany?.name}
+            </span>
+          )}
           <div
             className={`pos-network-status flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
               isOnline
@@ -1353,8 +2577,82 @@ export default function App() {
             }`}
           >
             {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-            {isOnline ? 'Online' : 'Offline diblokir'}
+            {isOnline
+              ? 'Online'
+              : offlineCache
+                ? 'Offline · cache tersedia'
+                : 'Offline belum siap'}
           </div>
+          {cashierSession && (
+            <button
+              type="button"
+              onClick={() => setSalesReturnOpen(true)}
+              disabled={!isOnline}
+              className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
+              title={isOnline ? 'Buat Return Penjualan' : 'Return memerlukan koneksi online'}
+            >
+              <RotateCcw className="h-5 w-5" />
+              <span className="pos-action-label">Return</span>
+            </button>
+          )}
+          {cashierSession && catalog.expenseEnabled && (
+            <button
+              type="button"
+              onClick={() => setExpenseRequestOpen(true)}
+              disabled={!isOnline}
+              className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
+              title={isOnline ? 'Ajukan Expense operasional' : 'Expense memerlukan koneksi online'}
+            >
+              <Banknote className="h-5 w-5" />
+              <span className="pos-action-label">Expense</span>
+            </button>
+          )}
+          {cashierSession && (
+            <button type="button" onClick={() => setStockRequestOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buat Permintaan Stok' : 'Permintaan Stok memerlukan koneksi online'}>
+              <ClipboardList className="h-5 w-5" /><span className="pos-action-label">Minta Stok</span>
+            </button>
+          )}
+          {cashierSession && (
+            <button type="button" onClick={() => setGoodsReceiptOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Terima barang dari Supplier Order' : 'Penerimaan barang memerlukan koneksi online'}>
+              <Package className="h-5 w-5" /><span className="pos-action-label">Terima Barang</span>
+            </button>
+          )}
+          {cashierSession && (
+            <button type="button" onClick={() => setPurchaseReturnOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buat draft retur barang ke Supplier' : 'Retur Pembelian memerlukan koneksi online'}>
+              <PackageMinus className="h-5 w-5" /><span className="pos-action-label">Retur Supplier</span>
+            </button>
+          )}
+          {activeTerminal && (
+            <button
+              type="button"
+              onClick={() => setCashDepositOpen(true)}
+              disabled={!isOnline}
+              className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
+              title={isOnline ? 'Buat Setor Kas dari sesi yang sudah ditutup' : 'Setor Kas memerlukan koneksi online'}
+            >
+              <BanknoteArrowUp className="h-5 w-5" />
+              <span className="pos-action-label">Setor Kas</span>
+            </button>
+          )}
+          {cashierSession && (
+            <button
+              type="button"
+              onClick={() => setOfflinePanelOpen(true)}
+              className="pos-top-action pos-offline-menu-trigger rounded-xl border border-slate-700 bg-slate-900 p-2"
+              title="Lihat status Offline"
+              aria-label="Buka status Offline"
+            >
+              <span className="pos-offline-menu-icon">
+                <Database className="h-5 w-5" />
+                <span
+                  className={`pos-offline-menu-dot ${
+                    offlineCache ? 'is-cached' : 'is-blocked'
+                  }`}
+                />
+              </span>
+              <span className="pos-action-label">Offline</span>
+            </button>
+          )}
           <button
             onClick={async () => {
               setIsPrinterConnected(await printer.connect())
@@ -1519,6 +2817,9 @@ export default function App() {
                     const resolved = resolvedLines.find(
                       (line) => line.lineKey === item.product.productUomId,
                     )
+                    const offlineResolved = offlinePreview?.lines.find(
+                      (line) => line.lineKey === item.product.productUomId,
+                    )
                     return (
                       <div
                         key={item.product.productUomId}
@@ -1531,7 +2832,9 @@ export default function App() {
                               {item.product.uomName} ·{' '}
                               {resolved
                                 ? `${money(resolved.unitPrice)} hasil server`
-                                : `${money(item.product.fallbackPrice)} fallback`}
+                                : offlineResolved
+                                  ? `${money(offlineResolved.unitPrice)} snapshot Offline`
+                                  : `${money(item.product.fallbackPrice)} fallback`}
                             </p>
                           </div>
                           <button
@@ -1661,9 +2964,20 @@ export default function App() {
                     <small>Pricelist mengikuti pelanggan dan dapat diganti.</small>
                   </div>
                 </div>
-                <label className="block text-xs font-semibold text-slate-400">
-                  Customer
+                <div className="block text-xs font-semibold text-slate-400">
+                  <span className="pos-customer-field-heading">
+                    <span>Customer</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuickCustomerOpen(true)}
+                      className="pos-customer-add-button"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Customer baru
+                    </button>
+                  </span>
                   <select
+                    aria-label="Customer"
                     value={customerId}
                     onChange={(event) => {
                       setCustomerId(event.target.value)
@@ -1679,7 +2993,13 @@ export default function App() {
                       </option>
                     ))}
                   </select>
-                </label>
+                  {activeCustomer && !activeCustomer.isWalkIn && (
+                    <div className="pos-customer-balance-line">
+                      <span>Saldo Customer</span>
+                      <strong>{money(activeCustomer.currentBalance)}</strong>
+                    </div>
+                  )}
+                </div>
                 <label className="block text-xs font-semibold text-slate-400">
                   Pricelist
                   <select
@@ -1782,6 +3102,24 @@ export default function App() {
                         const method = catalog.paymentMethods.find(
                           (item) => item.id === leg.paymentMethodId,
                         )
+                        const acceptsTenderedAmount =
+                          method?.methodType === 'CASH' ||
+                          (isOnline && method?.methodType === 'TRANSFER')
+                        const isCustomerBalance =
+                          method?.methodType === 'CUSTOMER_BALANCE'
+                        const legAmount = Number(leg.amount || 0)
+                        const legTendered = Number(
+                          leg.tenderedAmount || legAmount,
+                        )
+                        const legOverpayment = acceptsTenderedAmount
+                          ? Math.max(legTendered - legAmount, 0)
+                          : 0
+                        const canCreditCustomerBalance = Boolean(
+                          isOnline &&
+                            catalog.customerBalanceCreditEnabled &&
+                            activeCustomer &&
+                            !activeCustomer.isWalkIn,
+                        )
                         const configuredFee = estimatePaymentFee(
                           leg.paymentMethodId,
                           leg.amount,
@@ -1800,7 +3138,7 @@ export default function App() {
                                   </small>
                                 </div>
                               </div>
-                              {paymentLegs.length > 1 && (
+                              {paymentLegs.length > 1 && !isCustomerBalance && (
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1820,15 +3158,34 @@ export default function App() {
                                 </span>
                                 <select
                                   value={leg.paymentMethodId}
-                                  onChange={(event) =>
+                                  disabled={isCustomerBalance}
+                                  onChange={(event) => {
+                                    const paymentMethodId = event.target.value
+                                    const nextMethod =
+                                      catalog.paymentMethods.find(
+                                        (item) => item.id === paymentMethodId,
+                                      )
                                     updatePaymentLeg(leg.clientPaymentKey, {
-                                      paymentMethodId: event.target.value,
-                                      tenderedAmount: '',
+                                      paymentMethodId,
+                                      tenderedAmount:
+                                        ['CASH', 'TRANSFER'].includes(
+                                          nextMethod?.methodType ?? '',
+                                        )
+                                          ? leg.amount
+                                          : '',
                                       proofUrl: '',
+                                      overpaymentDisposition: 'RETURNED',
                                     })
-                                  }
+                                  }}
                                 >
-                                  {catalog.paymentMethods.map((candidate) => {
+                                  {catalog.paymentMethods
+                                    .filter(
+                                      (candidate) =>
+                                        isCustomerBalance ||
+                                        candidate.methodType !==
+                                          'CUSTOMER_BALANCE',
+                                    )
+                                    .map((candidate) => {
                                     const usedByOther = paymentLegs.some(
                                       (other) =>
                                         other.clientPaymentKey !==
@@ -1852,28 +3209,36 @@ export default function App() {
                                   <label
                                     htmlFor={`payment-amount-${leg.clientPaymentKey}`}
                                   >
-                                    Jumlah yang dibayar
+                                    Bagian tagihan
                                   </label>
-                                  <button
-                                    type="button"
-                                    disabled={!draft}
-                                    onClick={() =>
-                                      fillPaymentRemainder(leg.clientPaymentKey)
-                                    }
-                                  >
-                                    Gunakan sisa tagihan
-                                  </button>
+                                  {paymentLegs.length > 1 && (
+                                    <button
+                                      type="button"
+                                      disabled={!draft && !offlinePreview}
+                                      onClick={() =>
+                                        fillPaymentRemainder(leg.clientPaymentKey)
+                                      }
+                                    >
+                                      Isi sisa
+                                    </button>
+                                  )}
                                 </div>
                                 <input
                                   id={`payment-amount-${leg.clientPaymentKey}`}
                                   type="number"
                                   min="0"
                                   value={leg.amount}
+                                  readOnly={
+                                    isCustomerBalance ||
+                                    paymentLegs.length === 1
+                                  }
                                   onChange={(event) => {
                                     const amount = event.target.value
                                     updatePaymentLeg(leg.clientPaymentKey, {
                                       amount,
-                                      ...(method?.methodType === 'CASH' &&
+                                    ...(['CASH', 'TRANSFER'].includes(
+                                      method?.methodType ?? '',
+                                    ) &&
                                       (!leg.tenderedAmount ||
                                         leg.tenderedAmount === leg.amount)
                                         ? { tenderedAmount: amount }
@@ -1882,15 +3247,24 @@ export default function App() {
                                   }}
                                   placeholder={
                                     paymentLegs.length === 1
-                                      ? 'Masukkan jumlah pembayaran'
-                                      : 'Masukkan jumlah'
+                                      ? 'Otomatis mengikuti total final'
+                                      : 'Masukkan bagian tagihan'
                                   }
                                 />
+                                <small className="pos-payment-help">
+                                  {isCustomerBalance
+                                    ? 'Terisi otomatis dan wajib memakai seluruh saldo.'
+                                    : paymentLegs.length === 1
+                                    ? 'Terisi otomatis dari total final Cart.'
+                                    : 'Bagi total tagihan ke setiap cara bayar.'}
+                                </small>
                               </div>
-                              {method?.methodType === 'CASH' && (
+                              {acceptsTenderedAmount && (
                                 <label className="pos-payment-field">
                                   <span className="pos-payment-field-label">
-                                    Uang tunai dari pelanggan
+                                    {method?.methodType === 'CASH'
+                                      ? 'Uang diterima'
+                                      : 'Nominal transfer diterima'}
                                   </span>
                                   <input
                                     type="number"
@@ -1904,7 +3278,8 @@ export default function App() {
                                     placeholder="Masukkan uang yang diterima"
                                   />
                                   <small className="pos-payment-help">
-                                    Kembalian dihitung otomatis.
+                                    Boleh lebih besar dari bagian tagihan.
+                                    Tujuan selisih dipilih di bawah.
                                   </small>
                                 </label>
                               )}
@@ -1930,6 +3305,57 @@ export default function App() {
                                 </label>
                               )}
                             </div>
+                            {legOverpayment > 0 && (
+                              <div className="pos-overpayment-panel">
+                                <div className="pos-overpayment-heading">
+                                  <strong>Kelebihan {money(legOverpayment)}</strong>
+                                  <span>Pilih tujuan kelebihan pembayaran.</span>
+                                </div>
+                                <div className="pos-overpayment-options">
+                                  <button
+                                    type="button"
+                                    className={
+                                      leg.overpaymentDisposition === 'RETURNED'
+                                        ? 'is-selected'
+                                        : ''
+                                    }
+                                    onClick={() =>
+                                      updatePaymentLeg(leg.clientPaymentKey, {
+                                        overpaymentDisposition: 'RETURNED',
+                                      })
+                                    }
+                                  >
+                                    <strong>Kembalikan ke Customer</strong>
+                                    <small>Dicatat sebagai uang kembalian.</small>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!canCreditCustomerBalance}
+                                    className={
+                                      leg.overpaymentDisposition ===
+                                      'CUSTOMER_BALANCE'
+                                        ? 'is-selected'
+                                        : ''
+                                    }
+                                    onClick={() =>
+                                      updatePaymentLeg(leg.clientPaymentKey, {
+                                        overpaymentDisposition:
+                                          'CUSTOMER_BALANCE',
+                                      })
+                                    }
+                                  >
+                                    <strong>Simpan sebagai Saldo</strong>
+                                    <small>
+                                      {canCreditCustomerBalance
+                                        ? `Masuk saldo ${activeCustomer?.name}.`
+                                        : activeCustomer?.isWalkIn
+                                          ? 'Pilih Customer reguler dahulu.'
+                                          : 'Fitur Saldo Customer belum aktif.'}
+                                    </small>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             {method?.feeEnabled && (
                               <p className="pos-payment-fee-note">
                                 Perkiraan biaya admin {money(configuredFee)} ·{' '}
@@ -1952,20 +3378,53 @@ export default function App() {
                     >
                       Tambah cara bayar
                     </button>
+                    {customerBalanceDue > 0 && (
+                      <div
+                        className={
+                          customerBalanceShortfall > 0
+                            ? 'pos-balance-tender is-blocked'
+                            : 'pos-balance-tender'
+                        }
+                      >
+                        <strong>
+                          Saldo {activeCustomer?.name}: {money(customerBalanceDue)}
+                        </strong>
+                        <span>
+                          {customerBalanceShortfall > 0
+                            ? `Tambahkan belanja minimal ${money(customerBalanceShortfall)} agar seluruh saldo dapat dipakai.`
+                            : 'Seluruh saldo otomatis dipakai sebelum cara bayar lainnya.'}
+                        </span>
+                      </div>
+                    )}
                     <div className="pos-payment-summary">
                       <div>
                         <span>Total yang harus dibayar</span>
                         <strong>
-                          {draft ? money(paymentDue) : 'Belum dihitung'}
+                          {draft || offlinePreview
+                            ? money(paymentDue)
+                            : 'Belum dihitung'}
                         </strong>
                       </div>
                       <div>
-                        <span>Total pembayaran</span>
+                        <span>Total bagian tagihan</span>
                         <strong>{money(paymentBaseTotal)}</strong>
                       </div>
+                      {returnedChangeTotal > 0 && (
+                        <div className="is-change">
+                          <span>Dikembalikan ke Customer</span>
+                          <strong>{money(returnedChangeTotal)}</strong>
+                        </div>
+                      )}
+                      {customerBalanceCreditTotal > 0 && (
+                        <div className="is-credit">
+                          <span>Masuk Saldo Customer</span>
+                          <strong>{money(customerBalanceCreditTotal)}</strong>
+                        </div>
+                      )}
                       <div
                         className={
-                          draft && Math.abs(paymentRemaining) > 0.0001
+                          (draft || offlinePreview) &&
+                          Math.abs(paymentRemaining) > 0.0001
                             ? 'is-warning'
                             : 'is-balanced'
                         }
@@ -1997,13 +3456,22 @@ export default function App() {
                     <span className="text-emerald-400">
                       {draft
                         ? money(draft.grandTotalAfterRounding)
-                        : 'Simpan untuk hitung total'}
+                          : offlinePreview
+                          ? money(offlinePreview.grandTotal)
+                          : isOnline
+                            ? 'Simpan untuk hitung total'
+                            : 'Offline belum siap'}
                     </span>
                   </div>
                   {draft && draft.roundingAdjustment !== 0 && (
                     <p className="mt-1 text-right text-xs text-slate-400">
                       Sebelum {money(draft.grandTotalBeforeRounding)} · Selisih{' '}
                       {money(draft.roundingAdjustment)}
+                    </p>
+                  )}
+                  {!isOnline && !offlinePreview && offlinePreviewError && (
+                    <p className="pos-offline-checkout-warning">
+                      {offlinePreviewError}
                     </p>
                   )}
                 </div>
@@ -2030,11 +3498,21 @@ export default function App() {
                     Simpan Draft
                   </button>
                   <button
-                    disabled={busy || cart.length === 0 || !isOnline}
-                    onClick={handlePostSale}
+                    disabled={
+                      busy ||
+                      cart.length === 0 ||
+                      customerBalanceShortfall > 0
+                    }
+                    onClick={() => void handlePostSale()}
                     className="rounded-xl bg-emerald-500 px-3 py-3 font-black text-slate-950 disabled:opacity-40"
                   >
-                    {busy ? 'Memproses…' : 'Konfirmasi & Post'}
+                    {busy
+                      ? 'Memproses...'
+                      : isOnline
+                        ? 'Konfirmasi & Post'
+                        : offlinePreview
+                          ? 'Simpan Offline'
+                          : 'Periksa Offline'}
                   </button>
                 </div>
               </div>
@@ -2072,6 +3550,188 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {offlinePanelOpen && cashierSession && (
+        <div
+          className="pos-offline-drawer-overlay fixed inset-0 z-50 bg-black/60 p-3 sm:p-6"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setOfflinePanelOpen(false)
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-offline-drawer-title"
+            className="pos-offline-drawer ml-auto flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl"
+          >
+            <header className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="pos-eyebrow">Menu operasional</p>
+                <h2
+                  id="pos-offline-drawer-title"
+                  className="text-xl font-black text-slate-900"
+                >
+                  Status Offline
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Periksa snapshot dan cadangan stok hanya saat diperlukan.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOfflinePanelOpen(false)}
+                className="pos-modal-close"
+                aria-label="Tutup status Offline"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              <OfflineCacheStatusPanel
+                isOnline={isOnline}
+                cache={offlineCache}
+                allowances={offlineAllowances}
+                queue={offlineQueue}
+                terminalName={activeTerminal?.name ?? 'Terminal tidak dikenali'}
+                warehouseName={activeWarehouse?.name ?? 'Gudang tidak dikenali'}
+                sessionCode={cashierSession.code}
+                busy={offlineCacheBusy}
+                message={offlineCacheMessage}
+                onRefresh={handleRefreshOfflineCache}
+                selectedProductId={offlineProductId}
+                onSelectProduct={setOfflineProductId}
+                onIssue={handleIssueOfflineAllowance}
+                onRelease={handleReleaseOfflineAllowance}
+                onSync={handleSyncOfflineSale}
+                onRefreshStatus={handleRefreshOfflineSaleStatus}
+                onOpenFinalReceipt={handleOpenOfflineFinalReceipt}
+              />
+            </div>
+          </section>
+        </div>
+      )}
+
+      {quickCustomerOpen && cashierSession && activeCompany && (
+        <QuickCustomerModal
+          companyId={activeCompany.id}
+          companyName={activeCompany.name}
+          busy={busy}
+          close={() => setQuickCustomerOpen(false)}
+          complete={async (newCustomerId) => {
+            setBusy(true)
+            setError('')
+            try {
+              await refreshCatalog(cashierSession)
+              setCustomerId(newCustomerId)
+              setSelectedPricelistId('')
+              setResolvedLines([])
+              setQuickCustomerOpen(false)
+              setNotice('Customer baru dibuat dan langsung dipilih.')
+            } catch (reason) {
+              setError(friendlyError(errorMessage(reason)))
+            } finally {
+              setBusy(false)
+            }
+          }}
+        />
+      )}
+
+      {salesReturnOpen && cashierSession && activeCompany && (
+        <Suspense fallback={<CenteredMessage text="Membuka Return…" />}>
+          <SalesReturnModal
+            companyId={activeCompany.id}
+            cashierSession={cashierSession}
+            catalog={catalog}
+            close={() => setSalesReturnOpen(false)}
+            completed={(message) => {
+              setSalesReturnOpen(false)
+              setNotice(message)
+              setError('')
+            }}
+          />
+        </Suspense>
+      )}
+
+      {expenseRequestOpen && cashierSession && session && (
+        <Suspense fallback={<CenteredMessage text="Membuka Expense…" />}>
+          <ExpenseRequestModal
+            cashierSession={cashierSession}
+            catalog={catalog}
+            actorId={session.user.id}
+            actorName={
+              String(
+                session.user.user_metadata?.full_name ??
+                  session.user.user_metadata?.name ??
+                  session.user.email ??
+                  'Kasir',
+              )
+            }
+            close={() => setExpenseRequestOpen(false)}
+            completed={(message, expectedCashAfter) => {
+              setExpenseRequestOpen(false)
+              if (expectedCashAfter !== undefined) {
+                setCashierSession((current) => current
+                  ? { ...current, expectedCash: expectedCashAfter }
+                  : current)
+              }
+              setNotice(message)
+              setError('')
+            }}
+          />
+        </Suspense>
+      )}
+
+      {cashDepositOpen && activeTerminal && (
+        <Suspense fallback={<CenteredMessage text="Membuka Setor Kas…" />}>
+          <CashDepositModal
+            storeId={activeTerminal.storeId}
+            storeName={activeTerminal.storeName}
+            close={() => setCashDepositOpen(false)}
+            completed={(message) => {
+              setCashDepositOpen(false)
+              setNotice(message)
+              setError('')
+            }}
+          />
+        </Suspense>
+      )}
+
+      {stockRequestOpen && cashierSession && activeCompany && (
+        <Suspense fallback={<CenteredMessage text="Membuka Permintaan Stok…" />}>
+          <StockRequestModal companyId={activeCompany.id} cashierSessionId={cashierSession.id} close={() => setStockRequestOpen(false)} completed={(message) => { setStockRequestOpen(false); setNotice(message); setError('') }} />
+        </Suspense>
+      )}
+
+      {goodsReceiptOpen && cashierSession && activeCompany && (
+        <Suspense fallback={<CenteredMessage text="Membuka Penerimaan Barang…" />}>
+          <GoodsReceiptModal
+            companyId={activeCompany.id}
+            cashierSession={cashierSession}
+            close={() => setGoodsReceiptOpen(false)}
+            completed={(message) => {
+              setGoodsReceiptOpen(false)
+              setNotice(message)
+              setError('')
+              void refreshCatalog(cashierSession)
+            }}
+          />
+        </Suspense>
+      )}
+
+      {purchaseReturnOpen && cashierSession && activeCompany && (
+        <Suspense fallback={<CenteredMessage text="Membuka Retur Pembelian…" />}>
+          <PurchaseReturnModal
+            companyId={activeCompany.id}
+            cashierSession={cashierSession}
+            close={() => setPurchaseReturnOpen(false)}
+            completed={(message) => {
+              setPurchaseReturnOpen(false)
+              setNotice(message)
+              setError('')
+            }}
+          />
+        </Suspense>
+      )}
 
       {draftPanelOpen && cashierSession && (
         <div className="pos-draft-overlay fixed inset-0 z-50 bg-black/60 p-3 sm:p-6">
@@ -2294,6 +3954,98 @@ export default function App() {
         </div>
       )}
 
+      {offlineSlip && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="offline-slip-title"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 text-slate-950 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                  Slip transaksi Offline
+                </p>
+                <h2 id="offline-slip-title" className="mt-1 text-2xl font-black">
+                  OFF-{offlineSlip.clientTransactionId.slice(0, 8).toUpperCase()}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {new Date(offlineSlip.localTransactionAt).toLocaleString(
+                    'id-ID',
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => setOfflineSlip(null)}
+                className="pos-modal-close"
+                aria-label="Tutup Slip Offline"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-center text-sm font-black text-amber-900">
+              BELUM TERSINKRON — BUKAN INVOICE FINAL
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Record tersimpan di perangkat. Jangan hapus data browser dan
+              sinkronkan dari menu Offline saat koneksi kembali.
+            </p>
+            <div className="my-5 space-y-3 border-y border-dashed border-slate-300 py-4">
+              {offlineSlip.preview.lines.map((line) => (
+                <div key={line.lineKey} className="flex justify-between gap-3">
+                  <div>
+                    <p className="font-bold">{line.productName}</p>
+                    <p className="text-xs text-slate-500">
+                      {line.quantity} {line.uomName} × {money(line.unitPrice)}
+                    </p>
+                  </div>
+                  <p className="font-bold">{money(line.lineTotal)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Customer</span>
+                <strong>{offlineSlip.preview.customerName}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Pricelist</span>
+                <strong>{offlineSlip.preview.selectedPricelistName}</strong>
+              </div>
+              <div className="flex justify-between text-xl font-black">
+                <span>Total</span>
+                <span>{money(offlineSlip.preview.grandTotal)}</span>
+              </div>
+              {offlineSlip.payments.map((payment, index) => (
+                <div
+                  key={`${payment.methodName}-${index}`}
+                  className="flex justify-between"
+                >
+                  <span>{payment.methodName}</span>
+                  <span>{money(payment.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-2">
+              <button
+                onClick={handlePrintOfflineSlip}
+                className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-bold"
+              >
+                <Printer className="h-5 w-5" />
+                Buka & cetak
+              </button>
+              <button
+                onClick={() => setOfflineSlip(null)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-black text-white"
+              >
+                Kembali ke kasir
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {receipt && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 text-slate-950 shadow-2xl">
@@ -2345,12 +4097,21 @@ export default function App() {
                 <span>{money(receipt.grandTotal)}</span>
               </div>
               {receipt.payments.map((payment, index) => (
-                <div key={`${payment.paymentMethodName}-${index}`} className="flex justify-between">
+                <div
+                  key={`${payment.paymentMethodName}-${index}`}
+                  className="flex justify-between"
+                >
                   <span>{payment.paymentMethodName}</span>
                   <span>
                     {money(payment.amount)}
                     {payment.changeAmount > 0
                       ? ` · Kembali ${money(payment.changeAmount)}`
+                      : ''}
+                    {Number(payment.customerBalanceCreditAmount ?? 0) > 0
+                      ? ` · Saldo +${money(Number(payment.customerBalanceCreditAmount))}`
+                      : ''}
+                    {Number(payment.customerBalanceUsageAmount ?? 0) > 0
+                      ? ` · Potongan Saldo -${money(Number(payment.customerBalanceUsageAmount))}`
                       : ''}
                   </span>
                 </div>
@@ -2386,6 +4147,518 @@ function CenteredMessage({ text }: { text: string }) {
         <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-emerald-400" />
         <p>{text}</p>
       </div>
+    </div>
+  )
+}
+
+function formatCacheAge(ageMs: number) {
+  const seconds = Math.max(0, Math.floor(ageMs / 1_000))
+  if (seconds < 60) return `${seconds} detik lalu`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} menit lalu`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} jam lalu`
+  return `${Math.floor(hours / 24)} hari lalu`
+}
+
+function OfflineCacheStatusPanel({
+  isOnline,
+  cache,
+  allowances,
+  queue,
+  terminalName,
+  warehouseName,
+  sessionCode,
+  busy,
+  message,
+  onRefresh,
+  selectedProductId,
+  onSelectProduct,
+  onIssue,
+  onRelease,
+  onSync,
+  onRefreshStatus,
+  onOpenFinalReceipt,
+}: {
+  isOnline: boolean
+  cache: OfflineCatalogReadResult | null
+  allowances: OfflineAllowanceAvailability[]
+  queue: OfflineSaleQueueRecord[]
+  terminalName: string
+  warehouseName: string
+  sessionCode: string
+  busy: boolean
+  message: string
+  onRefresh: () => void
+  selectedProductId: string
+  onSelectProduct: (productId: string) => void
+  onIssue: () => void
+  onRelease: (
+    allowanceId: string,
+    productId: string,
+    masterVersion: number,
+  ) => void
+  onSync: (clientTransactionId: string) => void
+  onRefreshStatus: (clientTransactionId: string) => void
+  onOpenFinalReceipt: (record: OfflineSaleQueueRecord) => void
+}) {
+  const productNames = new Map(
+    cache?.snapshot.productUoms.map((item) => [
+      item.productId,
+      `${item.name} · ${item.uomName}`,
+    ]) ?? [],
+  )
+  const activeAllowanceProductIds = new Set(
+    allowances.map((item) => item.productId),
+  )
+  const issueProducts = Array.from(
+    new Map(
+      (cache?.snapshot.productUoms ?? [])
+        .filter(
+          (item) =>
+            item.offlineEligible &&
+            item.stockBaseQty > 0 &&
+            !activeAllowanceProductIds.has(item.productId),
+        )
+        .map((item) => [
+          item.productId,
+          {
+            id: item.productId,
+            name: item.name,
+            stockBaseQty: item.stockBaseQty,
+            baseUomName:
+              cache?.snapshot.productUoms.find(
+                (candidate) =>
+                  candidate.productId === item.productId &&
+                  candidate.factorToBase === 1,
+              )?.uomName ?? 'Base UOM',
+          },
+        ]),
+    ).values(),
+  ).sort((left, right) => left.name.localeCompare(right.name, 'id'))
+  const allowanceSnapshots = new Map(
+    cache?.snapshot.allowances.map((item) => [item.id, item]) ?? [],
+  )
+  return (
+    <section className="pos-offline-cache" aria-label="Status cache Offline">
+      <div className="pos-offline-cache-heading">
+        <div className="pos-offline-cache-icon">
+          <Database className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="pos-eyebrow">Kesiapan dan cadangan Offline</p>
+          <h2>
+            {cache ? 'Snapshot tersimpan di perangkat' : 'Belum ada snapshot'}
+          </h2>
+        </div>
+        <span
+          className={`pos-offline-cache-badge ${
+            cache ? 'is-cached' : 'is-blocked'
+          }`}
+        >
+          {cache ? 'Cache tersedia' : 'Checkout diblokir'}
+        </span>
+      </div>
+
+      <div className="pos-offline-cache-grid">
+        <div>
+          <span>Scope</span>
+          <strong>{terminalName}</strong>
+          <small>{warehouseName}</small>
+        </div>
+        <div>
+          <span>Sesi</span>
+          <strong>{sessionCode}</strong>
+          <small>Terikat ke kasir aktif</small>
+        </div>
+        <div>
+          <span>Snapshot terakhir</span>
+          <strong>
+            {cache
+              ? new Date(cache.record.snapshotAt).toLocaleString('id-ID')
+              : 'Belum tersedia'}
+          </strong>
+          <small>
+            {cache
+              ? formatCacheAge(cache.ageMs)
+              : 'Perlu entitlement dan policy Terminal'}
+          </small>
+        </div>
+        <div>
+          <span>Allowance lokal</span>
+          <strong>{allowances.length} produk</strong>
+          <small>
+            {cache
+              ? 'Sudah dikurangi queue versi snapshot ini'
+              : 'Belum dapat dihitung'}
+          </small>
+        </div>
+      </div>
+
+      {cache && (
+        <div className="pos-offline-allowance-control">
+          <div>
+            <span className="pos-offline-control-label">
+              Tambah cadangan produk
+            </span>
+            <p>
+              Jumlah ditentukan server dari stok belum dicadangkan dan policy
+              Terminal.
+            </p>
+          </div>
+          <select
+            value={selectedProductId}
+            onChange={(event) => onSelectProduct(event.target.value)}
+            disabled={busy || !isOnline || issueProducts.length === 0}
+            aria-label="Pilih produk untuk cadangan Offline"
+          >
+            <option value="">
+              {issueProducts.length > 0
+                ? 'Pilih produk'
+                : 'Semua produk tersedia sudah dicadangkan'}
+            </option>
+            {issueProducts.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · stok {item.stockBaseQty.toLocaleString('id-ID')}{' '}
+                {item.baseUomName}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={busy || !isOnline || !selectedProductId}
+            onClick={onIssue}
+            className="pos-primary-button"
+          >
+            <Plus className="h-4 w-4" />
+            Minta cadangan
+          </button>
+        </div>
+      )}
+
+      {allowances.length > 0 && (
+        <div className="pos-offline-allowance-list">
+          {allowances.map((item) => {
+            const snapshot = allowanceSnapshots.get(item.allowanceId)
+            const canRelease =
+              isOnline &&
+              !busy &&
+              item.locallyQueuedBaseQty === 0 &&
+              Number(snapshot?.consumedBaseQty ?? 0) === 0
+            return (
+              <div key={item.allowanceId}>
+                <span>{productNames.get(item.productId) ?? 'Produk'}</span>
+                <strong>
+                  {item.locallyAvailableBaseQty.toLocaleString('id-ID')}{' '}
+                  tersedia
+                </strong>
+                <small>
+                  Server {item.serverRemainingBaseQty.toLocaleString('id-ID')}
+                  {item.locallyQueuedBaseQty > 0
+                    ? ` · antrean ${item.locallyQueuedBaseQty.toLocaleString('id-ID')}`
+                    : ' · belum dipakai antrean'}
+                </small>
+                <button
+                  type="button"
+                  disabled={!canRelease || !snapshot}
+                  onClick={() =>
+                    snapshot &&
+                    onRelease(
+                      item.allowanceId,
+                      item.productId,
+                      snapshot.masterVersion,
+                    )
+                  }
+                >
+                  Lepaskan
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="pos-offline-queue">
+        <div className="pos-offline-queue-heading">
+          <div>
+            <span className="pos-offline-control-label">
+              Antrean transaksi perangkat
+            </span>
+            <p>
+              Record tetap disimpan setelah POSTED sebagai bukti acknowledgement.
+            </p>
+          </div>
+          <strong>{queue.length}</strong>
+        </div>
+        {queue.length === 0 ? (
+          <p className="pos-offline-queue-empty">
+            Belum ada transaksi Offline pada sesi ini.
+          </p>
+        ) : (
+          <div className="pos-offline-queue-list">
+            {[...queue].reverse().map((record) => {
+              const payload = JSON.parse(record.salePayload) as {
+                lines?: unknown[]
+              }
+              const canSync =
+                isOnline &&
+                !busy &&
+                !['POSTED', 'INVALIDATED'].includes(record.status)
+              const requiresStatusCheck = [
+                'SUBMITTING',
+                'SYNCING',
+                'NEEDS_CONFIRMATION',
+              ].includes(record.status)
+              const statusLabel: Record<
+                OfflineSaleQueueRecord['status'],
+                string
+              > = {
+                PENDING_SYNC: 'Menunggu sinkronisasi',
+                SUBMITTING: 'Memeriksa server',
+                QUEUED: 'Siap diproses',
+                SYNCING: 'Sedang diproses',
+                NEEDS_CONFIRMATION: 'Perlu diperiksa',
+                FAILED: 'Gagal — bisa dicoba lagi',
+                POSTED: 'Sudah menjadi invoice',
+                INVALIDATED: 'Dibatalkan server',
+              }
+              return (
+                <article key={record.clientTransactionId}>
+                  <div>
+                    <strong>
+                      OFF-{record.clientTransactionId.slice(0, 8).toUpperCase()}
+                    </strong>
+                    <span className={`is-${record.status.toLowerCase()}`}>
+                      {statusLabel[record.status]}
+                    </span>
+                  </div>
+                  <p>
+                    {payload.lines?.length ?? 0} item ·{' '}
+                    {new Date(record.localTransactionAt).toLocaleString('id-ID')}
+                  </p>
+                  {record.errorCode && (
+                    <small>{friendlyError(record.errorCode)}</small>
+                  )}
+                  <footer>
+                    {record.status === 'POSTED' ? (
+                      <button
+                        type="button"
+                        disabled={!isOnline || busy}
+                        onClick={() => onOpenFinalReceipt(record)}
+                      >
+                        Buka invoice final
+                      </button>
+                    ) : record.status === 'INVALIDATED' ? (
+                      <span>Transaksi ini tidak boleh dikirim ulang.</span>
+                    ) : requiresStatusCheck ? (
+                      <button
+                        type="button"
+                        disabled={!canSync}
+                        onClick={() =>
+                          onRefreshStatus(record.clientTransactionId)
+                        }
+                      >
+                        Periksa status
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canSync}
+                        onClick={() => onSync(record.clientTransactionId)}
+                      >
+                        {record.status === 'FAILED'
+                          ? 'Periksa & coba lagi'
+                          : 'Sinkronkan'}
+                      </button>
+                    )}
+                  </footer>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="pos-offline-cache-footer">
+        <p>
+          {message ||
+            'Transaksi Offline hanya dapat disimpan bila snapshot dan cadangan stok mencukupi.'}
+        </p>
+        <button
+          type="button"
+          disabled={busy || !isOnline}
+          onClick={onRefresh}
+          className="pos-secondary-button"
+        >
+          <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+          {busy ? 'Memeriksa…' : 'Perbarui snapshot'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function QuickCustomerModal({
+  companyId,
+  companyName,
+  busy,
+  close,
+  complete,
+}: {
+  companyId: string
+  companyName: string
+  busy: boolean
+  close: () => void
+  complete: (customerId: string) => Promise<void>
+}) {
+  const [form, setForm] = useState({
+    name: '',
+    type: 'INDIVIDUAL' as 'INDIVIDUAL' | 'BUSINESS',
+    phone: '',
+    email: '',
+    address: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!form.name.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      const created = await quickCreatePosCustomer(form)
+      if (created.companyId !== companyId) {
+        throw new Error('CUSTOMER_COMPANY_SCOPE_MISMATCH')
+      }
+      await complete(created.customerId)
+    } catch (reason) {
+      setError(friendlyError(errorMessage(reason)))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="pos-action-dialog-overlay fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-quick-customer-title"
+        className="pos-action-dialog pos-quick-customer-dialog w-full max-w-lg bg-white shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-4">
+          <div className="pos-action-dialog-icon">
+            <UserPlus className="h-5 w-5" />
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            className="pos-modal-close"
+            aria-label="Tutup form Customer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <h2
+          id="pos-quick-customer-title"
+          className="mt-4 text-xl font-black text-slate-900"
+        >
+          Tambah Customer
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Customer hanya dibuat untuk Company aktif: <b>{companyName}</b>.
+          Kode Customer dibuat otomatis oleh sistem.
+        </p>
+        <form onSubmit={submit} className="pos-quick-customer-form mt-5">
+          <label>
+            <span>Nama Customer</span>
+            <input
+              autoFocus
+              required
+              maxLength={200}
+              value={form.name}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, name: event.target.value }))
+              }
+              placeholder="Contoh: Toko Berkah"
+            />
+          </label>
+          <label>
+            <span>Tipe Customer</span>
+            <select
+              value={form.type}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  type: event.target.value as 'INDIVIDUAL' | 'BUSINESS',
+                }))
+              }
+            >
+              <option value="INDIVIDUAL">Perorangan</option>
+              <option value="BUSINESS">Bisnis / Toko</option>
+            </select>
+          </label>
+          <label>
+            <span>Nomor telepon (opsional)</span>
+            <input
+              maxLength={100}
+              value={form.phone}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, phone: event.target.value }))
+              }
+              inputMode="tel"
+            />
+          </label>
+          <label>
+            <span>Email (opsional)</span>
+            <input
+              type="email"
+              maxLength={320}
+              value={form.email}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, email: event.target.value }))
+              }
+            />
+          </label>
+          <label className="is-wide">
+            <span>Alamat (opsional)</span>
+            <textarea
+              rows={2}
+              maxLength={1000}
+              value={form.address}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  address: event.target.value,
+                }))
+              }
+            />
+          </label>
+          {error && (
+            <div className="is-wide rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+          <footer className="is-wide mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={saving || busy}
+              onClick={close}
+              className="pos-dialog-secondary"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={saving || busy || !form.name.trim()}
+              className="pos-dialog-primary"
+            >
+              {saving || busy ? 'Menyimpan…' : 'Simpan Customer'}
+            </button>
+          </footer>
+        </form>
+      </section>
     </div>
   )
 }

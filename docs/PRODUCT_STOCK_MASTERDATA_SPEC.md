@@ -1147,7 +1147,10 @@ Aturan selisih:
 - Selisih negatif diklasifikasikan sebagai `STOCK_LOSS`/kerugian persediaan.
 - Selisih positif diklasifikasikan sebagai `STOCK_GAIN`/selisih stok lebih atau pendapatan lain-lain, bukan pendapatan penjualan.
 - Implementasi jurnal belum dilakukan pada fase Produk & Stok; mapping Stock Gain/Loss sudah disetujui pada dokumen Finance dan account ID tetap configurable per company.
-- Final stock tidak boleh negatif.
+- Final stock default tidak boleh negatif. User membuka scope STK-006 pada
+  2026-08-05 untuk exception POS yang berizin; sampai policy, permission,
+  provisional costing, replenishment reconciliation, audit, dan regression
+  khusus lulus, seluruh runtime existing tetap menolak stock negatif.
 
 Adjustment posted tidak dapat diedit/dihapus. Koreksi atas adjustment posted menggunakan reversal atau adjustment baru yang memiliki reference ke dokumen sebelumnya.
 
@@ -1616,6 +1619,10 @@ Aturan:
 - Produk return wajib berasal dari `source_receipt_line_id`. Produk bebas yang tidak terdapat pada Goods Receipt asal tidak dapat ditambahkan.
 - Alasan return menggunakan satu field yang dapat memilih nilai saran umum atau menerima teks bebas. Alasan wajib terisi, tetapi tidak menggunakan daftar master yang panjang.
 - Partial return didukung.
+- UOM retur dapat memakai UOM Produk aktif mana pun dan tidak harus sama dengan
+  UOM pembelian/Receipt. Contoh: Receipt `1 Dus = 10 Ketul` dapat diretur
+  `3 Ketul`. Server mengonversi quantity langsung ke base UOM menggunakan
+  conversion snapshot dan tetap menegakkan precision serta batas FIFO sumber.
 - Return posted mengurangi stok gudang sumber dan membuat movement `PURCHASE_RETURN`.
 - Jika barang berada di gudang `DAMAGED`, return mengurangi gudang tersebut.
 - Jika invoice belum final, return posted langsung mengurangi AP provisional.
@@ -2423,6 +2430,7 @@ Keputusan yang sudah final:
 | 2026-07-14 | Return Source | Produk return wajib berasal dari Goods Receipt asal dan tidak menerima line produk bebas | APPROVED |
 | 2026-07-14 | Return Reason | Satu field alasan wajib dapat menggunakan nilai saran atau teks bebas | APPROVED |
 | 2026-07-14 | Return Posting Time | Store Manager atau Company Admin/Super Admin posting ketika barang benar-benar diserahkan kepada supplier | APPROVED, diperbarui 2026-07-15 |
+| 2026-08-06 | Purchase Return UOM | Retur boleh memakai UOM Produk aktif yang berbeda dari UOM pembelian/Receipt; conversion langsung ke base UOM dan source FIFO limit tetap wajib | APPROVED |
 | 2026-07-17 | Purchase Price Variance | Invoice aktual merevaluasi remaining FIFO dan mencatat variance HPP untuk quantity terjual | APPROVED |
 | 2026-07-17 | Supplier Refund Receivable | Return melebihi AP terbuka menjadi Piutang Refund Supplier untuk Transfer/offset berikutnya | APPROVED |
 | 2026-07-14 | Supplier Bank Reference | Master Supplier menyimpan satu rekening utama untuk referensi/copy oleh Finance saat pembayaran | APPROVED |

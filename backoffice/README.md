@@ -1,4 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KGS POS Backoffice
+
+Backoffice Next.js untuk master data, Inventory, Sales, Finance, dan pengaturan
+Company. Database disbursement Phase-34 sudah dikonfirmasi PASS. G4 Phase-35
+menambahkan `Finance > Approval Expense` untuk mengonfirmasi pembayaran
+Transfer/non-tunai dengan nominal/metode dari dokumen approved. Expense Cash
+tetap dicairkan melalui POS Session. Phase 38 juga menampilkan request biaya
+aktual untuk approve/reject dan membuka pengembalian dana non-tunai melalui
+RPC guarded. Pengembalian Cash tetap hanya di POS agar masuk ke Session/laci
+yang benar. Phase 41 menambahkan review request dana tambahan dan pembayaran
+non-Cash dengan nominal/metode approved yang read-only; dana tambahan Cash
+tetap hanya dicairkan dari POS. Jurnal final tetap tertutup.
+
+Phase 47 menambahkan `Finance > Selisih Setoran`: list/detail tenant-scoped,
+penanggung jawab setoran kurang, partial resolution, serta maker-checker untuk
+biaya/pendapatan/write-off/koreksi source. Seluruh write memakai guarded RPC;
+Accounting read-only. Bank matching, reversal source aktual, dan jurnal G6
+belum dibuka. Panduan smoke ada di
+[`../docs/runbooks/G4_PHASE47_DEPOSIT_VARIANCE_OPERATIONAL_UI.md`](../docs/runbooks/G4_PHASE47_DEPOSIT_VARIANCE_OPERATIONAL_UI.md).
+
+Source of truth dan status rollout berada di [`../README.md`](../README.md) dan
+[`../docs/ACTIVE_DEVELOPMENT_HANDOFF.md`](../docs/ACTIVE_DEVELOPMENT_HANDOFF.md).
+
+G5 Phase 9 menambahkan `Purchase > Retur Pembelian`: Manager/Admin mereview
+Draft dari POS, menyetujui tanpa alasan, menolak/membatalkan dengan alasan, lalu
+memposting secara terpisah. Posting mengurangi FIFO/stok asal dan mencatat AP
+adjustment melalui RPC guarded; Supplier Invoice dan jurnal final tetap belum
+dibuka. Smoke checklist ada di
+[`../docs/runbooks/G5_PHASE9_PURCHASE_RETURN_OPERATIONAL_UI.md`](../docs/runbooks/G5_PHASE9_PURCHASE_RETURN_OPERATIONAL_UI.md).
+
+Phase 61 menambahkan konfigurasi `Pengaturan Modul > Point of Sale > Izin Stok
+Minus POS`. Super Admin mengelola entitlement; Company Owner/Admin mengelola
+policy, opt-in Gudang penjualan, dan izin user melalui guarded RPC. Store
+Manager read-only. Smoke checklist ada di
+[`../docs/runbooks/G4_PHASE61_NEGATIVE_STOCK_OPERATIONAL_UI.md`](../docs/runbooks/G4_PHASE61_NEGATIVE_STOCK_OPERATIONAL_UI.md).
 
 ## Getting Started
 
