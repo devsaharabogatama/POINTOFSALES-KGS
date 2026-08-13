@@ -3,10 +3,14 @@
 > **Revision gate 2026-08-12:** final-checkout/delivery-fee revision SLD-R1—R4
 > sudah user-verified. PRD-1 pre-deploy closing sekarang dibuka.
 
-**Status:** IMPLEMENTED THROUGH SLD-R4; ACP-7 CLOSURE / PRD-1 FIXTURE SETUP  
+**Status:** IMPLEMENTED THROUGH SLD-R4; G6 PHASE 8 CLOSED; PRD-1 PREVIEW UAT
 **Disetujui:** 2026-08-11  
 **Progress:** UXD-1/2 implemented; BRD-1 database PASS; BRD-2 implemented; SLD-R1—R4 user-verified; ACP-6G database PASS; ACP-7 fixture/browser matrix pending; PRD-1 consolidated preflight updated  
 **Posisi roadmap:** setelah DEX-4, sebelum full pre-deploy E2E/Vercel Preview
+
+**Current update 2026-08-14:** ACP-7 database chain PASS; G6 Phase 8H
+`HOLD=0` dan seluruh reconciliation PASS. Remaining gate adalah authenticated
+role/two-Company matrix dan Vercel Preview smoke.
 
 ## 1. Outcome yang Disetujui
 

@@ -2,7 +2,7 @@
 
 **Status:** READY TO RUN  
 **Scope:** diagnostic konsolidasi sebelum Vercel Preview; diperbarui setelah
-ACP-6G database PASS
+G6 Phase 8H historical Finance closure PASS
 
 ## Tujuan
 
@@ -26,8 +26,8 @@ Kirim seluruh output, termasuk `SETUP`, `DEFERRED`, dan `INFO`.
 - `BLOCKER`: harus diperbaiki sebelum membuat fixture atau membuka Preview.
 - `SETUP`: data UAT belum lengkap; expected bila Company kedua/role belum dibuat.
 - `PASS`: invariant live aman pada saat query dijalankan.
-- `DEFERRED`: boundary roadmap yang sengaja tidak dibuka, khususnya Finance
-  HOLD; bukan izin untuk memproses event.
+- `DEFERRED`: boundary roadmap lain yang sengaja tidak dibuka. Historical
+  Finance HOLD bukan lagi deferred setelah Phase 8H (`HOLD=0`).
 - `INFO`: inventory atau pemeriksaan eksternal/manual.
 
 ## Setelah Output Bersih

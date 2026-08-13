@@ -1,5 +1,19 @@
 # Router Dokumen KGS POS
 
+Finance G6 Phase 8:
+
+- [`runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`](runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md)
+- [`runbooks/G6_PHASE8A_SALE_RETURN_POSTING_PREFLIGHT.md`](runbooks/G6_PHASE8A_SALE_RETURN_POSTING_PREFLIGHT.md)
+- [`runbooks/G6_PHASE8A_SALE_RETURN_SETTLEMENT_MAPPING_ROLLOUT.md`](runbooks/G6_PHASE8A_SALE_RETURN_SETTLEMENT_MAPPING_ROLLOUT.md)
+- [`runbooks/G6_PHASE8B_SALE_RETURN_POSTING_RUNTIME_ROLLOUT.md`](runbooks/G6_PHASE8B_SALE_RETURN_POSTING_RUNTIME_ROLLOUT.md)
+- [`runbooks/G6_PHASE8C_SALE_RETURN_CONTROLLED_QUEUE_ROLLOUT.md`](runbooks/G6_PHASE8C_SALE_RETURN_CONTROLLED_QUEUE_ROLLOUT.md)
+- [`runbooks/G6_PHASE8D_PURCHASE_AP_POSTING_PREFLIGHT.md`](runbooks/G6_PHASE8D_PURCHASE_AP_POSTING_PREFLIGHT.md)
+- [`runbooks/G6_PHASE8D_PURCHASE_AP_POSTING_RUNTIME_ROLLOUT.md`](runbooks/G6_PHASE8D_PURCHASE_AP_POSTING_RUNTIME_ROLLOUT.md)
+- [`runbooks/G6_PHASE8E_PURCHASE_AP_CONTROLLED_QUEUE_ROLLOUT.md`](runbooks/G6_PHASE8E_PURCHASE_AP_CONTROLLED_QUEUE_ROLLOUT.md)
+- [`runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_POSTING_PREFLIGHT.md`](runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_POSTING_PREFLIGHT.md)
+- [`runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_RUNTIME_ROLLOUT.md`](runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_RUNTIME_ROLLOUT.md)
+- [`runbooks/G6_PHASE8G_REMAINING_OPERATIONAL_QUEUE_ROLLOUT.md`](runbooks/G6_PHASE8G_REMAINING_OPERATIONAL_QUEUE_ROLLOUT.md)
+
 Gunakan file ini sebagai entrypoint. Jangan membaca seluruh folder `docs` untuk setiap tugas.
 
 Ringkasan aplikasi, cara menjalankan, status modul, dan kebijakan living README
@@ -27,6 +41,8 @@ berada di [`../README.md`](../README.md).
 | Bundle revenue, component allocation, margin | `BUNDLE_REVENUE_ALLOCATION_SPEC.md` | Product/Stock, POS, Pricelist, Tax, Debit/Credit Note |
 | Finance report, cut-off, pending analysis | `FINANCE_REPORTING_AND_CUTOFF_SPEC.md` | Finance Core dan source module status/history |
 | Dataset UAT Finance terkontrol | `runbooks/G6_PHASE7B_FINANCE_UAT_DATASET.md` | Product/Opening Stock/Adjustment dan controlled Finance queue harus sudah live |
+| G6 Phase 8 operational HOLD preflight | `runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md` | SELECT-only audit sembilan kontrak sebelum Sale/Purchase/Expense/Cash journal posting dibuka |
+| G6 Phase 8A Sale/Return posting preflight | `runbooks/G6_PHASE8A_SALE_RETURN_POSTING_PREFLIGHT.md` | Exact amount/account readiness sebelum dynamic Sale dan refund journal migration |
 | Modal dan Aset | `CAPITAL_AND_ASSET_NOTES.md` | Finance saat fase detail dibuka |
 | Role, tenant, RLS | `../KGS_BACKOFFICE_AUTH_FLOW_WORKFLOW.md`, `rls-access-matrix.md` | Multi-company docs/migration yang relevan |
 | Role baseline + custom restriction per submodul | `ROLE_BASELINE_CUSTOM_PERMISSION_PLAN.md` | `rls-access-matrix.md`, navigation/API/RPC/RLS inventory aktual |

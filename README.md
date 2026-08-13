@@ -1,5 +1,25 @@
 # KGS POS
 
+G6 Phase 8 historical Finance closure sudah database-live dan user-confirmed
+PASS. Seluruh 32 Financial Event historis telah final: 31 Event mempunyai tepat
+satu canonical Journal dan satu exact-zero Goods Receipt ditutup sebagai
+`NO_FINANCIAL_EFFECT`; `HOLD=0`, queue aktif nol, exception terbuka nol, serta
+seluruh jurnal seimbang. FIFO dan Inventory GL KGS sama tepat Rp89.485.000;
+Supplier AP dan Customer Balance juga reconcile per Company.
+
+Gate aktif kembali ke PRD-1 predeploy closure. Local Backoffice lint/build dan
+PWA lint/build 14 Agustus 2026 PASS; hasil client build tidak memuat marker
+service-role/private key. PWA masih memberi warning non-blocking untuk main
+chunk 555,22 kB (153,61 kB gzip), yang harus diukur pada Preview. Remaining
+manual gate adalah authenticated role/preset/two-Company E2E, Auth redirect,
+Storage branding/cache, dan Vercel Preview smoke; ini belum merupakan approval
+Production.
+Behavioral pertama menemukan Goods Receipt sah bernilai Rp0 (seluruh source
+amount dan batch value nol); transaksi rollback tanpa live effect. Forward-fix
+`20260814143000` sudah database-live dan terbukti menutup event tersebut sebagai
+`CANCELED / NO_FINANCIAL_EFFECT`, bukan membuat jurnal nol. Runtime positif
+tetap source-verified dan tidak dilonggarkan.
+
 ## Current development status (2026-08-13)
 
 Atas revisi user, pemisahan Backoffice Invoice/Surat Jalan sekarang user-pass:
@@ -93,21 +113,12 @@ serta React/Vite PWA untuk kasir.
 > status modul, cara menjalankan aplikasi, migration chain, compatibility, atau
 > roadmap wajib memperbarui file ini bersama kode dan handoff.
 
-**Status terakhir:** 13 Agustus 2026
-**Gate aktif:** ACP-4B sampai ACP-4I, ACP-5A sampai ACP-5H, ACP-6A Expense,
-dan ACP-6B Cash Deposit database/behavior user-confirmed PASS. ACP-6C
-`finance.deposit_variances` database/postflight/behavior/regression juga
-user-confirmed PASS. Smoke ACP-6B/6C ditunda ke closing UAT. ACP-6D
-`finance.customer_balances` termasuk compatibility `WIND_DOWN` dan regression
-Phase-49/52/56 sudah user-confirmed PASS. ACP-6E Supplier Invoice dan ACP-6F
-Supplier Payment database/behavior/regression sudah user-confirmed PASS.
-ACP-6G Payment Method database/postflight/behavior/regression sudah
-user-confirmed PASS. Authenticated smoke digabung ke ACP-7 closing UAT.
-PRD-1 database preflight zero blocker; fixture role/Company dan authenticated
-matrix masih pending. Backoffice lint/build dan PWA lint/build terbaru PASS;
-PWA menghasilkan warning main chunk 555.37 kB (153.65 kB gzip) yang perlu
-diukur pada Preview, bukan blocker build. Full role/E2E/Vercel Preview menunggu
-ACP-7 closure.
+**Status terakhir:** 14 Agustus 2026
+**Gate aktif:** PRD-1 authenticated role/preset/two-Company E2E dan Vercel
+Preview readiness. ACP-4 sampai ACP-7 database enforcement serta G6 Phase 8
+historical Finance closure user-confirmed PASS. Local lint/build dan secret
+bundle scan Backoffice/PWA PASS. Fixture role yang belum lengkap tetap manual
+UAT scope, bukan alasan melemahkan permission.
 **Runtime:** lokal; Supabase aktif; Vercel Preview belum dibuka
 
 ## Kondisi Aplikasi Saat Ini
@@ -122,12 +133,12 @@ ACP-7 closure.
 | Customer + Customer Category | Complete | Walk-In system, credit boundary, grouping induk/cabang |
 | Pricelist | Complete pada online core | Global/Customer reusable; resolver aktif pada canonical Draft/Post |
 | Payment Method | Online split-payment ready for smoke | Store scope, fee/proof snapshot, stable payment-leg identity, dan tablet multi-metode UI aktif |
-| Transaction Category + minimum COA | Complete pada master | 26 kategori, guarded COA, dan explicit fallback PASS; posting tetap nonaktif |
+| Transaction Category + minimum COA | Complete pada master dan posting historis | 26 kategori, guarded COA, explicit fallback, rule snapshot, dan Phase 8 controlled posting PASS |
 | Tax Sales/Purchase | Sales resolver aktif pada online core | Guarded master/version/assignment; Purchase/jurnal tetap belum dibuka |
 | Pengaturan Modul | Entitlement + Offline/Stock Minus policy UI ready for smoke | Super Admin mengelola entitlement; Owner/Admin mengelola policy Company, opt-in Gudang penjualan, dan izin user melalui guarded RPC; Store Manager read-only untuk Stock Minus |
 | App Launcher & shell | UXD-2 local-ready; authenticated smoke pending | Home bersih hanya card modul; klik membuka landing submodul. Fast Link search hanya menyaring catalog server-authorized. Logo Company di header menjadi tombol Home. API/RPC/RLS tetap authority final |
 | Company branding | BRD-1 database USER VERIFIED; BRD-2 upload/UI LOCAL READY | Server-only Storage upload, magic-byte/MIME/extension/size/SHA-256 validation, generated tenant path, version/audit, cleanup, remove modal, dan Company setting tersedia; authenticated multi-Company smoke pending |
-| Sales Invoice, Surat Jalan & Ongkir | SLD-R4 USER VERIFIED | Checkbox Delivery berada di final checkout; ongkir ikut total/payment/offline. Full remaining Return menawarkan refund ongkir eksplisit default OFF dan approval menampilkan keputusannya; partial Return tidak dapat merefund ongkir. Sale/Refund journal yang belum didukung tetap G6 controlled HOLD |
+| Sales Invoice, Surat Jalan & Ongkir | SLD-R4 USER VERIFIED | Checkbox Delivery berada di final checkout; ongkir ikut total/payment/offline. Full remaining Return menawarkan refund ongkir eksplisit default OFF; historical Sale/Refund journal sudah ditutup melalui G6 Phase 8 |
 | Tax assignment Product/Category | Complete pada Sales online boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver aktif saat Draft/Post |
 | Tax resolver/calculator | Complete pada Sales online boundary | Effective-dated resolver + deterministic calculation dipakai Draft/Post; Purchase/jurnal belum dicutover |
 | Master Import/Export | Complete untuk 7 simple master | Phase 40 DB dan Phase 41 authenticated UI smoke PASS |
@@ -135,12 +146,12 @@ ACP-7 closure.
 | Generic import framework | Phase 47 UI local-ready | Grouped Product, Product-Supplier, dan Minimum Stock Produk–Gudang database PASS; Minimum Stock guarded API/UI serta fixed import-export lint/build PASS dan menunggu authenticated smoke; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
 | Stock ledger/FIFO production | Complete pada G3 core boundary | Integrated stress/regression diteruskan tanpa error dan Phase-14 rerun seluruh invariant PASS; Sale/Return/Receipt coverage pindah ke gate transaksi |
 | POS checkout/offline production | Online checkout dan Offline core COMPLETE sampai Phase 24 | Retained queue/status-first recovery, time-bounded sync, controlled disconnect/reconnect, single final effect, allowance, dan Stock–Movement–FIFO closing diagnostics dikonfirmasi PASS |
-| Sales Return | Complete pada required-approval boundary | PWA Draft serta Backoffice review/post berhasil diuji user; guarded cancel/post, stock/FIFO/Movement/refund, dan Finance HOLD aktif. Posting Kasir/optional approval tetap deferred |
-| Expense & Cash In | Deposit variance operational UI complete | Actual/return/additional dan Setor Kas online tersedia sesuai channel. Phase 46 rollout serta Phase 47 authenticated UI smoke dikonfirmasi aman; bank matching, offline Expense/Deposit, reversal aktual, serta jurnal G6 tetap tertutup |
+| Sales Return | Complete pada required-approval boundary | PWA Draft serta Backoffice review/post berhasil diuji user; guarded cancel/post, stock/FIFO/Movement/refund, dan historical Finance journal PASS. Posting Kasir/optional approval tetap deferred |
+| Expense & Cash In | Deposit variance operational UI complete | Actual/return/additional dan Setor Kas online tersedia sesuai channel; historical Expense/Deposit/Variance posting sudah reconcile melalui G6 Phase 8. Bank matching dan offline Expense/Deposit tetap di luar scope aktif |
 | Customer Balance | Phase 56 COMPLETE; Phase 57 UI local-ready | Full-balance ONLINE tender database PASS. POS menampilkan saldo, auto-fill seluruh saldo, minimum tambah belanja, dan receipt; authenticated tablet smoke dapat digabung pada E2E berikutnya |
 | POS Stock Minus | Phase 60 database COMPLETE; Phase 61 operational UI accepted | User melanjutkan roadmap setelah guarded Backoffice config dan POS reason/retry tersedia. Default tetap OFF, online non-Bundle saja; replenishment dari Goods Receipt menjadi dependency G5 |
-| Purchasing end-to-end | Supplier Payment user-reported PASS; corrective tolerance pending | Supplier Invoice/Payment tetap menghasilkan Finance HOLD. Optional tolerance diformalisasi forward-only; journal G6 belum dibuka |
-| Finance posting/reconciliation | Phase 7A COMPLETE; Phase 7B database USER VERIFIED, UI smoke pending | Human number `JUR/JRB/PST/EXC/REC` migration/postflight/behavior dikonfirmasi sukses. Buku Besar expandable, Journal Entries terpisah, dan XLSX bulanan siap authenticated cross-role/cross-Company smoke. Queue tetap hanya `STOCK_OPENING`; FIFO–GL Rp84,26 juta serta 25 HOLD tetap deferred |
+| Purchasing end-to-end | Supplier Payment user-reported PASS; corrective tolerance pending | Historical Goods Receipt, Supplier Invoice, dan Supplier Payment sudah mempunyai canonical Journal atau exact no-effect closure; optional tolerance tetap forward-only |
+| Finance posting/reconciliation | G6 Phase 8 historical closure USER VERIFIED | 31 Event/Journal POSTED, 92 lines, satu exact no-effect Event, HOLD/queue/exception nol. FIFO–Inventory GL Rp89.485.000 matched; Supplier AP dan Customer Balance reconcile. Buku Besar, Journal Entries, dan XLSX bulanan tetap menunggu authenticated cross-role/cross-Company Preview smoke |
 
 Status operasional detail dan manual gate terbaru ada di
 [`docs/ACTIVE_DEVELOPMENT_HANDOFF.md`](docs/ACTIVE_DEVELOPMENT_HANDOFF.md).

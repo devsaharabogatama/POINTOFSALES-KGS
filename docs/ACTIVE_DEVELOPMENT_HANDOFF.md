@@ -1,5 +1,261 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-14 — G6 PHASE 8H CLOSED; PRD-1 LOCAL BUILD/SECRET GATE PASS
+
+User menjalankan Phase 8H final closure dan seluruh row PASS. Runtime Finance
+historis sekarang mempunyai 32 final Financial Event: 31 POSTED Event/Journals
+dengan 92 Journal lines dan satu exact-zero `NO_FINANCIAL_EFFECT`. HOLD, active
+queue, open posting exception, duplicate journal, dan coverage gap semuanya nol.
+FIFO–Inventory GL KGS reconcile tepat Rp89.485.000; Supplier AP dan Customer
+Balance reconcile per Company.
+
+Local predeploy verification kemudian dijalankan: Backoffice ESLint PASS,
+Next.js production build PASS (67 static/dynamic route entries), PWA oxlint PASS,
+TypeScript/Vite/PWA production build PASS. PWA main chunk 555,22 kB / 153,61 kB
+gzip memberi warning performa non-blocking dan wajib diukur pada Preview. Tracked
+env hanya dua `.env.example`; real env, `.vercel`, Supabase local state, build,
+dump, log, export, dan test artifact di-ignore. Scan client build tidak menemukan
+marker service-role/private key. `backoffice/vercel.json` tidak memuat Cron.
+
+Next safe step: authenticated PRD-1 Preview UAT (role/preset, direct URL/API/RPC,
+two-Company distinct override and isolation, Pickup/Delivery/Return/Purchase/
+Finance/Data Exchange), lalu configure dua Vercel Preview project, environment,
+Supabase Auth redirect allowlist, branding Storage/cache, dan PWA offline smoke.
+Jangan menyebut Preview sebagai Production approval.
+
+### 2026-08-14 - G6 PHASE 8E LIVE PASS; PHASE 8F PREFLIGHT READY
+
+User mengonfirmasi Purchase/AP controlled live reconciliation seluruhnya PASS:
+queue bersih dan `COMPLETED`, delapan Journal, satu exact-zero Receipt closure,
+tidak ada duplikasi, semua Journal balance, source amount serta Supplier
+dimension cocok. Inventory akhir: 3 Goods Receipt POSTED + 1 no-effect
+CANCELED, 3 Supplier Invoice POSTED, 2 Supplier Payment POSTED, remaining HOLD
+7.
+
+Next safe step adalah Phase 8F. Ditambahkan one-statement SELECT-only preflight
+`g6_phase8f_remaining_operational_posting_preflight.sql` untuk exact inventory
+2 Stock Gain, 2 Expense Disbursement, 2 Cash Deposit, dan 1 Cash Variance.
+Diagnostic memeriksa final source linkage, header/line/effect amount, immutable
+account snapshot, postable period, zero early Journal, dan clean queue. Runtime
+belum dibuat/dibuka. Jalankan preflight dan kirim seluruh row; semua `BLOCKER`
+wajib nol.
+
+User mengirim seluruh Phase 8F preflight PASS: source linkage 7/7, exact amount
+untuk 2 Stock Gain + 2 Expense Disbursement + 2 Cash Deposit + 1 Cash Variance,
+15 account snapshot valid, period siap, journal effect nol, queue bersih.
+Migration `20260814160000` kini local-ready dengan satu dispatcher core dan
+contract-separated source verification/journal plans. Postflight SELECT-only
+serta rollback behavioral 2/2/2/1 tersedia. Static structure, migration hash,
+dan `git diff --check` PASS. Next safe step: migration -> postflight -> behavior
+-> postflight ulang; jangan buat live queue sebelum user mengonfirmasi PASS.
+
+User mengonfirmasi Phase 8F migration/postflight dan behavioral seluruhnya PASS;
+tujuh Event live masih HOLD dan journal effect nol. Phase 8G sekarang
+local-ready: migration `20260814170000` menambah scope
+`REMAINING_OPERATIONAL` dengan final-source-only preview, lalu memakai approval
+dan processor queue yang sudah audited. Behavioral memproses tepat tujuh Event
+di dalam rollback dan mensyaratkan `COMPLETED / 7 / 0 / 0` plus replay
+idempotent. Static structure/hash/diff checks PASS. Next safe step: migration ->
+postflight -> behavioral -> postflight ulang; live operation masih ditutup.
+
+User mengonfirmasi seluruh Phase 8G install/postflight/behavior gate aman tanpa
+blocker. Final controlled operation
+`g6_phase8g_post_live_remaining_operational.sql` sekarang local-ready dan
+mengunci scope exact 2/2/2/1, immutable preview hash, serta hasil wajib
+`COMPLETED / 7 / 0 / 0`; mismatch merollback seluruh transaksi. Phase 8H
+SELECT-only closure postflight juga tersedia untuk HOLD=0, event-journal 1:1,
+no-effect contract, balance/header-line, FIFO-GL, Supplier AP-GL, Customer
+Balance-GL, queue bersih, dan zero open posting exception. Static structure dan
+`git diff --check` PASS. Next safe step: jalankan final operation sekali lalu
+langsung Phase 8H postflight; kirim seluruh output.
+
+### 2026-08-14 - G6 PHASE 8D USER-PASS; PHASE 8E CONTROLLED QUEUE READY
+
+User mengonfirmasi Phase 8D closing postflight seluruhnya PASS: sembilan
+Purchase/AP Event tetap HOLD, tidak ada early Journal, private runtime boundary,
+dispatcher, runtime routine, migration ledger, dan 14 Sale/Return POSTED tetap
+utuh. Migration/runtime serta zero-value behavioral sebelumnya juga dilaporkan
+sukses.
+
+Phase 8E sekarang local-ready: migration `20260814150000` menambah scope
+`PURCHASE_AP`, preview RPC final-source-only, serta processor khusus yang tetap
+memakai immutable approval/version/queue audit. Efek positif menjadi Journal;
+exact Rp0 Goods Receipt menjadi valid `SKIPPED / NO_FINANCIAL_EFFECT` dan Event
+`CANCELED`, tanpa jurnal nol. Stale preview atau runtime error tetap menghasilkan
+`COMPLETED_WITH_ERRORS`. Migration tidak membuat queue atau memposting Event.
+
+File baru: migration Phase 8E, SELECT-only postflight, rollback behavioral, dan
+runbook `G6_PHASE8E_PURCHASE_AP_CONTROLLED_QUEUE_ROLLOUT.md`. Static structure,
+SHA-256 manifest, dan scoped `git diff --check` PASS. Manual gate:
+jalankan migration -> postflight -> behavioral dan kirim seluruh hasil. Jangan
+jalankan live queue sebelum ketiganya PASS.
+
+User kemudian mengonfirmasi behavioral Phase 8E PASS. Controlled live operation
+`supabase/operations/g6_phase8e_post_live_purchase_ap.sql` dan SELECT-only live
+reconciliation postflight sudah ditambahkan. Operation mengunci tepat satu
+Company, 4 Receipt, 3 Invoice, 2 Payment, tepat satu Receipt Rp0, immutable
+preview hash, serta hasil wajib `COMPLETED / posted 8 / failed 0 / skipped 1`;
+selain itu seluruh transaksi rollback. Next safe step: jalankan operation sekali,
+lalu segera jalankan live reconciliation postflight dan kirim seluruh output.
+
+### 2026-08-14 — G6 PHASE 8A SALE/RETURN EXACT PREFLIGHT READY
+
+### 2026-08-14 — G6 PHASE 8A SETTLEMENT MAPPING READY
+
+### 2026-08-14 — G6 PHASE 8B SALE/RETURN RUNTIME READY
+
+### 2026-08-14 — G6 PHASE 8B ACCOUNT-MAPPING FORWARD FIX READY
+
+### 2026-08-14 — G6 PHASE 8C CONTROLLED SALE/RETURN QUEUE READY
+
+### 2026-08-14 — G6 PHASE 8C CONTROLLED LIVE OPERATION READY
+
+### 2026-08-14 - G6 PHASE 8C LIVE PASS; PHASE 8D PURCHASE/AP PREFLIGHT READY
+
+Phase 8D exact preflight kemudian user-pass seluruhnya: 4 Goods Receipt, 3
+Supplier Invoice, dan 2 Supplier Payment cocok dengan source, allocation,
+account snapshot; event linkage 9/9 dan existing journal effect nol. Migration
+`20260814140000` sekarang local-ready dengan source-verified atomic runtime,
+signed PPV/nonrecoverable-tax line, Input Tax, AP Provisional/Final, immutable
+Cash/Bank source account, Supplier dimension, period handling, balanced journal,
+dan exact replay. Postflight dan behavioral 4/3/2 rollback test tersedia. Next
+safe step: migration -> postflight -> behavioral -> postflight ulang. Jangan
+membuka controlled live queue Purchase/AP sebelum seluruh langkah itu user-pass.
+
+Behavioral pertama berhenti pada `FINANCIAL_EVENT_AMOUNT_SOURCE_MISMATCH` tepat
+di guard Receipt `<=0`; seluruh test transaction rollback. Root cause bukan
+source mismatch: satu Goods Receipt mempunyai header/line/batch/Event yang
+semuanya konsisten Rp0, sehingga preflight lama PASS tetapi runtime menolak
+jurnal nol. Forward-fix `20260814143000` menutup hanya exact-zero Receipt sebagai
+Event `CANCELED` dengan reason `NO_FINANCIAL_EFFECT` dan tanpa Journal; setiap
+mismatch atau event positif tetap memakai runtime asli. Behavioral diperbarui
+menguji closure + replay nol serta posting/replay positif. Next safe step:
+forward-fix -> fix postflight -> runtime postflight -> behavioral -> kedua
+postflight ulang; migration `20260814140000` tidak perlu direrun.
+
+User menjalankan controlled queue `PST/2026/08/000003` dengan hasil
+`COMPLETED`: preview 14, posted 14, failed/skipped nol. Live postflight seluruhnya
+PASS: queue bersih, tepat satu jurnal per Sale/Return, settlement reconcile,
+jurnal balance, dan actual Inventory GL delta `-3185000` sama dengan expected.
+Runtime kini database-live untuk 13 Sale dan satu Sales Return; remaining HOLD
+16 dan tidak disentuh oleh operasi tersebut.
+
+Next safe step adalah Phase 8D Purchase/AP. Ditambahkan one-statement SELECT-only
+`supabase/diagnostics/g6_phase8d_purchase_ap_posting_preflight.sql` beserta
+runbook. Diagnostic memverifikasi empat Goods Receipt, tiga Supplier Invoice,
+dan dua Supplier Payment secara source-exact: header/line/FIFO value, invoice
+allocation provisional/actual, signed PPV, recoverable/nonrecoverable tax, AP
+Final, payment allocation, tenant-valid active/postable account snapshots, dan
+zero existing journal effect. Tidak ada Event, jurnal, queue, schema, RPC, grant,
+atau business data yang diubah. Jalankan seluruh preflight dan kirim semua row;
+`BLOCKER` wajib nol sebelum migration posting Purchase/AP dibuat.
+
+User mengonfirmasi Phase 8C migration, postflight, dan rollback behavioral
+sukses. Controlled live operation sekarang siap. File operasi mengunci scope
+persis satu Company, 13 Sale + satu Return, tidak ada active queue, preview 14
+item, dan hash event/version yang sama; approval/process harus menghasilkan
+`COMPLETED`, posted 14, failed/skipped nol atau seluruh transaksi rollback.
+
+Postflight live SELECT-only memeriksa event↔journal 1:1, balance setiap jurnal,
+settlement debit/credit, net Inventory GL Sale–Return, clean queue result, dan
+remaining HOLD inventory. Static SQL/diff checks PASS. Manual gate berikutnya:
+jalankan operasi live sekali, lalu langsung postflight live. Jangan menjalankan
+operasi ulang jika sudah commit; queue/event idempotency dan scope guard akan
+menolaknya. Next safe step setelah live reconciliation PASS adalah Phase 8D
+Purchase/AP contract, bukan menganggap seluruh Finance selesai.
+
+User mengonfirmasi Phase 8B mapping fix, postflight, dan behavioral seluruhnya
+sukses. Runtime Sale/Return kini terbukti atomic, balanced, dan idempotent dalam
+rollback test. Phase 8C siap untuk manual rollout: migration `20260814130000`
+memperluas queue scope secara terbatas ke `SALE_RETURN` dan menambah preview RPC
+khusus. Approval/process lama tetap digunakan agar lifecycle, optimistic version,
+immutable item/audit, exception handling, dan single-active-queue tidak diduplikasi.
+
+Migration tidak membuat run dan tidak memproses Event. Behavioral melakukan
+preview→approve→process lalu rollback. Static SQL/diff checks PASS. Manual gate:
+jalankan install, postflight, behavioral pada runbook Phase 8C. Controlled live
+operation baru boleh dijalankan setelah user mengirim hasil PASS; response live
+wajib `COMPLETED`, failed/skipped nol sebelum lanjut rekonsiliasi.
+
+Behavioral Phase 8B gagal pada `ACCOUNT_MAPPING_MISSING_OR_AMBIGUOUS`. Line
+mapping menunjukkan kegagalan terjadi di komponen runtime, bukan settlement
+leg: exact preflight sebelumnya hanya mengaudit conditional payment/refund dan
+belum mengaudit `COGS` + `INVENTORY_ASSET` pada kontrak Return (katalog lama
+Return hanya menandai `SALES_RETURN_DISCOUNT` required). Forward-fix
+`20260814120000` memprovision seluruh fungsi GL yang benar-benar dipakai core
+Sale/Return dari tepat satu akun sistem kanonis, dengan fallback audited sejak
+2000. Migration menolak kandidat nol/ganda dan tidak membuat Journal/Event.
+
+Postflight baru memeriksa setiap historical Event × required runtime function,
+termasuk ambiguity dan zero journal effect. Static SQL checks dan diff check
+PASS. Manual gate: migration fix, postflight fix, lalu ulangi behavioral Phase
+8B. Jangan mengulang behavioral sebelum postflight fix seluruhnya PASS/INFO.
+
+User mengonfirmasi exact preflight bersih: conditional mapping `PASS`, nol
+missing/ambiguous function, 13 Sale + satu Return konsisten, dan existing Journal
+nol. Phase 8B sekarang siap untuk manual rollout. Migration `20260814110000`
+menambah immutable settlement account-function snapshot pada payment/refund,
+mempertahankan Stock Opening core lama, dan memasang dispatcher menuju core
+dinamis Sale/Return yang source-verified, atomic, balanced, dimensional, serta
+idempotent. Return inventory debit dipisah per destination Warehouse.
+
+Migration tidak memproses historical HOLD. Postflight membuktikan schema,
+private boundary, legacy Stock Opening compatibility, dan zero historical final
+effect. Behavioral test memproses tepat satu Sale dan satu Return, menguji exact
+replay, lalu `ROLLBACK`. Static delimiter, parentheses, function routing, dan
+`git diff --check` PASS. Manual gate: jalankan tiga file di
+`docs/runbooks/G6_PHASE8B_SALE_RETURN_POSTING_RUNTIME_ROLLOUT.md`; kirim output
+lengkap. Next safe step setelah PASS adalah controlled historical operation,
+bukan menjalankan queue lama yang masih khusus Stock Opening.
+
+Exact Sale/Return preflight user menunjukkan seluruh amount, source, payment,
+refund, revenue, tax, FIFO, ongkir, rounding, dan existing-journal contract
+PASS. Satu-satunya gap adalah 14 settlement leg belum mempunyai resolusi akun:
+`CASH_DRAWER` dan `BANK_RECEIPT`. Required mapping Phase 3 memang tidak mencakup
+conditional payment/refund function.
+
+Migration `20260814100000` siap membuat fallback audited dan effective-dated:
+`CASH_DRAWER` menuju akun sistem `CASH_DRAWER`, sedangkan `BANK_RECEIPT` menuju
+akun sistem `BANK`. Migration menolak kandidat nol/ganda, tidak mencocokkan
+nama/kode bebas, dan memprovision Company aktif berikutnya. Postflight dan
+behavioral test memastikan resolver persis satu, Event tetap `HOLD`, dan jurnal
+Sale/Return tetap nol. Static SQL delimiter, parentheses, dan signature PASS.
+
+Manual gate: jalankan empat langkah di
+`docs/runbooks/G6_PHASE8A_SALE_RETURN_SETTLEMENT_MAPPING_ROLLOUT.md`, lalu kirim
+exact preflight terakhir. Next safe step hanya setelah conditional resolution
+PASS: implement runtime jurnal dinamis Sale/Return. Historical queue belum boleh
+diproses.
+
+User mengirim Phase-8 live output tanpa blocker: seluruh sembilan contract,
+source final, amount snapshot, identity, required mapping, accounting period,
+dan zero existing journal effect PASS. Ringkasan `eventCount` diagnostic
+diperbaiki agar menjumlahkan 30 Event, bukan sembilan grouped rows.
+
+Karena Sale/Return memerlukan conditional account yang tidak dicakup required
+mapping umum, ditambahkan Phase-8A SELECT-only exact preflight. Ia merekonsiliasi
+Sale, payment, pajak, FIFO, ongkir, rounding, surcharge, Return/refund, dan
+settlement account function. Tidak ada data atau runtime yang diubah. Next safe
+step: jalankan Phase-8A dan kirim seluruh output; migration posting hanya dibuat
+setelah `BLOCKER` nol dan conditional mapping tepat satu.
+
+### 2026-08-14 — G6 PHASE 8 OPERATIONAL HOLD PREFLIGHT READY
+
+User membuka penyelesaian Finance sebagai blocker utama sebelum presentasi.
+Audit kode membuktikan canonical engine G6 masih hard-limited ke `STOCK_OPENING`;
+sembilan kontrak operasional tidak aman dibuka hanya dengan menambah rule statis,
+karena Sale/Return mempunyai payment/refund leg dinamis dan source lain membawa
+snapshot akun berbeda. Ditambahkan preflight SELECT-only
+`supabase/diagnostics/g6_phase8_operational_hold_contracts_preflight.sql` dan
+runbook `docs/runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`.
+
+Preflight memeriksa dependency, active queue, exact contract identity, final
+source linkage, amount snapshot, required mapping, split/TEMPO payment shape,
+periode, dan existing journal effect. Tidak ada Event, mapping, journal, queue,
+schema, RPC, grant, atau business data yang diubah. Next safe step: user
+menjalankan seluruh preflight dan mengirim semua row. `BLOCKER` wajib nol;
+`BACKFILL` harus direview sebelum migration posting pertama dibuat.
+
 ### 2026-08-13 — INVENTORY SURAT JALAN SPLIT USER-PASS
 
 Atas instruksi langsung user, Backoffice Invoice dan Surat Jalan dipisahkan.

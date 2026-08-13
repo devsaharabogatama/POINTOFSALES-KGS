@@ -953,6 +953,16 @@ Urutan authoritative berada di `docs/G6_FINANCE_CORRECTIVE_RECOVERY_PLAN.md`:
    fail-closed, 25 HOLD dan FIFO–GL tetap deferred sampai contract berikutnya
    resmi dibuka.
 
+9. **Corrective Phase 8 (database-live; user verified):** exact source contract,
+   account snapshot, atomic posting runtime, controlled queue, rollback behavior,
+   live reconciliation, dan final historical closure telah PASS untuk Sale,
+   Sales Return, Goods Receipt, Supplier Invoice, Supplier Payment, Stock Gain,
+   Expense Disbursement, Cash Deposit, serta Cash Variance. Final inventory:
+   31 POSTED Event/Journals, 92 Journal lines, satu exact-zero no-effect Event,
+   `HOLD=0`, active queue/exception nol, dan FIFO-Inventory GL KGS sama tepat
+   Rp89.485.000. Gate aktif kembali ke PRD-1 authenticated Preview UAT; posting
+   masa depan tetap harus melalui source-verified runtime dan guarded queue.
+
 Finance posting tetap tertutup sampai phase terkait selesai manual rollout,
 postflight, behavior, regression, dan authenticated smoke. Tidak ada phase yang
 `COMPLETE` hanya karena file lokal tersedia.
