@@ -526,7 +526,10 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut()
+  // Backoffice and PWA commonly run side-by-side with the same Supabase user.
+  // A global sign-out revokes every refresh token for that user and makes the
+  // other application appear to log out by itself on its next token refresh.
+  const { error } = await supabase.auth.signOut({ scope: 'local' })
   throwIfError(error)
 }
 
