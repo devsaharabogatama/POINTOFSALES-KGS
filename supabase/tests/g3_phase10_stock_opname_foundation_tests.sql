@@ -182,15 +182,16 @@ BEGIN
         product_id,warehouse_id,qty_change,movement_type,
         reference_table,reference_id,company_id,base_uom_id,
         base_uom_name_snapshot,balance_after_base_qty,actor_id,
-        posted_at,movement_status
+        posted_at,movement_status,source_line_id
     ) VALUES (
         '00000000-0000-0000-0000-000000050041',
         '00000000-0000-0000-0000-000000050031',-1,
-        'SALE'::public.stock_movement_type,'G3_PHASE10_TEST',
+        'SALE'::public.stock_movement_type,'sales_headers',
         '00000000-0000-0000-0000-000000050062',
         '00000000-0000-0000-0000-000000050001',
         '00000000-0000-0000-0000-000000050021','Piece',9,
-        v_actor,clock_timestamp(),'POSTED'
+        v_actor,clock_timestamp(),'POSTED',
+        '00000000-0000-0000-0000-000000050082'
     );
     v_result := public.record_stock_opname_count(
         v_opname,v_version,
@@ -249,15 +250,16 @@ BEGIN
         product_id,warehouse_id,qty_change,movement_type,
         reference_table,reference_id,company_id,base_uom_id,
         base_uom_name_snapshot,balance_after_base_qty,actor_id,
-        posted_at,movement_status
+        posted_at,movement_status,source_line_id
     ) VALUES (
         '00000000-0000-0000-0000-000000050041',
         '00000000-0000-0000-0000-000000050031',-2,
-        'SALE'::public.stock_movement_type,'G3_PHASE10_TEST',
+        'SALE'::public.stock_movement_type,'sales_headers',
         '00000000-0000-0000-0000-000000050063',
         '00000000-0000-0000-0000-000000050001',
         '00000000-0000-0000-0000-000000050021','Piece',7,
-        v_actor,clock_timestamp(),'POSTED'
+        v_actor,clock_timestamp(),'POSTED',
+        '00000000-0000-0000-0000-000000050083'
     );
     v_result := public.post_stock_opname(
         v_opname,v_version,

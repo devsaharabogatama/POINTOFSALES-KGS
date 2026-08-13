@@ -1,4 +1,4 @@
-import { apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
+import { apiError, requireActiveCompany, requireCaller, requirePermissionCapability } from '@/lib/server-auth'
 import { parseIncludeInactive, readJsonObject, throwDatabaseError } from '@/lib/master-data'
 import { parseProductBody, productRpcArgs, throwProductRpcError } from '@/lib/product-master'
 
@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)
+    await requirePermissionCapability(caller, companyId, 'inventory.products', 'VIEW')
     let query = caller.client
       .from('products')
       .select(selectFields)

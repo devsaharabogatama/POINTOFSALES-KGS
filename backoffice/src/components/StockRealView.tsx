@@ -41,42 +41,21 @@ type Warehouse = {
 }
 
 type Balance = {
+  id: string
   product_id: string
   warehouse_id: string
   stock_qty: number | string
   updated_at: string
-}
-
-type Batch = {
-  product_id: string
-  warehouse_id: string
-  qty_remaining: number | string
-  cogs_unit: number | string
-}
-
-type Movement = {
-  id: string
-  product_id: string
-  warehouse_id: string
-  movement_type: string
-  qty_change: number | string
-  reference_table: string
-  reference_id: string
-  created_at: string
-}
-
-type MinimumSetting = {
-  product_id: string
-  warehouse_id: string
+  fifo_value: number | string
   minimum_stock_base_qty: number | string | null
   low_stock_alert_enabled: boolean
+  last_movement_type: string | null
+  last_movement_at: string | null
 }
 
 type OverviewPayload = {
   balances?: Balance[]
   warehouses?: Warehouse[]
-  batches?: Batch[]
-  movements?: Movement[]
   error?: string
 }
 
@@ -116,7 +95,6 @@ export function StockRealView({
 }) {
   const [products, setProducts] = useState<Product[]>([])
   const [overview, setOverview] = useState<OverviewPayload>({})
-  const [settings, setSettings] = useState<MinimumSetting[]>([])
   const [query, setQuery] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [onlyLow, setOnlyLow] = useState(false)
@@ -125,13 +103,10 @@ export function StockRealView({
 
   const load = useCallback(async () => {
     const responses = await Promise.all([
-      fetch('/api/master/products?includeInactive=true', {
+      fetch('/api/master/product-references?includeInactive=true', {
         headers: authHeaders(session),
       }),
       fetch('/api/inventory/stock-overview', {
-        headers: authHeaders(session),
-      }),
-      fetch('/api/master/minimum-stock', {
         headers: authHeaders(session),
       }),
     ])
@@ -145,7 +120,6 @@ export function StockRealView({
     }
     setProducts((payloads[0] as { data?: Product[] }).data ?? [])
     setOverview(payloads[1] as OverviewPayload)
-    setSettings((payloads[2] as { data?: MinimumSetting[] }).data ?? [])
   }, [session])
 
   const refresh = useCallback(async () => {
@@ -185,52 +159,20 @@ export function StockRealView({
     () => new Map((overview.warehouses ?? []).map((warehouse) => [warehouse.id, warehouse])),
     [overview.warehouses],
   )
-  const settingByPair = useMemo(
-    () =>
-      new Map(
-        settings.map((setting) => [
-          `${setting.product_id}:${setting.warehouse_id}`,
-          setting,
-        ]),
-      ),
-    [settings],
-  )
-  const valuationByPair = useMemo(() => {
-    const values = new Map<string, number>()
-    for (const batch of overview.batches ?? []) {
-      const key = `${batch.product_id}:${batch.warehouse_id}`
-      values.set(
-        key,
-        (values.get(key) ?? 0) +
-          Number(batch.qty_remaining) * Number(batch.cogs_unit),
-      )
-    }
-    return values
-  }, [overview.batches])
-  const lastMovementByPair = useMemo(() => {
-    const rows = new Map<string, Movement>()
-    for (const movement of overview.movements ?? []) {
-      const key = `${movement.product_id}:${movement.warehouse_id}`
-      if (!rows.has(key)) rows.set(key, movement)
-    }
-    return rows
-  }, [overview.movements])
-
   const normalized = query.trim().toLocaleLowerCase('id-ID')
   const rows = (overview.balances ?? [])
     .map((balance) => {
       const key = `${balance.product_id}:${balance.warehouse_id}`
       const product = productById.get(balance.product_id)
       const warehouse = warehouseById.get(balance.warehouse_id)
-      const setting = settingByPair.get(key)
       const onHand = Number(balance.stock_qty) || 0
       const minimum =
-        setting?.minimum_stock_base_qty === null ||
-        setting?.minimum_stock_base_qty === undefined
+        balance.minimum_stock_base_qty === null ||
+        balance.minimum_stock_base_qty === undefined
           ? null
-          : Number(setting.minimum_stock_base_qty)
+          : Number(balance.minimum_stock_base_qty)
       const isLow =
-        Boolean(setting?.low_stock_alert_enabled) &&
+        Boolean(balance.low_stock_alert_enabled) &&
         minimum !== null &&
         onHand <= minimum
       return {
@@ -240,8 +182,9 @@ export function StockRealView({
         onHand,
         minimum,
         isLow,
-        valuation: valuationByPair.get(key) ?? 0,
-        lastMovement: lastMovementByPair.get(key),
+        valuation: Number(balance.fifo_value) || 0,
+        lastMovementType: balance.last_movement_type,
+        lastMovementAt: balance.last_movement_at,
       }
     })
     .filter((row) => {
@@ -257,16 +200,14 @@ export function StockRealView({
     })
 
   const lowCount = (overview.balances ?? []).filter((balance) => {
-    const setting = settingByPair.get(`${balance.product_id}:${balance.warehouse_id}`)
     return (
-      setting?.low_stock_alert_enabled &&
-      setting.minimum_stock_base_qty !== null &&
-      Number(balance.stock_qty) <= Number(setting.minimum_stock_base_qty)
+      balance.low_stock_alert_enabled &&
+      balance.minimum_stock_base_qty !== null &&
+      Number(balance.stock_qty) <= Number(balance.minimum_stock_base_qty)
     )
   }).length
-  const totalValuation = (overview.batches ?? []).reduce(
-    (total, batch) =>
-      total + Number(batch.qty_remaining) * Number(batch.cogs_unit),
+  const totalValuation = (overview.balances ?? []).reduce(
+    (total, balance) => total + Number(balance.fifo_value),
     0,
   )
 
@@ -387,10 +328,10 @@ export function StockRealView({
                     </td>
                     <td className="px-5 py-4 font-bold text-slate-700">{rupiah(row.valuation)}</td>
                     <td className="px-5 py-4">
-                      {row.lastMovement
+                      {row.lastMovementType && row.lastMovementAt
                         ? <>
-                            <p className="font-bold text-slate-700">{row.lastMovement.movement_type}</p>
-                            <p className="mt-1 text-xs text-slate-400">{new Date(row.lastMovement.created_at).toLocaleString('id-ID')}</p>
+                            <p className="font-bold text-slate-700">{row.lastMovementType}</p>
+                            <p className="mt-1 text-xs text-slate-400">{new Date(row.lastMovementAt).toLocaleString('id-ID')}</p>
                           </>
                         : <span className="text-slate-400">Belum ada movement</span>}
                     </td>

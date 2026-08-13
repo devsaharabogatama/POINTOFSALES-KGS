@@ -12,8 +12,6 @@ import {
   uuidValue,
 } from '@/lib/master-data'
 
-const selectFields =
-  'id, company_id, code, name, uom_type, allow_decimal, decimal_precision, is_active, master_version, created_at, updated_at'
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -34,15 +32,12 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const currentResult = await caller.client
       .from('uoms')
-      .select('allow_decimal, decimal_precision, master_version')
+      .select('name, uom_type, allow_decimal, decimal_precision, is_active, master_version')
       .eq('company_id', companyId)
       .eq('id', id)
       .maybeSingle()
     if (currentResult.error) throwDatabaseError(currentResult.error)
     if (!currentResult.data) throw new ApiRouteError('MASTER_NOT_FOUND', 404)
-    if (currentResult.data.master_version !== masterVersion) {
-      throw new ApiRouteError('MASTER_VERSION_CONFLICT', 409)
-    }
 
     const allowDecimal = optionalBoolean(body, 'allowDecimal') ?? currentResult.data.allow_decimal
     const precisionInput =
@@ -54,28 +49,25 @@ export async function PATCH(request: Request, context: RouteContext) {
       ? integerValue(precisionInput, 'DECIMAL_PRECISION_INVALID', 1, 6)
       : 0
 
-    const changes: Record<string, string | boolean | number> = {
-      allow_decimal: allowDecimal,
-      decimal_precision: decimalPrecision,
-    }
-    if ('name' in body) changes.name = requiredText(body, 'name', { maxLength: 100 })
-    if ('uomType' in body) {
-      changes.uom_type = enumValue(body.uomType, UOM_TYPES, 'UOM_TYPE_INVALID')
-    }
+    const name = 'name' in body
+      ? requiredText(body, 'name', { maxLength: 100 })
+      : currentResult.data.name
+    const uomType = 'uomType' in body
+      ? enumValue(body.uomType, UOM_TYPES, 'UOM_TYPE_INVALID')
+      : currentResult.data.uom_type
     const isActive = optionalBoolean(body, 'isActive')
-    if (isActive !== undefined) changes.is_active = isActive
 
-    const { data, error } = await caller.client
-      .from('uoms')
-      .update(changes)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .eq('master_version', masterVersion)
-      .select(selectFields)
-      .maybeSingle()
+    const { data, error } = await caller.client.rpc('save_inventory_uom', {
+      p_uom_id: id,
+      p_expected_version: masterVersion,
+      p_name: name,
+      p_uom_type: uomType,
+      p_allow_decimal: allowDecimal,
+      p_decimal_precision: decimalPrecision,
+      p_is_active: isActive ?? currentResult.data.is_active,
+    })
     if (error) throwDatabaseError(error)
-    if (!data) throw new ApiRouteError('MASTER_VERSION_CONFLICT_OR_NOT_FOUND', 409)
-    return Response.json({ data })
+    return Response.json({ data: data?.data })
   } catch (error) {
     return apiError(error)
   }

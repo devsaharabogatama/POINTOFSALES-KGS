@@ -1,4 +1,4 @@
-Okay clearly the fun project yeah project under pen projecting original project yeah plus come on seven yeah by your planting set oh yeah hello hello hello are in same yeah plus nanti process carrying process yeah ninety chat okay clear addition yeah limapi then the terminal like this pain
+-- G4 phase 26 behavioral test: canonical Sales Return foundation.
 -- SAFETY: all Return/stock/refund/event fixtures are rolled back.
 
 BEGIN;
@@ -112,7 +112,10 @@ BEGIN
         WHERE other.company_id=v_company AND other.sales_id=v_sale.id
           AND other.id<>v_detail.id
     ) THEN
-        v_refund:=v_sale.grand_total_after_rounding;
+        -- The compatibility RPC defaults to Product-only refund. Delivery fee
+        -- is an explicit SLD-R4 decision and must not enter this legacy test.
+        v_refund:=v_sale.grand_total_after_rounding
+            -COALESCE(v_sale.delivery_fee_amount,0);
     END IF;
 
     -- Draft cancellation has no stock/event effect.

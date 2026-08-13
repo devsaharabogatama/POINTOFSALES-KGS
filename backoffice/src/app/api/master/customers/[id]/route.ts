@@ -11,12 +11,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     const id = uuidValue((await context.params).id)
     const body = await readJsonObject(request)
     if (!('parentCustomerId' in body) || !('defaultPricelistId' in body)) {
-      const { data: current, error: currentError } = await caller.client
-        .from('customers')
-        .select('parent_customer_id,default_pricelist_id')
-        .eq('id', id)
-        .single()
+      const { data: workspace, error: currentError } = await caller.client
+        .rpc('get_contacts_customers', { p_include_inactive: true })
       if (currentError) throwCustomerRpcError(currentError)
+      const current = (workspace as { data?: Array<{
+        id: string; parent_customer_id: string | null; default_pricelist_id: string | null
+      }> } | null)?.data?.find((row) => row.id === id)
+      if (!current) throwCustomerRpcError({ message: 'CUSTOMER_NOT_FOUND' })
       if (!('parentCustomerId' in body)) body.parentCustomerId = current.parent_customer_id
       if (!('defaultPricelistId' in body)) body.defaultPricelistId = current.default_pricelist_id
     }

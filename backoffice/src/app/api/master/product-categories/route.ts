@@ -39,19 +39,19 @@ export async function POST(request: Request) {
     const categoryName = requiredText(body, 'categoryName', { maxLength: 150 })
     const isActive = optionalBoolean(body, 'isActive') ?? true
 
-    const { data, error } = await caller.client
-      .from('product_categories')
-      .insert({
-        company_id: companyId,
-        category_code: null,
-        category_name: categoryName,
-        is_active: isActive,
-      })
-      .select(selectFields)
-      .single()
+    const { data: result, error } = await caller.client.rpc(
+      'save_inventory_product_category',
+      {
+        p_category_id: null,
+        p_expected_version: null,
+        p_category_name: categoryName,
+        p_is_active: isActive,
+      },
+    )
 
     if (error) throwDatabaseError(error)
-    return Response.json({ data }, { status: 201 })
+    const data = (result as { data?: unknown } | null)?.data ?? result
+    return Response.json({ companyId, data }, { status: 201 })
   } catch (error) {
     return apiError(error)
   }

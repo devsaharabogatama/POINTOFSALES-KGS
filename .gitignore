@@ -14,6 +14,47 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
+!**/.env.example
+
+# Local platform/tool state
+/.supabase/
+/.codex/
+/.agents/
+/.vercel/
+
+# Test, coverage, and browser artifacts
+coverage/
+test-results/
+playwright-report/
+blob-report/
+screenshots/
+artifacts/
+*.lcov
+
+# Runtime logs and temporary output
+logs/
+*.log
+*.tmp
+*.temp
+*.tsbuildinfo
+
+# Database dumps and local scratch databases. Canonical SQL under
+# supabase/migrations, diagnostics, tests, and operations remains tracked.
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# User-generated exports belong outside source control. Fixed templates under
+# application source/public folders remain trackable.
+/exports/
+/tmp/
+/temp/
 
 # IDE and OS files
 .DS_Store

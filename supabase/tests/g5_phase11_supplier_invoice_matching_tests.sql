@@ -148,8 +148,9 @@ BEGIN
     WHERE provisional.company_id=v_company
       AND provisional.receipt_id=v_receipt;
 
-    -- Price outside zero default tolerance is persisted as EXCEPTION/HOLD,
-    -- without AP Final or any stock effect.
+    -- Without an explicit policy, value variance is accepted as
+    -- WITHIN_TOLERANCE. Quantity still has to allocate the exact eligible
+    -- Receipt base quantity and the variance remains snapshotted.
     v_result := public.save_supplier_invoice_draft(
         NULL,NULL,v_supplier,'VENDOR-G93-EX',current_date,current_date+30,
         'EXCLUSIVE','Expected variance',NULL,
@@ -165,19 +166,12 @@ BEGIN
         ))
     );
     v_exception_invoice := (v_result->>'documentId')::UUID;
-    IF v_result->>'matchingStatus'<>'EXCEPTION' THEN
-        RAISE EXCEPTION 'TEST_FAILED: variance not classified EXCEPTION: %',
+    IF v_result->>'matchingStatus'<>'WITHIN_TOLERANCE' THEN
+        RAISE EXCEPTION 'TEST_FAILED: optional tolerance not applied: %',
             v_result;
     END IF;
-    v_result := public.validate_supplier_invoice(
-        v_exception_invoice,1,
-        '00000000-0000-0000-0000-000000093113'
-    );
-    IF v_result->>'status'<>'HOLD' THEN
-        RAISE EXCEPTION 'TEST_FAILED: exception invoice not held: %',v_result;
-    END IF;
     PERFORM public.cancel_supplier_invoice(
-        v_exception_invoice,2,'Supplier invoice value will be corrected'
+        v_exception_invoice,1,'Optional tolerance fixture cleanup'
     );
 
     -- Exact invoice consumes the Receipt residual and creates AP Final HOLD.

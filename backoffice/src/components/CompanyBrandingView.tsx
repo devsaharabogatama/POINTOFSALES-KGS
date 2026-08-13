@@ -1,0 +1,265 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { Building2, ImageIcon, RefreshCcw, ShieldCheck, Trash2, Upload, X } from 'lucide-react'
+import { useEscapeClose } from '@/lib/use-escape-close'
+
+type BrandingProfile = {
+  companyId: string
+  hasLogo: boolean
+  logoObjectPath: string | null
+  logoPublicUrl: string | null
+  logoMimeType: string | null
+  logoSizeBytes: number | null
+  logoChecksumSha256: string | null
+  logoVersion: number
+  masterVersion: number | null
+  uploadedAt: string | null
+  updatedAt: string | null
+}
+
+type Payload = {
+  data?: BrandingProfile
+  cleanupPending?: boolean
+  error?: string
+}
+
+const MAX_FILE_BYTES = 2 * 1024 * 1024
+
+function authHeaders(session: Session) {
+  return { Authorization: `Bearer ${session.access_token}` }
+}
+
+function friendlyError(code?: string) {
+  const messages: Record<string, string> = {
+    COMPANY_BRANDING_MANAGER_REQUIRED: 'Hanya Owner atau Admin Company yang dapat mengubah logo.',
+    COMPANY_LOGO_FILE_REQUIRED: 'Pilih file logo terlebih dahulu.',
+    COMPANY_LOGO_SIZE_INVALID: 'Ukuran logo harus lebih dari 0 dan maksimal 2 MB.',
+    COMPANY_LOGO_REQUEST_TOO_LARGE: 'Ukuran request logo melebihi batas 2 MB.',
+    COMPANY_LOGO_MAGIC_BYTES_INVALID: 'Isi file bukan PNG, JPEG, atau WebP yang valid.',
+    COMPANY_LOGO_EXTENSION_MISMATCH: 'Extension file tidak cocok dengan isi gambarnya.',
+    COMPANY_LOGO_MIME_MISMATCH: 'Tipe file browser tidak cocok dengan isi gambarnya.',
+    COMPANY_LOGO_OBJECT_ALREADY_EXISTS: 'Versi object logo sudah ada. Muat ulang lalu coba kembali.',
+    COMPANY_LOGO_UPLOAD_FAILED: 'Upload logo ke penyimpanan gagal.',
+    COMPANY_BRANDING_OPERATION_FAILED: 'Operasi branding Company gagal.',
+    MASTER_VERSION_CONFLICT: 'Logo berubah di sesi lain. Muat ulang sebelum mencoba kembali.',
+    ACTIVE_COMPANY_NOT_FOUND: 'Pilih Company aktif terlebih dahulu.',
+    ACTIVE_COMPANY_BRANDING_MISMATCH: 'Branding tidak cocok dengan Company aktif.',
+  }
+  return messages[code ?? ''] ?? code ?? 'Operasi logo Company gagal.'
+}
+
+function formatBytes(value: number | null) {
+  if (!value) return '—'
+  return `${(value / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 })} KB`
+}
+
+export function CompanyBrandingView({
+  session,
+  companyId,
+  companyName,
+  canManage,
+  notify,
+}: {
+  session: Session
+  companyId: string
+  companyName: string
+  canManage: boolean
+  notify: (message: string | null) => void
+}) {
+  const [branding, setBranding] = useState<BrandingProfile | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [showRemove, setShowRemove] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const previewUrl = useMemo(
+    () => selectedFile ? URL.createObjectURL(selectedFile) : null,
+    [selectedFile],
+  )
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch('/api/platform/company-branding', {
+        headers: authHeaders(session),
+        cache: 'no-store',
+      })
+      const payload = await response.json() as Payload
+      if (!response.ok) throw new Error(friendlyError(payload.error))
+      if (!payload.data || payload.data.companyId !== companyId) {
+        throw new Error('Branding Company aktif tidak dapat diverifikasi.')
+      }
+      setBranding(payload.data)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal memuat branding Company.')
+    } finally {
+      setLoading(false)
+    }
+  }, [companyId, session])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- branding follows active Company context
+    void refresh()
+  }, [refresh])
+
+  function selectFile(file: File | undefined) {
+    setError('')
+    if (!file) return
+    if (file.size < 1 || file.size > MAX_FILE_BYTES) {
+      setSelectedFile(null)
+      setError('Ukuran logo harus lebih dari 0 dan maksimal 2 MB.')
+      return
+    }
+    setSelectedFile(file)
+  }
+
+  async function upload() {
+    if (!selectedFile || !canManage) return
+    setSaving(true)
+    setError('')
+    try {
+      const body = new FormData()
+      body.set('file', selectedFile)
+      if (branding?.masterVersion !== null && branding?.masterVersion !== undefined) {
+        body.set('expectedMasterVersion', String(branding.masterVersion))
+      }
+      const response = await fetch('/api/platform/company-branding', {
+        method: 'POST',
+        headers: authHeaders(session),
+        body,
+      })
+      const payload = await response.json() as Payload
+      if (!response.ok) throw new Error(friendlyError(payload.error))
+      if (!payload.data || payload.data.companyId !== companyId) {
+        throw new Error('Hasil upload tidak cocok dengan Company aktif.')
+      }
+      setBranding(payload.data)
+      setSelectedFile(null)
+      if (inputRef.current) inputRef.current.value = ''
+      notify(payload.cleanupPending
+        ? 'Logo aktif berhasil diganti. Pembersihan file lama akan dicoba kembali.'
+        : 'Logo perusahaan berhasil disimpan.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal mengunggah logo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const visibleLogo = previewUrl ?? branding?.logoPublicUrl ?? null
+
+  return <>
+    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-600">Identitas Company</p>
+        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">Logo Perusahaan</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          Logo opsional untuk dokumen resmi <b>{companyName}</b>. Company mengikuti workspace aktif.
+        </p>
+      </div>
+      <button onClick={() => void refresh()} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 disabled:opacity-50">
+        <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Muat ulang
+      </button>
+    </div>
+
+    {error && <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+        <div className="flex items-start gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ImageIcon className="h-5 w-5" /></div>
+          <div><h2 className="text-lg font-black text-slate-950">File logo</h2><p className="mt-1 text-sm leading-6 text-slate-500">PNG, JPEG, atau WebP. Maksimal 2 MB. Isi file diperiksa server, bukan hanya nama file.</p></div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5">
+          <input ref={inputRef} type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" disabled={!canManage || saving} onChange={(event) => selectFile(event.target.files?.[0])} className="sr-only" id="company-logo-file" />
+          <label htmlFor="company-logo-file" className={`flex min-h-36 flex-col items-center justify-center rounded-xl text-center ${canManage ? 'cursor-pointer hover:bg-white' : 'cursor-not-allowed opacity-60'}`}>
+            <Upload className="h-7 w-7 text-slate-400" />
+            <span className="mt-3 text-sm font-bold text-slate-800">{selectedFile ? selectedFile.name : 'Pilih file logo'}</span>
+            <span className="mt-1 text-xs text-slate-500">{selectedFile ? formatBytes(selectedFile.size) : 'Klik area ini untuk memilih gambar'}</span>
+          </label>
+        </div>
+
+        {!canManage && <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />Logo hanya dapat diubah Owner atau Admin Company.</div>}
+
+        {canManage && <div className="mt-6 flex flex-wrap justify-end gap-3">
+          {branding?.hasLogo && <button onClick={() => setShowRemove(true)} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-bold text-rose-600 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Hapus logo</button>}
+          <button onClick={() => void upload()} disabled={!selectedFile || saving} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Upload className="h-4 w-4" /> {saving ? 'Mengunggah...' : branding?.hasLogo ? 'Ganti logo' : 'Simpan logo'}</button>
+        </div>}
+      </section>
+
+      <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-400">Pratinjau</p>
+        <div className="mt-4 grid aspect-[4/3] place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-6">
+          {visibleLogo ? <div role="img" aria-label={`Logo ${companyName}`} className="h-full w-full bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(visibleLogo)})` }} /> : <div className="text-center text-slate-400"><Building2 className="mx-auto h-12 w-12" /><p className="mt-3 text-sm font-bold">Tanpa logo</p><p className="mt-1 text-xs">Dokumen memakai fallback nama Company.</p></div>}
+        </div>
+        <dl className="mt-5 space-y-3 text-sm">
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Status</dt><dd className="font-bold text-slate-800">{branding?.hasLogo ? 'Logo aktif' : 'Belum ada logo'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Format</dt><dd className="font-bold text-slate-800">{branding?.logoMimeType?.replace('image/', '').toUpperCase() ?? '—'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Ukuran</dt><dd className="font-bold text-slate-800">{formatBytes(branding?.logoSizeBytes ?? null)}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Versi logo</dt><dd className="font-bold text-slate-800">{branding?.logoVersion ?? 0}</dd></div>
+        </dl>
+      </aside>
+    </div>
+
+    {showRemove && branding?.masterVersion && <RemoveLogoModal
+      session={session}
+      companyId={companyId}
+      companyName={companyName}
+      masterVersion={branding.masterVersion}
+      close={() => setShowRemove(false)}
+      complete={(data, cleanupPending) => {
+        setBranding(data)
+        setShowRemove(false)
+        notify(cleanupPending
+          ? 'Logo dinonaktifkan. Pembersihan file lama akan dicoba kembali.'
+          : 'Logo perusahaan berhasil dihapus.')
+      }}
+    />}
+  </>
+}
+
+function RemoveLogoModal({ session, companyId, companyName, masterVersion, close, complete }: {
+  session: Session
+  companyId: string
+  companyName: string
+  masterVersion: number
+  close: () => void
+  complete: (data: BrandingProfile, cleanupPending: boolean) => void
+}) {
+  useEscapeClose(close)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function remove() {
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/platform/company-branding', {
+        method: 'DELETE',
+        headers: { ...authHeaders(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedMasterVersion: masterVersion }),
+      })
+      const payload = await response.json() as Payload
+      if (!response.ok) throw new Error(friendlyError(payload.error))
+      if (!payload.data || payload.data.companyId !== companyId) {
+        throw new Error('Hasil penghapusan tidak cocok dengan Company aktif.')
+      }
+      complete(payload.data, Boolean(payload.cleanupPending))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal menghapus logo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"><div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl"><div className="flex items-start justify-between border-b border-slate-100 p-6"><div><p className="text-xs font-bold uppercase tracking-wider text-rose-600">Hapus branding</p><h2 className="mt-2 text-xl font-black text-slate-950">Hapus logo perusahaan?</h2></div><button onClick={close} className="rounded-xl border border-slate-200 p-2 text-slate-500" aria-label="Tutup"><X className="h-5 w-5" /></button></div><div className="space-y-5 p-6"><p className="text-sm leading-6 text-slate-600">Logo aktif <b>{companyName}</b> akan dilepas. Dokumen berikutnya memakai fallback nama Company; histori dokumen final tidak diubah.</p>{error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}<div className="flex justify-end gap-3"><button onClick={close} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">Batal</button><button onClick={() => void remove()} disabled={saving} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Menghapus...' : 'Ya, hapus logo'}</button></div></div></div></div>
+}

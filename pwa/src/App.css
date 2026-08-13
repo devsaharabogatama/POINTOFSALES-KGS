@@ -1205,6 +1205,209 @@ button {
   font-weight: 850;
 }
 
+.pos-fulfillment-panel {
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 14px;
+  color: #0f172a;
+}
+
+.pos-delivery-confirmation {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #111c2e;
+  padding: 13px;
+}
+
+.pos-delivery-toggle,
+.pos-invoice-fee-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+}
+
+.pos-delivery-toggle input,
+.pos-invoice-fee-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: #059669;
+}
+
+.pos-delivery-toggle strong,
+.pos-delivery-toggle small,
+.pos-invoice-fee-toggle strong,
+.pos-invoice-fee-toggle small,
+.pos-delivery-edit-button strong,
+.pos-delivery-edit-button small {
+  display: block;
+}
+
+.pos-delivery-toggle strong {
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.pos-delivery-toggle small {
+  margin-top: 2px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pos-delivery-edit-button {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #5eead4;
+  border-radius: 11px;
+  background: #ecfdf5;
+  padding: 9px 11px;
+  color: #065f46;
+  text-align: left;
+}
+
+.pos-delivery-edit-button svg {
+  flex: 0 0 auto;
+}
+
+.pos-delivery-edit-button small {
+  margin-top: 2px;
+  color: #477169;
+  font-size: 11px;
+}
+
+.pos-delivery-dialog {
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+  border: 1px solid #d7dee7;
+  border-radius: 18px;
+  padding: 22px;
+}
+
+.pos-delivery-dialog .pos-delivery-fields {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pos-invoice-fee-toggle {
+  margin-top: 16px;
+  border: 1px solid #dbe4ea;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 13px;
+}
+
+.pos-invoice-fee-toggle strong {
+  color: #17202a;
+  font-size: 13px;
+}
+
+.pos-invoice-fee-toggle small {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pos-fulfillment-heading {
+  display: grid;
+  gap: 12px;
+}
+
+.pos-fulfillment-heading strong,
+.pos-fulfillment-heading small {
+  display: block;
+}
+
+.pos-fulfillment-heading small {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.pos-fulfillment-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pos-fulfillment-options button {
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-weight: 800;
+}
+
+.pos-fulfillment-options button.is-selected {
+  border-color: #0f766e;
+  background: #ccfbf1;
+  color: #115e59;
+  box-shadow: inset 0 0 0 1px #0f766e;
+}
+
+.pos-delivery-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.pos-delivery-fields label,
+.pos-delivery-fields span {
+  display: block;
+}
+
+.pos-delivery-fields label {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pos-delivery-fields .is-wide {
+  grid-column: 1 / -1;
+}
+
+.pos-delivery-fields input,
+.pos-delivery-fields textarea {
+  width: 100%;
+  margin-top: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 11px;
+  color: #0f172a;
+  font-size: 14px;
+  outline: none;
+}
+
+.pos-delivery-fields input:focus,
+.pos-delivery-fields textarea:focus {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgb(13 148 136 / 12%);
+}
+
+@media (max-width: 680px) {
+  .pos-delivery-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-delivery-fields .is-wide {
+    grid-column: auto;
+  }
+}
+
 .pos-balance-tender {
   align-items: flex-start;
   flex-direction: column;

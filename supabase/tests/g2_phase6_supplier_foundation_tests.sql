@@ -78,13 +78,13 @@ BEGIN
         '00000000-0000-0000-0000-000000013001','G2_PHASE6_TEST'
     );
 
-    v_result := public.save_supplier(
-        NULL,NULL,'SUP-A','Supplier A','Contact','0800','Address','NPWP',
+    v_result := public.save_contacts_supplier(
+        NULL,NULL,'Supplier A','Contact','0800','Address','NPWP',
         'NET 30','Bank A','123456','Supplier A',TRUE
     );
     v_supplier_a := (v_result->>'supplierId')::UUID;
-    v_result := public.save_supplier(
-        NULL,NULL,'SUP-A2','Supplier A2',NULL,NULL,NULL,NULL,NULL,
+    v_result := public.save_contacts_supplier(
+        NULL,NULL,'Supplier A2',NULL,NULL,NULL,NULL,NULL,
         NULL,NULL,NULL,TRUE
     );
     v_supplier_a2 := (v_result->>'supplierId')::UUID;
@@ -95,8 +95,8 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: Supplier create audit missing';
     END IF;
 
-    v_result := public.save_supplier(
-        v_supplier_a,1,'SUP-A','Supplier A Updated','Contact','0800',
+    v_result := public.save_contacts_supplier(
+        v_supplier_a,1,'Supplier A Updated','Contact','0800',
         'Address','NPWP','NET 30','Bank A','654321','Supplier A',TRUE
     );
     IF (v_result->>'masterVersion')::BIGINT <> 2 THEN
@@ -105,8 +105,8 @@ BEGIN
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_supplier(
-            v_supplier_a,1,'SUP-A','Stale Supplier',NULL,NULL,NULL,NULL,NULL,
+        PERFORM public.save_contacts_supplier(
+            v_supplier_a,1,'Stale Supplier',NULL,NULL,NULL,NULL,NULL,
             NULL,NULL,NULL,TRUE
         );
     EXCEPTION WHEN OTHERS THEN
@@ -117,7 +117,7 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: stale Supplier update accepted';
     END IF;
 
-    v_result := public.save_product_supplier(
+    v_result := public.save_contacts_product_supplier(
         NULL,NULL,'00000000-0000-0000-0000-000000013031',v_supplier_a,
         '00000000-0000-0000-0000-000000013022','VENDOR-KEBAB',500,
         TRUE,TRUE
@@ -131,7 +131,7 @@ BEGIN
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_product_supplier(
+        PERFORM public.save_contacts_product_supplier(
             NULL,NULL,'00000000-0000-0000-0000-000000013031',
             v_supplier_b,'00000000-0000-0000-0000-000000013022',
             NULL,500,FALSE,TRUE
@@ -146,7 +146,7 @@ BEGIN
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_product_supplier(
+        PERFORM public.save_contacts_product_supplier(
             NULL,NULL,'00000000-0000-0000-0000-000000013031',
             v_supplier_a2,'00000000-0000-0000-0000-000000013022',
             NULL,510,TRUE,TRUE
@@ -164,9 +164,14 @@ BEGIN
        OR has_table_privilege(
             'authenticated','public.product_suppliers','INSERT,UPDATE,DELETE'
        )
-       OR NOT has_function_privilege(
+       OR has_function_privilege(
             'authenticated',
             'public.save_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,text,boolean)',
+            'EXECUTE'
+       )
+       OR NOT has_function_privilege(
+            'authenticated',
+            'public.save_contacts_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,boolean)',
             'EXECUTE'
        ) THEN
         RAISE EXCEPTION 'TEST_FAILED: Supplier privilege boundary invalid';

@@ -15,6 +15,7 @@ DECLARE
     v_customer_category_id UUID;
     v_pricelist_id UUID;
     v_payment_method_id UUID;
+    v_payment_sequence_before BIGINT;
     v_transaction_category_id UUID;
     v_result JSONB;
     v_code TEXT;
@@ -134,6 +135,15 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: Pricelist code %',v_code;
     END IF;
 
+    -- Later Customer Balance provisioning legitimately consumes the first
+    -- PAYMENT_METHOD sequence for its system-owned tender. Assert the next
+    -- tenant counter value instead of the obsolete hard-coded PAY-000001.
+    SELECT COALESCE(last_value,0) INTO v_payment_sequence_before
+    FROM private.master_code_counters
+    WHERE company_id='00000000-0000-0000-0000-000000014001'
+      AND entity_type='PAYMENT_METHOD';
+    v_payment_sequence_before:=COALESCE(v_payment_sequence_before,0);
+
     v_result := public.save_payment_method(
         NULL,NULL,'G14 Petty Cash','CASH','CASH_DRAWER',FALSE,TRUE,
         ARRAY[]::UUID[],'OPTIONAL',FALSE,NULL,NULL,NULL,NULL,NULL,NULL,
@@ -142,7 +152,9 @@ BEGIN
     v_payment_method_id := (v_result->>'paymentMethodId')::UUID;
     SELECT payment_method_code INTO v_code FROM public.payment_methods
     WHERE id=v_payment_method_id;
-    IF v_code<>'PAY-000001' THEN
+    IF v_code<>(
+        'PAY-'||lpad((v_payment_sequence_before+1)::TEXT,6,'0')
+    ) THEN
         RAISE EXCEPTION 'TEST_FAILED: Payment Method code %',v_code;
     END IF;
 
@@ -220,19 +232,42 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: Company counter leaked, got %',v_code;
     END IF;
 
+    -- The allocator remains private. ACP-5B intentionally quarantines the
+    -- legacy Supplier RPC and exposes the permission-guarded Contacts wrapper
+    -- to authenticated clients instead.
     IF has_function_privilege(
         'authenticated',
         'private.allocate_master_code(uuid,text)','EXECUTE'
-    ) OR has_function_privilege(
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: authenticated can execute private code allocator';
+    END IF;
+
+    IF has_function_privilege(
         'anon',
-        'public.save_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,boolean)',
+        'public.save_contacts_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,boolean)',
         'EXECUTE'
-    ) OR NOT has_function_privilege(
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: anon can execute guarded Supplier wrapper';
+    END IF;
+
+    IF has_function_privilege(
         'authenticated',
         'public.save_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,boolean)',
         'EXECUTE'
     ) THEN
-        RAISE EXCEPTION 'TEST_FAILED: automatic-code privilege boundary invalid';
+        RAISE EXCEPTION
+            'TEST_FAILED: authenticated can execute legacy Supplier RPC';
+    END IF;
+
+    IF NOT has_function_privilege(
+        'authenticated',
+        'public.save_contacts_supplier(uuid,bigint,text,text,text,text,text,text,text,text,text,boolean)',
+        'EXECUTE'
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: authenticated cannot execute guarded Supplier wrapper';
     END IF;
 
     RAISE NOTICE

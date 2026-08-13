@@ -18,7 +18,9 @@ type Customer = {
 }
 type PricelistOption = { id: string; name: string; scope: 'GLOBAL' | 'CUSTOMER'; is_active: boolean }
 type Editor = { kind: 'customer'; record?: Customer } | { kind: 'category'; record?: Category }
-type ApiList<T> = { data?: T[]; error?: string }
+type CustomerWorkspace = {
+  data?: Customer[]; categories?: Category[]; pricelists?: PricelistOption[]; error?: string
+}
 
 const authHeaders = (session: Session) => ({ Authorization: `Bearer ${session.access_token}` })
 const rupiah = (value: number | string) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0)
@@ -42,6 +44,7 @@ function friendlyError(code?: string) {
     ACTIVE_CUSTOMER_PRICELIST_NOT_FOUND: 'Pricelist khusus tidak aktif atau bukan milik company aktif.',
     SYSTEM_CUSTOMER_CANNOT_HAVE_PRICELIST: 'Pelanggan Umum wajib memakai Harga Umum Global.',
     FORBIDDEN: 'Role Anda tidak diizinkan mengakses Customer.',
+    CUSTOM_PERMISSION_DENIED: 'Akses Customer dibatasi oleh pengaturan user pada Company aktif.',
   }
   return messages[code ?? ''] ?? code ?? 'Operasi Customer gagal.'
 }
@@ -60,25 +63,22 @@ export function CustomerMasterView({ session, companyId, canManageIdentity, canM
   useEscapeClose(() => setEditor(null))
 
   const fetchData = useCallback(async () => {
-    const responses = await Promise.all([
-      fetch('/api/master/customers?includeInactive=true', { headers: authHeaders(session) }),
-      fetch('/api/master/customer-categories?includeInactive=true', { headers: authHeaders(session) }),
-      fetch('/api/master/pricelists?includeInactive=true', { headers: authHeaders(session) }),
-    ])
-    const payloads = await Promise.all(responses.map((response) => response.json())) as [ApiList<Customer>, ApiList<Category>, ApiList<PricelistOption>]
-    const failed = responses.findIndex((response) => !response.ok)
-    if (failed >= 0) throw new Error(friendlyError(payloads[failed].error))
-    return payloads
+    const response = await fetch('/api/master/customers?includeInactive=true', {
+      headers: authHeaders(session),
+    })
+    const payload = await response.json() as CustomerWorkspace
+    if (!response.ok) throw new Error(friendlyError(payload.error))
+    return payload
   }, [session])
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('')
-    try { const data = await fetchData(); setCustomers(data[0].data ?? []); setCategories(data[1].data ?? []); setPricelists(data[2].data ?? []) }
+    try { const data = await fetchData(); setCustomers(data.data ?? []); setCategories(data.categories ?? []); setPricelists(data.pricelists ?? []) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal memuat Customer.') }
     finally { setLoading(false) }
   }, [fetchData])
 
-  useEffect(() => { let cancelled = false; fetchData().then((data) => { if (!cancelled) { setCustomers(data[0].data ?? []); setCategories(data[1].data ?? []); setPricelists(data[2].data ?? []) } }).catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Gagal memuat Customer.') }).finally(() => { if (!cancelled) setLoading(false) }); return () => { cancelled = true } }, [companyId, fetchData])
+  useEffect(() => { let cancelled = false; fetchData().then((data) => { if (!cancelled) { setCustomers(data.data ?? []); setCategories(data.categories ?? []); setPricelists(data.pricelists ?? []) } }).catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Gagal memuat Customer.') }).finally(() => { if (!cancelled) setLoading(false) }); return () => { cancelled = true } }, [companyId, fetchData])
 
   const normalized = query.trim().toLowerCase()
   const filteredCustomers = useMemo(() => customers.filter((item) => !normalized || [item.code, item.name, item.phone ?? '', item.email ?? '', item.category?.category_name ?? ''].some((value) => value.toLowerCase().includes(normalized))), [customers, normalized])

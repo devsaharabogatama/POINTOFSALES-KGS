@@ -320,8 +320,23 @@ export function buildOfflineSalePayload(input: {
   payments: OfflinePaymentInput[]
   snapshot: OfflineCatalogSnapshot
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
+  fulfillmentMode: 'PICKUP' | 'DELIVERY'
+  deliveryRecipientName: string
+  deliveryRecipientPhone: string
+  deliveryAddress: string
+  deliveryScheduledAt: string | null
+  deliveryNotes: string
+  deliveryFeeAmount: number
+  deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
 }): OfflineSalePayload {
   const { preview, snapshot } = input
+  const deliveryFeeAmount = input.fulfillmentMode === 'DELIVERY'
+    ? round4(input.deliveryFeeAmount)
+    : 0
+  if (!Number.isFinite(deliveryFeeAmount) || deliveryFeeAmount < 0) {
+    throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
+  }
+  const effectiveGrandTotal = round4(preview.grandTotal + deliveryFeeAmount)
   if (input.payments.length === 0) throw new Error('PAYMENT_LEGS_REQUIRED')
   const usedMethods = new Set<string>()
   const payments = input.payments.map((payment) => {
@@ -333,7 +348,7 @@ export function buildOfflineSalePayload(input: {
     usedMethods.add(method.id)
     const amount =
       input.payments.length === 1 && payment.amount.trim() === ''
-        ? preview.grandTotal
+        ? effectiveGrandTotal
         : Number(payment.amount)
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('PAYMENT_LEG_AMOUNT_REQUIRED')
@@ -358,7 +373,7 @@ export function buildOfflineSalePayload(input: {
   const paymentTotal = round4(
     payments.reduce((total, payment) => total + payment.amount, 0),
   )
-  if (Math.abs(paymentTotal - preview.grandTotal) > 0.0001) {
+  if (Math.abs(paymentTotal - effectiveGrandTotal) > 0.0001) {
     throw new Error('PAYMENT_LEG_TOTAL_MISMATCH')
   }
   const snapshotPrices = new Map(
@@ -370,6 +385,18 @@ export function buildOfflineSalePayload(input: {
     customerId: preview.customerId,
     selectedPricelistId: preview.selectedPricelistId,
     pricingSelectionSource: preview.pricingSelectionSource,
+    fulfillmentMode: input.fulfillmentMode,
+    deliveryFeeAmount,
+    deliveryFeeInvoiceDisplayMode: input.deliveryFeeInvoiceDisplayMode,
+    ...(input.fulfillmentMode === 'DELIVERY'
+      ? {
+          deliveryRecipientName: input.deliveryRecipientName.trim(),
+          deliveryRecipientPhone: input.deliveryRecipientPhone.trim(),
+          deliveryAddress: input.deliveryAddress.trim(),
+          deliveryScheduledAt: input.deliveryScheduledAt,
+          deliveryNotes: input.deliveryNotes.trim() || null,
+        }
+      : {}),
     isTempo: false,
     globalDiscount: preview.globalDiscount,
     roundingDirection: input.roundingDirection,

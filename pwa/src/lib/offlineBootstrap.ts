@@ -72,6 +72,8 @@ function catalogFromSnapshot(snapshot: OfflineCatalogSnapshot): CatalogData {
     customers: snapshot.customers.map((item) => ({
       id: item.id,
       name: item.name,
+      phone: '',
+      address: '',
       isWalkIn: item.isWalkIn,
       defaultPricelistId: item.defaultPricelistId ?? null,
       currentBalance: 0,

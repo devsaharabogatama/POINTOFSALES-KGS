@@ -87,6 +87,52 @@ export async function requireActiveCompany(caller: CallerContext): Promise<strin
   return data.company_id
 }
 
+export type PermissionResolution = {
+  enforced: boolean
+  effectiveCapabilities: string[]
+  enforcementStatus: string
+  restrictionPreset: string
+  overrideVersion: number | null
+}
+
+export async function requirePermissionCapability(
+  caller: CallerContext,
+  companyId: string,
+  permissionKey: string,
+  capability: string,
+): Promise<PermissionResolution> {
+  const { data, error } = await caller.client.rpc('resolve_user_permission', {
+    p_company_id: companyId,
+    p_target_user_id: caller.user.id,
+    p_permission_key: permissionKey,
+  })
+  if (error) throw new ApiRouteError(error.message || 'PERMISSION_RESOLUTION_FAILED', 403)
+  const resolution = data as PermissionResolution
+  if (resolution.enforced && !resolution.effectiveCapabilities.includes(capability)) {
+    throw new ApiRouteError('CUSTOM_PERMISSION_DENIED', 403)
+  }
+  return resolution
+}
+
+export async function requireAnyPermissionCapability(
+  caller: CallerContext,
+  companyId: string,
+  permissionKeys: readonly string[],
+  capability: string,
+): Promise<PermissionResolution> {
+  for (const permissionKey of permissionKeys) {
+    const { data, error } = await caller.client.rpc('resolve_user_permission', {
+      p_company_id: companyId,
+      p_target_user_id: caller.user.id,
+      p_permission_key: permissionKey,
+    })
+    if (error) continue
+    const resolution = data as PermissionResolution
+    if (resolution.effectiveCapabilities.includes(capability)) return resolution
+  }
+  throw new ApiRouteError('CUSTOM_PERMISSION_DENIED', 403)
+}
+
 export function apiError(error: unknown) {
   const message =
     error instanceof Error
@@ -104,7 +150,8 @@ export function apiError(error: unknown) {
         ? 401
         : message.endsWith('_REQUIRED') ||
             message === 'FORBIDDEN' ||
-            message === 'COMPANY_ACCESS_DENIED'
+            message === 'COMPANY_ACCESS_DENIED' ||
+            message === 'CUSTOM_PERMISSION_DENIED'
           ? 403
           : message === 'ACTIVE_COMPANY_NOT_FOUND' ||
               message === 'INVALID_CONTEXT_SOURCE'

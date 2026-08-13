@@ -130,9 +130,11 @@ export function throwCustomerRpcError(error: DatabaseError): never {
     'CUSTOMER_WITH_CHILDREN_CANNOT_BECOME_CHILD',
     'ACTIVE_CUSTOMER_PRICELIST_NOT_FOUND', 'SYSTEM_CUSTOMER_CANNOT_HAVE_PRICELIST',
     'DUPLICATE_CUSTOMER_CATEGORY', 'DUPLICATE_CUSTOMER',
+    'CUSTOM_PERMISSION_DENIED',
   ].find((code) => message.includes(code))
   if (known) {
-    const forbidden = known.endsWith('_REQUIRED') && known.includes('MANAGER')
+    const forbidden = (known.endsWith('_REQUIRED') && known.includes('MANAGER')) ||
+      known === 'CUSTOM_PERMISSION_DENIED'
     const conflict = known === 'MASTER_VERSION_CONFLICT' || known.startsWith('DUPLICATE_')
     throw new ApiRouteError(known, forbidden ? 403 : conflict ? 409 : 400)
   }

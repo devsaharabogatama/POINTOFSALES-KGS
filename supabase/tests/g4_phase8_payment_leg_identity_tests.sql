@@ -213,17 +213,54 @@ BEGIN
 
     IF has_table_privilege(
         'authenticated','public.sales_payments','INSERT,UPDATE,DELETE'
-    ) OR NOT EXISTS (
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: authenticated can write Sale Payment rows directly';
+    END IF;
+
+    IF NOT EXISTS (
         SELECT 1
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'public'
-          AND p.proname = 'post_pos_sale'
+        WHERE p.oid =
+            'public.post_pos_sale(uuid,bigint,uuid)'::regprocedure
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: canonical public Sale Post wrapper missing';
+    END IF;
+
+    -- Phase 52/56 moved Payment-Leg mapping behind the public wrapper. Check
+    -- the current private execution-chain member instead of expecting the
+    -- implementation to remain embedded in public.post_pos_sale forever.
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.oid =
+            'private.post_pos_sale_phase52_public_core(uuid,bigint,uuid)'::regprocedure
           AND p.prosrc LIKE '%clientPaymentKey%'
           AND p.prosrc LIKE '%PAYMENT_LEG_IDENTITY_MAPPING_FAILED%'
     ) THEN
         RAISE EXCEPTION
-            'TEST_FAILED: payment-leg runtime or privilege boundary invalid';
+            'TEST_FAILED: canonical private Payment-Leg mapping runtime missing';
+    END IF;
+
+    IF has_function_privilege(
+        'authenticated',
+        'private.post_pos_sale_phase52_public_core(uuid,bigint,uuid)',
+        'EXECUTE'
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: authenticated can execute private Sale Post core';
+    END IF;
+
+    IF NOT has_function_privilege(
+        'authenticated','public.post_pos_sale(uuid,bigint,uuid)','EXECUTE'
+    ) OR has_function_privilege(
+        'anon','public.post_pos_sale(uuid,bigint,uuid)','EXECUTE'
+    ) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: public Sale Post wrapper privilege boundary invalid';
     END IF;
 
     RAISE NOTICE

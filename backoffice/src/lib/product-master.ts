@@ -195,7 +195,9 @@ export function productRpcArgs(productId: string | null, value: ReturnType<typeo
 export function throwProductRpcError(error: { message?: string } | null): never {
   const message = error?.message ?? 'PRODUCT_OPERATION_FAILED'
   const conflicts = ['MASTER_VERSION_CONFLICT', 'DUPLICATE_PRODUCT_OR_BARCODE']
-  const forbidden = ['CATALOG_MANAGER_REQUIRED', 'COMPANY_ACCESS_DENIED']
+  const forbidden = [
+    'CATALOG_MANAGER_REQUIRED', 'COMPANY_ACCESS_DENIED', 'CUSTOM_PERMISSION_DENIED',
+  ]
   const validation = [
     'ACTIVE_PRODUCT_CATEGORY_NOT_FOUND',
     'ACTIVE_BASE_UOM_NOT_FOUND',

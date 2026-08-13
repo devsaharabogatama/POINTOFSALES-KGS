@@ -61,6 +61,8 @@ export function throwMinimumStockRpcError(error: DatabaseError): never {
   const message = error?.message ?? ''
   const known = [
     'INVENTORY_CONFIGURATION_MANAGER_REQUIRED',
+    'CUSTOM_PERMISSION_DENIED',
+    'MINIMUM_STOCK_WAREHOUSE_ACCESS_DENIED',
     'MINIMUM_STOCK_NEGATIVE',
     'MINIMUM_STOCK_TOO_LARGE',
     'MINIMUM_STOCK_REQUIRED_WHEN_ALERT_ENABLED',
@@ -80,7 +82,11 @@ export function throwMinimumStockRpcError(error: DatabaseError): never {
     ].includes(known)
     throw new ApiRouteError(
       known,
-      known === 'INVENTORY_CONFIGURATION_MANAGER_REQUIRED'
+      [
+        'INVENTORY_CONFIGURATION_MANAGER_REQUIRED',
+        'CUSTOM_PERMISSION_DENIED',
+        'MINIMUM_STOCK_WAREHOUSE_ACCESS_DENIED',
+      ].includes(known)
         ? 403
         : conflict
           ? 409

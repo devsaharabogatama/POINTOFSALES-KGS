@@ -99,12 +99,36 @@ export function ensurePatchFields(body: JsonObject, fields: string[]) {
 }
 
 export function throwDatabaseError(error: DatabaseError): never {
+  const message = error?.message || ''
+  const knownCode = [
+    'MASTER_NAME_ALREADY_EXISTS',
+    'MASTER_VERSION_CONFLICT',
+    'MASTER_NOT_FOUND',
+    'INVENTORY_MASTER_ACCESS_DENIED',
+    'CUSTOM_PERMISSION_DENIED',
+    'ACTIVE_COMPANY_CONTEXT_MISMATCH',
+    'AUTHENTICATION_REQUIRED',
+    'ACTIVE_STORE_NOT_FOUND',
+    'STORE_WAREHOUSE_REQUIRES_STORE',
+    'UOM_TYPE_INVALID',
+    'WAREHOUSE_TYPE_INVALID',
+    'DECIMAL_PRECISION_INVALID',
+    'MASTER_NAME_INVALID',
+    'LOCATION_INVALID',
+  ].find((code) => message.includes(code))
+  if (knownCode) {
+    const status = knownCode === 'MASTER_NOT_FOUND' ? 404
+      : ['INVENTORY_MASTER_ACCESS_DENIED', 'CUSTOM_PERMISSION_DENIED'].includes(knownCode) ? 403
+        : ['MASTER_NAME_ALREADY_EXISTS', 'MASTER_VERSION_CONFLICT'].includes(knownCode) ? 409
+          : 400
+    throw new ApiRouteError(knownCode, status)
+  }
   if (error?.code === '23505') throw new ApiRouteError('DUPLICATE_MASTER', 409)
   if (error?.code === '23503') throw new ApiRouteError('INVALID_MASTER_REFERENCE', 400)
   if (error?.code === '23514') throw new ApiRouteError('MASTER_VALIDATION_FAILED', 400)
   if (error?.code === '22P02') throw new ApiRouteError('INVALID_IDENTIFIER', 400)
   if (error?.code === '42501') throw new ApiRouteError('FORBIDDEN', 403)
-  throw new ApiRouteError(error?.message || 'MASTER_DATA_OPERATION_FAILED', 500)
+  throw new ApiRouteError(message || 'MASTER_DATA_OPERATION_FAILED', 500)
 }
 
 export function uuidValue(value: string, code = 'INVALID_IDENTIFIER'): string {

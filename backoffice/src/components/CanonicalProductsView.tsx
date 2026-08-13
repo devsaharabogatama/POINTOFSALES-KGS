@@ -135,6 +135,7 @@ function friendlyError(code?: string) {
     NON_BASE_UOM_FACTOR_MUST_EXCEED_ONE: 'UOM selain base harus memiliki faktor lebih dari 1.',
     POSITIVE_REFERENCE_WEIGHT_REQUIRED: 'Berat UOM acuan wajib lebih dari 0 kg.',
     CATALOG_MANAGER_REQUIRED: 'Role Anda tidak diizinkan mengubah Product.',
+    CUSTOM_PERMISSION_DENIED: 'Akses Product Anda dibatasi oleh Admin Perusahaan.',
     TAX_SALES_FEATURE_DISABLED: 'Modul Pajak Penjualan belum diaktifkan.',
     TAX_PURCHASE_FEATURE_DISABLED: 'Modul Pajak Pembelian belum diaktifkan.',
     CURRENT_SALES_TAX_RULE_REQUIRED: 'Pilih aturan Pajak Penjualan aktif yang berlaku saat ini.',
@@ -173,7 +174,7 @@ export function CanonicalProductsView({
 
   const fetchData = useCallback(async () => {
     const paths = [
-      '/api/master/products?includeInactive=true',
+      '/api/master/product-management?includeInactive=true',
       '/api/master/product-categories?includeInactive=true',
       '/api/master/uoms?includeInactive=true',
       '/api/master/tax-assignment-options',

@@ -13,6 +13,14 @@ export type OfflineSalePayload = {
   customerId: string
   selectedPricelistId?: string | null
   pricingSelectionSource?: 'AUTO' | 'CASHIER_OVERRIDE'
+  fulfillmentMode: 'PICKUP' | 'DELIVERY'
+  deliveryRecipientName?: string
+  deliveryRecipientPhone?: string
+  deliveryAddress?: string
+  deliveryScheduledAt?: string | null
+  deliveryNotes?: string | null
+  deliveryFeeAmount: number
+  deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
   isTempo: false
   globalDiscount: number
   roundingDirection: 'NONE' | 'DOWN' | 'UP'

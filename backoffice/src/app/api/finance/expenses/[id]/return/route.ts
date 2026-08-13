@@ -7,18 +7,16 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function POST(request: Request, context: RouteContext) {
   try {
     const caller = await requireCaller(request)
-    const companyId = await requireActiveCompany(caller)
+    await requireActiveCompany(caller)
     const { id } = await context.params
     const documentId = uuidValue(id)
     const input = parseExpenseReturnBody(await readJsonObject(request))
 
-    const { data: method, error: methodError } = await caller.client
-      .from('payment_methods')
-      .select('id,method_type')
-      .eq('company_id', companyId)
-      .eq('id', input.paymentMethodId)
-      .maybeSingle()
+    const { data: methodRows, error: methodError } = await caller.client
+      .rpc('get_finance_expense_payment_method_references')
     if (methodError) throwDatabaseError(methodError)
+    const method = ((methodRows ?? []) as Array<{ id: string; method_type: string }>)
+      .find((row) => row.id === input.paymentMethodId)
     if (!method) throw new ApiRouteError('ACTIVE_EXPENSE_PAYMENT_METHOD_NOT_FOUND', 404)
     if (method.method_type === 'CASH') {
       throw new ApiRouteError('EXPENSE_CASH_RETURN_POS_REQUIRED', 409)

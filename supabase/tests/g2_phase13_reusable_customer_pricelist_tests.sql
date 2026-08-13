@@ -128,9 +128,13 @@ BEGIN
         'authenticated',
         'public.save_pricelist_with_rules(uuid,bigint,text,text,text,uuid,integer,boolean,boolean,uuid[],timestamp with time zone,timestamp with time zone,boolean,text,jsonb)',
         'EXECUTE'
-    ) OR NOT has_function_privilege(
+    ) OR has_function_privilege(
         'authenticated',
         'public.save_reusable_pricelist_with_rules(uuid,bigint,text,text,text,integer,boolean,boolean,uuid[],timestamp with time zone,timestamp with time zone,boolean,text,jsonb)',
+        'EXECUTE'
+    ) OR NOT has_function_privilege(
+        'authenticated',
+        'public.save_reusable_pricelist_with_rules(uuid,bigint,text,text,integer,boolean,boolean,uuid[],timestamp with time zone,timestamp with time zone,boolean,text,jsonb)',
         'EXECUTE'
     ) THEN
         RAISE EXCEPTION 'TEST_FAILED: Pricelist RPC boundary invalid';

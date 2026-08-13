@@ -68,25 +68,20 @@ export async function POST(request: Request) {
     }
     if (storeId) await validateStore(caller, companyId, storeId)
 
-    const { data, error } = await caller.client
-      .from('warehouses')
-      .insert({
-        company_id: companyId,
-        code: null,
-        name,
-        warehouse_type: warehouseType,
-        store_id: storeId,
-        location: optionalText(body, 'location', { maxLength: 500 }) ?? null,
-        is_sale_source: optionalBoolean(body, 'isSaleSource') ?? false,
-        is_purchase_destination: optionalBoolean(body, 'isPurchaseDestination') ?? false,
-        allow_negative_stock: false,
-        is_active: optionalBoolean(body, 'isActive') ?? true,
-      })
-      .select(selectFields)
-      .single()
+    const { data, error } = await caller.client.rpc('save_inventory_warehouse', {
+      p_warehouse_id: null,
+      p_expected_version: null,
+      p_name: name,
+      p_warehouse_type: warehouseType,
+      p_store_id: storeId,
+      p_location: optionalText(body, 'location', { maxLength: 500 }) ?? null,
+      p_is_sale_source: optionalBoolean(body, 'isSaleSource') ?? false,
+      p_is_purchase_destination: optionalBoolean(body, 'isPurchaseDestination') ?? false,
+      p_is_active: optionalBoolean(body, 'isActive') ?? true,
+    })
 
     if (error) throwDatabaseError(error)
-    return Response.json({ data }, { status: 201 })
+    return Response.json({ data: data?.data }, { status: 201 })
   } catch (error) {
     return apiError(error)
   }

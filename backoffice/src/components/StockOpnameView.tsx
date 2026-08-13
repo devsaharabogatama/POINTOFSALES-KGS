@@ -130,6 +130,8 @@ function dateTime(value: string | null) {
 }
 function friendlyError(code?: string) {
   const messages: Record<string, string> = {
+    CUSTOM_PERMISSION_DENIED:
+      'Akses Stock Opname dibatasi oleh pengaturan user untuk Company ini.',
     STOCK_OPNAME_NOT_FOUND: 'Sesi Stock Opname tidak ditemukan.',
     STOCK_OPNAME_LINE_NOT_FOUND: 'Baris hitungan tidak ditemukan.',
     STOCK_OPNAME_REVIEWER_REQUIRED:
@@ -159,12 +161,12 @@ function friendlyError(code?: string) {
 export function StockOpnameView({
   session,
   companyId,
-  canReview,
+  capabilities,
   notify,
 }: {
   session: Session
   companyId: string
-  canReview: boolean
+  capabilities: string[]
   notify: (message: string) => void
 }) {
   const [payload, setPayload] = useState<Payload>({})
@@ -177,6 +179,9 @@ export function StockOpnameView({
     session: OpnameSession
     line?: OpnameLine
   } | null>(null)
+  const canReview = capabilities.includes('REVIEW')
+  const canPost = capabilities.includes('POST')
+  const canCancel = capabilities.includes('CANCEL_FINAL')
 
   const load = useCallback(async () => {
     const response = await fetch('/api/inventory/stock-opnames', {
@@ -379,7 +384,7 @@ export function StockOpnameView({
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      {canReview && row.status === 'COMPLETED' && (
+                      {canPost && row.status === 'COMPLETED' && (
                         <button
                           onClick={() =>
                             setAction({ type: 'post', session: row })
@@ -390,7 +395,7 @@ export function StockOpnameView({
                           <Send className="h-4 w-4" />
                         </button>
                       )}
-                      {canReview &&
+                      {canCancel &&
                         ['DRAFT', 'COUNTING', 'COMPLETED'].includes(
                           row.status,
                         ) && (

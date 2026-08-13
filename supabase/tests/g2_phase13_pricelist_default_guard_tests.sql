@@ -41,9 +41,9 @@ BEGIN
         jsonb_build_object('sub',v_actor,'role','authenticated')::TEXT,TRUE
     );
     PERFORM public.set_active_company_context(v_company,'G2_PHASE13_TEST');
-    v_result:=public.save_pricelist_with_rules(
-        NULL,NULL,'G17-NEW','G17 Default New','GLOBAL',NULL,10,TRUE,
-        TRUE,NULL,NULL,NULL,TRUE,NULL,'[]'::JSONB
+    v_result:=public.save_reusable_pricelist_with_rules(
+        NULL,NULL,'G17 Default New','GLOBAL',10,TRUE,
+        TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,'[]'::JSONB
     );
     v_default:=(v_result->>'pricelistId')::UUID;
 

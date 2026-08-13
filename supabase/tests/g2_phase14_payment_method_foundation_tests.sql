@@ -230,7 +230,15 @@ BEGIN
             'PAYMENT_CLEARING',NULL,clock_timestamp(),NULL,TRUE
         );
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'PAYMENT_METHOD_CODE_LOCKED_BY_HISTORY' THEN
+        -- Since G2 Phase-36, every technical master code is immutable even
+        -- before transaction history exists. The automatic-code trigger runs
+        -- before the older history-specific guard, so either canonical guard
+        -- proves the same required invariant on databases at this regression
+        -- boundary.
+        IF SQLERRM IN (
+            'SYSTEM_CODE_IMMUTABLE',
+            'PAYMENT_METHOD_CODE_LOCKED_BY_HISTORY'
+        ) THEN
             v_rejected := TRUE;
         ELSE RAISE; END IF;
     END;

@@ -56,9 +56,10 @@ BEGIN
     -- Phase-49 lifecycle trigger receives an INSERT as well as an UPDATE.
     INSERT INTO public.company_features(
         company_id,feature_code,is_enabled,config,updated_by
-    ) VALUES(
-        v_company,'customer_balance_enabled',TRUE,'{}'::JSONB,v_actor
-    ) ON CONFLICT(company_id,feature_code) DO UPDATE SET
+    ) VALUES
+      (v_company,'customer_balance_enabled',TRUE,'{}'::JSONB,v_actor),
+      (v_company_b,'customer_balance_enabled',TRUE,'{}'::JSONB,v_actor)
+    ON CONFLICT(company_id,feature_code) DO UPDATE SET
         is_enabled=excluded.is_enabled,config=excluded.config,
         updated_by=excluded.updated_by,updated_at=clock_timestamp();
 
@@ -134,6 +135,8 @@ BEGIN
     IF v_count<>1 THEN RAISE EXCEPTION 'TEST_FAILED: credit HOLD event missing'; END IF;
 
     -- Disabling with liability moves policy to WIND_DOWN, not hard disabled.
+    -- ACP must retain the authorized role's restricted capabilities during
+    -- WIND_DOWN so the outstanding liability can be settled.
     UPDATE public.company_features SET is_enabled=FALSE,updated_by=v_reviewer
     WHERE company_id=v_company
       AND feature_code='customer_balance_enabled';
@@ -147,6 +150,15 @@ BEGIN
         jsonb_build_object('sub',v_actor,'role','authenticated')::TEXT,TRUE
     );
     PERFORM public.set_active_company_context(v_company,'G4_PHASE49_TEST');
+    v_result:=public.resolve_user_permission(
+        v_company,v_actor,'finance.customer_balances'
+    );
+    IF NOT ((v_result->'effectiveCapabilities') ? 'MANAGE')
+       OR COALESCE((v_result->>'historyOnly')::BOOLEAN,FALSE) THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: WIND_DOWN ACP capability contract invalid: %',
+            v_result;
+    END IF;
     v_result:=public.request_customer_balance_correction(
         v_customer,v_store,'DEBIT',100,'CUSTOMER_RECEIVABLE',
         'Customer liability settlement',NULL,
@@ -171,6 +183,17 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: Customer cache did not return to zero';
     END IF;
 
+    v_result:=public.resolve_user_permission(
+        v_company,v_reviewer,'finance.customer_balances'
+    );
+    IF NOT COALESCE((v_result->>'historyOnly')::BOOLEAN,FALSE)
+       OR NOT ((v_result->'effectiveCapabilities') ? 'VIEW')
+       OR NOT ((v_result->'effectiveCapabilities') ? 'EXPORT')
+       OR ((v_result->'effectiveCapabilities') ? 'MANAGE') THEN
+        RAISE EXCEPTION
+            'TEST_FAILED: disabled-history ACP capability contract invalid: %',
+            v_result;
+    END IF;
     v_result:=public.get_customer_balance_statement(v_customer,NULL,NULL);
     IF jsonb_array_length(v_result->'entries')<>2
        OR (v_result->>'currentBalance')::NUMERIC<>0 THEN

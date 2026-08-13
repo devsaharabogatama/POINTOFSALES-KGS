@@ -60,11 +60,12 @@ type StockBalance = {
 }
 
 type StockOverview = {
+  products?: Product[]
+  warehouses?: WarehouseRow[]
+  data?: MinimumStockSetting[]
   balances?: StockBalance[]
   error?: string
 }
-
-type ApiList<T> = { data?: T[]; error?: string }
 
 function authHeaders(session: Session) {
   return { Authorization: `Bearer ${session.access_token}` }
@@ -74,6 +75,10 @@ function friendlyError(code?: string) {
   const messages: Record<string, string> = {
     INVENTORY_CONFIGURATION_MANAGER_REQUIRED:
       'Role Anda tidak diizinkan mengatur Minimum Stock.',
+    CUSTOM_PERMISSION_DENIED:
+      'Akses Minimum Stock dibatasi untuk user ini.',
+    MINIMUM_STOCK_WAREHOUSE_ACCESS_DENIED:
+      'Anda tidak memiliki assignment pada Gudang tersebut.',
     MINIMUM_STOCK_VALUE_INVALID: 'Minimum Stock harus berupa angka positif.',
     MINIMUM_STOCK_TOO_LARGE: 'Nilai Minimum Stock terlalu besar.',
     MINIMUM_STOCK_REQUIRED_WHEN_ALERT_ENABLED:
@@ -115,27 +120,15 @@ export function MinimumStockView({
   const [editing, setEditing] = useState<MinimumStockSetting | 'create' | null>(null)
 
   const load = useCallback(async () => {
-    const paths = [
-      '/api/master/products?includeInactive=true',
-      '/api/master/warehouses?includeInactive=true',
-      '/api/master/minimum-stock',
-      '/api/inventory/stock-overview',
-    ]
-    const responses = await Promise.all(
-      paths.map((path) => fetch(path, { headers: authHeaders(session) })),
-    )
-    const payloads = (await Promise.all(responses.map((response) => response.json()))) as [
-      ApiList<Product>,
-      ApiList<WarehouseRow>,
-      ApiList<MinimumStockSetting>,
-      StockOverview,
-    ]
-    const failed = responses.findIndex((response) => !response.ok)
-    if (failed >= 0) throw new Error(friendlyError(payloads[failed].error))
-    setProducts(payloads[0].data ?? [])
-    setWarehouses(payloads[1].data ?? [])
-    setSettings(payloads[2].data ?? [])
-    setBalances(payloads[3].balances ?? [])
+    const response = await fetch('/api/master/minimum-stock', {
+      headers: authHeaders(session),
+    })
+    const payload = (await response.json()) as StockOverview
+    if (!response.ok) throw new Error(friendlyError(payload.error))
+    setProducts(payload.products ?? [])
+    setWarehouses(payload.warehouses ?? [])
+    setSettings(payload.data ?? [])
+    setBalances(payload.balances ?? [])
   }, [session])
 
   const refresh = useCallback(async () => {

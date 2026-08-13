@@ -36,12 +36,6 @@ type TaxRuleOption = {
   ratePercent: number | string
 }
 
-type TaxOptions = {
-  data?: TaxRuleOption[]
-  entitlements?: { salesEnabled: boolean; purchaseEnabled: boolean }
-  error?: string
-}
-
 type Uom = {
   id: string
   code: string
@@ -72,8 +66,15 @@ type Editor =
   | { kind: 'uom'; record?: Uom }
   | { kind: 'warehouse'; record?: WarehouseRow }
 
-type ApiList<T> = { data?: T[]; error?: string }
 type ApiItem<T> = { data?: T; error?: string }
+type InventoryMastersPayload = {
+  categories?: Category[]
+  uoms?: Uom[]
+  warehouses?: WarehouseRow[]
+  taxRules?: TaxRuleOption[]
+  entitlements?: { salesEnabled: boolean; purchaseEnabled: boolean }
+  error?: string
+}
 
 const tabs: { id: MasterKind; label: string; icon: typeof Boxes }[] = [
   { id: 'category', label: 'Kategori Produk', icon: Tags },
@@ -107,6 +108,7 @@ function friendlyError(code?: string) {
     MASTER_VERSION_CONFLICT: 'Data sudah berubah di tab lain. Muat ulang lalu coba lagi.',
     MASTER_VERSION_CONFLICT_OR_NOT_FOUND: 'Data sudah berubah atau tidak lagi tersedia.',
     FORBIDDEN: 'Role Anda tidak diizinkan mengubah master ini.',
+    CUSTOM_PERMISSION_DENIED: 'Akses Anda hanya untuk melihat Master Inventory.',
     STORE_WAREHOUSE_REQUIRES_STORE: 'Gudang bertipe Toko wajib memilih toko.',
     ACTIVE_STORE_NOT_FOUND: 'Toko tidak aktif atau bukan milik company aktif.',
     TAX_SALES_FEATURE_DISABLED: 'Modul Pajak Penjualan belum diaktifkan.',
@@ -145,36 +147,24 @@ export function MasterDataView({
   const [editor, setEditor] = useState<Editor | null>(null)
 
   const loadMasters = useCallback(async () => {
-    const paths = [
-      '/api/master/product-categories?includeInactive=true',
-      '/api/master/uoms?includeInactive=true',
-      '/api/master/warehouses?includeInactive=true',
-      '/api/master/tax-assignment-options',
-    ]
-    const responses = await Promise.all(
-      paths.map((path) => fetch(path, { headers: authHeaders(session) })),
-    )
-    const payloads = (await Promise.all(responses.map((response) => response.json()))) as [
-      ApiList<Category>,
-      ApiList<Uom>,
-      ApiList<WarehouseRow>,
-      TaxOptions,
-    ]
-    const failedIndex = responses.findIndex((response) => !response.ok)
-    if (failedIndex >= 0) throw new Error(friendlyError(payloads[failedIndex].error))
-    return payloads
+    const response = await fetch('/api/master/inventory-masters?includeInactive=true', {
+      headers: authHeaders(session),
+    })
+    const payload = (await response.json()) as InventoryMastersPayload
+    if (!response.ok) throw new Error(friendlyError(payload.error))
+    return payload
   }, [session])
 
   useEffect(() => {
     let cancelled = false
     loadMasters()
-      .then((payloads) => {
+      .then((payload) => {
         if (cancelled) return
-        setCategories(payloads[0].data ?? [])
-        setUoms(payloads[1].data ?? [])
-        setWarehouses(payloads[2].data ?? [])
-        setTaxRules(payloads[3].data ?? [])
-        setTaxEntitlements(payloads[3].entitlements ?? {
+        setCategories(payload.categories ?? [])
+        setUoms(payload.uoms ?? [])
+        setWarehouses(payload.warehouses ?? [])
+        setTaxRules(payload.taxRules ?? [])
+        setTaxEntitlements(payload.entitlements ?? {
           salesEnabled: false,
           purchaseEnabled: false,
         })
@@ -196,12 +186,12 @@ export function MasterDataView({
     setLoading(true)
     setError('')
     try {
-      const payloads = await loadMasters()
-      setCategories(payloads[0].data ?? [])
-      setUoms(payloads[1].data ?? [])
-      setWarehouses(payloads[2].data ?? [])
-      setTaxRules(payloads[3].data ?? [])
-      setTaxEntitlements(payloads[3].entitlements ?? {
+      const payload = await loadMasters()
+      setCategories(payload.categories ?? [])
+      setUoms(payload.uoms ?? [])
+      setWarehouses(payload.warehouses ?? [])
+      setTaxRules(payload.taxRules ?? [])
+      setTaxEntitlements(payload.entitlements ?? {
         salesEnabled: false,
         purchaseEnabled: false,
       })

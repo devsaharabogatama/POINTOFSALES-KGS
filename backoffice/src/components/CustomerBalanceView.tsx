@@ -48,6 +48,7 @@ const dateTime = (value: string | null) => value
 const authHeaders = (session: Session) => ({ Authorization: `Bearer ${session.access_token}` })
 
 const errorLabels: Record<string, string> = {
+  CUSTOM_PERMISSION_DENIED: 'Akses tindakan Saldo Customer dibatasi oleh pengaturan user.',
   CUSTOMER_BALANCE_CREDIT_DISABLED: 'Penambahan saldo sedang dinonaktifkan untuk Company ini.',
   CUSTOMER_BALANCE_DEBIT_DISABLED: 'Pengurangan saldo sedang dinonaktifkan untuk Company ini.',
   INSUFFICIENT_CUSTOMER_BALANCE: 'Saldo Customer tidak cukup untuk pengurangan ini.',

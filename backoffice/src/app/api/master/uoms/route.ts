@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const caller = await requireCaller(request)
-    const companyId = await requireActiveCompany(caller)
+    await requireActiveCompany(caller)
     const body = await readJsonObject(request)
     const name = requiredText(body, 'name', { maxLength: 100 })
     const uomType = enumValue(body.uomType, UOM_TYPES, 'UOM_TYPE_INVALID')
@@ -54,22 +54,18 @@ export async function POST(request: Request) {
     const decimalPrecision = precisionFor(allowDecimal, body.decimalPrecision)
     const isActive = optionalBoolean(body, 'isActive') ?? true
 
-    const { data, error } = await caller.client
-      .from('uoms')
-      .insert({
-        company_id: companyId,
-        code: null,
-        name,
-        uom_type: uomType,
-        allow_decimal: allowDecimal,
-        decimal_precision: decimalPrecision,
-        is_active: isActive,
-      })
-      .select(selectFields)
-      .single()
+    const { data, error } = await caller.client.rpc('save_inventory_uom', {
+      p_uom_id: null,
+      p_expected_version: null,
+      p_name: name,
+      p_uom_type: uomType,
+      p_allow_decimal: allowDecimal,
+      p_decimal_precision: decimalPrecision,
+      p_is_active: isActive,
+    })
 
     if (error) throwDatabaseError(error)
-    return Response.json({ data }, { status: 201 })
+    return Response.json({ data: data?.data }, { status: 201 })
   } catch (error) {
     return apiError(error)
   }

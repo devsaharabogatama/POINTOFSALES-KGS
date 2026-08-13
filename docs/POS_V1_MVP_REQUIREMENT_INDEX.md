@@ -31,7 +31,7 @@ Fitur Ketul dan Customer Balance termasuk POS v1, tetapi hanya aktif pada Compan
 | Logistics advanced | DEFERRED | v1 hanya membutuhkan gudang/lokasi sederhana, transfer, penerimaan, dan delivery reference. |
 | Aset tetap detail | DEFERRED | Hanya catatan arah, account boundary, dan source-document extensibility; workflow aset dibahas terpisah. |
 | e-Faktur/integrasi pajak pemerintah | DEFERRED | Tax engine internal disiapkan, integrasi resmi belum dibangun. |
-| Upload file internal | DEFERRED | v1 menyimpan URL bukti eksternal sesuai `EXTERNAL_EVIDENCE_LINK_POLICY.md`. |
+| Upload file internal | DEFERRED dengan exception logo Company | Bukti transaksi tetap URL eksternal. User 2026-08-11 membuka upload internal hanya untuk logo Company yang dipakai template dokumen. |
 
 Deferred berarti tidak boleh diam-diam masuk schema/UI v1. Extensibility disiapkan melalui ID stabil, source document, status history, event, dan mapping—bukan dengan membangun modulnya sekarang.
 
@@ -44,11 +44,15 @@ Deferred berarti tidak boleh diam-diam masuk schema/UI v1. Extensibility disiapk
 | TEN-001 | Tenant | Semua data operasional terkunci pada `company_id`; Store/Warehouse/POS tetap konsisten dengan Company. | `../KGS_BACKOFFICE_AUTH_FLOW_WORKFLOW.md`, `rls-access-matrix.md` | G1 |
 | TEN-002 | Role | Super Admin lintas Company; Company Admin penuh hanya pada Company miliknya; role lain sesuai Store/Warehouse/Finance scope. | `../KGS_BACKOFFICE_AUTH_FLOW_WORKFLOW.md`, `rls-access-matrix.md` | G1 |
 | TEN-003 | Feature | Hanya Super Admin dapat menyalakan/mematikan modul Company, termasuk Ketul dan Customer Balance. | `ERP_EVOLUTION_ARCHITECTURE_NOTES.md`, spesifikasi modul terkait | G1 |
+| TEN-004 | Branding | Company dapat memiliki logo opsional yang tenant-scoped, audited, aman untuk template dokumen, dan memiliki fallback tanpa logo. | `PREDEPLOY_MODULAR_HOME_BRANDING_SALES_DOCUMENT_PLAN.md` | Pre-deploy |
+| TEN-005 | Custom Access | Role per Company tetap baseline dan batas maksimum; Company Admin ke atas dapat memberi pembatasan opsional per submodul, tanpa memperluas role, feature, Store/Warehouse scope, atau workflow final. Tanpa override harus identik dengan behavior role existing. | `ROLE_BASELINE_CUSTOM_PERMISSION_PLAN.md`, `rls-access-matrix.md` | Pre-deploy ACP |
+| APP-001 | Launcher | Home hanya menampilkan modul authorized; klik modul membuka landing card submodul authorized sebelum halaman kerja. | `PREDEPLOY_MODULAR_HOME_BRANDING_SALES_DOCUMENT_PLAN.md` | Pre-deploy |
 | MST-001 | Product | SKU manual; nama, kategori, harga beli/jual fallback, berat manual, UOM terbesar sebagai acuan berat, status aktif. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G2 |
 | MST-002 | UOM | Stok disimpan pada UOM terkecil; maksimal satu tingkat turunan pada v1; harga jual per UOM dapat berbeda. | `PRODUCT_STOCK_MASTERDATA_SPEC.md`, `UOM_WEIGHT_VALUATION_SPEC.md` | G2 |
 | MST-003 | Category | Kategori Produk adalah master dan dapat membawa fallback COA; mapping transaksi tetap prioritas. | `PRODUCT_STOCK_MASTERDATA_SPEC.md`, `TRANSACTION_CATEGORY_ACCOUNT_MAPPING_SPEC.md` | G2 |
 | MST-004 | Warehouse | Kode manual maksimal lima huruf; empat tipe dasar; lokasi sederhana; akses operasional terkontrol. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G2 |
 | MST-005 | Import | Export master dahulu; import memakai ID atau nama/kode; dry-run/mapping; update diberi warning; sukses parsial; history; opening stock terpisah. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G2 |
+| MST-009 | Global Data Exchange | Satu Import/Export Center global menampilkan hanya modul/submodul dan aksi yang diizinkan server; export/import terpisah, Finance/report export-only, generic import tidak boleh menyentuh histori posted/final, dan entry point Inventory lama dipensiunkan setelah parity. | `GLOBAL_DATA_EXCHANGE_CENTER_SPEC.md` | Pre-deploy |
 | MST-006 | Customer | Nama unik per Company; phone/email boleh sama; kategori Customer; status dan saldo terkontrol. | `SALES_CUSTOMER_MASTERDATA_SPEC.md` | G2 |
 | MST-007 | Pricing | Harga Produk hanya fallback; Customer Pricelist mengalahkan Global; tier hanya Global; scope all/specific Store. | `SALES_PRICELIST_NOTES.md` | G2/G4 |
 | MST-008 | Payment | Metode pembayaran adalah master Company; mendukung Cash, Transfer, QRIS, Card, TEMPO, split, fee, dan konfigurasi offline. | `PAYMENT_METHOD_MASTERDATA_SPEC.md` | G2/G4 |
@@ -69,6 +73,7 @@ Deferred berarti tidak boleh diam-diam masuk schema/UI v1. Extensibility disiapk
 | POS-008 | Deposit | Satu setoran dapat memilih beberapa sesi; sistem vs real boleh selisih; posting setelah approval Finance. | `DEPOSIT_VARIANCE_RESOLUTION_SPEC.md` | G4/G6 |
 | POS-009 | Evidence | Transfer dan bukti lain memakai URL eksternal, bukan upload ke Supabase Storage pada v1. | `EXTERNAL_EVIDENCE_LINK_POLICY.md` | G4 |
 | POS-010 | Ketul | Optional Company feature; receipt dari Customer, discount/cash/balance, stock Ketul, sale ke Vendor, reject/damage/return, Finance confirmation. | `KETUL_WORKFLOW_NOTES.md` | G4/G6 |
+| POS-011 | Sales Document | Sale POSTED mempunyai Sales Invoice printable; delivery dipilih pada final checkout, Customer menjadi default recipient, ongkir opsional masuk total dan Finance terpisah, serta Sale delivery menghasilkan Surat Jalan tanpa Stock/Finance effect kedua. | `PREDEPLOY_MODULAR_HOME_BRANDING_SALES_DOCUMENT_PLAN.md`, `SLD_DELIVERY_FEE_REVISION_PLAN.md` | Pre-deploy |
 | PUR-001 | Purchasing | Sales/Kasir membuat Request Order; Store Manager menentukan Supplier/qty dan membuat Supplier Order. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G5 |
 | PUR-002 | Receipt | Kasir menerima partial/lebih dengan source order; accepted/rejected/damaged tercatat; stock hanya dari accepted. | `PRODUCT_STOCK_MASTERDATA_SPEC.md` | G5 |
 | PUR-003 | AP | Receipt membentuk provisional AP/valuation; Finance mencocokkan invoice fisik dan harga real sebelum payment. | `PURCHASE_MATCHING_TOLERANCE_SPEC.md` | G5/G6 |

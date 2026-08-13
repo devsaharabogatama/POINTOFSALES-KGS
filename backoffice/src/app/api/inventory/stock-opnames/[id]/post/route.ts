@@ -1,4 +1,4 @@
-import { apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
+import { apiError, requireActiveCompany, requireCaller, requirePermissionCapability } from '@/lib/server-auth'
 import { readJsonObject, uuidValue } from '@/lib/master-data'
 import {
   parseStockOpnamePostBody,
@@ -10,7 +10,10 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function POST(request: Request, context: RouteContext) {
   try {
     const caller = await requireCaller(request)
-    await requireActiveCompany(caller)
+    const companyId = await requireActiveCompany(caller)
+    await requirePermissionCapability(
+      caller, companyId, 'inventory.stock_opnames', 'POST',
+    )
     const { id } = await context.params
     const input = parseStockOpnamePostBody(await readJsonObject(request))
     const { data, error } = await caller.client.rpc('post_stock_opname', {

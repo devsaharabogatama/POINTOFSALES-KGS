@@ -66,6 +66,12 @@ INSERT INTO public.customer_categories(
     'REG','Regular',FALSE
 );
 
+-- Company provisioning already creates one default Global Pricelist. Demote
+-- that rollback-only fixture before installing the deterministic resolver row.
+UPDATE public.pricelists SET is_default=FALSE
+WHERE company_id='00000000-0000-0000-0000-000000054001'
+  AND scope='GLOBAL' AND is_default AND is_active;
+
 INSERT INTO public.pricelists(
     id,company_id,code,name,scope,priority,is_default,
     applies_all_stores,is_active
@@ -73,7 +79,7 @@ INSERT INTO public.pricelists(
     (
         '00000000-0000-0000-0000-000000054071',
         '00000000-0000-0000-0000-000000054001',
-        'GLOBAL','Global G54','GLOBAL',10,TRUE,TRUE,TRUE
+        'G54-GLOBAL','Global G54','GLOBAL',10,TRUE,TRUE,TRUE
     ),
     (
         '00000000-0000-0000-0000-000000054072',

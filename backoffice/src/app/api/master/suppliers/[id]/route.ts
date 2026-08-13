@@ -12,7 +12,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const supplierId = uuidValue(id)
     const input = parseSupplierBody(await readJsonObject(request), true)
     const { data, error } = await caller.client.rpc(
-      'save_supplier',
+      'save_contacts_supplier',
       supplierRpcArgs(supplierId, input),
     )
     if (error) throwSupplierRpcError(error)

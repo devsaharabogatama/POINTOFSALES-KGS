@@ -69,7 +69,7 @@ export function PricelistMasterView({ session, companyId, canManage, notify }: {
   const fetchData = useCallback(async () => {
     const responses = await Promise.all([
       fetch('/api/master/pricelists?includeInactive=true', { headers: authHeaders(session) }),
-      fetch('/api/master/products?includeInactive=true', { headers: authHeaders(session) }),
+      fetch('/api/master/product-references?includeInactive=true', { headers: authHeaders(session) }),
     ])
     const payloads = await Promise.all(responses.map((response) => response.json())) as [ApiList<Pricelist>, ApiList<Product>]
     const failed = responses.findIndex((response) => !response.ok)

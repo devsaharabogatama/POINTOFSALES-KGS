@@ -40,6 +40,11 @@ type ReturnDocument = {
   canceled_at: string | null
   cancel_reason: string | null
   financial_event_id: string | null
+  source_delivery_fee_amount_snapshot: number | string
+  delivery_fee_refund_requested: boolean
+  delivery_fee_refund_amount: number | string
+  delivery_fee_refund_decided_by: string | null
+  delivery_fee_refund_decided_at: string | null
 }
 type ReturnLine = {
   id: string
@@ -120,17 +125,19 @@ function friendlyError(code?: string) {
     SALES_RETURN_CANCEL_NOT_ALLOWED: 'Role atau cakupan Store Anda tidak diizinkan membatalkan Return ini.',
     CANCEL_REASON_REQUIRED: 'Alasan pembatalan wajib diisi.',
     MASTER_VERSION_CONFLICT: 'Draft berubah di perangkat lain. Muat ulang sebelum mengulangi tindakan.',
+    CUSTOM_PERMISSION_DENIED: 'Pembatasan akses user tidak mengizinkan tindakan Return ini.',
     FORBIDDEN: 'Anda tidak diizinkan mengakses approval Return.',
   }
   return messages[code ?? ''] ?? code ?? 'Operasi Return gagal.'
 }
 
 export function SalesReturnApprovalView({
-  session, companyId, canApprove, notify,
+  session, companyId, canApprove, canCancel, notify,
 }: {
   session: Session
   companyId: string
   canApprove: boolean
+  canCancel: boolean
   notify: (message: string) => void
 }) {
   const [payload, setPayload] = useState<Payload>({})
@@ -235,7 +242,7 @@ export function SalesReturnApprovalView({
         </div>
       </section>
 
-      {detail && <ReturnDetail document={detail} lines={(payload.lines ?? []).filter((row) => row.document_id === detail.id)} refunds={(payload.refunds ?? []).filter((row) => row.document_id === detail.id)} customer={customerById.get(detail.customer_id)} store={storeById.get(detail.store_id)} executingSession={sessionById.get(detail.executing_session_id)} actorById={actorById} warehouseById={warehouseById} canApprove={canApprove} close={() => setDetail(null)} act={(type) => setAction({ type, document: detail })} />}
+      {detail && <ReturnDetail document={detail} lines={(payload.lines ?? []).filter((row) => row.document_id === detail.id)} refunds={(payload.refunds ?? []).filter((row) => row.document_id === detail.id)} customer={customerById.get(detail.customer_id)} store={storeById.get(detail.store_id)} executingSession={sessionById.get(detail.executing_session_id)} actorById={actorById} warehouseById={warehouseById} canApprove={canApprove} canCancel={canCancel} close={() => setDetail(null)} act={(type) => setAction({ type, document: detail })} />}
       {action && <ReturnActionDialog session={session} action={action} close={() => setAction(null)} complete={async () => { const label = action.type === 'post' ? 'diposting' : 'dibatalkan'; setAction(null); setDetail(null); await refresh(); notify(`Return Penjualan berhasil ${label}.`) }} />}
     </>
   )
@@ -250,8 +257,8 @@ function StatusBadge({ status }: { status: ReturnStatus }) {
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${styles}`}>{statusLabel(status)}</span>
 }
 
-function ReturnDetail({ document, lines, refunds, customer, store, executingSession, actorById, warehouseById, canApprove, close, act }: {
-  document: ReturnDocument; lines: ReturnLine[]; refunds: ReturnRefund[]; customer?: string; store?: string; executingSession?: Lookup; actorById: Map<string, string>; warehouseById: Map<string, string>; canApprove: boolean; close: () => void; act: (type: 'post' | 'cancel') => void
+function ReturnDetail({ document, lines, refunds, customer, store, executingSession, actorById, warehouseById, canApprove, canCancel, close, act }: {
+  document: ReturnDocument; lines: ReturnLine[]; refunds: ReturnRefund[]; customer?: string; store?: string; executingSession?: Lookup; actorById: Map<string, string>; warehouseById: Map<string, string>; canApprove: boolean; canCancel: boolean; close: () => void; act: (type: 'post' | 'cancel') => void
 }) {
   useEscapeClose(close)
   const sessionOpen = executingSession?.status === 'OPEN'
@@ -260,11 +267,12 @@ function ReturnDetail({ document, lines, refunds, customer, store, executingSess
       <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-emerald-600">Detail Return Penjualan</p><h2 className="mt-2 text-2xl font-black text-slate-950">{document.return_no}</h2><p className="mt-2 text-sm text-slate-500">Invoice asal {document.source_invoice_no_snapshot} · {store ?? 'Store'}</p></div><button onClick={close} className="rounded-xl bg-slate-100 p-2 text-slate-500" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Info label="Status" value={statusLabel(document.status)} /><Info label="Pelanggan" value={customer ?? 'Pelanggan'} /><Info label="Dibuat oleh" value={actorById.get(document.created_by) ?? 'User'} /><Info label="Sesi pelaksana" value={`${executingSession?.session_code ?? 'Sesi kasir'} · ${executingSession?.status ?? 'Tidak ditemukan'}`} /></div>
       {document.status === 'DRAFT' && !sessionOpen && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Sesi kasir pelaksana tidak OPEN. Backend akan menolak posting sampai kondisi sesi diselesaikan.</div>}
+      {Number(document.source_delivery_fee_amount_snapshot) > 0 && <div className={`mt-5 rounded-2xl border p-4 text-sm ${document.delivery_fee_refund_requested ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}><p className="font-black">Keputusan refund ongkir</p><p className="mt-1">{document.delivery_fee_refund_requested ? `Kasir meminta refund ongkir ${rupiah(document.delivery_fee_refund_amount)}. Approval ini mengesahkan keputusan tersebut.` : `Ongkir asal ${rupiah(document.source_delivery_fee_amount_snapshot)} tidak direfund. Posting hanya mengembalikan nilai barang.`}</p>{document.delivery_fee_refund_decided_at && <p className="mt-2 text-xs">Diputuskan {dateTime(document.delivery_fee_refund_decided_at)} oleh {document.delivery_fee_refund_decided_by ? actorById.get(document.delivery_fee_refund_decided_by) ?? 'Approver' : 'Approver'}.</p>}</div>}
       <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-4 py-3">Barang</th><th className="px-4 py-3 text-right">Jumlah</th><th className="px-4 py-3">Kondisi / tujuan</th><th className="px-4 py-3 text-right">Refund</th><th className="px-4 py-3 text-right">Pajak</th></tr></thead><tbody className="divide-y divide-slate-100">{lines.map((line) => <tr key={line.id}><td className="px-4 py-4"><p className="font-black text-slate-900">{line.product_name_snapshot}</p><p className="mt-1 text-xs text-slate-500">{line.product_sku_snapshot}</p></td><td className="px-4 py-4 text-right font-black">{qty(line.quantity_uom)} {line.sale_uom_name_snapshot}<p className="mt-1 text-xs font-normal text-slate-400">{qty(line.quantity_base)} base</p></td><td className="px-4 py-4"><p className="font-semibold text-slate-700">{conditionLabel(line.return_condition)}</p><p className="mt-1 text-xs text-slate-500">{line.destination_warehouse_id ? warehouseById.get(line.destination_warehouse_id) ?? 'Gudang tujuan' : 'Tidak kembali ke stok'}</p></td><td className="px-4 py-4 text-right font-black">{rupiah(line.refund_before_rounding)}</td><td className="px-4 py-4 text-right text-slate-600">{rupiah(line.tax_refund_amount)}</td></tr>)}</tbody></table></div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]"><div className="rounded-2xl border border-slate-200 p-5"><h3 className="font-black text-slate-900">Metode refund</h3><div className="mt-4 space-y-3">{refunds.map((refund) => <div key={refund.id} className="rounded-xl bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-black text-slate-800">{refund.payment_method_name_snapshot}</p><p className="mt-1 text-xs text-slate-500">{refund.payment_method_type_snapshot}{refund.transfer_destination ? ` · Tujuan ${refund.transfer_destination}` : ''}{refund.transfer_reference ? ` · Ref ${refund.transfer_reference}` : ''}</p></div><p className="font-black text-slate-900">{rupiah(refund.amount)}</p></div>{refund.proof_url && <a href={refund.proof_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-black text-emerald-700 underline">Buka bukti transfer</a>}</div>)}</div></div><div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-black uppercase tracking-wider text-slate-400">Ringkasan refund</p><div className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><span>Sebelum pembulatan</span><strong>{rupiah(document.refund_before_rounding)}</strong></div><div className="flex justify-between"><span>Penyesuaian</span><strong>{rupiah(document.rounding_adjustment)}</strong></div><div className="border-t border-slate-700 pt-3 text-lg flex justify-between"><span>Total refund</span><strong>{rupiah(document.refund_total)}</strong></div></div></div></div>
       {document.notes && <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><strong>Catatan:</strong> {document.notes}</div>}
       {document.status === 'CANCELED' && <div className="mt-5 rounded-2xl border border-slate-200 p-4 text-sm text-slate-600"><strong>Alasan dibatalkan:</strong> {document.cancel_reason ?? '-'}</div>}
-      <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border border-slate-200 px-5 font-black text-slate-600">Tutup</button>{document.status === 'DRAFT' && canApprove && <><button onClick={() => act('cancel')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-5 font-black text-rose-700"><Ban className="h-4 w-4" /> Batalkan Return</button><button onClick={() => act('post')} disabled={!sessionOpen} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><CheckCircle2 className="h-4 w-4" /> Setujui & Posting</button></>}</div>
+      <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border border-slate-200 px-5 font-black text-slate-600">Tutup</button>{document.status === 'DRAFT' && canCancel && <button onClick={() => act('cancel')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-5 font-black text-rose-700"><Ban className="h-4 w-4" /> Batalkan Return</button>}{document.status === 'DRAFT' && canApprove && <button onClick={() => act('post')} disabled={!sessionOpen} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><CheckCircle2 className="h-4 w-4" /> Setujui & Posting</button>}</div>
     </div>
   </div>
 }

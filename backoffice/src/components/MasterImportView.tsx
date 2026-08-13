@@ -321,13 +321,23 @@ export function MasterImportView({
   session,
   companyId,
   notify,
+  allowedTypes,
+  embedded = false,
 }: {
   session: Session
   companyId: string
   notify: (message: string) => void
+  allowedTypes?: MasterImportType[]
+  embedded?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [importType, setImportType] = useState<MasterImportType>('PRODUCT_CATEGORY')
+  const selectableTypeOptions = useMemo(
+    () => typeOptions.filter(([type]) => !allowedTypes || allowedTypes.includes(type)),
+    [allowedTypes],
+  )
+  const [importType, setImportType] = useState<MasterImportType>(
+    allowedTypes?.[0] ?? 'PRODUCT_CATEGORY',
+  )
   const [referenceMode, setReferenceMode] = useState<ImportReferenceMode>('REFERENCE_BY_NAME')
   const [operationMode, setOperationMode] = useState<ImportOperationMode>('CREATE_AND_UPDATE')
   const [csv, setCsv] = useState<CsvFile | null>(null)
@@ -595,8 +605,8 @@ export function MasterImportView({
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Master Data</p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950">Import & Export</h1>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">{embedded ? 'Global Data Exchange' : 'Master Data'}</p>
+            <h1 className="mt-2 text-2xl font-black text-slate-950">{embedded ? 'Import data' : 'Import & Export'}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               CSV diperiksa dan ditampilkan sebagai preview terlebih dahulu. Data belum berubah sampai Anda menekan konfirmasi simpan.
             </p>
@@ -605,9 +615,9 @@ export function MasterImportView({
             <button disabled={busy} onClick={() => void download('template')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               <FileDown className="h-4 w-4" /> Template CSV
             </button>
-            <button disabled={busy} onClick={() => void download('data')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            {!embedded && <button disabled={busy} onClick={() => void download('data')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               <Download className="h-4 w-4" /> Export data
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -617,7 +627,7 @@ export function MasterImportView({
               const next = event.target.value as MasterImportType
               setImportType(next); setMapping(csv ? autoMapping(next, csv.headers) : {}); resetPreview()
             }} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 outline-none focus:border-emerald-500">
-              {typeOptions.map(([value, definition]) => <option key={value} value={value}>{definition.label}</option>)}
+              {selectableTypeOptions.map(([value, definition]) => <option key={value} value={value}>{definition.label}</option>)}
             </select>
           </label>
           <label className="text-sm font-bold text-slate-700">Cara mengenali data existing

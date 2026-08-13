@@ -1,4 +1,4 @@
-import { apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
+import { apiError, requireActiveCompany, requireCaller, requirePermissionCapability } from '@/lib/server-auth'
 import { readJsonObject, uuidValue } from '@/lib/master-data'
 import {
   parseStockAdjustmentBody,
@@ -11,7 +11,10 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const caller = await requireCaller(request)
-    await requireActiveCompany(caller)
+    const companyId = await requireActiveCompany(caller)
+    await requirePermissionCapability(
+      caller, companyId, 'inventory.stock_adjustments', 'EDIT_DRAFT',
+    )
     const { id } = await context.params
     const input = parseStockAdjustmentBody(await readJsonObject(request), true)
     const { data, error } = await caller.client.rpc(

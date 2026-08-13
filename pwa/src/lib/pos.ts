@@ -189,6 +189,8 @@ export type PurchaseReturnDraft = {
 export type CustomerOption = {
   id: string
   name: string
+  phone: string
+  address: string
   isWalkIn: boolean
   defaultPricelistId: string | null
   currentBalance: number
@@ -336,6 +338,8 @@ export type SaleDraft = {
   grandTotalBeforeRounding: number
   roundingAdjustment: number
   grandTotalAfterRounding: number
+  deliveryFeeAmount: number
+  deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
 }
 
 export type SaleDraftListItem = {
@@ -378,6 +382,7 @@ export type ResolvedSaleLine = {
 }
 
 export type SaleReceipt = {
+  saleId: string
   invoiceNo: string
   postedAt: string
   subtotal: number
@@ -386,6 +391,8 @@ export type SaleReceipt = {
   totalBeforeRounding: number
   roundingAdjustment: number
   grandTotal: number
+  deliveryFeeAmount?: number
+  deliveryFeeInvoiceDisplayMode?: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
   customerSurcharge: number
   amountPaid: number
   lines: Array<{
@@ -414,6 +421,23 @@ export type SaleReceipt = {
   }>
 }
 
+export type SalesInvoiceDocument = {
+  invoiceSnapshotId: string
+  invoiceNo: string
+  snapshotVersion: number
+  snapshotProvenance: 'LIVE_POST' | 'LEGACY_CUTOVER'
+  snapshot: Record<string, unknown>
+}
+
+export type SalesDeliveryDocument = {
+  deliveryDocumentId: string
+  deliveryNo: string
+  status: 'READY' | 'DISPATCHED' | 'DELIVERED' | 'CANCELED'
+  masterVersion: number
+  snapshot: Record<string, unknown>
+  lines: Array<Record<string, unknown>>
+}
+
 export type ReturnableSaleLine = {
   sourceSalesDetailId: string
   productId: string
@@ -433,6 +457,8 @@ export type ReturnableSale = {
   customerId: string
   grandTotal: number
   priorRefundTotal: number
+  deliveryFeeAmount: number
+  deliveryFeeRefunded: number
   lines: ReturnableSaleLine[]
 }
 
@@ -732,13 +758,10 @@ export async function loadCatalog(
     stocksResult,
     customersResult,
     pricelistsResult,
-    pricelistAssignmentsResult,
     methodsResult,
-    assignmentsResult,
     expenseCategoriesResult,
     expenseFeatureResult,
     customerBalanceFeatureResult,
-    customerBalancePolicyResult,
   ] = await Promise.all([
     supabase
       .from('products')
@@ -767,45 +790,10 @@ export async function loadCatalog(
       .select('product_id,stock_qty')
       .eq('company_id', companyId)
       .eq('warehouse_id', warehouseId),
-    supabase
-      .from('customers')
-      .select(
-        'id,name,is_system_customer,is_active,default_pricelist_id,current_balance',
-      )
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('is_system_customer', { ascending: false })
-      .order('name'),
-    supabase
-      .from('pricelists')
-      .select(
-        'id,name,scope,is_default,applies_all_stores,valid_from,valid_until',
-      )
-      .eq('company_id', companyId)
-      .eq('is_active', true),
-    supabase
-      .from('pricelist_store_assignments')
-      .select('pricelist_id,store_id')
-      .eq('company_id', companyId)
-      .eq('store_id', storeId),
-    supabase
-      .from('payment_methods')
-      .select(
-        'id,payment_method_name,method_type,proof_mode,is_default,available_all_stores,fee_bearer,fee_enabled,fee_type,fee_percent,fee_fixed_amount,is_active',
-      )
-      .eq('company_id', companyId)
-      .eq('is_active', true),
-    supabase
-      .from('payment_method_store_assignments')
-      .select('payment_method_id,store_id')
-      .eq('company_id', companyId)
-      .eq('store_id', storeId),
-    supabase
-      .from('expense_categories')
-      .select('id,category_name,evidence_policy,default_payment_method_id')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('category_name'),
+    supabase.rpc('get_pos_customer_references'),
+    supabase.rpc('get_pos_pricelist_references', { p_store_id: storeId }),
+    supabase.rpc('get_pos_payment_method_references', { p_store_id: storeId }),
+    supabase.rpc('get_pos_expense_categories', { p_store_id: storeId }),
     supabase
       .from('company_features')
       .select('is_enabled')
@@ -818,11 +806,6 @@ export async function loadCatalog(
       .eq('company_id', companyId)
       .eq('feature_code', 'customer_balance_enabled')
       .maybeSingle(),
-    supabase
-      .from('customer_balance_company_policies')
-      .select('lifecycle_state')
-      .eq('company_id', companyId)
-      .maybeSingle(),
   ])
   for (const result of [
     productsResult,
@@ -832,13 +815,10 @@ export async function loadCatalog(
     stocksResult,
     customersResult,
     pricelistsResult,
-    pricelistAssignmentsResult,
     methodsResult,
-    assignmentsResult,
     expenseCategoriesResult,
     expenseFeatureResult,
     customerBalanceFeatureResult,
-    customerBalancePolicyResult,
   ]) {
     throwIfError(result.error)
   }
@@ -883,19 +863,21 @@ export async function loadCatalog(
     })
   }
 
-  const assignedMethodIds = new Set(
-    (assignmentsResult.data ?? []).map((row) => row.payment_method_id),
-  )
-  const assignedPricelistIds = new Set(
-    (pricelistAssignmentsResult.data ?? []).map((row) => row.pricelist_id),
-  )
   const now = Date.now()
-  const pricelists = (pricelistsResult.data ?? [])
+  const pricelistRows = (pricelistsResult.data ?? []) as Array<{
+    id: string
+    name: string
+    scope: 'GLOBAL' | 'CUSTOMER'
+    is_default: boolean
+    applies_all_stores: boolean
+    valid_from: string | null
+    valid_until: string | null
+  }>
+  const pricelists = pricelistRows
     .filter((row) => {
       const validFrom = row.valid_from ? Date.parse(row.valid_from) : null
       const validUntil = row.valid_until ? Date.parse(row.valid_until) : null
       return (
-        (row.applies_all_stores || assignedPricelistIds.has(row.id)) &&
         (validFrom === null || validFrom <= now) &&
         (validUntil === null || validUntil >= now)
       )
@@ -911,15 +893,21 @@ export async function loadCatalog(
         Number(b.isDefault) - Number(a.isDefault) ||
         a.name.localeCompare(b.name),
     )
-  const customerBalanceLifecycle =
-    customerBalancePolicyResult.data?.lifecycle_state ?? 'DISABLED'
-  const customerBalanceTenderEnabled = ['ACTIVE', 'WIND_DOWN'].includes(
-    customerBalanceLifecycle,
+  const rawPaymentMethods = (methodsResult.data ?? []) as Array<{
+    id: string; payment_method_name: string; method_type: string
+    proof_mode: string; is_default: boolean; fee_bearer: string | null
+    fee_enabled: boolean; fee_type: string | null
+    fee_percent: number | string | null; fee_fixed_amount: number | string | null
+  }>
+  // ACP-6D closes direct browser reads of the Customer Balance policy table.
+  // The open-session reference RPC only returns the internal Balance method
+  // while server policy permits ACTIVE or WIND_DOWN tender usage.
+  const customerBalanceTenderEnabled = rawPaymentMethods.some(
+    (row) => row.method_type === 'CUSTOMER_BALANCE',
   )
-  const paymentMethods = (methodsResult.data ?? [])
+  const paymentMethods = rawPaymentMethods
     .filter(
       (row) =>
-        (row.available_all_stores || assignedMethodIds.has(row.id)) &&
         !['KETUL_OFFSET', 'TEMPO'].includes(row.method_type) &&
         (row.method_type !== 'CUSTOMER_BALANCE' ||
           customerBalanceTenderEnabled),
@@ -938,94 +926,95 @@ export async function loadCatalog(
     }))
     .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
 
+  const customerRows = (customersResult.data ?? []) as Array<{
+    id: string
+    name: string
+    phone: string | null
+    address: string | null
+    is_system_customer: boolean
+    default_pricelist_id: string | null
+    current_balance: number | string
+  }>
+
   return {
     products: products.sort(
       (a, b) => a.name.localeCompare(b.name) || a.uomName.localeCompare(b.uomName),
     ),
-    customers: (customersResult.data ?? []).map((row) => ({
+    customers: customerRows.map((row) => ({
       id: row.id,
       name: row.name,
+      phone: row.phone ?? '',
+      address: row.address ?? '',
       isWalkIn: Boolean(row.is_system_customer),
       defaultPricelistId: row.default_pricelist_id,
       currentBalance: numberValue(row.current_balance),
     })),
     pricelists,
     paymentMethods,
-    expenseCategories: (expenseCategoriesResult.data ?? []).map((row) => ({
-      id: row.id,
-      name: row.category_name,
+    expenseCategories: (((expenseCategoriesResult.data ?? {}) as DbRow)
+      .categories as DbRow[] ?? []).map((row) => ({
+      id: String(row.id),
+      name: String(row.category_name),
       evidenceRequired: row.evidence_policy === 'REQUIRED',
-      defaultPaymentMethodId: row.default_payment_method_id,
+      defaultPaymentMethodId: row.default_payment_method_id
+        ? String(row.default_payment_method_id)
+        : null,
     })),
     expenseEnabled: Boolean(expenseFeatureResult.data?.is_enabled),
     customerBalanceCreditEnabled:
       Boolean(customerBalanceFeatureResult.data?.is_enabled) &&
-      customerBalanceLifecycle === 'ACTIVE',
+      customerBalanceTenderEnabled,
     customerBalanceTenderEnabled,
   }
 }
 
-export async function loadStockRequestWorkspace(companyId: string) {
-  const [productsResult, productUomsResult, uomsResult, documentsResult] =
-    await Promise.all([
-      supabase
-        .from('products')
-        .select('id,sku,name,is_bundle,is_active')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .eq('is_bundle', false),
-      supabase
-        .from('product_uoms')
-        .select('product_id,uom_id,factor_to_base,purchase_allowed,is_active')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .eq('purchase_allowed', true),
-      supabase
-        .from('uoms')
-        .select('id,name,allow_decimal,decimal_precision,is_active')
-        .eq('company_id', companyId)
-        .eq('is_active', true),
-      supabase
-        .from('stock_request_documents')
-        .select(
-          'id,request_no,needed_date,notes,status,line_count,requested_total_base_qty,master_version,requested_at',
-        )
-        .eq('company_id', companyId)
-        .order('requested_at', { ascending: false })
-        .limit(100),
-    ])
-  for (const result of [
-    productsResult,
-    productUomsResult,
-    uomsResult,
-    documentsResult,
-  ]) {
-    throwIfError(result.error)
+export async function loadStockRequestWorkspace(
+  companyId: string,
+  cashierSessionId: string,
+) {
+  const { data, error } = await supabase.rpc('get_pos_stock_request_workspace', {
+    p_cashier_session_id: cashierSessionId,
+  })
+  throwIfError(error)
+  const workspace = (data ?? {}) as {
+    options?: Array<{
+      product_id: string
+      uom_id: string
+      sku: string
+      product_name: string
+      uom_name: string
+      factor_to_base: number | string
+      allow_decimal: boolean
+      decimal_precision: number | string
+    }>
+    documents?: Array<{
+      id: string
+      request_no: string
+      needed_date: string | null
+      notes: string | null
+      status: string
+      line_count: number | string
+      requested_total_base_qty: number | string
+      master_version: number | string
+      requested_at: string
+    }>
   }
-  const productById = new Map(
-    (productsResult.data ?? []).map((row) => [row.id, row]),
-  )
-  const uomById = new Map((uomsResult.data ?? []).map((row) => [row.id, row]))
-  const options: PurchaseProductUomOption[] = []
-  for (const row of productUomsResult.data ?? []) {
-    const product = productById.get(row.product_id)
-    const uom = uomById.get(row.uom_id)
-    if (!product || !uom) continue
-    options.push({
-      productId: product.id,
+  const options: PurchaseProductUomOption[] = (workspace.options ?? []).map(
+    (row) => ({
+      productId: row.product_id,
       uomId: row.uom_id,
-      sku: product.sku,
-      productName: product.name,
-      uomName: uom.name,
+      sku: row.sku,
+      productName: row.product_name,
+      uomName: row.uom_name,
       factorToBase: numberValue(row.factor_to_base),
-      allowDecimal: Boolean(uom.allow_decimal),
-      decimalPrecision: numberValue(uom.decimal_precision),
-    })
-  }
+      allowDecimal: Boolean(row.allow_decimal),
+      decimalPrecision: numberValue(row.decimal_precision),
+    }),
+  )
   options.sort((a, b) =>
     `${a.productName} ${a.uomName}`.localeCompare(`${b.productName} ${b.uomName}`),
   )
-  const documents: StockRequestSummary[] = (documentsResult.data ?? []).map(
+  const documents: StockRequestSummary[] = (workspace.documents ?? []).map(
     (row) => ({
       id: row.id,
       requestNo: row.request_no,
@@ -1038,7 +1027,7 @@ export async function loadStockRequestWorkspace(companyId: string) {
       requestedAt: row.requested_at,
     }),
   )
-  return { options, documents }
+  return { companyId, options, documents }
 }
 
 export async function createStockRequest(input: {
@@ -1074,13 +1063,9 @@ export async function loadGoodsReceiptWorkspace(
   cashierSessionId: string,
 ) {
   const [ordersResult, draftsResult] = await Promise.all([
-    supabase
-      .from('supplier_order_documents')
-      .select('id,order_no,supplier_id,destination_warehouse_id,status,expected_date')
-      .eq('company_id', companyId)
-      .eq('store_id', storeId)
-      .in('status', ['CONFIRMED', 'PARTIALLY_RECEIVED'])
-      .order('expected_date', { ascending: true, nullsFirst: false }),
+    supabase.rpc('get_pos_goods_receipt_supplier_orders', {
+      p_cashier_session_id: cashierSessionId,
+    }),
     supabase
       .from('goods_receipt_documents')
       .select('id,receipt_no,supplier_order_id,supplier_delivery_no,notes,master_version')
@@ -1093,7 +1078,19 @@ export async function loadGoodsReceiptWorkspace(
   throwIfError(ordersResult.error)
   throwIfError(draftsResult.error)
 
-  const orderRows = ordersResult.data ?? []
+  const orderWorkspace = (ordersResult.data ?? {}) as {
+    orders?: Array<{
+      id:string;order_no:string;supplier_id:string;supplier_name:string
+      destination_warehouse_id:string;warehouse_name:string;status:string
+      expected_date:string|null
+    }>
+    lines?: Array<{
+      id:string;document_id:string;product_id:string;ordered_uom_id:string
+      ordered_qty:number|string;ordered_base_qty:number|string
+      product_name_snapshot:string;ordered_uom_name_snapshot:string
+    }>
+  }
+  const orderRows = orderWorkspace.orders ?? []
   const draftRows = draftsResult.data ?? []
   const orderIds = [...new Set([
     ...orderRows.map((row) => row.id),
@@ -1103,12 +1100,7 @@ export async function loadGoodsReceiptWorkspace(
 
   const [orderLinesResult, postedDocumentsResult, draftLinesResult] =
     await Promise.all([
-      supabase
-        .from('supplier_order_lines')
-        .select('id,document_id,product_id,ordered_uom_id,ordered_qty,ordered_base_qty,product_name_snapshot,ordered_uom_name_snapshot')
-        .eq('company_id', companyId)
-        .in('document_id', orderIds)
-        .order('line_no'),
+      Promise.resolve({ data: orderWorkspace.lines ?? [], error: null }),
       supabase
         .from('goods_receipt_documents')
         .select('id,supplier_order_id')
@@ -1139,7 +1131,7 @@ export async function loadGoodsReceiptWorkspace(
   throwIfError(postedLinesResult.error)
 
   const productIds=[...new Set((orderLinesResult.data ?? []).map((row) => row.product_id))]
-  const [productUomsResult, suppliersResult, warehousesResult] = await Promise.all([
+  const [productUomsResult] = await Promise.all([
     productIds.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -1149,20 +1141,8 @@ export async function loadGoodsReceiptWorkspace(
           .eq('is_active', true)
           .eq('purchase_allowed', true)
           .in('product_id', productIds),
-    supabase
-      .from('suppliers')
-      .select('id,supplier_name')
-      .eq('company_id', companyId)
-      .in('id', [...new Set(orderRows.map((row) => row.supplier_id))]),
-    supabase
-      .from('warehouses')
-      .select('id,name')
-      .eq('company_id', companyId)
-      .in('id', [...new Set(orderRows.map((row) => row.destination_warehouse_id))]),
   ])
   throwIfError(productUomsResult.error)
-  throwIfError(suppliersResult.error)
-  throwIfError(warehousesResult.error)
 
   const uomIds=[...new Set((productUomsResult.data ?? []).map((row) => row.uom_id))]
   const uomsResult = uomIds.length === 0
@@ -1174,8 +1154,8 @@ export async function loadGoodsReceiptWorkspace(
         .in('id', uomIds)
   throwIfError(uomsResult.error)
 
-  const supplierNames=new Map((suppliersResult.data ?? []).map((row) => [row.id,row.supplier_name]))
-  const warehouseNames=new Map((warehousesResult.data ?? []).map((row) => [row.id,row.name]))
+  const supplierNames=new Map(orderRows.map((row) => [row.supplier_id,row.supplier_name]))
+  const warehouseNames=new Map(orderRows.map((row) => [row.destination_warehouse_id,row.warehouse_name]))
   const uoms=new Map((uomsResult.data ?? []).map((row) => [row.id,row]))
   const optionsByProduct=new Map<string,GoodsReceiptUomOption[]>()
   for (const row of productUomsResult.data ?? []) {
@@ -1277,69 +1257,40 @@ export async function cancelGoodsReceipt(documentId:string,masterVersion:number)
 }
 
 export async function loadPurchaseReturnWorkspace(
-  companyId:string,storeId:string,cashierSessionId:string,
+  _companyId:string,_storeId:string,cashierSessionId:string,
 ) {
-  const [receiptsResult,draftsResult]=await Promise.all([
-    supabase.from('goods_receipt_documents')
-      .select('id,receipt_no,supplier_order_id,received_at')
-      .eq('company_id',companyId).eq('store_id',storeId).eq('status','POSTED')
-      .order('received_at',{ascending:false}).limit(200),
-    supabase.from('purchase_return_documents')
-      .select('id,return_no,source_receipt_id,source_warehouse_id,return_date,return_reason,supplier_document_no,notes,review_status,master_version')
-      .eq('company_id',companyId).eq('store_id',storeId)
-      .eq('created_session_id',cashierSessionId).eq('status','DRAFT')
-      .order('created_at',{ascending:false}),
-  ])
-  throwIfError(receiptsResult.error);throwIfError(draftsResult.error)
-  const receipts=receiptsResult.data??[];const drafts=draftsResult.data??[]
-  const receiptIds=[...new Set([...receipts.map((row)=>row.id),...drafts.map((row)=>row.source_receipt_id)])]
-  if(receiptIds.length===0)return {sources:[] as PurchaseReturnSource[],drafts:[] as PurchaseReturnDraft[]}
-  const linesResult=await supabase.from('goods_receipt_lines')
-    .select('id,document_id,product_id,product_name_snapshot,base_uom_name_snapshot')
-    .eq('company_id',companyId).in('document_id',receiptIds)
-  throwIfError(linesResult.error)
-  const receiptLines=linesResult.data??[];const receiptLineIds=receiptLines.map((row)=>row.id)
-  const allocationsResult=receiptLineIds.length?await supabase.from('goods_receipt_condition_allocations')
-    .select('id,receipt_line_id,condition_type,warehouse_id,quantity_base,product_batch_id')
-    .eq('company_id',companyId).in('receipt_line_id',receiptLineIds).in('condition_type',['GOOD','DAMAGED']):{data:[],error:null}
-  throwIfError(allocationsResult.error)
-  const allocations=allocationsResult.data??[]
-  const [batchesResult,postedReturnLinesResult,draftLinesResult]=await Promise.all([
-    allocations.length?supabase.from('product_batches').select('id,qty_remaining').eq('company_id',companyId).in('id',allocations.map((row)=>row.product_batch_id)) : Promise.resolve({data:[],error:null}),
-    allocations.length?supabase.from('purchase_return_lines').select('source_condition_allocation_id,return_base_qty,document_id').eq('company_id',companyId).in('source_condition_allocation_id',allocations.map((row)=>row.id)) : Promise.resolve({data:[],error:null}),
-    drafts.length?supabase.from('purchase_return_lines').select('document_id,client_line_key,source_condition_allocation_id,return_uom_id,return_qty').eq('company_id',companyId).in('document_id',drafts.map((row)=>row.id)).order('line_no') : Promise.resolve({data:[],error:null}),
-  ])
-  throwIfError(batchesResult.error);throwIfError(postedReturnLinesResult.error);throwIfError(draftLinesResult.error)
-  const returnDocumentIds=[...new Set((postedReturnLinesResult.data??[]).map((row)=>row.document_id))]
-  const finalReturnDocuments=returnDocumentIds.length?await supabase.from('purchase_return_documents').select('id').eq('company_id',companyId).eq('status','POSTED').in('id',returnDocumentIds):{data:[],error:null}
-  throwIfError(finalReturnDocuments.error)
-  const postedIds=new Set((finalReturnDocuments.data??[]).map((row)=>row.id))
+  const {data,error}=await supabase.rpc('get_pos_purchase_return_workspace',{
+    p_cashier_session_id:cashierSessionId,
+  })
+  throwIfError(error)
+  const payload=data as {
+    receipts:Array<{id:string;receipt_no:string;supplier_order_id:string;received_at:string}>
+    drafts:Array<{id:string;return_no:string;source_receipt_id:string;source_warehouse_id:string;return_date:string;return_reason:string;supplier_document_no:string|null;notes:string|null;review_status:string;master_version:number|string}>
+    receiptLines:Array<{id:string;document_id:string;product_id:string;product_name_snapshot:string;base_uom_name_snapshot:string}>
+    allocations:Array<{id:string;receipt_line_id:string;condition_type:string;warehouse_id:string;quantity_base:number|string;product_batch_id:string}>
+    batches:Array<{id:string;qty_remaining:number|string}>
+    returnLines:Array<{document_id:string;source_condition_allocation_id:string;return_base_qty:number|string;client_line_key:string;return_uom_id:string;return_qty:number|string;document_status:string}>
+    productUoms:Array<{product_id:string;uom_id:string;factor_to_base:number|string;uom_name:string;allow_decimal:boolean;decimal_precision:number|string}>
+    orders:Array<{id:string;order_no:string;supplier_id:string}>
+    suppliers:Array<{id:string;supplier_name:string}>
+    warehouses:Array<{id:string;name:string}>
+  }
+  const receipts=payload.receipts??[];const drafts=payload.drafts??[]
+  const receiptLines=payload.receiptLines??[];const allocations=payload.allocations??[]
+  const postedReturnLines=(payload.returnLines??[]).filter((row)=>row.document_status==='POSTED')
   const returnedByAllocation=new Map<string,number>()
-  for(const row of postedReturnLinesResult.data??[]){if(postedIds.has(row.document_id))returnedByAllocation.set(row.source_condition_allocation_id,(returnedByAllocation.get(row.source_condition_allocation_id)??0)+numberValue(row.return_base_qty))}
-  const productIds=[...new Set(receiptLines.map((row)=>row.product_id))]
-  const productUomsResult=productIds.length?await supabase.from('product_uoms').select('product_id,uom_id,factor_to_base').eq('company_id',companyId).eq('is_active',true).in('product_id',productIds):{data:[],error:null}
-  throwIfError(productUomsResult.error)
-  const uomIds=[...new Set((productUomsResult.data??[]).map((row)=>row.uom_id))]
-  const [uomsResult,ordersResult,warehousesResult]=await Promise.all([
-    uomIds.length?supabase.from('uoms').select('id,name,allow_decimal,decimal_precision').eq('company_id',companyId).in('id',uomIds):Promise.resolve({data:[],error:null}),
-    receipts.length?supabase.from('supplier_order_documents').select('id,order_no,supplier_id').eq('company_id',companyId).in('id',receipts.map((row)=>row.supplier_order_id)):Promise.resolve({data:[],error:null}),
-    allocations.length?supabase.from('warehouses').select('id,name').eq('company_id',companyId).in('id',allocations.map((row)=>row.warehouse_id)):Promise.resolve({data:[],error:null}),
-  ])
-  throwIfError(uomsResult.error);throwIfError(ordersResult.error);throwIfError(warehousesResult.error)
-  const supplierIds=[...new Set((ordersResult.data??[]).map((row)=>row.supplier_id))]
-  const suppliersResult=supplierIds.length?await supabase.from('suppliers').select('id,supplier_name').eq('company_id',companyId).in('id',supplierIds):{data:[],error:null}
-  throwIfError(suppliersResult.error)
-  const lineById=new Map(receiptLines.map((row)=>[row.id,row]));const batchById=new Map((batchesResult.data??[]).map((row)=>[row.id,row]))
-  const uomById=new Map((uomsResult.data??[]).map((row)=>[row.id,row]));const optionsByProduct=new Map<string,PurchaseReturnUomOption[]>()
-  for(const row of productUomsResult.data??[]){const uom=uomById.get(row.uom_id);if(!uom)continue;const list=optionsByProduct.get(row.product_id)??[];list.push({uomId:row.uom_id,uomName:uom.name,factorToBase:numberValue(row.factor_to_base),allowDecimal:Boolean(uom.allow_decimal),decimalPrecision:numberValue(uom.decimal_precision)});optionsByProduct.set(row.product_id,list)}
+  for(const row of postedReturnLines)returnedByAllocation.set(row.source_condition_allocation_id,(returnedByAllocation.get(row.source_condition_allocation_id)??0)+numberValue(row.return_base_qty))
+  const lineById=new Map(receiptLines.map((row)=>[row.id,row]));const batchById=new Map((payload.batches??[]).map((row)=>[row.id,row]))
+  const optionsByProduct=new Map<string,PurchaseReturnUomOption[]>()
+  for(const row of payload.productUoms??[]){const list=optionsByProduct.get(row.product_id)??[];list.push({uomId:row.uom_id,uomName:row.uom_name,factorToBase:numberValue(row.factor_to_base),allowDecimal:Boolean(row.allow_decimal),decimalPrecision:numberValue(row.decimal_precision)});optionsByProduct.set(row.product_id,list)}
   for(const list of optionsByProduct.values())list.sort((a,b)=>b.factorToBase-a.factorToBase||a.uomName.localeCompare(b.uomName))
-  const orderById=new Map((ordersResult.data??[]).map((row)=>[row.id,row]));const supplierById=new Map((suppliersResult.data??[]).map((row)=>[row.id,row.supplier_name]));const warehouseById=new Map((warehousesResult.data??[]).map((row)=>[row.id,row.name]));const receiptById=new Map(receipts.map((row)=>[row.id,row]))
+  const orderById=new Map((payload.orders??[]).map((row)=>[row.id,row]));const supplierById=new Map((payload.suppliers??[]).map((row)=>[row.id,row.supplier_name]));const warehouseById=new Map((payload.warehouses??[]).map((row)=>[row.id,row.name]));const receiptById=new Map(receipts.map((row)=>[row.id,row]))
   const grouped=new Map<string,PurchaseReturnAllocation[]>()
   for(const allocation of allocations){const line=lineById.get(allocation.receipt_line_id);const batch=batchById.get(allocation.product_batch_id);if(!line||!batch||!allocation.warehouse_id)continue;const remaining=Math.max(0,Math.min(numberValue(batch.qty_remaining),numberValue(allocation.quantity_base)-(returnedByAllocation.get(allocation.id)??0)));if(remaining<=0)continue;const key=`${line.document_id}:${allocation.warehouse_id}`;const list=grouped.get(key)??[];list.push({id:allocation.id,receiptLineId:line.id,productId:line.product_id,productName:line.product_name_snapshot,condition:allocation.condition_type as 'GOOD'|'DAMAGED',warehouseId:allocation.warehouse_id,baseUomName:line.base_uom_name_snapshot,availableBaseQuantity:remaining,options:optionsByProduct.get(line.product_id)??[]});grouped.set(key,list)}
   const sources:PurchaseReturnSource[]=[]
   for(const [key,items] of grouped){const [receiptId,warehouseId]=key.split(':');const receipt=receiptById.get(receiptId);if(!receipt)continue;const order=orderById.get(receipt.supplier_order_id);sources.push({key,receiptId,receiptNo:receipt.receipt_no,orderNo:order?.order_no??'Supplier Order',supplierName:supplierById.get(order?.supplier_id??'')??'Supplier',warehouseId,warehouseName:warehouseById.get(warehouseId)??'Gudang',receivedAt:receipt.received_at,allocations:items.filter((item)=>item.options.length>0)})}
   const draftLinesByDocument=new Map<string,PurchaseReturnDraftLine[]>()
-  for(const row of draftLinesResult.data??[]){const list=draftLinesByDocument.get(row.document_id)??[];list.push({clientLineKey:row.client_line_key,sourceConditionAllocationId:row.source_condition_allocation_id,returnUomId:row.return_uom_id,returnQuantity:numberValue(row.return_qty)});draftLinesByDocument.set(row.document_id,list)}
+  for(const row of (payload.returnLines??[]).filter((item)=>item.document_status==='DRAFT')){const list=draftLinesByDocument.get(row.document_id)??[];list.push({clientLineKey:row.client_line_key,sourceConditionAllocationId:row.source_condition_allocation_id,returnUomId:row.return_uom_id,returnQuantity:numberValue(row.return_qty)});draftLinesByDocument.set(row.document_id,list)}
   return {sources:sources.filter((source)=>source.allocations.length>0).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt)),drafts:drafts.map((row)=>({id:row.id,returnNo:row.return_no,sourceReceiptId:row.source_receipt_id,sourceWarehouseId:row.source_warehouse_id,returnDate:row.return_date,returnReason:row.return_reason,supplierDocumentNo:row.supplier_document_no,notes:row.notes,reviewStatus:row.review_status as 'PENDING'|'APPROVED',masterVersion:numberValue(row.master_version),lines:draftLinesByDocument.get(row.id)??[]}))}
 }
 
@@ -1413,17 +1364,12 @@ export async function submitExpenseRequest(
 export async function listApprovedCashExpenses(
   cashierSession: CashierSession,
 ): Promise<ApprovedCashExpense[]> {
-  const { data, error } = await supabase
-    .from('expense_documents')
-    .select(
-      'id,document_no,category_name_snapshot,responsible_party_name_snapshot,requested_amount,requested_payment_method_id,requested_payment_method_name_snapshot,description,recipient,evidence_url,expected_settlement_date,master_version,approved_at',
-    )
-    .eq('store_id', cashierSession.storeId)
-    .eq('status', 'APPROVED')
-    .eq('requested_payment_method_type_snapshot', 'CASH')
-    .order('approved_at', { ascending: true })
+  const { data, error } = await supabase.rpc('get_pos_expense_workspace', {
+    p_cashier_session_id: cashierSession.id,
+  })
   throwIfError(error)
-  return (data ?? []).map((row) => ({
+  const rows = (((data ?? {}) as DbRow).approvedCashExpenses ?? []) as DbRow[]
+  return rows.map((row) => ({
     documentId: String(row.id),
     documentNo: String(row.document_no),
     categoryName: String(row.category_name_snapshot),
@@ -1475,27 +1421,12 @@ export async function disburseCashExpense(input: {
 export async function listOutstandingExpenses(
   cashierSession: CashierSession,
 ): Promise<OutstandingExpense[]> {
-  const { data, error } = await supabase
-    .from('expense_documents')
-    .select(
-      'id,document_no,category_name_snapshot,responsible_party_name_snapshot,requested_payment_method_id,requested_payment_method_name_snapshot,requested_payment_method_type_snapshot,disbursed_amount,actual_expense_amount,returned_amount,outstanding_amount,evidence_policy_snapshot,master_version,status',
-    )
-    .eq('store_id', cashierSession.storeId)
-    .in('status', ['DISBURSED', 'PARTIALLY_SETTLED'])
-    .gt('outstanding_amount', 0)
-    .order('updated_at', { ascending: true })
+  const { data, error } = await supabase.rpc('get_pos_expense_workspace', {
+    p_cashier_session_id: cashierSession.id,
+  })
   throwIfError(error)
-  const documentIds = (data ?? []).map((row) => String(row.id))
-  const { data: pendingRows, error: pendingError } = documentIds.length
-    ? await supabase
-        .from('expense_settlement_requests')
-        .select('document_id')
-        .in('document_id', documentIds)
-        .eq('status', 'SUBMITTED')
-    : { data: [], error: null }
-  throwIfError(pendingError)
-  const pendingIds = new Set((pendingRows ?? []).map((row) => String(row.document_id)))
-  return (data ?? []).map((row) => ({
+  const rows = (((data ?? {}) as DbRow).outstandingExpenses ?? []) as DbRow[]
+  return rows.map((row) => ({
     documentId: String(row.id),
     documentNo: String(row.document_no),
     categoryName: String(row.category_name_snapshot),
@@ -1508,7 +1439,7 @@ export async function listOutstandingExpenses(
     returnedAmount: numberValue(row.returned_amount),
     outstandingAmount: numberValue(row.outstanding_amount),
     evidenceRequired: row.evidence_policy_snapshot === 'REQUIRED',
-    settlementPending: pendingIds.has(String(row.id)),
+    settlementPending: Boolean(row.settlement_pending),
     masterVersion: numberValue(row.master_version),
     status: String(row.status) as OutstandingExpense['status'],
   }))
@@ -1580,51 +1511,26 @@ export async function requestAdditionalExpenseDisbursement(input: {
 export async function listApprovedAdditionalCashExpenses(
   cashierSession: CashierSession,
 ): Promise<ApprovedAdditionalCashExpense[]> {
-  const { data: requests, error } = await supabase
-    .from('expense_additional_disbursement_requests')
-    .select(
-      'id,document_id,amount,payment_method_id,payment_method_name_snapshot,evidence_url,requested_at,approved_at,master_version',
-    )
-    .eq('store_id', cashierSession.storeId)
-    .eq('status', 'APPROVED')
-    .eq('payment_method_type_snapshot', 'CASH')
-    .order('approved_at', { ascending: true })
+  const { data, error } = await supabase.rpc('get_pos_expense_workspace', {
+    p_cashier_session_id: cashierSession.id,
+  })
   throwIfError(error)
-
-  const documentIds = [...new Set((requests ?? []).map((row) => String(row.document_id)))]
-  const { data: documents, error: documentError } = documentIds.length
-    ? await supabase
-        .from('expense_documents')
-        .select(
-          'id,document_no,category_name_snapshot,responsible_party_name_snapshot,master_version,status',
-        )
-        .in('id', documentIds)
-        .in('status', ['DISBURSED', 'PARTIALLY_SETTLED'])
-    : { data: [], error: null }
-  throwIfError(documentError)
-  const documentById = new Map(
-    (documents ?? []).map((row) => [String(row.id), row]),
-  )
-
-  return (requests ?? []).flatMap((row) => {
-    const document = documentById.get(String(row.document_id))
-    if (!document) return []
-    return [{
+  const rows = (((data ?? {}) as DbRow).approvedAdditionalCashExpenses ?? []) as DbRow[]
+  return rows.map((row) => ({
       requestId: String(row.id),
       requestMasterVersion: numberValue(row.master_version),
-      documentId: String(document.id),
-      documentNo: String(document.document_no),
-      documentMasterVersion: numberValue(document.master_version),
-      categoryName: String(document.category_name_snapshot),
-      responsiblePartyName: String(document.responsible_party_name_snapshot),
+      documentId: String(row.document_id),
+      documentNo: String(row.document_no),
+      documentMasterVersion: numberValue(row.document_master_version),
+      categoryName: String(row.category_name_snapshot),
+      responsiblePartyName: String(row.responsible_party_name_snapshot),
       amount: numberValue(row.amount),
       paymentMethodId: String(row.payment_method_id),
       paymentMethodName: String(row.payment_method_name_snapshot),
       evidenceUrl: row.evidence_url ? String(row.evidence_url) : null,
       requestedAt: String(row.requested_at),
       approvedAt: String(row.approved_at),
-    }]
-  })
+    }))
 }
 
 export async function disburseAdditionalCashExpense(input: {
@@ -1761,6 +1667,14 @@ export async function saveSaleDraft(input: {
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
   isTempo: boolean
   dueDate: string | null
+  fulfillmentMode: 'PICKUP' | 'DELIVERY'
+  deliveryRecipientName: string
+  deliveryRecipientPhone: string
+  deliveryAddress: string
+  deliveryScheduledAt: string | null
+  deliveryNotes: string
+  deliveryFeeAmount: number
+  deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
   negativeStockReason?: string
   payments: Array<{
     clientPaymentKey: string
@@ -1787,6 +1701,19 @@ export async function saveSaleDraft(input: {
     roundingIncrement: 100,
     isTempo: input.isTempo,
     dueDate: input.dueDate,
+    fulfillmentMode: input.fulfillmentMode,
+    deliveryFeeAmount:
+      input.fulfillmentMode === 'DELIVERY' ? input.deliveryFeeAmount : 0,
+    deliveryFeeInvoiceDisplayMode: input.deliveryFeeInvoiceDisplayMode,
+    ...(input.fulfillmentMode === 'DELIVERY'
+      ? {
+          deliveryRecipientName: input.deliveryRecipientName.trim(),
+          deliveryRecipientPhone: input.deliveryRecipientPhone.trim(),
+          deliveryAddress: input.deliveryAddress.trim(),
+          deliveryScheduledAt: input.deliveryScheduledAt,
+          deliveryNotes: input.deliveryNotes.trim() || null,
+        }
+      : {}),
     ...(input.negativeStockReason?.trim()
       ? { negativeStockReason: input.negativeStockReason.trim() }
       : {}),
@@ -1814,6 +1741,11 @@ export async function saveSaleDraft(input: {
     grandTotalBeforeRounding: numberValue(row.grandTotalBeforeRounding),
     roundingAdjustment: numberValue(row.roundingAdjustment),
     grandTotalAfterRounding: numberValue(row.grandTotalAfterRounding),
+    deliveryFeeAmount: numberValue(row.deliveryFeeAmount),
+    deliveryFeeInvoiceDisplayMode:
+      row.deliveryFeeInvoiceDisplayMode === 'HIDE_BREAKDOWN'
+        ? 'HIDE_BREAKDOWN'
+        : 'SHOW_SEPARATE',
   }
 }
 
@@ -1979,11 +1911,55 @@ export async function loadReceipt(
   return data.receipt_snapshot as SaleReceipt
 }
 
-export async function loadReturnableSales(
-  companyId: string,
+export async function loadSalesInvoiceDocument(
+  salesId: string,
+): Promise<SalesInvoiceDocument> {
+  const { data, error } = await supabase.rpc('get_pos_sales_invoice_document', {
+    p_sales_id: salesId,
+  })
+  throwIfError(error)
+  const row = data as DbRow | null
+  if (!row) throw new Error('SALES_INVOICE_NOT_FOUND')
+  return {
+    invoiceSnapshotId: String(row.invoiceSnapshotId),
+    invoiceNo: String(row.invoiceNo),
+    snapshotVersion: numberValue(row.snapshotVersion),
+    snapshotProvenance: row.snapshotProvenance as 'LIVE_POST' | 'LEGACY_CUTOVER',
+    snapshot: row.snapshot as Record<string, unknown>,
+  }
+}
+
+export async function loadSalesDeliveryDocument(
+  salesId: string,
+): Promise<SalesDeliveryDocument | null> {
+  const { data, error } = await supabase.rpc('get_pos_sales_delivery_document', {
+    p_sales_id: salesId,
+  })
+  if (error?.message?.includes('SALES_DELIVERY_NOT_FOUND')) return null
+  throwIfError(error)
+  return data as SalesDeliveryDocument
+}
+
+export async function recordSalesDocumentPrint(
+  documentType: 'SALES_INVOICE' | 'SALES_DELIVERY',
+  documentId: string,
+) {
+  const { data, error } = await supabase.rpc('record_pos_sales_document_print', {
+    p_document_type: documentType,
+    p_document_id: documentId,
+  })
+  throwIfError(error)
+  return data as Record<string, unknown>
+}
+
+export async function loadSalesReturnWorkspace(
+  _companyId: string,
   search = '',
-): Promise<ReturnableSale[]> {
-  const { data, error } = await supabase.rpc('list_returnable_sales', {
+): Promise<{
+  sales: ReturnableSale[]
+  damagedWarehouses: DamagedWarehouseOption[]
+}> {
+  const { data, error } = await supabase.rpc('get_pos_returnable_sales', {
     p_search: search.trim() || null,
     p_limit: 50,
   })
@@ -1992,56 +1968,16 @@ export async function loadReturnableSales(
   const rawSales = Array.isArray(payload.sales)
     ? (payload.sales as DbRow[])
     : []
-  const detailIds = rawSales.flatMap((sale) =>
-    (Array.isArray(sale.lines) ? (sale.lines as DbRow[]) : []).map((line) =>
-      String(line.sourceSalesDetailId ?? ''),
-    ),
-  ).filter(Boolean)
-  const saleIds = rawSales.map((sale) => String(sale.id ?? '')).filter(Boolean)
-
-  const [detailResult, returnResult] = await Promise.all([
-    detailIds.length === 0
-      ? Promise.resolve({ data: [], error: null })
-      : supabase
-          .from('sales_details')
-          .select('id,line_total,allocated_document_rounding')
-          .eq('company_id', companyId)
-          .in('id', detailIds),
-    saleIds.length === 0
-      ? Promise.resolve({ data: [], error: null })
-      : supabase
-          .from('sales_return_documents')
-          .select('source_sales_id,refund_total')
-          .eq('company_id', companyId)
-          .eq('status', 'POSTED')
-          .in('source_sales_id', saleIds),
-  ])
-  throwIfError(detailResult.error)
-  throwIfError(returnResult.error)
-
-  const amountByDetail = new Map(
-    (detailResult.data ?? []).map((row) => [
-      row.id,
-      numberValue(row.line_total) + numberValue(row.allocated_document_rounding),
-    ]),
-  )
-  const priorRefundBySale = new Map<string, number>()
-  for (const row of returnResult.data ?? []) {
-    priorRefundBySale.set(
-      row.source_sales_id,
-      (priorRefundBySale.get(row.source_sales_id) ?? 0) +
-        numberValue(row.refund_total),
-    )
-  }
-
-  return rawSales.map((sale) => ({
+  const sales = rawSales.map((sale) => ({
     salesId: String(sale.id),
     invoiceNo: String(sale.invoice_no ?? ''),
     transactionDate: String(sale.transaction_date ?? ''),
     storeId: String(sale.store_id ?? ''),
     customerId: String(sale.customer_id ?? ''),
     grandTotal: numberValue(sale.grand_total_after_rounding),
-    priorRefundTotal: priorRefundBySale.get(String(sale.id)) ?? 0,
+    priorRefundTotal: numberValue(sale.priorRefundTotal),
+    deliveryFeeAmount: numberValue(sale.deliveryFeeAmount),
+    deliveryFeeRefunded: numberValue(sale.deliveryFeeRefunded),
     lines: (Array.isArray(sale.lines) ? (sale.lines as DbRow[]) : []).map(
       (line) => ({
         sourceSalesDetailId: String(line.sourceSalesDetailId),
@@ -2051,25 +1987,15 @@ export async function loadReturnableSales(
         soldQuantity: numberValue(line.soldQuantity),
         returnedQuantity: numberValue(line.returnedQuantity),
         remainingQuantity: numberValue(line.remainingQuantity),
-        refundableLineAmount:
-          amountByDetail.get(String(line.sourceSalesDetailId)) ?? 0,
+        refundableLineAmount: numberValue(line.refundableLineAmount),
       }),
     ),
   }))
-}
-
-export async function loadDamagedWarehouses(
-  companyId: string,
-): Promise<DamagedWarehouseOption[]> {
-  const { data, error } = await supabase
-    .from('warehouses')
-    .select('id,name')
-    .eq('company_id', companyId)
-    .eq('is_active', true)
-    .eq('warehouse_type', 'DAMAGED')
-    .order('name')
-  throwIfError(error)
-  return (data ?? []).map((row) => ({ id: row.id, name: row.name }))
+  const damagedWarehouses = Array.isArray(payload.damagedWarehouses)
+    ? (payload.damagedWarehouses as DbRow[]).map((row) => ({
+        id: String(row.id), name: String(row.name),
+      })) : []
+  return { sales, damagedWarehouses }
 }
 
 export async function saveSalesReturnDraft(input: {
@@ -2077,6 +2003,7 @@ export async function saveSalesReturnDraft(input: {
   executingSessionId: string
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
   notes: string
+  refundDeliveryFee: boolean
   lines: Array<{
     sourceSalesDetailId: string
     quantity: number
@@ -2091,13 +2018,15 @@ export async function saveSalesReturnDraft(input: {
     proofUrl?: string
   }
 }): Promise<SalesReturnDraftResult> {
-  const { data, error } = await supabase.rpc('save_sales_return_draft', {
+  const { data, error } = await supabase.rpc(
+    'save_sales_return_draft_with_delivery_fee', {
     p_document_id: null,
     p_master_version: null,
     p_source_sales_id: input.sourceSalesId,
     p_executing_session_id: input.executingSessionId,
     p_rounding_direction: input.roundingDirection,
     p_notes: input.notes.trim() || null,
+    p_refund_delivery_fee: input.refundDeliveryFee,
     p_lines: input.lines.map((line) => ({
       sourceSalesDetailId: line.sourceSalesDetailId,
       quantity: line.quantity,
@@ -2114,7 +2043,8 @@ export async function saveSalesReturnDraft(input: {
         proofUrl: input.refund.proofUrl || null,
       },
     ],
-  })
+    },
+  )
   throwIfError(error)
   const row = data as DbRow
   return {

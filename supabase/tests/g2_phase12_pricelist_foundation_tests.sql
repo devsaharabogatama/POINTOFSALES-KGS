@@ -86,9 +86,9 @@ BEGIN
     );
     v_customer := (v_result->>'customerId')::UUID;
 
-    v_result := public.save_pricelist_with_rules(
-        NULL,NULL,'G16-BULK','Harga Grosir','GLOBAL',NULL,10,FALSE,
-        TRUE,NULL,NULL,NULL,TRUE,'Global tier test',
+    v_result := public.save_reusable_pricelist_with_rules(
+        NULL,NULL,'Harga Grosir','GLOBAL',10,FALSE,
+        TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,'Global tier test',
         jsonb_build_array(jsonb_build_object(
             'productId',v_product,'productUomId',v_product_uom,
             'minQty',5,'tierQtyBasis','SALES_UOM',
@@ -125,9 +125,9 @@ BEGIN
         END IF;
     END;
 
-    v_result := public.save_pricelist_with_rules(
-        NULL,NULL,'G16-CUST','Harga Customer G16','CUSTOMER',v_customer,
-        100,TRUE,TRUE,NULL,NULL,NULL,TRUE,NULL,
+    v_result := public.save_reusable_pricelist_with_rules(
+        NULL,NULL,'Harga Customer G16','CUSTOMER',100,FALSE,
+        TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,
         jsonb_build_array(jsonb_build_object(
             'productId',v_product,'productUomId',v_product_uom,
             'minQty',1,'tierQtyBasis','SALES_UOM',
@@ -137,9 +137,17 @@ BEGIN
     );
     v_customer_pricelist := (v_result->>'pricelistId')::UUID;
 
-    v_result := public.save_pricelist_with_rules(
-        v_customer_pricelist,1,'G16-CUST','Harga Customer G16 Updated',
-        'CUSTOMER',v_customer,100,TRUE,TRUE,NULL,NULL,NULL,TRUE,NULL,
+    UPDATE public.customers SET default_pricelist_id=v_customer_pricelist
+    WHERE company_id=v_company AND id=v_customer;
+    IF NOT EXISTS(SELECT 1 FROM public.customers
+        WHERE company_id=v_company AND id=v_customer
+          AND default_pricelist_id=v_customer_pricelist) THEN
+        RAISE EXCEPTION 'TEST_FAILED: reusable Customer Pricelist not assigned';
+    END IF;
+
+    v_result := public.save_reusable_pricelist_with_rules(
+        v_customer_pricelist,1,'Harga Customer G16 Updated',
+        'CUSTOMER',100,FALSE,TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,
         jsonb_build_array(jsonb_build_object(
             'productId',v_product,'productUomId',v_product_uom,
             'minQty',1,'tierQtyBasis','SALES_UOM',
@@ -168,9 +176,9 @@ BEGIN
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_pricelist_with_rules(
-            v_customer_pricelist,1,'G16-CUST','Stale Update','CUSTOMER',
-            v_customer,100,TRUE,TRUE,NULL,NULL,NULL,TRUE,NULL,'[]'::JSONB
+        PERFORM public.save_reusable_pricelist_with_rules(
+            v_customer_pricelist,1,'Stale Update','CUSTOMER',
+            100,FALSE,TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,'[]'::JSONB
         );
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM = 'MASTER_VERSION_CONFLICT' THEN v_rejected := TRUE;
@@ -182,9 +190,9 @@ BEGIN
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_pricelist_with_rules(
-            NULL,NULL,'G16-TIER-C','Invalid Customer Tier','CUSTOMER',
-            v_customer,0,FALSE,TRUE,NULL,NULL,NULL,TRUE,NULL,
+        PERFORM public.save_reusable_pricelist_with_rules(
+            NULL,NULL,'Invalid Customer Tier','CUSTOMER',
+            0,FALSE,TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,
             jsonb_build_array(jsonb_build_object(
                 'productId',v_product,'productUomId',v_product_uom,
                 'minQty',2,'pricingMethod','FIXED_PRICE','fixedUnitPrice',70
@@ -197,16 +205,16 @@ BEGIN
     END;
     IF NOT v_rejected OR EXISTS (
         SELECT 1 FROM public.pricelists
-        WHERE company_id = v_company AND code = 'G16-TIER-C'
+        WHERE company_id = v_company AND name = 'Invalid Customer Tier'
     ) THEN
         RAISE EXCEPTION 'TEST_FAILED: invalid Customer tier partially persisted';
     END IF;
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_pricelist_with_rules(
-            NULL,NULL,'G16-NOVALUE','Missing Price Value','GLOBAL',NULL,
-            0,FALSE,TRUE,NULL,NULL,NULL,TRUE,NULL,
+        PERFORM public.save_reusable_pricelist_with_rules(
+            NULL,NULL,'Missing Price Value','GLOBAL',
+            0,FALSE,TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,
             jsonb_build_array(jsonb_build_object(
                 'productId',v_product,'productUomId',v_product_uom,
                 'minQty',1,'pricingMethod','FIXED_PRICE'
@@ -219,39 +227,39 @@ BEGIN
     END;
     IF NOT v_rejected OR EXISTS (
         SELECT 1 FROM public.pricelists
-        WHERE company_id = v_company AND code = 'G16-NOVALUE'
+        WHERE company_id = v_company AND name = 'Missing Price Value'
     ) THEN
         RAISE EXCEPTION 'TEST_FAILED: valueless price rule partially persisted';
     END IF;
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_pricelist_with_rules(
-            NULL,NULL,'G16-WALK','Walk-In Exclusive','CUSTOMER',v_walk_in,
-            0,FALSE,TRUE,NULL,NULL,NULL,TRUE,NULL,'[]'::JSONB
-        );
+        UPDATE public.customers SET default_pricelist_id=v_customer_pricelist
+        WHERE company_id=v_company AND id=v_walk_in;
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'ACTIVE_REGULAR_CUSTOMER_NOT_FOUND' THEN
+        IF SQLERRM = 'SYSTEM_CUSTOMER_CANNOT_HAVE_PRICELIST' THEN
             v_rejected := TRUE;
         ELSE RAISE; END IF;
     END;
     IF NOT v_rejected THEN
-        RAISE EXCEPTION 'TEST_FAILED: system Walk-In accepted as exclusive scope';
+        RAISE EXCEPTION 'TEST_FAILED: system Walk-In accepted Customer Pricelist';
     END IF;
 
     v_rejected := FALSE;
     BEGIN
-        PERFORM public.save_pricelist_with_rules(
-            NULL,NULL,'G16-DEFAULT-2','Second Default','GLOBAL',NULL,
-            0,TRUE,TRUE,NULL,NULL,NULL,TRUE,NULL,'[]'::JSONB
+        PERFORM public.save_reusable_pricelist_with_rules(
+            NULL,NULL,'Second Default','GLOBAL',
+            0,TRUE,TRUE,ARRAY[]::UUID[],NULL,NULL,TRUE,NULL,'[]'::JSONB
         );
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'DUPLICATE_OR_DEFAULT_PRICELIST_CONFLICT' THEN
+        IF SQLERRM = 'ACTIVE_COMPANY_REQUIRES_ONE_DEFAULT_GLOBAL_PRICELIST' THEN
             v_rejected := TRUE;
         ELSE RAISE; END IF;
     END;
-    IF NOT v_rejected THEN
-        RAISE EXCEPTION 'TEST_FAILED: second active Global default accepted';
+    IF v_rejected OR (SELECT count(*) FROM public.pricelists
+        WHERE company_id=v_company AND scope='GLOBAL'
+          AND is_active AND is_default)<>1 THEN
+        RAISE EXCEPTION 'TEST_FAILED: Global default switch invalid';
     END IF;
 
     SELECT count(*) INTO v_count FROM public.pricelist_master_audit
@@ -265,15 +273,19 @@ BEGIN
         'authenticated','public.pricelists','INSERT,UPDATE,DELETE'
     ) OR has_table_privilege(
         'authenticated','public.pricelist_rules','INSERT,UPDATE,DELETE'
-    ) OR NOT has_function_privilege(
+    ) OR has_function_privilege(
         'authenticated',
         'public.save_pricelist_with_rules(uuid,bigint,text,text,text,uuid,integer,boolean,boolean,uuid[],timestamp with time zone,timestamp with time zone,boolean,text,jsonb)',
+        'EXECUTE'
+    ) OR NOT has_function_privilege(
+        'authenticated',
+        'public.save_reusable_pricelist_with_rules(uuid,bigint,text,text,integer,boolean,boolean,uuid[],timestamp with time zone,timestamp with time zone,boolean,text,jsonb)',
         'EXECUTE'
     ) THEN
         RAISE EXCEPTION 'TEST_FAILED: Pricelist privilege boundary invalid';
     END IF;
 
-    RAISE NOTICE 'TEST PASSED: Global/Customer Pricelist writes are atomic, tenant-safe, versioned, audited, and preserve historical rules.';
+    RAISE NOTICE 'TEST PASSED: Global/reusable Customer Pricelist writes are atomic, tenant-safe, versioned, audited, and preserve historical rules.';
 END
 $test$;
 

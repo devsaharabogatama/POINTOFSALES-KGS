@@ -2,7 +2,8 @@
 
 **Status:** Business/design decision approved; belum memerintahkan implementasi Storage  
 **Berlaku:** Seluruh company dan modul yang memakai bukti pembayaran, foto, atau attachment  
-**Strategi sementara:** Google Drive/external link, bukan upload file ke aplikasi
+**Strategi sementara:** Google Drive/external link untuk bukti transaksi;
+Company logo adalah exception branding terpisah yang direncanakan
 
 ---
 
@@ -23,6 +24,12 @@ Kebijakan ini berlaku sampai ada keputusan eksplisit untuk memakai Storage milik
 - bukti Ketul Customer/Vendor;
 - bukti pembayaran Tempo/Recovery;
 - foto Produk atau foto operasional lain yang nanti ditambahkan.
+
+Company logo tidak termasuk evidence transaksi. Instruksi user 2026-08-11
+membuka exception terbatas untuk upload logo ke storage branding aplikasi agar
+dapat dipakai pada Invoice dan Surat Jalan. Exception tersebut wajib mengikuti
+`PREDEPLOY_MODULAR_HOME_BRANDING_SALES_DOCUMENT_PLAN.md` dan tidak memperluas
+hak upload bukti pembayaran/foto operasional.
 
 Cash dan metode non-Transfer tetap boleh memiliki link bukti bila workflow membutuhkannya, tetapi field Transfer harus selalu tersedia pada form terkait.
 
@@ -99,3 +106,4 @@ evidence_updated_at nullable
 | 2026-07-19 | File/foto disimpan sementara di Google Drive, bukan Supabase Storage | APPROVED |
 | 2026-07-19 | Aplikasi hanya menyimpan URL/metadata dan tidak mem-proxy file | APPROVED |
 | 2026-07-19 | Link bukan payment verification; status tetap dikonfirmasi melalui workflow Finance | APPROVED |
+| 2026-08-11 | Upload internal dibuka hanya untuk logo Company; bukti transaksi tetap external-link | APPROVED ROADMAP, belum implemented |

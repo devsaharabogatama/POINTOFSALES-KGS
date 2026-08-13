@@ -1,4 +1,4 @@
-import { ApiRouteError, apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
+import { ApiRouteError, apiError, requireActiveCompany, requireCaller, requirePermissionCapability } from '@/lib/server-auth'
 import { isUuid } from '@/lib/master-import'
 import { readObject, requireImportManager, throwImportError } from '@/lib/master-import-server'
 
@@ -34,6 +34,14 @@ export async function GET(request: Request, context: RouteContext) {
       if (result.error) throwImportError(result.error)
     }
     if (!jobResult.data) throw new ApiRouteError('IMPORT_JOB_NOT_FOUND', 404)
+    if (jobResult.data.import_type === 'PRODUCT') {
+      await requirePermissionCapability(caller, companyId, 'inventory.products', 'VIEW')
+    }
+    if (jobResult.data.import_type === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK') {
+      await requirePermissionCapability(
+        caller, companyId, 'inventory.minimum_stock', 'VIEW',
+      )
+    }
     return Response.json({
       data: jobResult.data,
       rows: rowResult.data ?? [],
@@ -52,6 +60,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     await requireImportManager(caller, companyId)
     const { id } = await context.params
     if (!isUuid(id)) throw new ApiRouteError('IMPORT_JOB_NOT_FOUND', 404)
+    const { data: jobScope, error: jobScopeError } = await caller.client
+      .from('master_import_jobs').select('import_type')
+      .eq('company_id', companyId).eq('id', id).maybeSingle()
+    if (jobScopeError) throwImportError(jobScopeError)
+    if (!jobScope) throw new ApiRouteError('IMPORT_JOB_NOT_FOUND', 404)
+    if (jobScope.import_type === 'PRODUCT') {
+      await requirePermissionCapability(caller, companyId, 'inventory.products', 'IMPORT')
+    }
+    if (jobScope.import_type === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK') {
+      await requirePermissionCapability(
+        caller, companyId, 'inventory.minimum_stock', 'IMPORT',
+      )
+    }
     const body = readObject(await request.json())
     const masterVersion = Number(body.masterVersion)
     if (!Number.isSafeInteger(masterVersion) || masterVersion < 1) {

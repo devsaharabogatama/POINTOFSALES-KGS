@@ -9,9 +9,6 @@ import {
   uuidValue,
 } from '@/lib/master-data'
 
-const selectFields =
-  'id, company_id, category_code, category_name, is_active, master_version, default_sales_tax_rule_id, default_purchase_tax_rule_id, created_at, updated_at'
-
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -25,24 +22,27 @@ export async function PATCH(request: Request, context: RouteContext) {
     const masterVersion = requiredVersion(body)
     ensurePatchFields(body, ['categoryName', 'isActive'])
 
-    const changes: Record<string, string | boolean> = {}
-    if ('categoryName' in body) {
-      changes.category_name = requiredText(body, 'categoryName', { maxLength: 150 })
-    }
+    const currentResult = await caller.client.from('product_categories')
+      .select('category_name,is_active')
+      .eq('company_id', companyId).eq('id', id).maybeSingle()
+    if (currentResult.error) throwDatabaseError(currentResult.error)
+    if (!currentResult.data) throw new ApiRouteError('MASTER_NOT_FOUND', 404)
+    let categoryName = currentResult.data.category_name
+    if ('categoryName' in body) categoryName = requiredText(body, 'categoryName', { maxLength: 150 })
     const isActive = optionalBoolean(body, 'isActive')
-    if (isActive !== undefined) changes.is_active = isActive
 
-    const { data, error } = await caller.client
-      .from('product_categories')
-      .update(changes)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .eq('master_version', masterVersion)
-      .select(selectFields)
-      .maybeSingle()
+    const { data: result, error } = await caller.client.rpc(
+      'save_inventory_product_category',
+      {
+        p_category_id: id,
+        p_expected_version: masterVersion,
+        p_category_name: categoryName,
+        p_is_active: isActive ?? currentResult.data.is_active,
+      },
+    )
 
     if (error) throwDatabaseError(error)
-    if (!data) throw new ApiRouteError('MASTER_VERSION_CONFLICT_OR_NOT_FOUND', 409)
+    const data = (result as { data?: unknown } | null)?.data ?? result
     return Response.json({ data })
   } catch (error) {
     return apiError(error)

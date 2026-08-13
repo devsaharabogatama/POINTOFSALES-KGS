@@ -17,6 +17,7 @@ DECLARE
     v_product_uom UUID:='00000000-0000-0000-0000-000000082071';
     v_customer_category UUID;
     v_customer UUID:='00000000-0000-0000-0000-000000082081';
+    v_zero_balance_customer UUID:='00000000-0000-0000-0000-000000082082';
     v_walk_in UUID;
     v_cash UUID;
     v_session UUID;
@@ -103,10 +104,11 @@ BEGIN
     INSERT INTO public.customers(
         id,company_id,code,name,customer_category_id,customer_type,
         current_balance,credit_limit,is_active,is_system_customer
-    ) VALUES(
-        v_customer,v_company,'G82-CUST','G82 Customer',v_customer_category,
-        'INDIVIDUAL',0,0,TRUE,FALSE
-    );
+    ) VALUES
+      (v_customer,v_company,'G82-CUST','G82 Customer',v_customer_category,
+       'INDIVIDUAL',0,0,TRUE,FALSE),
+      (v_zero_balance_customer,v_company,'G82-CASH','G82 Cash Customer',
+       v_customer_category,'INDIVIDUAL',0,0,TRUE,FALSE);
     INSERT INTO public.company_features(
         company_id,feature_code,is_enabled,config,updated_by
     ) VALUES(
@@ -218,9 +220,11 @@ BEGIN
     END IF;
 
     -- Cash overpayment without the Phase-53 choice remains returned change.
+    -- Use a separate zero-balance Customer: after Phase 56, a Customer that
+    -- already owns Balance must consume it fully before another Sale can post.
     v_payload:=jsonb_build_object(
         'clientTransactionId','00000000-0000-0000-0000-000000082102',
-        'cashierSessionId',v_session,'customerId',v_customer,
+        'cashierSessionId',v_session,'customerId',v_zero_balance_customer,
         'roundingDirection','NONE',
         'lines',jsonb_build_array(jsonb_build_object(
             'lineKey','G82-LINE-2','productUomId',v_product_uom,'quantity',1
@@ -242,7 +246,9 @@ BEGIN
       AND customer_balance_credit_amount=0
       AND customer_balance_ledger_entry_id IS NULL;
     IF v_count<>1 OR (SELECT current_balance FROM public.customers
-        WHERE id=v_customer)<>20 THEN
+        WHERE id=v_customer)<>20
+       OR (SELECT current_balance FROM public.customers
+        WHERE id=v_zero_balance_customer)<>0 THEN
         RAISE EXCEPTION 'TEST_FAILED: returned Cash change became balance';
     END IF;
     IF private.calculate_cashier_session_expected_cash(v_company,v_session)

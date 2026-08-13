@@ -31,6 +31,7 @@ import {
   ShoppingCart,
   ClipboardList,
   Trash2,
+  Truck,
   UserRound,
   UserPlus,
   Wifi,
@@ -61,10 +62,13 @@ import {
   loadCatalog,
   loadCompanies,
   loadReceipt,
+  loadSalesDeliveryDocument,
+  loadSalesInvoiceDocument,
   loadResolvedSaleLines,
   openCashierSession,
   postSale,
   quickCreatePosCustomer,
+  recordSalesDocumentPrint,
   releaseSaleDraftLock,
   saveSaleDraft,
   setActiveCompany,
@@ -79,7 +83,13 @@ import {
   type SaleDraft,
   type SaleDraftListItem,
   type SaleReceipt,
+  type SalesDeliveryDocument,
+  type SalesInvoiceDocument,
 } from './lib/pos'
+import {
+  openSalesDeliveryPrint,
+  openSalesInvoicePrint,
+} from './lib/salesDocumentPrinter'
 
 const SalesReturnModal = lazy(() =>
   import('./SalesReturnModal').then((module) => ({
@@ -215,6 +225,11 @@ function friendlyError(code: string) {
     INVALID_CUSTOMER_PHONE: 'Nomor telepon Customer maksimal 100 karakter.',
     INVALID_CUSTOMER_EMAIL: 'Email Customer tidak valid atau terlalu panjang.',
     INVALID_CUSTOMER_ADDRESS: 'Alamat Customer maksimal 1.000 karakter.',
+    DELIVERY_RECIPIENT_REQUIRED:
+      'Nama penerima, nomor telepon, dan alamat pengiriman wajib diisi.',
+    INVALID_FULFILLMENT_MODE: 'Cara penerimaan barang tidak dikenali.',
+    INVALID_DELIVERY_FEE_AMOUNT:
+      'Ongkir harus berupa angka nol atau lebih besar.',
     ACTIVE_CUSTOMER_CATEGORY_NOT_FOUND:
       'Company aktif belum memiliki kategori Customer yang dapat dipakai.',
     DUPLICATE_CUSTOMER:
@@ -375,6 +390,22 @@ export default function App() {
   )
   const [resolvedLines, setResolvedLines] = useState<ResolvedSaleLine[]>([])
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null)
+  const [salesDocuments, setSalesDocuments] = useState<{
+    invoice: SalesInvoiceDocument
+    delivery: SalesDeliveryDocument | null
+  } | null>(null)
+  const [fulfillmentMode, setFulfillmentMode] = useState<
+    'PICKUP' | 'DELIVERY'
+  >('PICKUP')
+  const [deliveryRecipientName, setDeliveryRecipientName] = useState('')
+  const [deliveryRecipientPhone, setDeliveryRecipientPhone] = useState('')
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [deliveryScheduledAt, setDeliveryScheduledAt] = useState('')
+  const [deliveryNotes, setDeliveryNotes] = useState('')
+  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState('0')
+  const [deliveryFeeInvoiceDisplayMode, setDeliveryFeeInvoiceDisplayMode] =
+    useState<'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'>('SHOW_SEPARATE')
+  const [deliveryDetailsOpen, setDeliveryDetailsOpen] = useState(false)
   const [shortages, setShortages] = useState<Array<Record<string, unknown>>>([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Semua')
@@ -524,8 +555,19 @@ export default function App() {
   ])
   const offlinePreview = offlineCalculation.preview
   const offlinePreviewError = offlineCalculation.error
+  const parsedDeliveryFee = Number(deliveryFeeAmount || 0)
+  const deliveryFeeInputValid =
+    Number.isFinite(parsedDeliveryFee) && parsedDeliveryFee >= 0
+  const effectiveDeliveryFee =
+    fulfillmentMode === 'DELIVERY' && deliveryFeeInputValid
+      ? parsedDeliveryFee
+      : 0
   const paymentDue =
-    draft?.grandTotalAfterRounding ?? offlinePreview?.grandTotal ?? 0
+    draft
+      ? draft.grandTotalAfterRounding - draft.deliveryFeeAmount + effectiveDeliveryFee
+      : offlinePreview
+        ? offlinePreview.grandTotal + effectiveDeliveryFee
+        : 0
   const paymentBaseTotal = paymentLegs.reduce(
     (total, leg) => total + Number(leg.amount || 0),
     0,
@@ -1140,8 +1182,12 @@ export default function App() {
       if (actionDialog) {
         setActionDialog(null)
         setActionDialogReason('')
-      } else if (offlineSlip) setOfflineSlip(null)
-      else if (receipt) setReceipt(null)
+      } else if (deliveryDetailsOpen) setDeliveryDetailsOpen(false)
+      else if (offlineSlip) setOfflineSlip(null)
+      else if (receipt) {
+        setReceipt(null)
+        setSalesDocuments(null)
+      }
       else if (purchaseReturnOpen) setPurchaseReturnOpen(false)
       else if (goodsReceiptOpen) setGoodsReceiptOpen(false)
       else if (stockRequestOpen) setStockRequestOpen(false)
@@ -1158,6 +1204,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [
     actionDialog,
+    deliveryDetailsOpen,
     draftPanelOpen,
     error,
     cashDepositOpen,
@@ -1176,6 +1223,42 @@ export default function App() {
   function openActionDialog(dialog: ActionDialog) {
     setActionDialogReason('')
     setActionDialog(dialog)
+  }
+
+  function closeReceipt() {
+    setReceipt(null)
+    setSalesDocuments(null)
+  }
+
+  function selectCustomer(nextCustomerId: string) {
+    const customer = catalog.customers.find((item) => item.id === nextCustomerId)
+    setCustomerId(nextCustomerId)
+    setSelectedPricelistId('')
+    setResolvedLines([])
+    if (fulfillmentMode === 'DELIVERY' && customer) {
+      setDeliveryRecipientName(customer.isWalkIn ? '' : customer.name)
+      setDeliveryRecipientPhone(customer.phone)
+      setDeliveryAddress(customer.address)
+    }
+  }
+
+  function selectFulfillmentMode(mode: 'PICKUP' | 'DELIVERY') {
+    setFulfillmentMode(mode)
+    if (mode === 'PICKUP') {
+      setDeliveryRecipientName('')
+      setDeliveryRecipientPhone('')
+      setDeliveryAddress('')
+      setDeliveryScheduledAt('')
+      setDeliveryNotes('')
+      setDeliveryFeeAmount('0')
+      setDeliveryFeeInvoiceDisplayMode('SHOW_SEPARATE')
+      setDeliveryDetailsOpen(false)
+      return
+    }
+    setDeliveryRecipientName(activeCustomer?.isWalkIn ? '' : activeCustomer?.name ?? '')
+    setDeliveryRecipientPhone(activeCustomer?.phone ?? '')
+    setDeliveryAddress(activeCustomer?.address ?? '')
+    setDeliveryDetailsOpen(true)
   }
 
   async function confirmActionDialog() {
@@ -1376,6 +1459,17 @@ export default function App() {
     if (!cashierSession || !customerId || cart.length === 0) {
       throw new Error('SESSION_CUSTOMER_AND_CART_REQUIRED')
     }
+    if (
+      fulfillmentMode === 'DELIVERY' &&
+      (!deliveryRecipientName.trim() ||
+        !deliveryRecipientPhone.trim() ||
+        !deliveryAddress.trim())
+    ) {
+      throw new Error('DELIVERY_RECIPIENT_REQUIRED')
+    }
+    if (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid) {
+      throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
+    }
     const saved = await saveSaleDraft({
       draft: currentDraft,
       clientTransactionId,
@@ -1389,6 +1483,16 @@ export default function App() {
       roundingDirection,
       isTempo,
       dueDate: isTempo && dueDate ? new Date(dueDate).toISOString() : null,
+      fulfillmentMode,
+      deliveryRecipientName,
+      deliveryRecipientPhone,
+      deliveryAddress,
+      deliveryScheduledAt: deliveryScheduledAt
+        ? new Date(deliveryScheduledAt).toISOString()
+        : null,
+      deliveryNotes,
+      deliveryFeeAmount: effectiveDeliveryFee,
+      deliveryFeeInvoiceDisplayMode,
       negativeStockReason,
       payments,
     })
@@ -1492,6 +1596,19 @@ export default function App() {
           ? payload.roundingDirection
           : 'NONE'
       const nextGlobalDiscount = String(payload.globalDiscount ?? '')
+      const nextFulfillmentMode = payload.fulfillmentMode === 'DELIVERY'
+        ? 'DELIVERY'
+        : 'PICKUP'
+      const nextDeliveryScheduledAt = payload.deliveryScheduledAt
+        ? String(payload.deliveryScheduledAt).slice(0, 16)
+        : ''
+      const nextDeliveryFeeAmount = nextFulfillmentMode === 'DELIVERY'
+        ? String(payload.deliveryFeeAmount ?? 0)
+        : '0'
+      const nextDeliveryFeeInvoiceDisplayMode =
+        payload.deliveryFeeInvoiceDisplayMode === 'HIDE_BREAKDOWN'
+          ? 'HIDE_BREAKDOWN'
+          : 'SHOW_SEPARATE'
       const nextDraft: SaleDraft = {
         salesId: item.salesId,
         draftNo: item.draftNo,
@@ -1500,6 +1617,8 @@ export default function App() {
         grandTotalBeforeRounding: item.grandTotal,
         roundingAdjustment: 0,
         grandTotalAfterRounding: item.grandTotal,
+        deliveryFeeAmount: Number(payload.deliveryFeeAmount ?? 0),
+        deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
       }
 
       const repriced = await saveSaleDraft({
@@ -1529,6 +1648,16 @@ export default function App() {
         dueDate: nextIsTempo && payload.dueDate
           ? String(payload.dueDate)
           : null,
+        fulfillmentMode: nextFulfillmentMode,
+        deliveryRecipientName: String(payload.deliveryRecipientName ?? ''),
+        deliveryRecipientPhone: String(payload.deliveryRecipientPhone ?? ''),
+        deliveryAddress: String(payload.deliveryAddress ?? ''),
+        deliveryScheduledAt: payload.deliveryScheduledAt
+          ? String(payload.deliveryScheduledAt)
+          : null,
+        deliveryNotes: String(payload.deliveryNotes ?? ''),
+        deliveryFeeAmount: Number(nextDeliveryFeeAmount),
+        deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
         payments: [],
       })
 
@@ -1543,6 +1672,14 @@ export default function App() {
       setRoundingDirection(nextRoundingDirection)
       setIsTempo(nextIsTempo)
       setDueDate(nextDueDate)
+      setFulfillmentMode(nextFulfillmentMode)
+      setDeliveryRecipientName(String(payload.deliveryRecipientName ?? ''))
+      setDeliveryRecipientPhone(String(payload.deliveryRecipientPhone ?? ''))
+      setDeliveryAddress(String(payload.deliveryAddress ?? ''))
+      setDeliveryScheduledAt(nextDeliveryScheduledAt)
+      setDeliveryNotes(String(payload.deliveryNotes ?? ''))
+      setDeliveryFeeAmount(nextDeliveryFeeAmount)
+      setDeliveryFeeInvoiceDisplayMode(nextDeliveryFeeInvoiceDisplayMode)
       const defaultPayment =
         catalog.paymentMethods.find((method) => method.isDefault) ??
         catalog.paymentMethods[0]
@@ -1823,6 +1960,15 @@ export default function App() {
     try {
       if (draft) throw new Error('OFFLINE_EXISTING_DRAFT_REQUIRES_ONLINE')
       if (isTempo) throw new Error('OFFLINE_TEMPO_NOT_ALLOWED')
+      if (
+        fulfillmentMode === 'DELIVERY' &&
+        (!deliveryRecipientName.trim() ||
+          !deliveryRecipientPhone.trim() ||
+          !deliveryAddress.trim())
+      ) throw new Error('DELIVERY_RECIPIENT_REQUIRED')
+      if (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid) {
+        throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
+      }
       const scope = offlineCache.snapshot
       if (
         scope.companyId !== companyId ||
@@ -1858,6 +2004,16 @@ export default function App() {
         payments: paymentLegs,
         snapshot: scope,
         roundingDirection,
+        fulfillmentMode,
+        deliveryRecipientName,
+        deliveryRecipientPhone,
+        deliveryAddress,
+        deliveryScheduledAt: deliveryScheduledAt
+          ? new Date(deliveryScheduledAt).toISOString()
+          : null,
+        deliveryNotes,
+        deliveryFeeAmount: effectiveDeliveryFee,
+        deliveryFeeInvoiceDisplayMode,
       })
       const { queueOfflineSale } = await import('./lib/offline')
       const record = await queueOfflineSale({
@@ -1876,7 +2032,11 @@ export default function App() {
       setOfflineSlip({
         clientTransactionId: record.clientTransactionId,
         localTransactionAt: record.localTransactionAt,
-        preview,
+        preview: {
+          ...preview,
+          totalBeforeRounding: preview.totalBeforeRounding + effectiveDeliveryFee,
+          grandTotal: preview.grandTotal + effectiveDeliveryFee,
+        },
         payments: salePayload.payments.map((payment) => ({
           methodName:
             methods.get(payment.paymentMethodId) ?? 'Metode pembayaran',
@@ -1988,7 +2148,17 @@ export default function App() {
         acknowledgement?.salesId ?? acknowledgement?.saleId ?? '',
       )
       if (!salesId) throw new Error('OFFLINE_FINAL_RECEIPT_NOT_AVAILABLE')
-      setReceipt(await loadReceipt(companyId, salesId))
+      const finalReceipt = await loadReceipt(companyId, salesId)
+      setReceipt(finalReceipt)
+      try {
+        const [invoice, delivery] = await Promise.all([
+          loadSalesInvoiceDocument(salesId),
+          loadSalesDeliveryDocument(salesId),
+        ])
+        setSalesDocuments({ invoice, delivery })
+      } catch {
+        setSalesDocuments(null)
+      }
     } catch (reason) {
       setOfflineCacheMessage(friendlyError(errorMessage(reason)))
     }
@@ -2108,6 +2278,15 @@ export default function App() {
       }
       const finalReceipt = await loadReceipt(companyId, finalDraft.salesId)
       setReceipt(finalReceipt)
+      try {
+        const [invoice, delivery] = await Promise.all([
+          loadSalesInvoiceDocument(finalDraft.salesId),
+          loadSalesDeliveryDocument(finalDraft.salesId),
+        ])
+        setSalesDocuments({ invoice, delivery })
+      } catch {
+        setSalesDocuments(null)
+      }
       setNotice('Penjualan berhasil diposting oleh server.')
       resetSale()
       await refreshCatalog(cashierSession)
@@ -2160,7 +2339,50 @@ export default function App() {
     setIsTempo(false)
     setDueDate('')
     setRoundingDirection('NONE')
+    setFulfillmentMode('PICKUP')
+    setDeliveryRecipientName('')
+    setDeliveryRecipientPhone('')
+    setDeliveryAddress('')
+    setDeliveryScheduledAt('')
+    setDeliveryNotes('')
+    setDeliveryFeeAmount('0')
+    setDeliveryFeeInvoiceDisplayMode('SHOW_SEPARATE')
+    setDeliveryDetailsOpen(false)
     setClientTransactionId(crypto.randomUUID())
+  }
+
+  async function handlePrintInvoice() {
+    if (!salesDocuments?.invoice) return
+    try {
+      openSalesInvoicePrint(salesDocuments.invoice)
+      await recordSalesDocumentPrint(
+        'SALES_INVOICE',
+        salesDocuments.invoice.invoiceSnapshotId,
+      )
+    } catch (reason) {
+      setError(
+        errorMessage(reason) === 'POPUP_BLOCKED'
+          ? 'Browser memblokir tab Invoice. Izinkan pop-up lalu coba lagi.'
+          : friendlyError(errorMessage(reason)),
+      )
+    }
+  }
+
+  async function handlePrintDelivery() {
+    if (!salesDocuments?.delivery) return
+    try {
+      openSalesDeliveryPrint(salesDocuments.delivery)
+      await recordSalesDocumentPrint(
+        'SALES_DELIVERY',
+        salesDocuments.delivery.deliveryDocumentId,
+      )
+    } catch (reason) {
+      setError(
+        errorMessage(reason) === 'POPUP_BLOCKED'
+          ? 'Browser memblokir tab Surat Jalan. Izinkan pop-up lalu coba lagi.'
+          : friendlyError(errorMessage(reason)),
+      )
+    }
   }
 
   async function handlePrint() {
@@ -2979,11 +3201,7 @@ export default function App() {
                   <select
                     aria-label="Customer"
                     value={customerId}
-                    onChange={(event) => {
-                      setCustomerId(event.target.value)
-                      setSelectedPricelistId('')
-                      setResolvedLines([])
-                    }}
+                    onChange={(event) => selectCustomer(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
                   >
                     {catalog.customers.map((customer) => (
@@ -3074,6 +3292,41 @@ export default function App() {
                   />
                   Transaksi TEMPO
                 </label>
+                <div className="pos-delivery-confirmation">
+                  <label className="pos-delivery-toggle">
+                    <input
+                      type="checkbox"
+                      checked={fulfillmentMode === 'DELIVERY'}
+                      onChange={(event) =>
+                        selectFulfillmentMode(
+                          event.target.checked ? 'DELIVERY' : 'PICKUP',
+                        )
+                      }
+                    />
+                    <span>
+                      <strong>Perlu dikirim</strong>
+                      <small>
+                        Aktifkan untuk membuat Surat Jalan dan data tujuan kirim.
+                      </small>
+                    </span>
+                  </label>
+                  {fulfillmentMode === 'DELIVERY' && (
+                    <button
+                      type="button"
+                      className="pos-delivery-edit-button"
+                      onClick={() => setDeliveryDetailsOpen(true)}
+                    >
+                      <Truck className="h-4 w-4" />
+                      <span>
+                        <strong>Atur pengiriman</strong>
+                        <small>
+                          {deliveryRecipientName || 'Penerima belum lengkap'} ·{' '}
+                          {money(effectiveDeliveryFee)}
+                        </small>
+                      </span>
+                    </button>
+                  )}
+                </div>
                 <div className="pos-section-heading">
                   <span>3</span>
                   <div>
@@ -3455,9 +3708,9 @@ export default function App() {
                     <span>Total akhir</span>
                     <span className="text-emerald-400">
                       {draft
-                        ? money(draft.grandTotalAfterRounding)
+                        ? money(paymentDue)
                           : offlinePreview
-                          ? money(offlinePreview.grandTotal)
+                          ? money(paymentDue)
                           : isOnline
                             ? 'Simpan untuk hitung total'
                             : 'Offline belum siap'}
@@ -3502,6 +3755,7 @@ export default function App() {
                       busy ||
                       cart.length === 0 ||
                       customerBalanceShortfall > 0
+                      || (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid)
                     }
                     onClick={() => void handlePostSale()}
                     className="rounded-xl bg-emerald-500 px-3 py-3 font-black text-slate-950 disabled:opacity-40"
@@ -3622,7 +3876,7 @@ export default function App() {
             setError('')
             try {
               await refreshCatalog(cashierSession)
-              setCustomerId(newCustomerId)
+              selectCustomer(newCustomerId)
               setSelectedPricelistId('')
               setResolvedLines([])
               setQuickCustomerOpen(false)
@@ -3846,6 +4100,124 @@ export default function App() {
         </div>
       )}
 
+      {deliveryDetailsOpen && fulfillmentMode === 'DELIVERY' && (
+        <div className="pos-action-dialog-overlay fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-details-title"
+            className="pos-delivery-dialog w-full max-w-2xl bg-white shadow-2xl"
+          >
+            <header className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+                  Pengiriman transaksi ini
+                </p>
+                <h2 id="delivery-details-title" className="mt-1 text-xl font-black text-slate-950">
+                  Tujuan kirim dan ongkir
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Data Customer dipakai sebagai awal dan tetap dapat disesuaikan untuk pengiriman ini.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeliveryDetailsOpen(false)}
+                className="pos-modal-close"
+                aria-label="Tutup pengaturan pengiriman"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+            <div className="pos-delivery-fields mt-6">
+              <label>
+                <span>Nama penerima</span>
+                <input
+                  autoFocus
+                  value={deliveryRecipientName}
+                  onChange={(event) => setDeliveryRecipientName(event.target.value)}
+                  placeholder="Nama orang yang menerima"
+                  maxLength={200}
+                />
+              </label>
+              <label>
+                <span>Nomor telepon</span>
+                <input
+                  value={deliveryRecipientPhone}
+                  onChange={(event) => setDeliveryRecipientPhone(event.target.value)}
+                  placeholder="Nomor yang dapat dihubungi"
+                  maxLength={100}
+                />
+              </label>
+              <label className="is-wide">
+                <span>Alamat pengiriman</span>
+                <textarea
+                  value={deliveryAddress}
+                  onChange={(event) => setDeliveryAddress(event.target.value)}
+                  placeholder="Alamat lengkap tujuan pengiriman"
+                  maxLength={1000}
+                  rows={3}
+                />
+              </label>
+              <label>
+                <span>Rencana kirim (opsional)</span>
+                <input
+                  type="datetime-local"
+                  value={deliveryScheduledAt}
+                  onChange={(event) => setDeliveryScheduledAt(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Ongkir</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={deliveryFeeAmount}
+                  onChange={(event) => setDeliveryFeeAmount(event.target.value)}
+                  placeholder="0"
+                />
+              </label>
+              <label className="is-wide">
+                <span>Catatan pengiriman (opsional)</span>
+                <input
+                  value={deliveryNotes}
+                  onChange={(event) => setDeliveryNotes(event.target.value)}
+                  placeholder="Contoh: hubungi sebelum tiba"
+                  maxLength={500}
+                />
+              </label>
+            </div>
+            <label className="pos-invoice-fee-toggle">
+              <input
+                type="checkbox"
+                checked={deliveryFeeInvoiceDisplayMode === 'SHOW_SEPARATE'}
+                onChange={(event) =>
+                  setDeliveryFeeInvoiceDisplayMode(
+                    event.target.checked ? 'SHOW_SEPARATE' : 'HIDE_BREAKDOWN',
+                  )
+                }
+              />
+              <span>
+                <strong>Tampilkan rincian ongkir di Invoice</strong>
+                <small>
+                  Jika dimatikan, total Invoice tetap termasuk ongkir tanpa baris terpisah.
+                </small>
+              </span>
+            </label>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeliveryDetailsOpen(false)}
+                className="min-h-11 rounded-xl bg-emerald-600 px-5 font-black text-white"
+              >
+                Simpan pengiriman
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {actionDialog && (
         <div className="pos-action-dialog-overlay fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4">
           <section
@@ -4060,7 +4432,7 @@ export default function App() {
                 </p>
               </div>
               <button
-                onClick={() => setReceipt(null)}
+                onClick={closeReceipt}
                 className="pos-modal-close"
                 aria-label="Tutup struk"
                 title="Tutup struk"
@@ -4092,6 +4464,12 @@ export default function App() {
                   <span>{money(receipt.roundingAdjustment)}</span>
                 </div>
               )}
+              {Number(receipt.deliveryFeeAmount ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span>Ongkir</span>
+                  <span>{money(Number(receipt.deliveryFeeAmount))}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xl font-black">
                 <span>Total akhir</span>
                 <span>{money(receipt.grandTotal)}</span>
@@ -4117,7 +4495,13 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className="mt-6 grid grid-cols-2 gap-2">
+            {salesDocuments?.delivery && (
+              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                Surat Jalan <strong>{salesDocuments.delivery.deliveryNo}</strong>{' '}
+                siap dengan status {salesDocuments.delivery.status}.
+              </div>
+            )}
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
               <button
                 onClick={handlePrint}
                 className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-bold"
@@ -4125,8 +4509,26 @@ export default function App() {
                 <Printer className="h-5 w-5" />
                 Buka & cetak
               </button>
+              {salesDocuments?.invoice && (
+                <button
+                  onClick={handlePrintInvoice}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 font-bold text-emerald-800"
+                >
+                  <FileText className="h-5 w-5" />
+                  Invoice A4
+                </button>
+              )}
+              {salesDocuments?.delivery && (
+                <button
+                  onClick={handlePrintDelivery}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-4 py-3 font-bold text-sky-800"
+                >
+                  <Truck className="h-5 w-5" />
+                  Surat Jalan
+                </button>
+              )}
               <button
-                onClick={() => setReceipt(null)}
+                onClick={closeReceipt}
                 className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 font-black"
               >
                 <CheckCircle2 className="h-5 w-5" />

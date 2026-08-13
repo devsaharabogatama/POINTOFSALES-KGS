@@ -211,12 +211,12 @@ function friendlyError(code?: string) {
 export function StockAdjustmentView({
   session,
   companyId,
-  canOperate,
+  capabilities,
   notify,
 }: {
   session: Session
   companyId: string
-  canOperate: boolean
+  capabilities: string[]
   notify: (message: string) => void
 }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -232,25 +232,17 @@ export function StockAdjustmentView({
   const [detail, setDetail] = useState<AdjustmentDocument | null>(null)
 
   const load = useCallback(async () => {
-    const responses = await Promise.all([
-      fetch('/api/master/products?includeInactive=true', {
-        headers: authHeaders(session),
-      }),
-      fetch('/api/master/warehouses?includeInactive=true', {
-        headers: authHeaders(session),
-      }),
-      fetch('/api/inventory/stock-adjustments', {
-        headers: authHeaders(session),
-      }),
-    ])
-    const results = await Promise.all(responses.map((response) => response.json()))
-    const failed = responses.findIndex((response) => !response.ok)
-    if (failed >= 0) {
-      throw new Error(friendlyError((results[failed] as { error?: string }).error))
+    const response = await fetch('/api/inventory/stock-adjustments', {
+      headers: authHeaders(session),
+    })
+    const result = (await response.json()) as Payload & {
+      products?: Product[]
+      warehouses?: Warehouse[]
     }
-    setProducts((results[0] as { data?: Product[] }).data ?? [])
-    setWarehouses((results[1] as { data?: Warehouse[] }).data ?? [])
-    setPayload(results[2] as Payload)
+    if (!response.ok) throw new Error(friendlyError(result.error))
+    setProducts(result.products ?? [])
+    setWarehouses(result.warehouses ?? [])
+    setPayload(result)
   }, [session])
 
   const refresh = useCallback(async () => {
@@ -306,6 +298,11 @@ export function StockAdjustmentView({
   const posted = (payload.data ?? []).filter(
     (row) => row.status === 'POSTED',
   ).length
+  const canCreate = capabilities.includes('CREATE_DRAFT')
+  const canEdit = capabilities.includes('EDIT_DRAFT')
+  const canPost = capabilities.includes('POST')
+  const canCancel = capabilities.includes('CANCEL_FINAL')
+  const canOperate = canCreate || canEdit || canPost || canCancel
 
   return (
     <>
@@ -331,7 +328,7 @@ export function StockAdjustmentView({
             <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Muat ulang
           </button>
-          {canOperate && (
+          {canCreate && (
             <button
               onClick={() => setEditing('create')}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white"
@@ -410,29 +407,30 @@ export function StockAdjustmentView({
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    {canOperate && document.status === 'DRAFT' && (
+                    {document.status === 'DRAFT' &&
+                      (canEdit || canPost || canCancel) && (
                       <>
-                        <button
+                        {canEdit && <button
                           onClick={() => setEditing(document)}
                           className="rounded-xl border border-slate-200 p-2 text-blue-600"
                           aria-label={`Edit ${document.document_no}`}
                         >
                           <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
+                        </button>}
+                        {canPost && <button
                           onClick={() => setPosting(document)}
                           className="rounded-xl bg-emerald-500 p-2 text-white"
                           aria-label={`Posting ${document.document_no}`}
                         >
                           <Send className="h-4 w-4" />
-                        </button>
-                        <button
+                        </button>}
+                        {canCancel && <button
                           onClick={() => setCanceling(document)}
                           className="rounded-xl border border-rose-200 p-2 text-rose-600"
                           aria-label={`Batalkan ${document.document_no}`}
                         >
                           <XCircle className="h-4 w-4" />
-                        </button>
+                        </button>}
                       </>
                     )}
                   </div>

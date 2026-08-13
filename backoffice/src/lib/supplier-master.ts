@@ -108,6 +108,7 @@ export function throwSupplierRpcError(error: DatabaseError): never {
   const message = error?.message ?? ''
   const known = [
     'SUPPLIER_MANAGER_REQUIRED',
+    'CUSTOM_PERMISSION_DENIED',
     'INVALID_SUPPLIER_CODE',
     'INVALID_SUPPLIER_NAME',
     'SUPPLIER_NOT_FOUND',
@@ -129,7 +130,9 @@ export function throwSupplierRpcError(error: DatabaseError): never {
       'PREFERRED_SUPPLIER_ALREADY_EXISTS',
       'PRODUCT_SUPPLIER_ALREADY_EXISTS',
     ]
-    const status = known === 'SUPPLIER_MANAGER_REQUIRED' ? 403 : conflictCodes.includes(known) ? 409 : 400
+    const status = ['SUPPLIER_MANAGER_REQUIRED', 'CUSTOM_PERMISSION_DENIED'].includes(known)
+      ? 403
+      : conflictCodes.includes(known) ? 409 : 400
     throw new ApiRouteError(known, status)
   }
   if (error?.code === '42501') throw new ApiRouteError('FORBIDDEN', 403)

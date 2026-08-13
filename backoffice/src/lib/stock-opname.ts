@@ -33,6 +33,7 @@ export function parseStockOpnamePostBody(body: JsonObject) {
 export function throwStockOpnameRpcError(error: DatabaseError): never {
   const message = error?.message ?? ''
   const known = [
+    'CUSTOM_PERMISSION_DENIED',
     'STOCK_OPNAME_NOT_FOUND',
     'STOCK_OPNAME_LINE_NOT_FOUND',
     'STOCK_OPNAME_REVIEWER_REQUIRED',

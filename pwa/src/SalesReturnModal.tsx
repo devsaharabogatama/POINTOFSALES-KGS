@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, PackageCheck, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 import {
-  loadDamagedWarehouses,
-  loadReturnableSales,
+  loadSalesReturnWorkspace,
   saveSalesReturnDraft,
   type CashierSession,
   type CatalogData,
@@ -58,6 +57,7 @@ export function SalesReturnModal({
   const [transferReference, setTransferReference] = useState('')
   const [proofUrl, setProofUrl] = useState('')
   const [notes, setNotes] = useState('')
+  const [refundDeliveryFee, setRefundDeliveryFee] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -73,12 +73,9 @@ export function SalesReturnModal({
     setBusy(true)
     setError('')
     try {
-      const [nextSales, warehouses] = await Promise.all([
-        loadReturnableSales(companyId, query),
-        loadDamagedWarehouses(companyId),
-      ])
-      setSales(nextSales.filter((sale) => sale.storeId === cashierSession.storeId))
-      setDamagedWarehouses(warehouses)
+      const workspace = await loadSalesReturnWorkspace(companyId, query)
+      setSales(workspace.sales.filter((sale) => sale.storeId === cashierSession.storeId))
+      setDamagedWarehouses(workspace.damagedWarehouses)
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -120,11 +117,20 @@ export function SalesReturnModal({
         ]),
       ),
     )
+    setRefundDeliveryFee(false)
     setError('')
   }
 
   const calculation = useMemo(() => {
-    if (!selectedSale) return { selectedCount: 0, refundBefore: 0, total: 0 }
+    if (!selectedSale) return {
+      selectedCount: 0,
+      refundBefore: 0,
+      productTotal: 0,
+      deliveryFeeRefund: 0,
+      roundingAdjustment: 0,
+      fullRemaining: false,
+      total: 0,
+    }
     let refundBefore = 0
     let selectedCount = 0
     let allRemainingSelected = true
@@ -140,16 +146,35 @@ export function SalesReturnModal({
       refundBefore += line.refundableLineAmount * quantity / line.soldQuantity
     }
     refundBefore = round4(refundBefore)
-    let total = refundBefore
-    if (allRemainingSelected && selectedCount === selectedSale.lines.length) {
-      total = round4(selectedSale.grandTotal - selectedSale.priorRefundTotal)
+    const fullRemaining =
+      allRemainingSelected && selectedCount === selectedSale.lines.length
+    const availableDeliveryFee = Math.max(
+      selectedSale.deliveryFeeAmount - selectedSale.deliveryFeeRefunded,
+      0,
+    )
+    let productTotal = refundBefore
+    if (fullRemaining) {
+      productTotal = round4(
+        selectedSale.grandTotal - selectedSale.priorRefundTotal -
+          availableDeliveryFee,
+      )
     } else if (rounding === 'DOWN') {
-      total = Math.floor(refundBefore / 100) * 100
+      productTotal = Math.floor(refundBefore / 100) * 100
     } else if (rounding === 'UP') {
-      total = Math.ceil(refundBefore / 100) * 100
+      productTotal = Math.ceil(refundBefore / 100) * 100
     }
-    return { selectedCount, refundBefore, total: round4(total) }
-  }, [lineInputs, rounding, selectedSale])
+    const deliveryFeeRefund =
+      fullRemaining && refundDeliveryFee ? availableDeliveryFee : 0
+    return {
+      selectedCount,
+      refundBefore,
+      productTotal: round4(productTotal),
+      deliveryFeeRefund: round4(deliveryFeeRefund),
+      roundingAdjustment: round4(productTotal - refundBefore),
+      fullRemaining,
+      total: round4(productTotal + deliveryFeeRefund),
+    }
+  }, [lineInputs, refundDeliveryFee, rounding, selectedSale])
 
   function updateLine(id: string, patch: Partial<ReturnLineInput>) {
     setLineInputs((current) => ({
@@ -209,6 +234,7 @@ export function SalesReturnModal({
         executingSessionId: cashierSession.id,
         roundingDirection: rounding,
         notes,
+        refundDeliveryFee: refundDeliveryFee && calculation.fullRemaining,
         lines,
         refund: {
           paymentMethodId,
@@ -368,9 +394,26 @@ export function SalesReturnModal({
                   <label>Link bukti HTTPS (opsional)<input type="url" value={proofUrl} onChange={(event) => setProofUrl(event.target.value)} placeholder="https://…" /></label>
                 </>}
                 <label>Catatan (opsional)<textarea rows={3} maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+                {calculation.fullRemaining &&
+                  selectedSale.deliveryFeeAmount - selectedSale.deliveryFeeRefunded > 0 && (
+                    <label className="pos-return-line-select">
+                      <input
+                        type="checkbox"
+                        checked={refundDeliveryFee}
+                        onChange={(event) => setRefundDeliveryFee(event.target.checked)}
+                      />
+                      <span>
+                        <strong>Refund ongkir</strong>
+                        <small>
+                          Tambahkan {money(selectedSale.deliveryFeeAmount - selectedSale.deliveryFeeRefunded)} ke refund final.
+                        </small>
+                      </span>
+                    </label>
+                  )}
                 <div className="pos-return-total">
-                  <span>Nilai item</span><strong>{money(calculation.refundBefore)}</strong>
-                  <span>Pembulatan</span><strong>{money(calculation.total - calculation.refundBefore)}</strong>
+                  <span>Refund barang</span><strong>{money(calculation.productTotal)}</strong>
+                  <span>Pembulatan barang</span><strong>{money(calculation.roundingAdjustment)}</strong>
+                  <span>Refund ongkir</span><strong>{money(calculation.deliveryFeeRefund)}</strong>
                   <span>Total refund</span><strong>{money(calculation.total)}</strong>
                 </div>
                 <p className="pos-return-approval-note">Draft belum mengubah stok atau kas. Store Manager/Admin harus memeriksa dan posting.</p>

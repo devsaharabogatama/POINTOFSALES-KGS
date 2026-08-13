@@ -180,9 +180,13 @@ BEGIN
         'authenticated','public.customers','INSERT,UPDATE,DELETE'
     ) OR has_table_privilege(
         'authenticated','public.customer_categories','INSERT,UPDATE,DELETE'
-    ) OR NOT has_function_privilege(
+    ) OR has_function_privilege(
         'authenticated',
         'public.save_customer(uuid,bigint,text,text,uuid,text,text,text,text,numeric,integer,text,boolean)',
+        'EXECUTE'
+    ) OR NOT has_function_privilege(
+        'authenticated',
+        'public.save_customer_with_pricelist(uuid,bigint,text,text,uuid,text,text,text,text,numeric,integer,text,boolean,uuid,uuid)',
         'EXECUTE'
     ) THEN
         RAISE EXCEPTION 'TEST_FAILED: Customer privilege boundary invalid';

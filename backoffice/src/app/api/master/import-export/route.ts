@@ -1,6 +1,7 @@
 import { ApiRouteError, apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
 import { csvDocument, importDefinitions, isImportType } from '@/lib/master-import'
 import { requireImportManager, throwImportError } from '@/lib/master-import-server'
+import { requireDataExchangeAction } from '@/lib/data-exchange-server'
 
 function csvResponse(content: string, fileName: string) {
   return new Response(content, {
@@ -16,12 +17,23 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)
-    await requireImportManager(caller, companyId)
     const url = new URL(request.url)
     const importType = url.searchParams.get('type')
     const kind = url.searchParams.get('kind') ?? 'data'
     if (!isImportType(importType)) throw new ApiRouteError('UNSUPPORTED_IMPORT_TYPE', 400)
     if (!['data', 'template'].includes(kind)) throw new ApiRouteError('INVALID_EXPORT_KIND', 400)
+    if (kind === 'data') {
+      await requireDataExchangeAction(caller, companyId, importType, 'EXPORT')
+    } else {
+      await requireImportManager(caller, companyId)
+      if (importType === 'PRODUCT' ||
+          importType === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK' ||
+          importType === 'CUSTOMER_CATEGORY' ||
+          importType === 'SUPPLIER' ||
+          importType === 'PRODUCT_SUPPLIER') {
+        await requireDataExchangeAction(caller, companyId, importType, 'IMPORT')
+      }
+    }
     const definition = importDefinitions[importType]
     if (kind === 'template') {
       return csvResponse(csvDocument(definition.templateHeaders, []), `template-${importType.toLowerCase()}.csv`)
@@ -68,10 +80,15 @@ export async function GET(request: Request) {
         is_purchase_destination: row.is_purchase_destination, is_active: row.is_active,
       }))
     } else if (importType === 'SUPPLIER') {
-      result = await caller.client.from('suppliers')
-        .select('id,supplier_name,contact_name,phone,address,npwp,payment_term,bank_name,bank_account_number,bank_account_holder,is_active')
-        .eq('company_id', companyId).order('supplier_name').limit(5000)
-      rows = (result.data ?? []).map((row) => ({
+      result = await caller.client.rpc('export_contacts_suppliers')
+      const supplierRows = (result.data ?? []) as Array<{
+        id: string; supplier_name: string; contact_name: string | null
+        phone: string | null; address: string | null; npwp: string | null
+        payment_term: string | null; bank_name: string | null
+        bank_account_number: string | null; bank_account_holder: string | null
+        is_active: boolean
+      }>
+      rows = supplierRows.map((row) => ({
         internal_id: row.id, name: row.supplier_name,
         contact_name: row.contact_name, phone: row.phone, address: row.address,
         npwp: row.npwp, payment_term: row.payment_term, bank_name: row.bank_name,
@@ -79,10 +96,10 @@ export async function GET(request: Request) {
         bank_account_holder: row.bank_account_holder, is_active: row.is_active,
       }))
     } else if (importType === 'CUSTOMER_CATEGORY') {
-      result = await caller.client.from('customer_categories')
-        .select('id,category_name,is_active')
-        .eq('company_id', companyId).order('category_name').limit(5000)
-      rows = (result.data ?? []).map((row) => ({
+      result = await caller.client.rpc('export_contacts_customer_categories')
+      rows = ((result.data ?? []) as Array<{
+        id: string; category_name: string; is_active: boolean
+      }>).map((row) => ({
         internal_id: row.id,
         name: row.category_name,
         is_active: row.is_active,
@@ -197,75 +214,46 @@ export async function GET(request: Request) {
         })),
       )
     } else if (importType === 'PRODUCT_SUPPLIER') {
-      const [
-        relationResult,
-        productResult,
-        supplierResult,
-        uomResult,
-      ] = await Promise.all([
-        caller.client.from('product_suppliers')
-          .select('id,product_id,supplier_id,purchase_uom_id,supplier_product_code,reference_purchase_price,is_preferred_supplier,is_active')
-          .eq('company_id', companyId).order('created_at').limit(5000),
-        caller.client.from('products')
-          .select('id,sku').eq('company_id', companyId).limit(5000),
-        caller.client.from('suppliers')
-          .select('id,supplier_name').eq('company_id', companyId).limit(5000),
-        caller.client.from('uoms')
-          .select('id,name').eq('company_id', companyId).limit(5000),
-      ])
-      result = relationResult
-      for (const referenceResult of [
-        productResult,
-        supplierResult,
-        uomResult,
-      ]) {
-        if (referenceResult.error) throwImportError(referenceResult.error)
-      }
-      const productSkus = new Map((productResult.data ?? []).map((row) => [
-        row.id,
-        row.sku,
-      ]))
-      const supplierNames = new Map((supplierResult.data ?? []).map((row) => [
-        row.id,
-        row.supplier_name,
-      ]))
-      const uomNames = new Map((uomResult.data ?? []).map((row) => [
-        row.id,
-        row.name,
-      ]))
-      rows = (relationResult.data ?? []).map((relation) => ({
+      result = await caller.client.rpc('export_contacts_product_suppliers')
+      const relationRows = (result.data ?? []) as Array<{
+        id: string; product_sku: string; supplier_name: string
+        purchase_uom_name: string; supplier_product_code: string | null
+        reference_purchase_price: number | string | null
+        is_preferred_supplier: boolean; is_active: boolean
+      }>
+      rows = relationRows.map((relation) => ({
         internal_id: relation.id,
-        product_sku: productSkus.get(relation.product_id) ?? '',
-        supplier_name: supplierNames.get(relation.supplier_id) ?? '',
-        purchase_uom_name: uomNames.get(relation.purchase_uom_id) ?? '',
+        product_sku: relation.product_sku,
+        supplier_name: relation.supplier_name,
+        purchase_uom_name: relation.purchase_uom_name,
         supplier_product_code: relation.supplier_product_code,
         reference_purchase_price: relation.reference_purchase_price,
         is_preferred_supplier: relation.is_preferred_supplier,
         is_active: relation.is_active,
       }))
     } else {
-      const [settingResult, productResult, warehouseResult] = await Promise.all([
-        caller.client.from('product_warehouse_stock_settings')
-          .select('id,product_id,warehouse_id,minimum_stock_base_qty,low_stock_alert_enabled')
-          .eq('company_id', companyId).order('updated_at').limit(5000),
-        caller.client.from('products')
-          .select('id,sku').eq('company_id', companyId).limit(5000),
-        caller.client.from('warehouses')
-          .select('id,name').eq('company_id', companyId).limit(5000),
-      ])
-      result = settingResult
-      for (const referenceResult of [productResult, warehouseResult]) {
-        if (referenceResult.error) throwImportError(referenceResult.error)
+      result = await caller.client.rpc('get_inventory_minimum_stock')
+      if (result.error) throwImportError(result.error)
+      const payload = (result.data ?? {}) as {
+        data?: Array<{
+          id: string
+          product_id: string
+          warehouse_id: string
+          minimum_stock_base_qty: number | string | null
+          low_stock_alert_enabled: boolean
+        }>
+        products?: Array<{ id: string; sku: string }>
+        warehouses?: Array<{ id: string; name: string }>
       }
-      const productSkus = new Map((productResult.data ?? []).map((row) => [
+      const productSkus = new Map((payload.products ?? []).map((row) => [
         row.id,
         row.sku,
       ]))
-      const warehouseNames = new Map((warehouseResult.data ?? []).map((row) => [
+      const warehouseNames = new Map((payload.warehouses ?? []).map((row) => [
         row.id,
         row.name,
       ]))
-      rows = (settingResult.data ?? []).map((setting) => ({
+      rows = (payload.data ?? []).map((setting) => ({
         internal_id: setting.id,
         product_sku: productSkus.get(setting.product_id) ?? '',
         warehouse_name: warehouseNames.get(setting.warehouse_id) ?? '',

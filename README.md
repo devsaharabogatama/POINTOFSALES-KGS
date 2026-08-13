@@ -1,5 +1,90 @@
 # KGS POS
 
+## Current development status (2026-08-13)
+
+Atas revisi user, pemisahan Backoffice Invoice/Surat Jalan sekarang user-pass:
+Sales hanya memiliki Invoice, sedangkan Inventory mempunyai Surat Jalan
+quantity-only untuk print dan lifecycle. Permission additive
+`inventory.delivery_documents`, delivery-only RPC/API/UI, pre/postflight, dan
+behavior test pada migration `20260813150000` telah dilaporkan sukses; POS print authority,
+canonical Sale, nomor, snapshot, Stock, dan Finance tidak berubah. Backoffice
+lint dan production build PASS (67 route/page entries); manual database rollout
+dan authenticated role smoke masih pending.
+
+POS pre-presentation smoke menemukan satu stale direct read terhadap protected
+`customer_balance_company_policies` setelah ACP-6D. Client sudah dikoreksi
+untuk memakai hasil guarded open-session Payment Method RPC sebagai authority
+availability Customer Balance; tidak ada grant/RLS/migration yang dibuka.
+PWA lint dan production build setelah koreksi PASS. Hard refresh/Service Worker
+update dan authenticated POS smoke tetap wajib sebelum demo.
+
+ACP-4B database rollout, postflight, and behavior are user-confirmed PASS:
+`inventory.master_data` is the first complete custom
+permission enforcement slice. Category/UOM/Warehouse/Category-Tax mutations
+are guarded server-side, direct Product Category column grants are closed,
+navigation and the consolidated Master API consume effective capabilities,
+and the user-detail modal can edit the active preset. ACP-4C Product preflight
+returned no blockers. User kemudian mengonfirmasi seluruh SQL ACP-4C dan ACP-4D
+PASS/INFO. Product management/reference, Product/UOM/Tax mutation, Product
+import, navigation, dan Data Exchange memakai authority efektif masing-masing.
+Stock Real
+komposit kini terpisah dari Kartu Stok, valuasi/Movement terakhir dihitung di
+server, dan export mempunyai authority masing-masing. ACP-4E
+migration/postflight/behavior/closing kemudian user-confirmed PASS/INFO;
+Transfer Stok sekarang live ENFORCED. ACP-4F migration, postflight, behavior,
+G3 Opname regression, dan closing generic juga user-confirmed PASS/INFO;
+Penyesuaian Stok dan Stock Opname sekarang live ENFORCED setelah seluruh SQL
+ACP-4G user-confirmed PASS/INFO. ACP-4H Stok Awal database, postflight,
+behavior, regression, dan closing juga user-confirmed PASS. Seluruh rollout,
+postflight, behavior, regression, dan closing ACP-4I Minimum Stock kemudian
+user-confirmed PASS. Sembilan key Inventory sekarang live ENFORCED. ACP-5A
+Customer preflight, migration, postflight, behavior, regression, dan smoke
+kemudian user-confirmed PASS; `contacts.customers` sekarang live ENFORCED.
+ACP-5B Supplier preflight, migration, postflight, behavior, regression, dan
+authenticated smoke kemudian user-confirmed PASS; `contacts.suppliers`
+sekarang live ENFORCED. ACP-5C Supplier Order preflight kemudian dikonfirmasi
+tanpa blocker dan seluruh migration, postflight, behavior, serta regression
+user-confirmed PASS; `purchase.supplier_orders` sekarang database-live
+ENFORCED. Authenticated preset/two-Company smoke tetap menjadi closing UAT.
+ACP-5D Purchase Return preflight, migration, postflight, behavior, dan
+regression kemudian user-confirmed PASS; `purchase.purchase_returns` sekarang
+database-live ENFORCED. Authenticated preset/two-Company smoke tetap menjadi
+closing UAT. ACP-5E preflight, migration, postflight, behavior, dan regression
+kemudian user-confirmed PASS; `sales.sales_documents` sekarang database-live
+ENFORCED. Authenticated preset/two-Company smoke tetap closing UAT. ACP-5F
+`sales.pricelists` preflight, migration, postflight, behavior, dan regression
+kemudian user-confirmed PASS; runtime database sekarang ENFORCED, sedangkan
+authenticated preset/two-Company smoke tetap closing UAT. Resolver POS
+online/offline tetap memakai authority terpisah. ACP-5G `sales.bundles`
+preflight, migration, postflight, behavior, dan regression kemudian
+user-confirmed PASS; runtime database sekarang ENFORCED. Gate aktif berpindah
+hanya ke ACP-5H `sales.sales_returns`; seluruh rollout dan regression kemudian
+user-confirmed PASS. ACP-5 ditutup database-live, sedangkan authenticated matrix
+tetap closing UAT. ACP-6A Expense kemudian user-confirmed PASS dan database-live
+ENFORCED. ACP-6B Setor Kas migration, postflight, behavior, dan regressions
+juga user-confirmed PASS; authenticated smoke ditunda ke closing UAT. Gate
+ACP-6C Deposit Variance database/postflight/behavior/regression kemudian
+user-confirmed PASS; smoke ditunda ke closing UAT. ACP-6D Customer Balance,
+forward-fix mode `WIND_DOWN`, postflight, behavior, serta regression
+Phase-49/52/56 seluruhnya user-confirmed PASS. Smoke Finance tetap ditunda ke
+closing UAT. ACP-6E Supplier Invoice migration, postflight, behavior, dan
+regressions sudah user-confirmed PASS; authenticated smoke tetap closing UAT.
+ACP-6F Supplier Payment migration, postflight, behavior, dan regressions sudah
+user-confirmed PASS; authenticated smoke tetap closing UAT. ACP-6G Payment
+Method migration, postflight, behavior, regression, dan closing postflight
+sekarang user-confirmed PASS; runtime database live `ENFORCED`. Gate aktif
+berpindah ke ACP-7 security closure. Consolidated ACP-7/PRD-1 live preflight
+terbaru tidak memiliki `BLOCKER`: chain ACP-7 25/25, chain PRD-1 32/32, dan 24
+permission enforcement PASS; tenant/Stock/Sale/Document/Journal invariant
+bersih serta dua Company aktif. Regular multi-Company identity sudah PASS.
+PRD-1 belum ditutup karena distinct override dua Company, fixture minimum pada
+satu Company, dan empat role UAT masih `SETUP`.
+Sebelum UAT, lifecycle akses user per Company sudah database/postflight/behavior
+user-confirmed PASS:
+Company selector eksplisit pada detail user, edit role/Store tenant-scoped,
+guarded revoke, last-owner protection, override cleanup ber-audit, serta active
+context repair. Authenticated UI smoke masih menunggu user.
+
 KGS POS adalah aplikasi Point of Sale dan mini ERP multi-Company yang sedang
 dibangun bertahap dengan Supabase sebagai backend, Next.js untuk Backoffice,
 serta React/Vite PWA untuk kasir.
@@ -8,8 +93,21 @@ serta React/Vite PWA untuk kasir.
 > status modul, cara menjalankan aplikasi, migration chain, compatibility, atau
 > roadmap wajib memperbarui file ini bersama kode dan handoff.
 
-**Status terakhir:** 6 Agustus 2026
-**Gate aktif:** G5 Phase 11 Supplier Invoice matching foundation rollout
+**Status terakhir:** 13 Agustus 2026
+**Gate aktif:** ACP-4B sampai ACP-4I, ACP-5A sampai ACP-5H, ACP-6A Expense,
+dan ACP-6B Cash Deposit database/behavior user-confirmed PASS. ACP-6C
+`finance.deposit_variances` database/postflight/behavior/regression juga
+user-confirmed PASS. Smoke ACP-6B/6C ditunda ke closing UAT. ACP-6D
+`finance.customer_balances` termasuk compatibility `WIND_DOWN` dan regression
+Phase-49/52/56 sudah user-confirmed PASS. ACP-6E Supplier Invoice dan ACP-6F
+Supplier Payment database/behavior/regression sudah user-confirmed PASS.
+ACP-6G Payment Method database/postflight/behavior/regression sudah
+user-confirmed PASS. Authenticated smoke digabung ke ACP-7 closing UAT.
+PRD-1 database preflight zero blocker; fixture role/Company dan authenticated
+matrix masih pending. Backoffice lint/build dan PWA lint/build terbaru PASS;
+PWA menghasilkan warning main chunk 555.37 kB (153.65 kB gzip) yang perlu
+diukur pada Preview, bukan blocker build. Full role/E2E/Vercel Preview menunggu
+ACP-7 closure.
 **Runtime:** lokal; Supabase aktif; Vercel Preview belum dibuka
 
 ## Kondisi Aplikasi Saat Ini
@@ -17,6 +115,7 @@ serta React/Vite PWA untuk kasir.
 | Area | Status | Catatan |
 |---|---|---|
 | Tenant, role, RLS, active Company | Complete | Boundary lintas-Company dan browser mutation sudah diuji |
+| Custom permission per submodul | ACP-4B sampai ACP-4I, ACP-5A sampai ACP-5H, dan ACP-6A sampai ACP-6G database PASS | Seluruh key yang dibuka pada Inventory, Contacts/Purchase/Sales, dan Finance database-live ENFORCED; ACP-7 role/preset/two-Company/authenticated closure aktif |
 | Product Category, UOM, Warehouse | Complete | Canonical master, guarded API/UI, versioning |
 | Product + multi-UOM | Complete | Atomic Product/Product-UOM, base UOM, harga per UOM |
 | Supplier + Product-Supplier | Complete | Preferred Supplier, purchase UOM, audit |
@@ -26,10 +125,13 @@ serta React/Vite PWA untuk kasir.
 | Transaction Category + minimum COA | Complete pada master | 26 kategori, guarded COA, dan explicit fallback PASS; posting tetap nonaktif |
 | Tax Sales/Purchase | Sales resolver aktif pada online core | Guarded master/version/assignment; Purchase/jurnal tetap belum dibuka |
 | Pengaturan Modul | Entitlement + Offline/Stock Minus policy UI ready for smoke | Super Admin mengelola entitlement; Owner/Admin mengelola policy Company, opt-in Gudang penjualan, dan izin user melalui guarded RPC; Store Manager read-only untuk Stock Minus |
-| App Launcher & shell | Complete pada role boundary saat ini | Inventory, Kontak, Sales, Finance, Platform; brand KGS POS kembali ke Home; granular permission tetap deferred |
+| App Launcher & shell | UXD-2 local-ready; authenticated smoke pending | Home bersih hanya card modul; klik membuka landing submodul. Fast Link search hanya menyaring catalog server-authorized. Logo Company di header menjadi tombol Home. API/RPC/RLS tetap authority final |
+| Company branding | BRD-1 database USER VERIFIED; BRD-2 upload/UI LOCAL READY | Server-only Storage upload, magic-byte/MIME/extension/size/SHA-256 validation, generated tenant path, version/audit, cleanup, remove modal, dan Company setting tersedia; authenticated multi-Company smoke pending |
+| Sales Invoice, Surat Jalan & Ongkir | SLD-R4 USER VERIFIED | Checkbox Delivery berada di final checkout; ongkir ikut total/payment/offline. Full remaining Return menawarkan refund ongkir eksplisit default OFF dan approval menampilkan keputusannya; partial Return tidak dapat merefund ongkir. Sale/Refund journal yang belum didukung tetap G6 controlled HOLD |
 | Tax assignment Product/Category | Complete pada Sales online boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver aktif saat Draft/Post |
 | Tax resolver/calculator | Complete pada Sales online boundary | Effective-dated resolver + deterministic calculation dipakai Draft/Post; Purchase/jurnal belum dicutover |
 | Master Import/Export | Complete untuk 7 simple master | Phase 40 DB dan Phase 41 authenticated UI smoke PASS |
+| Global Data Exchange Center | DEX-4 navigation cutover local-ready; closing smoke pending | Data Exchange menjadi satu-satunya visible Import/Export entry; role-aware 10 master CSV, tujuh Finance XLSX, serta guarded import tersedia. Backend compatibility lama tetap aktif |
 | Generic import framework | Phase 47 UI local-ready | Grouped Product, Product-Supplier, dan Minimum Stock Produk–Gudang database PASS; Minimum Stock guarded API/UI serta fixed import-export lint/build PASS dan menunggu authenticated smoke; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
 | Stock ledger/FIFO production | Complete pada G3 core boundary | Integrated stress/regression diteruskan tanpa error dan Phase-14 rerun seluruh invariant PASS; Sale/Return/Receipt coverage pindah ke gate transaksi |
 | POS checkout/offline production | Online checkout dan Offline core COMPLETE sampai Phase 24 | Retained queue/status-first recovery, time-bounded sync, controlled disconnect/reconnect, single final effect, allowance, dan Stock–Movement–FIFO closing diagnostics dikonfirmasi PASS |
@@ -37,8 +139,8 @@ serta React/Vite PWA untuk kasir.
 | Expense & Cash In | Deposit variance operational UI complete | Actual/return/additional dan Setor Kas online tersedia sesuai channel. Phase 46 rollout serta Phase 47 authenticated UI smoke dikonfirmasi aman; bank matching, offline Expense/Deposit, reversal aktual, serta jurnal G6 tetap tertutup |
 | Customer Balance | Phase 56 COMPLETE; Phase 57 UI local-ready | Full-balance ONLINE tender database PASS. POS menampilkan saldo, auto-fill seluruh saldo, minimum tambah belanja, dan receipt; authenticated tablet smoke dapat digabung pada E2E berikutnya |
 | POS Stock Minus | Phase 60 database COMPLETE; Phase 61 operational UI accepted | User melanjutkan roadmap setelah guarded Backoffice config dan POS reason/retry tersedia. Default tetap OFF, online non-Bundle saja; replenishment dari Goods Receipt menjadi dependency G5 |
-| Purchasing end-to-end | Supplier Invoice matching foundation local-ready | Purchase Return/UOM rollout dan Phase 10 preflight diterima user. Phase 11 menambahkan guarded many-to-many Receipt/AP allocation, tolerance/Tax snapshot, AP residual, last purchase price, audit, dan Finance HOLD; Supplier Payment, valuation final, dan jurnal G6 tetap tertutup |
-| Finance posting/reconciliation | Belum dibuka | Gate G6 |
+| Purchasing end-to-end | Supplier Payment user-reported PASS; corrective tolerance pending | Supplier Invoice/Payment tetap menghasilkan Finance HOLD. Optional tolerance diformalisasi forward-only; journal G6 belum dibuka |
+| Finance posting/reconciliation | Phase 7A COMPLETE; Phase 7B database USER VERIFIED, UI smoke pending | Human number `JUR/JRB/PST/EXC/REC` migration/postflight/behavior dikonfirmasi sukses. Buku Besar expandable, Journal Entries terpisah, dan XLSX bulanan siap authenticated cross-role/cross-Company smoke. Queue tetap hanya `STOCK_OPENING`; FIFO–GL Rp84,26 juta serta 25 HOLD tetap deferred |
 
 Status operasional detail dan manual gate terbaru ada di
 [`docs/ACTIVE_DEVELOPMENT_HANDOFF.md`](docs/ACTIVE_DEVELOPMENT_HANDOFF.md).
@@ -61,6 +163,12 @@ UI -> authenticated API -> guarded RPC/RLS -> tenant-scoped table/audit
 UUID, tenant identity, actor, role, version, account function, dan system key
 divalidasi server-side. UI menampilkan nama bisnis; identifier teknis tidak
 menjadi informasi utama pengguna.
+
+Finance memakai UUID sebagai identity backend, tetapi nomor yang dibaca user
+berformat `JUR/JRB/PST/EXC/REC/YYYY/MM/######`. Buku Besar bersifat
+account-centric dan Journal Entries document-centric. Rollout perubahan ini
+ada di
+[`docs/runbooks/G6_PHASE7B_FINANCE_HUMAN_IDS_LEDGER_EXPORT.md`](docs/runbooks/G6_PHASE7B_FINANCE_HUMAN_IDS_LEDGER_EXPORT.md).
 
 ## Menjalankan Lokal
 
@@ -134,6 +242,11 @@ tidak lagi membiarkan aplikasi terkunci pada token kedaluwarsa.
 
 - Migration production dijalankan manual melalui runbook; agent tidak boleh
   menerapkannya diam-diam.
+- Dataset UAT Finance yang mengikuti guarded Product → Opening Stock →
+  controlled posting queue → Journal serta Stock Adjustment → Pending Analysis
+  tersedia di
+  [`docs/runbooks/G6_PHASE7B_FINANCE_UAT_DATASET.md`](docs/runbooks/G6_PHASE7B_FINANCE_UAT_DATASET.md).
+  Operation ini membuat histori permanen dan hanya untuk database test/pilot.
 - Jangan mengedit migration yang sudah applied. Gunakan forward migration.
 - Urutan wajib: preflight -> migration -> postflight -> behavioral test ->
   application smoke.

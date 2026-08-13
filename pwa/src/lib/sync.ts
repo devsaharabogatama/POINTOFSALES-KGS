@@ -64,14 +64,16 @@ export async function syncMasterData(companyId: string) {
 
     // 3. Fetch Customers
     const { data: customers, error: custError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('company_id', companyId);
+      .rpc('get_pos_customer_references');
 
     if (custError) throw custError;
     if (customers) {
       await db.customers.clear();
-      await db.customers.bulkPut(customers as LocalCustomer[]);
+      await db.customers.bulkPut((customers as Array<Record<string, unknown>>).map((customer) => ({
+        ...customer,
+        company_id: companyId,
+        code: String(customer.code ?? customer.id ?? ''),
+      })) as LocalCustomer[]);
       console.log(`Synced ${customers.length} customers.`);
     }
 

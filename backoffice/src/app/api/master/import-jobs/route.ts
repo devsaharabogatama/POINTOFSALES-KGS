@@ -1,4 +1,4 @@
-import { ApiRouteError, apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
+import { ApiRouteError, apiError, requireActiveCompany, requireCaller, requirePermissionCapability } from '@/lib/server-auth'
 import {
   isImportType,
   isOperationMode,
@@ -18,12 +18,27 @@ export async function GET(request: Request) {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)
     await requireImportManager(caller, companyId)
-    const { data, error } = await caller.client
+    const optionalPermission = (permissionKey: string) => requirePermissionCapability(
+      caller, companyId, permissionKey, 'VIEW',
+    ).catch((error) => {
+      if (error instanceof ApiRouteError && error.message === 'CUSTOM_PERMISSION_DENIED') return null
+      throw error
+    })
+    const [productPermission, minimumStockPermission] = await Promise.all([
+      optionalPermission('inventory.products'),
+      optionalPermission('inventory.minimum_stock'),
+    ])
+    let query = caller.client
       .from('master_import_jobs')
       .select(jobFields)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(50)
+    if (!productPermission) query = query.neq('import_type', 'PRODUCT')
+    if (!minimumStockPermission) {
+      query = query.neq('import_type', 'PRODUCT_WAREHOUSE_MINIMUM_STOCK')
+    }
+    const { data, error } = await query
     if (error) throwImportError(error)
     return Response.json({ companyId, data: data ?? [] })
   } catch (error) {
@@ -39,6 +54,14 @@ export async function POST(request: Request) {
     const body = readObject(await request.json())
     if (!isUuid(body.clientRequestId)) throw new ApiRouteError('INVALID_CLIENT_REQUEST_ID', 400)
     if (!isImportType(body.importType)) throw new ApiRouteError('UNSUPPORTED_IMPORT_TYPE', 400)
+    if (body.importType === 'PRODUCT') {
+      await requirePermissionCapability(caller, companyId, 'inventory.products', 'IMPORT')
+    }
+    if (body.importType === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK') {
+      await requirePermissionCapability(
+        caller, companyId, 'inventory.minimum_stock', 'IMPORT',
+      )
+    }
     if (!isReferenceMode(body.referenceMode)) throw new ApiRouteError('INVALID_IMPORT_REFERENCE_MODE', 400)
     if (!isOperationMode(body.operationMode)) throw new ApiRouteError('INVALID_IMPORT_OPERATION_MODE', 400)
     if (typeof body.fileName !== 'string' || !body.fileName.trim() || body.fileName.length > 255) {

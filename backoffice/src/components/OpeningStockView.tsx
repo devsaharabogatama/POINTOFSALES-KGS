@@ -103,12 +103,20 @@ type Batch = {
   opening_stock_line_id: string
 }
 
+type MovementPair = {
+  product_id: string
+  warehouse_id: string
+}
+
 type OpeningPayload = {
   data?: OpeningDocument[]
   lines?: OpeningLine[]
+  products?: Product[]
+  warehouses?: Warehouse[]
   balances?: Balance[]
   movements?: Movement[]
   batches?: Batch[]
+  movementPairs?: MovementPair[]
   error?: string
 }
 
@@ -172,6 +180,8 @@ function friendlyError(code?: string) {
       'Akun Finance untuk Stok Awal belum siap. Lengkapi konfigurasi Finance terlebih dahulu.',
     MASTER_VERSION_CONFLICT:
       'Dokumen sudah berubah di tab lain. Muat ulang lalu ulangi tindakan.',
+    CUSTOM_PERMISSION_DENIED:
+      'Akses Stok Awal untuk tindakan ini dibatasi oleh pengaturan user.',
     FORBIDDEN: 'Role Anda tidak diizinkan mengakses Stok Awal.',
   }
   return messages[code ?? ''] ?? code ?? 'Operasi Stok Awal gagal.'
@@ -202,14 +212,12 @@ function baseUom(product?: Product) {
 export function OpeningStockView({
   session,
   companyId,
-  canPrepare,
-  canPost,
+  capabilities,
   notify,
 }: {
   session: Session
   companyId: string
-  canPrepare: boolean
-  canPost: boolean
+  capabilities: string[]
   notify: (message: string) => void
 }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -222,23 +230,14 @@ export function OpeningStockView({
   const [detail, setDetail] = useState<OpeningDocument | null>(null)
 
   const load = useCallback(async () => {
-    const responses = await Promise.all([
-      fetch('/api/master/products?includeInactive=true', {
-        headers: authHeaders(session),
-      }),
-      fetch('/api/master/warehouses?includeInactive=true', {
-        headers: authHeaders(session),
-      }),
-      fetch('/api/inventory/opening-stock', { headers: authHeaders(session) }),
-    ])
-    const results = await Promise.all(responses.map((response) => response.json()))
-    const failed = responses.findIndex((response) => !response.ok)
-    if (failed >= 0) {
-      throw new Error(friendlyError((results[failed] as { error?: string }).error))
-    }
-    setProducts((results[0] as { data?: Product[] }).data ?? [])
-    setWarehouses((results[1] as { data?: Warehouse[] }).data ?? [])
-    setPayload(results[2] as OpeningPayload)
+    const response = await fetch('/api/inventory/opening-stock', {
+      headers: authHeaders(session),
+    })
+    const result = (await response.json()) as OpeningPayload
+    if (!response.ok) throw new Error(friendlyError(result.error))
+    setProducts(result.products ?? [])
+    setWarehouses(result.warehouses ?? [])
+    setPayload(result)
   }, [session])
 
   const refresh = useCallback(async () => {
@@ -282,10 +281,13 @@ export function OpeningStockView({
     (product) => product.is_active && !product.is_bundle && Boolean(baseUom(product)),
   )
   const movementPairs = new Set(
-    (payload.movements ?? []).map(
+    (payload.movementPairs ?? []).map(
       (movement) => `${movement.product_id}:${movement.warehouse_id}`,
     ),
   )
+  const canCreate = capabilities.includes('CREATE_DRAFT')
+  const canEdit = capabilities.includes('EDIT_DRAFT')
+  const canPost = capabilities.includes('POST')
 
   return (
     <>
@@ -311,7 +313,7 @@ export function OpeningStockView({
             <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Muat ulang
           </button>
-          {canPrepare && (
+          {canCreate && (
             <button
               onClick={() => setEditing('create')}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white"
@@ -380,7 +382,7 @@ export function OpeningStockView({
                     >
                       <Eye className="h-3.5 w-3.5" /> Lihat
                     </button>
-                    {document.status === 'DRAFT' && canPrepare && (
+                    {document.status === 'DRAFT' && canEdit && (
                       <button
                         onClick={() => setEditing(document)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600"

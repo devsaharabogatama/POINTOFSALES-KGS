@@ -72,11 +72,14 @@ type Draft = {
   isActive: boolean
   components: ComponentDraft[]
 }
-type ListPayload<T> = { data?: T[]; error?: string }
 type BundlePayload = {
   data?: Bundle[]
   components?: BundleComponent[]
   salesUoms?: BundleSalesUom[]
+  products?: Product[]
+  categories?: Category[]
+  uoms?: Uom[]
+  warehouses?: Warehouse[]
   error?: string
 }
 type Availability = {
@@ -159,32 +162,18 @@ export function BundleMasterView({
   const [availabilityBundle, setAvailabilityBundle] = useState<Bundle | null>(null)
 
   const load = useCallback(async () => {
-    const paths = [
-      '/api/master/bundles?includeInactive=true',
-      '/api/master/products?includeInactive=true',
-      '/api/master/product-categories?includeInactive=true',
-      '/api/master/uoms?includeInactive=true',
-      '/api/master/warehouses?includeInactive=true',
-    ]
-    const responses = await Promise.all(
-      paths.map((path) => fetch(path, { headers: authHeaders(session) })),
-    )
-    const payloads = (await Promise.all(responses.map((response) => response.json()))) as [
-      BundlePayload,
-      ListPayload<Product>,
-      ListPayload<Category>,
-      ListPayload<Uom>,
-      ListPayload<Warehouse>,
-    ]
-    const failed = responses.findIndex((response) => !response.ok)
-    if (failed >= 0) throw new Error(friendlyError(payloads[failed].error))
-    setBundles(payloads[0].data ?? [])
-    setBundleComponents(payloads[0].components ?? [])
-    setBundleSalesUoms(payloads[0].salesUoms ?? [])
-    setProducts((payloads[1].data ?? []).filter((product) => !product.is_bundle))
-    setCategories(payloads[2].data ?? [])
-    setUoms(payloads[3].data ?? [])
-    setWarehouses(payloads[4].data ?? [])
+    const response = await fetch('/api/master/bundles?includeInactive=true', {
+      headers: authHeaders(session),
+    })
+    const payload = (await response.json()) as BundlePayload
+    if (!response.ok) throw new Error(friendlyError(payload.error))
+    setBundles(payload.data ?? [])
+    setBundleComponents(payload.components ?? [])
+    setBundleSalesUoms(payload.salesUoms ?? [])
+    setProducts((payload.products ?? []).filter((product) => !product.is_bundle))
+    setCategories(payload.categories ?? [])
+    setUoms(payload.uoms ?? [])
+    setWarehouses(payload.warehouses ?? [])
   }, [session])
 
   const refresh = useCallback(async () => {

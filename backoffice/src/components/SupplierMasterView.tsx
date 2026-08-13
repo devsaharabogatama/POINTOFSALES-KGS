@@ -107,7 +107,7 @@ export function SupplierMasterView({
   const fetchData = useCallback(async () => {
     const paths = [
       '/api/master/suppliers?includeInactive=true',
-      '/api/master/products?includeInactive=true',
+      '/api/master/product-references?includeInactive=true',
       '/api/master/product-suppliers?includeInactive=true',
     ]
     const responses = await Promise.all(paths.map((path) => fetch(path, { headers: authHeaders(session) })))

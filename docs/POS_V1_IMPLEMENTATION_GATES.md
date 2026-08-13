@@ -89,6 +89,37 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 
 ### Gate aktif Import/Export
 
+- keputusan user 2026-08-11 menambahkan pre-deploy Global Role-Aware Data
+  Exchange Center. Satu menu global menggantikan entry point Import/Export
+  Inventory hanya setelah feature parity dan authenticated smoke; katalog
+  module/type/action wajib server-authoritative dan Finance report hanya
+  export. Delivery mengikuti DEX-1 sampai DEX-4 pada
+  `GLOBAL_DATA_EXCHANGE_CENTER_SPEC.md`;
+- DEX-1 repository audit selesai pada 2026-08-11. Existing path mempunyai
+  sepuluh fixed master type, satu guard Owner/Admin yang masih menggabungkan
+  Export dan Import, serta dua Finance XLSX tanpa explicit Finance role guard
+  di API. Target catalog/action contract dan DEX-2 implementation map dicatat
+  pada `audits/DEX1_GLOBAL_DATA_EXCHANGE_ACCESS_CATALOG_AUDIT_2026-08-11.md`;
+- DEX-2 local-ready pada 2026-08-11: shared server catalog/action evaluator,
+  authenticated global Export Center, role-aware 10 master CSV, serta tujuh
+  Finance XLSX memakai canonical report/read path. Scoped lint dan production
+  build PASS. Authenticated role/cross-Company/XLSX smoke pada
+  `runbooks/DEX2_ROLE_AWARE_EXPORT_CENTER.md` wajib selesai sebelum DEX-3;
+- DEX-3 local-ready pada 2026-08-11: tab Import global hanya diberikan oleh
+  catalog server kepada Owner/Admin/Super Admin dan memakai ulang sepuluh fixed
+  template, staging, preview/validation, guarded partial commit, serta history
+  existing. Tidak ada migration atau jalur tulis baru. Authenticated parity,
+  negative-role, dan cross-Company smoke pada
+  `runbooks/DEX3_GLOBAL_IMPORT_CONSOLIDATION.md` wajib PASS sebelum DEX-4
+  memindahkan navigation Inventory lama;
+- user menerima UI DEX-3 pada 2026-08-11. DEX-4 local-ready menghapus entry
+  point `Inventory > Import & Export` dari sidebar/app launcher dan menjadikan
+  Global Data Exchange satu-satunya visible entry. Component, API, job history,
+  dan guarded RPC lama tetap dipertahankan untuk compatibility. Post-cutover
+  role/cross-Company/CSV/XLSX/import smoke pada
+  `runbooks/DEX4_INVENTORY_CUTOVER_AND_DEPLOYMENT_EVIDENCE.md` masih wajib PASS
+  sebelum DEX dinyatakan complete;
+
 - empat import sederhana (Product Category, UOM, Warehouse, Supplier) sudah
   mencapai API/UI;
 - Phase-35 readiness, Phase-36/37 automatic-code DB/UI, dan Phase-38 code-less
@@ -783,9 +814,12 @@ aktif (contoh Dus → beberapa Ketul), tetap memakai conversion snapshot langsun
 ke base, precision UOM, serta batas source allocation/FIFO. Setelah fix dan
 regression diterapkan dan Phase 10 Supplier Invoice preflight telah diterima
 user tanpa blocker; satu `supplier_invoice_matching_scope = BACKFILL` adalah
-scope AP provisional existing yang expected. Phase 11 matching foundation
-sekarang local-ready untuk rollout manual. Supplier Payment, valuation final,
-dan Journal G6 tetap belum dibuka.
+scope AP provisional existing yang expected. Phase 11 matching foundation telah
+dilanjutkan sampai Supplier Payment Phase 14 dan dilaporkan user PASS. Optional
+tolerance tetap keputusan per Company: tanpa policy selisih nilai fleksibel,
+tetapi quantity Receipt dan variance snapshot tetap wajib. Forward fix
+`20260810160000` serta regression menjadi corrective gate sebelum G6. Journal
+G6 tetap belum dibuka.
 
 ### Deliverable
 
@@ -839,6 +873,95 @@ dan Journal G6 tetap belum dibuka.
 - Finance dapat override konfigurasi yang diizinkan dan audit before/after tersimpan;
 - report dapat drill down ke source document.
 
+### G6 Corrective Active Roadmap
+
+Draft Phase 2–11 tanggal 20260807/20260810 ditolak dan tidak boleh dijalankan.
+Urutan authoritative berada di `docs/G6_FINANCE_CORRECTIVE_RECOVERY_PLAN.md`:
+
+1. **Corrective Phase 1 (COMPLETE, user verified):** live-state SELECT-only preflight dan
+   privilege-only quarantine `20260810170000` untuk routine rejected/legacy
+   yang masih executable browser. Tidak ada Finance business row yang diubah.
+2. **Corrective Phase 2 (COMPLETE, user verified):** live-state object preflight,
+   tenant-safe period/journal/immutability foundation `20260810180000`,
+   postflight, dan behavioral test seluruhnya PASS tanpa mengubah arti
+   `journal_entries` legacy atau memproses event HOLD.
+3. **Corrective Phase 3 (COMPLETE, user verified):** live preflight
+   menetapkan 34 required mapping dan 52 historical event-function row sebagai
+   explicit backfill. Resolver memilih satu akun system-owned kanonis, atau
+   sole explicit fallback bila akun sistem tidak ada; tipe akun kompatibel saja
+   tidak pernah cukup. Duplicate system-owned COA hasil import dikoreksi lebih
+   dahulu oleh `20260810185000` menjadi Company-owned tanpa mengubah identitas
+   atau histori; migration/postflight/behavior dan closing preflight telah
+   dikonfirmasi user sukses. Migration `20260810190000` menambah guarded
+   versioned/effective/approved rule-set, dan tidak memproses event HOLD.
+   Migration, postflight, dan corrected rollback-safe behavioral test telah
+   dikonfirmasi user PASS.
+4. **Corrective Phase 4 (COMPLETE, user verified):** preflight dikonfirmasi user
+   aman. Migration `20260810200000` membatasi atomic single-event posting pada
+   source-validated `STOCK_OPENING`, approved expression/account rule,
+   Accounting Period, exact idempotency, balanced canonical journal, exception,
+   dan browser boundary. Event existing tidak diproses migration; event lain
+   tetap HOLD sampai resolver dan controlled queue phase berikutnya. Migration,
+   postflight, dan rollback-safe behavioral test dikonfirmasi user PASS.
+5. **Corrective Phase 5 (database complete, live run pending):** live preflight menemukan satu
+   supported `STOCK_OPENING` dan 25 event dari sembilan contract deferred,
+   dengan seluruh source/rule/period/tenant/privilege guard PASS. Migration
+   `20260810210000` menambah controlled preview/approval/process queue satu
+   active Company, immutable snapshot/audit, dan per-event exception isolation.
+   Migration tidak membuat queue atau memproses historical HOLD. User
+   mengonfirmasi migration, postflight, dan behavior seluruhnya sukses; satu
+   historical live run tetap menunggu controlled approval setelah closing
+   review.
+6. **Corrective Phase 6A (complete, user verified) dan Phase 6B (active
+   preflight):** SELECT-only
+   audit dikonfirmasi tanpa blocker/review. FIFO Rp84,71 juta versus Inventory
+   GL nol adalah controlled backfill karena satu supported `STOCK_OPENING`
+   masih HOLD. Migration `20260810220000` membuka hanya Trial Balance dan
+   General Ledger dari canonical journal POSTED, dengan tenant/role/timezone,
+   version metadata, filter, drill-down, pagination, dan immutable history.
+   P&L, Neraca, reconciliation mutation, cache/export worker, live HOLD
+   processing, dan 25 unsupported event tetap tertutup. User mengonfirmasi
+   migration/postflight/behavior Phase 6A seluruhnya PASS. Phase 6B sekarang
+   mengaudit ulang source/rule/period, active queue, exception, report runtime,
+   serta baseline FIFO–Inventory GL sebelum satu live STOCK_OPENING boleh masuk
+   preview/approve/process terkontrol. Output user bebas blocker/review: satu
+   event Rp450.000 siap, queue awal kosong, dan 25 event lain tetap deferred.
+   Controlled maintenance operation serta closing postflight sekarang
+   dikonfirmasi user seluruhnya PASS: satu event/jurnal POSTED Rp450.000,
+   queue final bersih, dan report fixture tersedia. Full FIFO–GL reconciliation
+   tidak boleh dinyatakan selesai dari event ini saja. Phase 6C kemudian
+   membuka P&L, Neraca, pending analysis, dan reconciliation summary.
+   Migration `20260810230000`, postflight, dan rollback-safe behavior telah
+   dikonfirmasi user seluruhnya PASS. Historical subledger reconciliation
+   sengaja ditolak, current-only diberi label, dan tidak ada adjustment/event
+   processing otomatis.
+7. **Corrective Phase 7A (complete; user verified):** SELECT-only preflight,
+   migration `20260811090000`, postflight, dan rollback-safe behavior telah
+   dikonfirmasi PASS. Guarded reversal hanya menerima jurnal `MANUAL` dan
+   `OPENING_BALANCE` pada period terbuka/reopened. Jurnal
+   `AUTOMATIC`/`PRIOR_PERIOD_ADJUSTMENT` tidak boleh dibalik GL-only dan wajib
+   mengikuti Return, Adjustment, atau source reversal/replacement resmi.
+8. **Corrective Phase 7B (database user-verified; active UI smoke):** Backoffice Finance
+   Operations sudah memakai canonical journals, periods, controlled queue,
+   POSTED reports, pending analysis, dan current-only reconciliation. UX
+   forward fix menambah server-owned `JUR/JRB/PST/EXC/REC`, Buku Besar seluruh
+   akun yang expandable, Journal Entries document-centric, dan XLSX bulanan.
+   Local lint/build/XLSX smoke PASS; migration `20260811100000`, postflight,
+   dan behavior dikonfirmasi user sukses. Authenticated
+   cross-role/cross-Company UI/XLSX smoke masih wajib.
+   Queue tetap hanya `STOCK_OPENING`; endpoint service-role worker lama
+   fail-closed, 25 HOLD dan FIFO–GL tetap deferred sampai contract berikutnya
+   resmi dibuka.
+
+Finance posting tetap tertutup sampai phase terkait selesai manual rollout,
+postflight, behavior, regression, dan authenticated smoke. Tidak ada phase yang
+`COMPLETE` hanya karena file lokal tersedia.
+
+**Deferred setelah pilot/Vercel:** inter-Company Sales/Purchase dapat dirancang
+untuk membuat pasangan dokumen otomatis antar Company. Scope future wajib
+maker-checker kedua tenant, source/number terpisah, UOM/price/tax snapshot,
+Finance elimination/reconciliation, dan tidak boleh membuka akses data silang.
+
 ### Exit criteria
 
 - seluruh mapping wajib untuk feature pilot lengkap;
@@ -848,7 +971,621 @@ dan Journal G6 tetap belum dibuka.
 
 ---
 
+## 8.5 Pre-Deploy UX, Branding, dan Sales Document Insertion
+
+Keputusan user 2026-08-11 menyisipkan pekerjaan berikut setelah DEX-4 dan
+sebelum full E2E/Vercel Preview. Source of truth berada di
+`PREDEPLOY_MODULAR_HOME_BRANDING_SALES_DOCUMENT_PLAN.md`.
+
+1. **UXD-1 — Navigation authority audit:** petakan module/submodule terhadap
+   effective role, Company, entitlement, operational scope, API, dan RLS.
+2. **UXD-2 — Two-level launcher:** Home hanya card modul authorized; klik modul
+   membuka landing card submodul; hero sapaan/statistik dihapus.
+3. **BRD-1 — Company branding:** upload/replace/remove logo opsional,
+   tenant-scoped, audited, file-safe, dan memiliki fallback tanpa logo.
+4. **SLD-1 — Sales document preflight:** audit Sale/Customer/Store/Return/
+   Offline/print snapshot dan tutup blocker sebelum schema.
+5. **SLD-2 — Canonical Sales document foundation:** Sales Invoice printable
+   bersumber dari Sale POSTED dan Surat Jalan hanya untuk delivery intent;
+   idempotent serta tanpa Stock/Finance effect kedua.
+6. **SLD-3 — POS/Backoffice/print UI:** toggle `Perlu dikirim`, recipient dan
+   alamat snapshot, daftar/reprint/status, template logo/no-logo.
+7. **PRD-1 — Closing regression:** full tenant/role/DEX/Sale/Return/Stock/FIFO/
+   Finance/document/Storage/environment regression sebelum Vercel Preview.
+
+Status 2026-08-11: UXD-1 COMPLETE. Audit menetapkan registry client belum
+memadai sebagai authority launcher, memisahkan `canView` dari capability aksi,
+memindahkan ownership Faktur/Pembayaran Supplier ke Finance, dan memastikan 97
+Route Handler memiliki auth/context atau retirement guard. UXD-2 adalah next
+safe step; BRD-1 belum dibuka.
+
+UXD-2 sekarang LOCAL READY: clean Home, module landing, catalog server berbasis
+active Company/role/feature, Company reset, dan client fail-safe telah lint,
+TypeScript, serta production build PASS. Authenticated role/feature/
+multi-Company smoke masih manual; BRD-1 belum dibuka sampai smoke tersebut PASS.
+
+Arahan user berikutnya menggabungkan pembuatan akun/matrix role UXD-2 ke closing
+PRD-1. BRD-1 preflight sudah user-reported ALL PASS. Migration database/storage,
+postflight, dan rollback-safe behavior dua Company sekarang siap manual rollout;
+server upload API/UI tetap menunggu database gate PASS.
+
+Atas arahan user, PRD-1 wajib memakai sedikitnya dua Company dan memastikan
+isolasi tidak hanya pada launcher: list/detail, mutation, Stock, Sale, Finance,
+global Data Exchange, branding, dan document snapshot. Switch active Company
+wajib membersihkan state/cache; ID/path Company lain dan direct route/RPC harus
+ditolak server-side.
+
+BRD-1 database/postflight/behavior telah user-reported ALL PASS. BRD-2 upload
+runtime dan UI sekarang LOCAL READY: Route Handler mengambil active Company
+server-side, bytes divalidasi terhadap magic signature/MIME/extension/2 MiB,
+SHA-256 dan versioned path dibuat server, Storage memakai service-role hanya di
+modul `server-only`, metadata tetap melalui guarded RPC, dan replace/remove
+membersihkan object secara best effort. Authenticated wrong-file, stale-tab,
+role denial, dan switch dua Company tetap manual gate sebelum SLD-1.
+
+Header menampilkan resolved Company logo sebagai tombol Home dan Fast Link
+memiliki search. Input search hanya memfilter item dari
+`/api/me/navigation-catalog`; dilarang memakai static fallback/all-menu
+registry. Menu yang tidak diberikan untuk role/Company aktif harus tetap tidak
+muncul di Home, module landing, sidebar, dan hasil pencarian, sementara direct
+route/API tetap ditolak oleh server authority.
+
+SLD-1 sekarang LOCAL READY sebagai contract dan preflight SELECT-only. Contract
+canonical berada di `SALES_INVOICE_DELIVERY_DOCUMENT_SPEC.md`: Invoice adalah
+view/snapshot immutable dari Sale POSTED dan nomor existing; Surat Jalan hanya
+untuk `DELIVERY`, bernomor manusia `SJ/YYYY/MM/NNNNNN`, idempotent, tenant-safe,
+dan tidak mempunyai Stock/Finance effect kedua. Jalankan runbook
+`runbooks/SLD1_SALES_DOCUMENT_PREFLIGHT.md`; SLD-2 tetap tertutup sampai semua
+row `BLOCKER` nol. Multi-role dan dua-Company full matrix tetap digabungkan pada
+PRD-1 sesuai arahan user.
+
+User kemudian mengirim output live SLD-1 tanpa `BLOCKER`. Tiga Customer dan
+satu Store berstatus `REVIEW`, sembilan Sale POSTED berstatus `BACKFILL`, serta
+schema dan branding retention berstatus `SETUP`; semuanya merupakan scope yang
+disetujui, bukan penyimpangan transaksi. SLD-2 sekarang READY FOR MANUAL
+DATABASE ROLLOUT melalui
+`runbooks/SLD2_SALES_DOCUMENT_FOUNDATION_ROLLOUT.md`. Implementasi memakai
+deferred finalization agar snapshot menangkap state final online/offline,
+`LEGACY_CUTOVER` untuk existing Sale, delivery-only Surat Jalan, immutable
+audit, dan reference-aware logo retention. User kemudian melaporkan migration,
+postflight, serta behavioral seluruhnya PASS; SLD-2 menjadi database-applied.
+
+SLD-3 sekarang LOCAL READY. POS mempertahankan fulfillment Pickup/Delivery pada
+draft online/offline dan menawarkan Invoice/SJ final di success flow tanpa
+retry Sale. Backoffice memiliki authorized list/detail, A4 new-tab print, dan
+guarded lifecycle Surat Jalan tanpa menampilkan UUID. PWA serta Backoffice lint
+dan production build PASS. Authenticated UAT pada
+`runbooks/SLD3_POS_BACKOFFICE_PRINT_UI.md` tetap wajib sebelum fase COMPLETE
+dan sebelum PRD-1 dimulai.
+
+Closing UAT tersebut kemudian ditahan oleh approved revision user. Delivery
+dipilih pada final checkout sebelum payment/POST, memakai default Customer, dan
+ongkir opsional harus direkonsiliasi server-side ke payment/AR/Customer Balance,
+offline replay, Invoice, event, serta jurnal pendapatan ongkir. Implementasi
+wajib berurutan SLD-R1 contract/preflight, R2 foundation, R3 UI, dan R4 closing
+regression menurut `SLD_DELIVERY_FEE_REVISION_PLAN.md`. User kemudian
+mengonfirmasi SLD-R4 migration, postflight, behavioral, dan regression sukses
+pada 2026-08-12. PRD-1 sekarang dibuka melalui SELECT-only diagnostic
+`supabase/diagnostics/prd_phase1_predeploy_closing_preflight.sql`; provision
+Company kedua dan akun role dilakukan hanya setelah output diagnostic ditinjau.
+Output live kemudian diterima tanpa `BLOCKER`. Gate aktif berpindah ke manual
+canonical provisioning satu Company kedua, role matrix, Kasir per tenant, dan
+satu regular multi-Company identity. Postflight SELECT-only berada di
+`supabase/diagnostics/prd_phase2_uat_identity_tenant_postflight.sql`; kredensial
+tidak boleh disimpan pada SQL, Markdown, log, atau repository.
+
+Company kedua kemudian user-provisioned dan gate dua Company PASS. Karena UI
+lama belum dapat menempelkan akun existing, PRD phase 3 menambahkan guarded
+Super-Admin-only exact-email assignment dengan role per Company, optional Store,
+immutable audit, exact retry, dan tanpa browser global user directory. Manual
+rollout wajib mengikuti `runbooks/PRD1_EXISTING_USER_MULTI_COMPANY_ROLLOUT.md`
+sebelum regular multi-Company selector identity dapat dinyatakan PASS.
+
+Keputusan user 2026-08-12 kemudian menyisipkan ACP-0—ACP-7 sebelum full PRD-1
+closing. Role existing tetap baseline sekaligus batas maksimum; custom access
+bersifat opsional dan restriction-only per Company/submodul. Tidak adanya
+override harus mempertahankan behavior sekarang. Fase dipecah menjadi contract,
+read-only fingerprint, shadow foundation, consolidated User detail, Inventory
+pilot, Contacts/Purchase/Sales, Finance/Data/Platform, lalu security closure.
+Source of truth berada di `ROLE_BASELINE_CUSTOM_PERMISSION_PLAN.md`. Gate aktif
+ACP-1 live output kemudian diterima tanpa `BLOCKER`: membership/context/tenant,
+178 company-scoped RLS relations, protected direct-write boundary, and canonical
+helpers all PASS. Five authenticated writable company tables remain documented
+`REVIEW`; custom schema and incomplete UAT roles remain expected `SETUP`.
+ACP-2 migration telah berada di live database dan rollback-only behavioral test
+dikonfirmasi PASS oleh user. ACP-3 sekarang local-ready: card Tim & Akses dapat
+dibuka menjadi detail user, membership Company/Store ditampilkan tenant-safe,
+Super Admin dapat menambahkan target UUID yang sama ke Company lain tanpa input
+email ulang, dan resolver ACP-2 ditampilkan sebagai preview `SHADOW`. UI ini
+tidak memakai preview sebagai authorization dan belum menyediakan editor preset.
+Next manual gate adalah authenticated two-Company smoke serta ACP-2 postflight +
+ACP-1 regression sebelum ACP-4 Inventory enforcement dibuka.
+
+ACP-4 kini mempunyai preflight SELECT-only
+`acp_phase4_inventory_pilot_preflight.sql` dan runbook interpretasi. Diagnostic
+mengaudit sembilan Inventory key, dependency ACP-2, tenant override, protected
+Stock/FIFO/Movement direct-write, simple-master browser write, tiga belas nama
+routine canonical, absence/presence permission hook, serta dokumen nonfinal.
+Tidak ada key yang diubah dari `SHADOW`; output live wajib direview sebelum
+migration enforcement atau editor preset Inventory dibuat.
+
+SLD-R1 sekarang READY TO RUN sebagai diagnostic satu statement SELECT-only.
+Ia mengaudit dependency, total/payment/receivable, snapshot Invoice/SJ, offline
+nonterminal queue, candidate akun Revenue, catalog/rule Finance, Tax decision,
+Return decision, serta zero-value legacy scope. `SETUP`, `BACKFILL`, dan
+documented `REVIEW` adalah expected; setiap `BLOCKER` harus nol sebelum R2.
+
+User kemudian mengirim output SLD-R1 tanpa `BLOCKER`: reconciliation,
+dependency, runtime routine, Invoice/SJ, offline queue, dan Revenue candidate
+seluruhnya aman; `REVIEW` Tax/Return serta zero legacy `BACKFILL` diterima
+sesuai keputusan approved. SLD-R2 sekarang local-ready melalui migration
+`20260811140000`: fee Delivery retry-safe ditambahkan setelah Product rounding,
+ikut total/payment/receivable, tersnapshot pada receipt/Invoice/Event, dan
+mempunyai Company mapping `DELIVERY_FEE_REVENUE`. Historical snapshot/Event
+tetap immutable. Actual Sale journal tetap controlled `HOLD` sampai G6 membuka
+resolver/rule Sale secara eksplisit; ini bukan alasan memproses 25 HOLD lama.
+User kemudian mengonfirmasi migration foundation, forward fix, postflight, dan
+behavioral R2 seluruhnya sukses. SLD-R2 menjadi database-applied. SLD-R3 kini
+local-ready: checkout hanya menampilkan checkbox ringkas `Perlu dikirim`, detail
+tujuan/ongkir berada di modal custom yang Escape-close, Customer menjadi nilai
+awal, Draft restore dan Offline payload menyimpan fee/display mode, payment
+memakai total yang sama, Invoice menghormati `SHOW_SEPARATE`/`HIDE_BREAKDOWN`,
+dan Surat Jalan tetap quantity-only. PWA dan Backoffice lint/build PASS;
+authenticated online/offline print smoke masih wajib sebelum R3 ditutup.
+
+Upload internal tetap dilarang untuk bukti transaksi. Hanya Company logo yang
+dibuka sebagai exception branding eksplisit. Sales Invoice bukan e-Faktur dan
+Supplier Invoice Purchase tidak berubah. Logistics advanced tetap deferred.
+
+---
+
 ## 9. Pilot, Cutover, dan Rollback
+
+### ACP-4A Inventory simple-master correction
+
+Live ACP-4 preflight found direct authenticated mutation on UOM, Warehouse,
+Store, and POS Terminal. Before Inventory permission enforcement can start,
+ACP-4A must pass: UOM/Warehouse mutations use guarded audited RPCs; browser
+table mutation on all four relations is absent; Store/Terminal remain read-only
+until an approved provisioning/CRUD scope exists; and the nine Inventory
+permission keys remain `SHADOW`. Runbook:
+`runbooks/ACP4A_GUARDED_INVENTORY_MASTER_BOUNDARY.md`.
+
+### ACP-4B first enforced key
+
+Live ACP-4B preflight confirmed the remaining blocker was authenticated
+column-level Product Category identity write. The approved correction enforces
+exactly `inventory.master_data`: Category/UOM/Warehouse/Category-Tax mutation
+requires effective `MANAGE`, consolidated page read requires `VIEW`, navigation
+uses the same effective resolver, and the grouped user-detail editor exposes
+the four restriction presets. `LIHAT_SAJA` and `OPERASIONAL` are read-only for
+this VIEW/MANAGE master key; `TANPA_AKSES` removes navigation and rejects API;
+`IKUTI_ROLE` preserves the ACP-1 role baseline. All other Inventory keys remain
+SHADOW until their complete workflow boundaries pass. Runbook:
+`runbooks/ACP4B_INVENTORY_MASTER_ENFORCEMENT_ROLLOUT.md`.
+
+### ACP-4C Product permission enforcement
+
+ACP-4C is local-ready after a live preflight with no blocker. It enforces
+exactly `inventory.products`: full Product management read needs `VIEW`,
+Product/UOM/Tax mutation needs `MANAGE`, and Product Data Exchange/import stages
+need the applicable `VIEW`/`EXPORT`/`IMPORT`. Cross-module Product references
+are not authorized by a client purpose flag: Stock, Pricelist, Bundle, Supplier,
+and Purchase use a separate reference endpoint requiring effective VIEW on at
+least one approved consumer key. Bundle remains `sales.bundles` and
+Product-Supplier authority is unchanged. Remaining Inventory keys stay SHADOW.
+Runbook: `runbooks/ACP4C_PRODUCT_PERMISSION_ENFORCEMENT_ROLLOUT.md`.
+
+User mengonfirmasi migration, postflight, behavior, dan closing diagnostic
+ACP-4C seluruhnya PASS/INFO. Gate aktif berpindah ke ACP-4D SELECT-only untuk
+`inventory.stock_real` dan `inventory.stock_movements`. Audit ini wajib
+memisahkan composite Stock Real/valuasi FIFO dari immutable Movement ledger,
+menutup export/direct-route bypass, dan mempertahankan on-hand reference yang
+memang dibutuhkan workflow berwenang. Tidak ada key baru yang di-enforce sampai
+output live direview. Runbook:
+`runbooks/ACP4D_STOCK_READ_MODELS_PREFLIGHT.md`.
+
+Live ACP-4D preflight kemudian diterima tanpa blocker: seluruh tenant,
+Stock-Movement-FIFO, RLS, direct-write, dan duplicate invariant PASS. Dua REVIEW
+dan satu SETUP menjadi implementation target. Slice lokal menambah guarded
+Stock Real composite RPC dan Kartu Stok RPC terpisah, menghitung FIFO value dan
+Movement terakhir di server, menutup navigation/API/export melalui effective
+capability, mempertahankan raw on-hand read yang RLS-scoped untuk consumer
+operasional, serta menyediakan CSV tanpa UUID sumber. Manual rollout dan
+authenticated two-Company/preset smoke mengikuti
+`runbooks/ACP4D_STOCK_READ_MODEL_ENFORCEMENT_ROLLOUT.md`.
+
+User mengonfirmasi seluruh migration/postflight/behavior/closing ACP-4D hanya
+berisi PASS/INFO. ACP-4D dianggap live; authenticated preset/two-Company smoke
+tetap dikumpulkan pada closure. Gate berikutnya adalah ACP-4E SELECT-only untuk
+`inventory.stock_transfers`. Audit wajib memisahkan VIEW dari
+CREATE/EDIT/POST/CANCEL, mengganti direct browser table read dengan composed
+read boundary, menyediakan narrow Gudang/Product reference tanpa mewajibkan
+Master Inventory, dan mempertahankan atomic FIFO relocation, paired Movement,
+idempotency, tenant isolation, serta role baseline. Runbook:
+`runbooks/ACP4E_STOCK_TRANSFER_PERMISSION_PREFLIGHT.md`.
+
+Live ACP-4E preflight kemudian diterima tanpa blocker: lifecycle, paired
+Movement, FIFO/Stock reconciliation, tenant override, mutation signatures, dan
+direct-write boundary seluruhnya PASS. Slice lokal memindahkan browser dari
+empat tabel Transfer ke composed RPC yang juga menyediakan narrow Product dan
+Gudang reference, menjaga Save/Create/Edit/Post/Cancel dengan capability
+terpisah, dan menutup direct authenticated table SELECT setelah active consumer
+dipindahkan. Core atomic FIFO relocation, Movement pair, idempotency, serta role
+baseline tidak berubah. Manual rollout mengikuti
+`runbooks/ACP4E_STOCK_TRANSFER_PERMISSION_ENFORCEMENT_ROLLOUT.md`.
+
+User kemudian mengonfirmasi seluruh ACP-4E migration/postflight/behavior dan
+closing diagnostic hanya PASS/INFO. Transfer Stok dianggap live ENFORCED;
+authenticated preset/two-Company smoke tetap closure evidence. Gate berikutnya
+adalah ACP-4F SELECT-only untuk `inventory.stock_adjustments`. Audit wajib
+menjaga capability VIEW/Create/Edit/Post/Cancel, composed read/reference,
+FIFO/Movement/Finance invariant, serta jalur internal Stock Opname yang membuat
+Adjustment canonical tanpa menjadikannya permission bypass. Runbook:
+`runbooks/ACP4F_STOCK_ADJUSTMENT_PERMISSION_PREFLIGHT.md`.
+
+Live ACP-4F preflight diterima tanpa blocker. Tiga REVIEW dan dua SETUP menjadi
+target implementasi: composed Adjustment read/reference, capability
+Create/Edit/Post/Cancel, direct table-read closure, serta trusted private core
+untuk panggilan Stock Opname. Slice lokal juga menyediakan narrow compatibility
+read bagi halaman Opname sehingga penutupan tabel Adjustment tidak merusak
+consumer aktif. Atomic FIFO, Movement, Finance event, idempotency, dan role
+baseline tidak diubah. Manual rollout mengikuti
+`runbooks/ACP4F_STOCK_ADJUSTMENT_PERMISSION_ENFORCEMENT_ROLLOUT.md`.
+
+User kemudian mengonfirmasi migration, postflight, behavior, regression G3,
+dan closing generic ACP-4F hanya PASS/INFO. Penyesuaian Stok dianggap live
+ENFORCED; enam dari sembilan key Inventory sekarang enforced. Gate berikutnya
+adalah ACP-4G SELECT-only untuk `inventory.stock_opnames`. Audit wajib
+memisahkan Backoffice VIEW/REVIEW/POST dari channel blind count Kasir,
+mempertahankan Store/Gudang scope, recount/supersede, idempotency, dan trusted
+private Adjustment core, serta menutup direct browser read hanya setelah
+composed consumer siap. Opening Stock dan Minimum Stock tetap di luar fase.
+Runbook: `runbooks/ACP4G_STOCK_OPNAME_PERMISSION_PREFLIGHT.md`.
+
+Live ACP-4G preflight diterima tanpa blocker. Tiga REVIEW dan dua SETUP menjadi
+target implementasi: composed Backoffice read, pemisahan report dari blind
+count, capability Review/Post/Cancel, narrow Gudang/actor/Adjustment proof, dan
+direct table-read closure. Implementasi lokal mempertahankan Store/Gudang
+ceiling existing untuk Kasir, membuat custom restriction hanya dapat
+mengurangi akses, serta tetap memakai trusted Adjustment core ACP-4F. Manual
+rollout mengikuti
+`runbooks/ACP4G_STOCK_OPNAME_PERMISSION_ENFORCEMENT_ROLLOUT.md`. Opening Stock
+dan Minimum Stock tetap `SHADOW` sampai slice masing-masing dibuka.
+
+User kemudian mengonfirmasi migration, postflight, behavior, regression G3 dan
+ACP-4F, serta closing ACP-4G seluruhnya PASS/INFO. Stock Opname dianggap live
+ENFORCED; tujuh dari sembilan key Inventory sekarang enforced. Gate berikutnya
+adalah ACP-4H SELECT-only untuk `inventory.opening_stock`. Audit wajib menjaga
+keputusan approved Store Manager/Finance menyiapkan Draft dan Owner/Admin
+Posting, memisahkan composed document proof dari seluruh ledger Movement,
+menjaga no-prior-Movement, zero-cost reason, idempotency, tenant, serta atomic
+Stock–Movement–FIFO/Finance evidence. Minimum Stock tetap di luar fase.
+Runbook: `runbooks/ACP4H_OPENING_STOCK_PERMISSION_PREFLIGHT.md`.
+
+User mengonfirmasi preflight ACP-4H tanpa `BLOCKER`; no-prior-Movement,
+lifecycle, tenant, posted evidence, serta Stock–Movement–FIFO reconciliation
+seluruhnya PASS. REVIEW/SETUP yang tersisa menjadi target enforcement:
+Company Owner/Admin dapat Post, Finance dan Store Manager hanya menyiapkan
+Draft (Store Manager dibatasi Gudang Store assignment), Accounting report-only,
+dan seluruh browser read dipotong ke satu composed RPC. Implementasi lokal,
+postflight, behavior, G3 regression, serta authenticated smoke mengikuti
+`runbooks/ACP4H_OPENING_STOCK_PERMISSION_ENFORCEMENT_ROLLOUT.md`. Minimum Stock
+tetap `SHADOW` dan tidak dibuka oleh fase ini.
+
+User kemudian mengonfirmasi seluruh langkah rollout ACP-4H PASS setelah fixture
+behavior menetapkan active Company context untuk setiap pergantian actor.
+Stok Awal dianggap live ENFORCED; delapan dari sembilan key Inventory sekarang
+enforced. Gate berikutnya adalah ACP-4I SELECT-only untuk
+`inventory.minimum_stock`. Audit mencakup composed read beserta reference
+Product/Base-UOM/Gudang dan saldo sempit, capability mutation/import/export,
+threshold precision, audit/tenant, nonterminal import, serta keputusan scope
+Store Manager. Minimum Stock tetap `SHADOW` sampai output preflight direview.
+Runbook: `runbooks/ACP4I_MINIMUM_STOCK_PERMISSION_PREFLIGHT.md`.
+
+Live ACP-4I preflight diterima tanpa `BLOCKER`. Data, threshold/Base-UOM,
+tenant, audit, direct-write, dependency, dan nonterminal import seluruhnya
+PASS. Tiga REVIEW dan tiga SETUP menjadi target implementasi: composed read
+mandiri, pemutusan direct table/read dependency, capability-aware mutation dan
+import/export, serta Store Manager hanya pada Gudang Store assignment aktif;
+Warehouse Admin tetap Company-wide. Implementasi lokal mengikuti
+`runbooks/ACP4I_MINIMUM_STOCK_PERMISSION_ENFORCEMENT_ROLLOUT.md`. Notice tetap
+non-blocking dan tidak membuat Stock Request atau Supplier Order otomatis.
+
+User kemudian mengonfirmasi seluruh rollout ACP-4I sukses. Minimum Stock adalah
+key Inventory kesembilan yang live ENFORCED; authenticated preset/two-Company
+smoke tetap closure evidence. ACP-5 dibuka bertahap dan tidak sekaligus:
+ACP-5A adalah SELECT-only preflight `contacts.customers`. Gate ini mengaudit
+Customer/Category/parent/Pricelist management, POS quick-create, Customer
+Balance Finance, shared Sales references, Data Exchange, tenant/hierarchy,
+direct browser boundary, serta capability hook. Tidak ada runtime Customer yang
+diubah sebelum output preflight direview.
+
+Live ACP-5A preflight diterima tanpa `BLOCKER`. Customer identity/category,
+parent/Pricelist, tenant, Walk-In, balance cache, direct-write, dan existing
+mutation contract seluruhnya PASS. REVIEW/SETUP yang ditemukan ditutup secara
+lokal melalui satu composed management RPC, capability-aware Customer dan
+Category writer, explicit Customer Category Import, direct table-read closure,
+serta reference RPC terpisah untuk POS, Sales Document/Return, dan Finance
+Customer Balance. `contacts.customers` belum dianggap live ENFORCED sampai
+migration, postflight, behavior, regression, dan authenticated smoke pada
+`runbooks/ACP5A_CUSTOMER_PERMISSION_ENFORCEMENT_ROLLOUT.md` selesai.
+
+User kemudian mengonfirmasi seluruh rollout ACP-5A sukses dan seluruh hasil
+PASS. `contacts.customers` dianggap live ENFORCED; POS quick-create,
+Customer Balance/credit, dan Sales reference tetap memakai authority terpisah.
+Gate aktif berpindah ke ACP-5B SELECT-only untuk `contacts.suppliers`.
+Preflight ini mengaudit Supplier dan Product-Supplier sebagai satu management
+boundary, rekening referensi, normalized identity/preferred Supplier,
+Product-UOM pembelian, dua fixed import type, direct browser access, serta
+consumer Purchase Order/Return, Product, Supplier Invoice/AP/Payment, dan Data
+Exchange. Tidak ada enforcement Supplier/Purchase/Finance sebelum output
+`runbooks/ACP5B_SUPPLIER_PERMISSION_PREFLIGHT.md` direview tanpa blocker.
+
+Live ACP-5B preflight diterima tanpa `BLOCKER`. Supplier/Product-Supplier,
+tenant, normalized identity, preferred relation, Product-UOM pembelian,
+operational document reference, direct-write boundary, dan nonterminal import
+seluruhnya PASS. REVIEW/SETUP menjadi target satu cutover lokal: composed
+Contacts workspace, guarded Manage/Import/Export, direct table-read closure,
+serta reference RPC terpisah untuk Supplier Order, Purchase Return, Goods
+Receipt Kasir, POS Purchase Return, Supplier Invoice, dan Supplier Payment.
+Backoffice/PWA telah dipindahkan dari direct Supplier read. Manual rollout,
+regression, dan two-Company/preset smoke mengikuti
+`runbooks/ACP5B_SUPPLIER_PERMISSION_ENFORCEMENT_ROLLOUT.md`. Purchase, Sales,
+dan Finance permission key lain tetap `SHADOW` sampai preflight masing-masing.
+
+User kemudian mengonfirmasi seluruh SQL ACP-5B sukses. `contacts.suppliers`
+dianggap live ENFORCED dengan Supplier/Product-Supplier, import/export,
+Purchase/Finance reference, serta PWA Goods Receipt/Purchase Return tetap pada
+authority terpisah. Gate aktif berpindah ke ACP-5C SELECT-only untuk
+`purchase.supplier_orders`. Preflight mengaudit workspace Backoffice, Stock
+Request open-session Cashier, Goods Receipt consumer, allocation/lifecycle,
+zero-effect Supplier Order, tenant, direct browser access, dan capability hook.
+Tidak ada runtime Purchase yang diubah sebelum seluruh output
+`runbooks/ACP5C_SUPPLIER_ORDER_PERMISSION_PREFLIGHT.md` direview tanpa blocker.
+
+User kemudian mengonfirmasi seluruh output ACP-5C preflight PASS/INFO dengan
+REVIEW/SETUP sesuai rancangan. Paket enforcement local-ready memisahkan composed
+Backoffice Supplier Order workspace dari narrow Stock Request dan Goods Receipt
+Cashier consumer, menambahkan capability hook pada aksi Order/manager, menutup
+direct browser read setelah cutover application, serta mempertahankan Purchase
+Return dan Supplier reference pada authority independen. Runtime belum boleh
+ditulis sebagai ENFORCED sebelum migration, postflight, behavior, regression,
+dan authenticated two-Company/preset smoke pada runbook ACP-5C lulus.
+
+User kemudian mengonfirmasi migration, postflight, behavior, seluruh regression,
+dan closing ACP-5C sukses. `purchase.supplier_orders` dianggap database-live
+ENFORCED; authenticated preset/two-Company smoke tetap dicatat sebagai closing
+UAT. Gate berikutnya dibuka hanya sebagai ACP-5D SELECT-only preflight untuk
+`purchase.purchase_returns`: Backoffice Review/Post, Cashier open-session
+Draft/Edit, mixed cancel, Return-scoped source Receipt/FIFO/AP, direct browser
+read, final-effect/idempotency, dan tenant isolation. Tidak ada Return runtime,
+grant, schema, atau data yang diubah oleh preflight.
+
+User mengonfirmasi seluruh ACP-5D preflight tanpa blocker. Paket enforcement
+local-ready memisahkan composed Backoffice `VIEW` dari PWA open-session source,
+menjaga Review/Post/Cancel Final dengan capability efektif, mempertahankan
+Cashier Draft/Edit dan cancel miliknya, serta baru mencabut direct SELECT setelah
+consumer aktif dipindahkan. G5 atomic Return core tetap private dan kompatibel.
+Runtime belum boleh ditulis ENFORCED sebelum migration, postflight, behavior,
+G5/ACP regression, dan authenticated preset/two-Company smoke lulus.
+
+User kemudian mengonfirmasi seluruh migration, postflight, behavior, dan
+regression ACP-5D PASS. `purchase.purchase_returns` dianggap database-live
+ENFORCED; authenticated preset/two-Company smoke tetap closing UAT. Gate aktif
+berpindah hanya ke ACP-5E SELECT-only preflight `sales.sales_documents` untuk
+Backoffice list/detail/print/export dan Delivery lifecycle. POS checkout,
+Sales Return, shared Sale tables, Stock, Payment, dan Finance tetap memakai
+authority terpisah serta tidak diubah oleh preflight.
+
+Live ACP-5E preflight diterima tanpa `BLOCKER`; migration, postflight, behavior,
+dan regression berikutnya user-confirmed PASS. `sales.sales_documents` kini
+database-live ENFORCED. Authenticated preset/two-Company smoke tetap closing
+UAT. Gate aktif berpindah ke ACP-5F SELECT-only preflight
+`sales.pricelists`; Customer assignment, POS online/offline resolver, Sale
+snapshot, dan direct-read cutover wajib tetap memakai authority terpisah sampai
+preflight dinilai bersih dan enforcement khusus disetujui.
+
+Live ACP-5F preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Catalog,
+default Global, reusable Customer assignment, Store scope, Product-UOM rule,
+Sale snapshot, direct-write, tenant override, dan server resolver seluruhnya
+PASS. Paket local-ready memisahkan composed Backoffice `VIEW`, mutation
+`MANAGE`, export `EXPORT`, open-session POS reference, serta existing Offline
+snapshot. Overload mutation legacy juga dikarantina dari browser. Runtime tetap
+SHADOW sampai seluruh urutan migration/postflight/behavior/regression/smoke pada
+runbook ACP-5F selesai.
+
+User kemudian mengonfirmasi migration, postflight, behavior, dan seluruh
+regression ACP-5F PASS. `sales.pricelists` sekarang database-live ENFORCED;
+authenticated preset/two-Company smoke tetap closing UAT. Gate aktif berpindah
+hanya ke ACP-5G SELECT-only preflight `sales.bundles`. Boundary yang harus
+dipertahankan: Bundle Product + sales UOM + komposisi disimpan atomik, Product
+STOCK tetap milik `inventory.products`, Bundle tidak mempunyai stok/FIFO fisik,
+POS melakukan server-side component expansion dengan session authority sendiri,
+dan Sales Return memakai immutable allocation tanpa memperoleh Bundle MANAGE.
+
+Live ACP-5G preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Paket
+enforcement local-ready membuat composed Bundle management/reference read,
+menjaga atomic save dan availability melalui capability efektif, menutup hanya
+dua dedicated Bundle table read, serta memperbaiki UI agar tombol kelola
+mengikuti `sales.bundles`—bukan Minimum Stock. Runtime Bundle masih SHADOW
+sampai migration, postflight, behavior, regression Bundle/POS/Return/Product/
+Pricelist, dan authenticated two-Company smoke pada runbook lulus.
+
+User kemudian mengonfirmasi seluruh ACP-5G rollout dan regression PASS.
+`sales.bundles` sekarang database-live ENFORCED; authenticated preset/two-
+Company smoke tetap closing UAT. Gate aktif berpindah hanya ke ACP-5H
+SELECT-only preflight `sales.sales_returns`. Cashier source/Draft, Backoffice
+final Post/Cancel, refund, original FIFO restoration, Bundle allocation,
+delivery-fee decision, dan Finance HOLD wajib tetap dipisahkan.
+
+Live ACP-5H preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Paket
+enforcement local-ready memisahkan composed Backoffice `VIEW`, final `POST` dan
+Draft `CANCEL_FINAL` dari PWA source/Draft yang tetap open-session scoped.
+Direct read lima tabel khusus Return ditutup hanya setelah kedua consumer
+dicabut. Lifecycle tidak ditambah status Review, original FIFO/Bundle/refund/
+ongkir dipertahankan, dan event Finance tetap `HOLD`. Runtime tetap SHADOW
+sampai migration, postflight, behavior, regression, dan smoke runbook lulus.
+
+User kemudian mengonfirmasi seluruh ACP-5H migration, postflight, behavior, dan
+regression PASS. `sales.sales_returns` sekarang database-live ENFORCED dan
+ACP-5 ditutup; authenticated preset/two-Company/PWA smoke tetap closing UAT.
+Gate aktif berpindah ke ACP-6A SELECT-only `finance.expenses`. Expense harus
+dipotong terpisah antara Backoffice effective capability dan PWA open-session;
+Cash drawer, maker-checker, append-only settlement/return/additional, serta
+Finance HOLD tidak boleh berubah.
+
+Live ACP-6A preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Paket
+enforcement `20260813060000` local-ready memisahkan composed Backoffice
+`VIEW/MANAGE/APPROVE/POST/CANCEL_FINAL` dari PWA Cashier yang tetap dibatasi
+Company, Store, open Session, payment type, dan custom restriction. Sembilan
+tabel khusus Expense ditutup dari direct browser read setelah consumer aktif
+berpindah ke RPC; `cash_drawer_movements` dan `cash_in_documents` tetap shared
+untuk workflow kas lain. Finance event tetap HOLD dan tidak ada Journal baru.
+Runtime live tetap SHADOW sampai migration, postflight, behavior, regression,
+dan authenticated Backoffice/PWA smoke lulus.
+
+User kemudian mengonfirmasi ACP-6A migration, postflight, behavior, dan smoke
+sukses. `finance.expenses` sekarang database-live ENFORCED; seluruh 13 guarded
+mutation core tertutup, direct Expense reads ditutup, Cashier channel tetap
+Store/open-session scoped, shared drawer relation dipertahankan, dan Finance
+events tetap HOLD. Gate aktif berpindah hanya ke ACP-6B SELECT-only preflight
+`finance.cash_deposits`; tidak ada runtime Setor Kas/Variance/Journal yang
+diubah sebelum output live dinilai.
+
+Live ACP-6B preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Paket
+enforcement `20260813070000` local-ready: Backoffice memakai composed
+`finance.cash_deposits VIEW`, approve/reject memakai effective capability,
+sedangkan Draft/Submit/Cancel Kasir tetap dibatasi existing CLOSED-session,
+Store, actor, dan custom restriction. Empat tabel khusus Setor Kas ditutup dari
+direct browser read setelah Backoffice dan Deposit Variance dipindahkan ke RPC
+terpisah. Deposit Variance tidak mewarisi authority Setor Kas; Financial Event
+tetap `HOLD` dan tidak ada Journal yang diproses. Runtime live tetap SHADOW
+sampai migration, postflight, behavior, regressions Phase-43/46, dan smoke
+Backoffice/PWA lulus.
+
+User kemudian mengonfirmasi ACP-6B migration, postflight, behavior, dan kedua
+regression sukses; authenticated Backoffice/PWA/preset smoke ditunda secara
+eksplisit untuk closing UAT gabungan. `finance.cash_deposits` dianggap
+database-live ENFORCED, tetapi status smoke tetap `PENDING`, bukan PASS.
+Gate aktif berpindah hanya ke ACP-6C SELECT-only
+`finance.deposit_variances`. Preflight tidak boleh mengubah exception,
+allocation, request, Setor Kas, Financial Event HOLD, atau Journal.
+
+Live ACP-6C preflight diterima tanpa `BLOCKER`/`BACKFILL`; satu exception
+historis telah `RESOLVED` dan rantai request/allocation/audit/event HOLD
+rekonsiliasi. Paket enforcement `20260813080000` local-ready: composed
+Backoffice `VIEW`, `MANAGE` untuk investigation dan pengajuan resolusi,
+`APPROVE/REVIEW` untuk maker-checker Owner/Admin, serta private trusted cores.
+Empat tabel dedicated ditutup dari direct browser read setelah API berpindah ke
+RPC. Linked Cash Deposit hanya snapshot sempit, event tetap HOLD, dan tidak ada
+Journal yang diproses. Runtime live tetap SHADOW sampai rollout manual lulus.
+
+User kemudian mengonfirmasi ACP-6C migration, postflight, behavior, dan
+regression seluruhnya PASS. Runtime database sekarang ENFORCED; authenticated
+smoke tetap `PENDING` dan digabung pada closing UAT.
+
+Gate aktif berikutnya hanya ACP-6D SELECT-only
+`finance.customer_balances`. Audit wajib mempertahankan ledger immutable,
+cache-to-ledger reconciliation, correction maker-checker, policy/feature
+lifecycle, tenant boundary, serta authority terpisah untuk POS overpayment dan
+balance tender. ACP-6D tidak boleh mengubah saldo, request, Payment, Financial
+Event HOLD, Journal, grant, RLS, atau RPC sebelum output live dinilai.
+
+Live ACP-6D preflight diterima tanpa `BLOCKER`/`BACKFILL`; seluruh lifecycle,
+ledger/cache, source, tenant, maker-checker, dan mutation boundary PASS.
+Migration `20260813090000` local-ready dengan composed Backoffice read,
+guarded statement/correction/review/export, private proven G4 cores, serta
+direct read closure. POS overpayment credit dan Customer Balance tender tidak
+diubah dan tetap memakai Sale/open-session authority sendiri. Manual rollout,
+postflight, behavior, regressions Phase-49/52/56, dan postflight ulang wajib
+lulus; smoke ditunda ke closing UAT gabungan.
+
+User kemudian mengonfirmasi forward-fix `20260813100000`, postflight,
+behavior, regression Phase-49, Phase-52, Phase-56, dan postflight ulang
+seluruhnya PASS. ACP-6D sekarang database-live `ENFORCED`; authenticated smoke
+tetap digabung pada closing UAT.
+
+Gate aktif berikutnya adalah ACP-6E Supplier Invoice preflight SELECT-only.
+Audit harus mempertahankan optional tolerance sebagai kebijakan tambahan,
+maker-validator separation, immutable validated invoice/AP evidence, tenant
+isolation, Supplier Payment sebagai consumer terpisah, serta Financial Event
+yang tetap `HOLD`. ACP-6E tidak boleh membuat Journal atau mengubah runtime
+sebelum output preflight live dinilai.
+
+Live ACP-6E preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`; schema,
+routine, lifecycle, matching/allocation, tolerance, tenant, event coverage, dan
+browser mutation boundary seluruhnya PASS. Migration `20260813110000`
+local-ready dengan composed Invoice read, guarded Draft/Edit/Post,
+`APPROVE` untuk kebijakan tolerance, export bulanan, referensi payable sempit
+untuk Supplier Payment, referensi linked Invoice sempit untuk Purchase Return,
+dan direct read closure. Event Supplier Invoice tetap `HOLD`; Journal tidak
+diproses. Rollout manual, postflight, behavior, regression G5 Phase-11/14,
+optional-tolerance postflight, dan postflight ACP-6E ulang wajib lulus.
+
+User kemudian mengonfirmasi seluruh ACP-6E database rollout dan regression
+PASS. Gate aktif berikutnya adalah ACP-6F Supplier Payment preflight
+SELECT-only. Audit harus mempertahankan DRAFT/VALIDATED/CANCELED, idempotent
+validation, Draft-only cancellation, immutable AP allocation/effect, narrow
+Supplier/payable-Invoice/source-account references, tenant isolation, dan
+Financial Event HOLD. ACP-6F tidak boleh membuat status review baru, membuka
+final cancellation/reversal, memproses Journal, atau mengubah Payment Method.
+
+Live ACP-6F preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`; seluruh
+lifecycle, allocation/AP balance, tenant, audit, source-account, event, dan
+browser mutation invariant PASS. Migration `20260813120000` local-ready dengan
+composed read, Draft/Edit/Post, eligible source-account validation, Draft-only
+cancel, export bulanan, dan direct-table closure. Rollout dan regressions harus
+lulus; dua Payment Event tetap HOLD dan Journal tidak diproses.
+
+User kemudian mengonfirmasi ACP-6F postflight seluruhnya PASS setelah behavior
+dan regression sukses. Gate aktif berikutnya adalah ACP-6G Payment Method
+preflight SELECT-only. Audit wajib mempertahankan exact-one active default per
+Company, Store/period eligibility, fee/proof/route/Account Function contract,
+system-owned Customer Balance/Ketul Offset, immutable Sales snapshot, tenant
+dan audit, serta pemisahan Backoffice authority dari POS online/offline dan
+Expense. Supplier Payment `CASH/BANK_TRANSFER/CHEQUE` tetap kontrak ACP-6F dan
+tidak boleh diubah implisit. ACP-6G belum mengubah runtime sampai output live
+tanpa blocker/backfill dinilai.
+
+Live ACP-6G preflight kemudian diterima tanpa `BLOCKER`; empat metode lama
+memerlukan audit backfill terukur. Migration `20260813130000` local-ready:
+composed Backoffice VIEW, guarded ordinary-method MANAGE, CSV EXPORT,
+open-session POS reference, Expense POST reference, truthful actor-null
+`BACKFILL`, immutable audit, dan penutupan tiga direct reads. Import tetap
+tertutup, metode sistem tetap module-owned, Supplier Payment enum tidak
+digabung, dan tidak ada Financial Event/Journal yang diproses. Manual rollout,
+postflight, behavior, regressions G2 Phase-14/36, G4 Phase-8, serta ACP-6A
+wajib lulus sebelum gate bergerak.
+
+User kemudian mengonfirmasi behavior, seluruh regression yang telah
+diselaraskan dengan ACP execution chain, dan closing ACP-6G postflight
+seluruhnya PASS. `finance.payment_methods` sekarang database-live `ENFORCED`;
+authenticated role/preset/two-Company smoke tetap menjadi ACP-7 closing UAT.
+Gate aktif berpindah ke ACP-7 security closure, dimulai dengan diagnostic
+SELECT-only `acp_phase7_security_closure_preflight.sql`. ACP-7 tidak membuka
+modul bisnis atau migration baru sebelum output live dinilai.
+
+Sebelum authenticated matrix, user meminta koreksi lifecycle akses
+multi-Company: detail user harus memilih Company secara eksplisit, role/Store
+dan override harus jelas tenant targetnya, serta akses Company harus dapat
+dicabut secara guarded. Migration additive `20260813140000` dan Backoffice
+cutover local-ready dengan last-owner/hierarchy guard, immutable assignment dan
+permission audit, context repair, serta compatibility wrapper. Gate ACP-7 tetap
+pending sampai migration, postflight, behavior, dan two-Company revoke smoke
+user-confirmed PASS.
+
+User kemudian mengonfirmasi migration ledger, seluruh postflight, dan behavior
+Company access lifecycle PASS. Database gate `20260813140000` ditutup; hanya
+authenticated two-Company UI smoke yang masih pending sebelum ACP-7 matrix.
+
+Revisi langsung user 2026-08-13 memisahkan workspace dokumen: Invoice tetap
+Sales, sedangkan Surat Jalan menjadi operasi Inventory tanpa mengubah source
+Sale atau efek transaksi. Implementasi additive local-ready pada migration
+`20260813150000` menambah permission `inventory.delivery_documents`, composed
+quantity-only read, guarded print/lifecycle, dan memisahkan UI/API. POS tetap
+memakai posted-Sale session authority. Manual rollout, postflight, behavior,
+ACP-7/PRD-1 rerun, dan authenticated role smoke wajib lulus sebelum closure.
 
 ### Deployment timing
 
@@ -861,6 +1598,12 @@ Urutan deployment yang disetujui:
 3. **Setelah G3 dan G4 lulus lokal:** gunakan Preview untuk internal end-to-end UAT Product/Stock/Session/Checkout, pengukuran network/function/egress, serta retry/concurrency. Feature optional tetap disabled kecuali UAT-nya sendiri sudah lulus.
 4. **Setelah G5 dan G6 serta seluruh cutover checklist lulus:** buat deployment **Production pilot** untuk satu Company, satu Store, dan satu POS Terminal.
 5. **Setelah pilot reconciliation stabil:** perluas Store/Terminal bertahap. Jangan menganggap GitHub push, Vercel build PASS, atau Preview URL sebagai production approval.
+
+DEX-4 navigation cutover sudah local-ready dan closing authenticated matrix
+masih manual. Sesudah itu, UXD-1/2, BRD-1, SLD-1/2/3, dan PRD-1 di atas wajib
+diselesaikan sebelum Vercel Preview dipakai untuk full internal UAT. Production
+pilot tetap menunggu seluruh server permission, Finance, DEX, branding,
+Sales document, E2E, reconciliation, dan environment cutover evidence.
 
 Auto-deploy Production dari branch kerja tidak boleh diaktifkan. Production harus memakai protected branch/tag atau approval manual dan selalu merujuk migration manifest + rollout evidence yang sesuai.
 
@@ -904,9 +1647,6 @@ Auto-deploy Production dari branch kerja tidak boleh diaktifkan. Production haru
 ---
 
 ## 10. Urutan Kerja Pertama
-
-Sprint implementasi pertama sebaiknya hanya mencakup:
-
 1. G0 migration manifest dan live-state audit;
 2. G1 tenant constraint/RLS/feature entitlement;
 3. desain canonical master schema G2 beserta import dry-run contract;

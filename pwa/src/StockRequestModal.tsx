@@ -47,11 +47,11 @@ export function StockRequestModal({
   const load = useCallback(async () => {
     setBusy(true); setError('')
     try {
-      const result = await loadStockRequestWorkspace(companyId)
+      const result = await loadStockRequestWorkspace(companyId, cashierSessionId)
       setOptions(result.options); setDocuments(result.documents)
     } catch (reason) { setError(friendly(reason instanceof Error ? reason.message : 'Gagal memuat permintaan stok.')) }
     finally { setBusy(false) }
-  }, [companyId])
+  }, [cashierSessionId, companyId])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
     const handler = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) close() }
