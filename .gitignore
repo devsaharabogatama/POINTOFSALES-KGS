@@ -69,3 +69,5 @@ Thumbs.db
 
 # Local documentation not pushed to GitHub
 KGS_MIGRATION_CHANGELOG.md
+
+.vercel

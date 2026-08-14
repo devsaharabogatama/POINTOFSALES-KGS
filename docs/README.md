@@ -1,5 +1,8 @@
 # Router Dokumen KGS POS
 
+Panduan penggunaan untuk operator dan pengguna akhir tersedia di
+[`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md).
+
 Finance G6 Phase 8:
 
 - [`runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`](runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md)

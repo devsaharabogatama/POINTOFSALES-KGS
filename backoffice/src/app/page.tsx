@@ -615,7 +615,9 @@ export default function Home() {
   }
 
   async function logout() {
-    await supabase.auth.signOut();
+    // Keep POS and Backoffice sessions independent when the same operator uses
+    // both apps. Global sign-out would revoke the other app's refresh token.
+    await supabase.auth.signOut({ scope: "local" });
     setSession(null);
     setContext(null);
     setActiveCompanyId("");

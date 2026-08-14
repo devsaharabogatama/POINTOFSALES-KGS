@@ -1,5 +1,7 @@
 # KGS POS
 
+Panduan penggunaan lengkap: [Manual Pengguna KGS POS](docs/MANUAL_PENGGUNA_KGS_POS.md).
+
 G6 Phase 8 historical Finance closure sudah database-live dan user-confirmed
 PASS. Seluruh 32 Financial Event historis telah final: 31 Event mempunyai tepat
 satu canonical Journal dan satu exact-zero Goods Receipt ditutup sebagai
@@ -14,6 +16,16 @@ chunk 555,22 kB (153,61 kB gzip), yang harus diukur pada Preview. Remaining
 manual gate adalah authenticated role/preset/two-Company E2E, Auth redirect,
 Storage branding/cache, dan Vercel Preview smoke; ini belum merupakan approval
 Production.
+
+PWA Expense Settlement modal menerima deployment UI forward-fix pada tanggal
+yang sama: nested dialog sekarang centered, field tidak overlap, konten scroll
+internal, dan tablet/mobile layout bounded. Tidak ada business flow atau RPC
+yang berubah; lint/build PASS dan visual authenticated smoke menunggu Vercel
+redeploy dari Git.
+
+Manual logout Backoffice dan PWA juga diisolasi per aplikasi (`local` scope),
+agar logout pada satu domain tidak lagi mencabut refresh token aplikasi lain
+untuk user Supabase yang sama. Invalid/expired server session tetap fail-closed.
 Behavioral pertama menemukan Goods Receipt sah bernilai Rp0 (seluruh source
 amount dan batch value nol); transaksi rollback tanpa live effect. Forward-fix
 `20260814143000` sudah database-live dan terbukti menutup event tersebut sebagai

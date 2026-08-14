@@ -1,5 +1,37 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-14 — MANUAL PENGGUNA BERBAHASA INDONESIA
+
+Ditambahkan `docs/MANUAL_PENGGUNA_KGS_POS.md` sebagai manual operasional
+Backoffice dan PWA yang dapat dibaca langsung dari GitHub. Dokumen mempunyai
+daftar isi bertaut, panduan seluruh modul aktif, alur lintas modul,
+multi-company, hak akses, transaksi offline, dokumen cetak, Finance, pemecahan
+masalah, praktik operasional, dan glosarium. Root `README.md` serta router
+`docs/README.md` kini menautkan manual. Perubahan hanya dokumentasi; tidak ada
+schema, permission, RPC, UI, atau business flow yang berubah.
+
+### 2026-08-14 — CROSS-APP AUTH LOGOUT ISOLATION FIX
+
+User melaporkan PWA/Backoffice keluar sendiri saat kedua aplikasi memakai akun
+Supabase yang sama. Root cause: tombol logout PWA dan Backoffice memanggil
+`auth.signOut()` dengan default global scope, sehingga refresh token aplikasi
+lain ikut dicabut dan baru terlihat logout pada refresh berikutnya. Kedua manual
+logout sekarang memakai `{ scope: 'local' }`. INVALID_SESSION tetap fail-closed
+dan perubahan tidak mengubah role, tenant, atau server authorization. Existing
+revoked token membutuhkan login ulang satu kali setelah deployment.
+
+### 2026-08-14 — PWA EXPENSE SETTLEMENT MODAL LAYOUT FIX
+
+User menemukan modal Penyelesaian Expense bertumpuk/miring pada viewport
+desktop Vercel. Root cause adalah `.pos-expense-confirm-layer` tidak memiliki
+positioning/layout CSS, sehingga nested dialog tetap berada di document flow;
+field URL juga tidak memiliki bounded width. `pwa/src/App.css` sekarang memberi
+centered absolute overlay, single-column bounded fields, internal scroll,
+sticky-separated header/footer structure, mobile bottom-sheet behavior, serta
+tiga tab Expense dengan grid yang konsisten. Flow, RPC, dan Finance effect tidak
+berubah. PWA oxlint, TypeScript/Vite production build, dan `git diff --check`
+PASS; authenticated visual smoke setelah Git/Vercel redeploy masih manual.
+
 ### 2026-08-14 — G6 PHASE 8H CLOSED; PRD-1 LOCAL BUILD/SECRET GATE PASS
 
 User menjalankan Phase 8H final closure dan seluruh row PASS. Runtime Finance
