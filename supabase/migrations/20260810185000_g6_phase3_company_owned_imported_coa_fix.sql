@@ -32,10 +32,55 @@ $migration_guard$;
 DO $correct_imported_account_ownership$
 DECLARE
     v_actor UUID;
+    v_correction_scope BIGINT;
     v_invalid_scope BIGINT;
     v_changed BIGINT;
     v_remaining BIGINT;
 BEGIN
+    WITH seed_map(function_key,seed_code) AS (
+        VALUES
+            ('CASH_DRAWER','1110'),('MAIN_CASH','1120'),
+            ('BANK','1130'),('PAYMENT_CLEARING','1140'),
+            ('CASH_IN_TRANSIT','1150'),('INPUT_TAX','1160'),
+            ('CUSTOMER_RECEIVABLE','1210'),
+            ('OUTSTANDING_EXPENSE','1230'),
+            ('CASH_SHORTAGE_CONTROL','1240'),
+            ('SUPPLIER_REFUND_RECEIVABLE','1250'),
+            ('SUPPLIER_ADVANCE','1260'),
+            ('OFFLINE_PAYMENT_RECEIVABLE','1270'),
+            ('UNDER_DEPOSIT_CONTROL','1280'),
+            ('INVENTORY_ASSET','1310'),
+            ('SUPPLIER_AP_PROVISIONAL','2110'),
+            ('SUPPLIER_AP_FINAL','2120'),
+            ('CUSTOMER_BALANCE_LIABILITY','2130'),
+            ('OUTPUT_TAX','2150'),
+            ('CUSTOMER_REFUND_LIABILITY','2160'),
+            ('CASH_OVERAGE_LIABILITY','2170'),
+            ('OWNER_CAPITAL','3110'),('RETAINED_EARNINGS','3210'),
+            ('OPENING_BALANCE_CLEARING','3310'),
+            ('SALES_REVENUE','4110'),
+            ('SALES_RETURN_DISCOUNT','4120'),('COGS','5110'),
+            ('PURCHASE_PRICE_VARIANCE','5130'),('EXPENSE','6110'),
+            ('STOCK_LOSS_EXPENSE','6130'),
+            ('BAD_DEBT_EXPENSE','6140'),('ROUNDING_LOSS','6150'),
+            ('STOCK_GAIN_INCOME','7110'),('ROUNDING_GAIN','7120'),
+            ('BAD_DEBT_RECOVERY','7130'),('OTHER_INCOME','7140'),
+            ('PAYMENT_SURCHARGE_INCOME','7150')
+    )
+    SELECT count(*) INTO v_correction_scope
+    FROM public.chart_of_accounts account
+    WHERE account.is_system_account
+      AND NOT EXISTS (
+          SELECT 1
+          FROM seed_map seed
+          WHERE seed.function_key = account.system_function_key
+            AND seed.seed_code = upper(btrim(account.account_code))
+      );
+
+    -- Fresh databases contain only canonical seed accounts, so there is no
+    -- historical imported-account correction to audit. A linked Super Admin
+    -- remains mandatory whenever a real correction is present.
+    IF v_correction_scope > 0 THEN
     SELECT profile.id INTO v_actor
     FROM public.profiles profile
     JOIN auth.users auth_user ON auth_user.id = profile.id
@@ -159,6 +204,7 @@ BEGIN
 
     IF v_changed = 0 THEN
         RAISE EXCEPTION 'IMPORTED_COA_OWNERSHIP_CORRECTION_EMPTY';
+    END IF;
     END IF;
 
     WITH target_functions(function_key) AS (

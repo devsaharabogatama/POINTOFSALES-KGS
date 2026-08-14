@@ -1,5 +1,35 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-14 — STAGING PROJECTS CREATED; SUPABASE BOOTSTRAP IN PROGRESS
+
+Git `main` lokal dan `origin/main` sama pada commit `fc25640` (`update manual
+book`) dan workspace awal bersih. Dua project Vercel baru sudah dibuat serta
+ditautkan ke repository GitHub: `pointofsales-kgs-staging` memakai root
+`backoffice`/Next.js dan `kgs-pos-pwa-staging` memakai root `pwa`/Vite. Kedua
+project sengaja belum diberi environment variable atau dideploy. Supabase
+staging `yjxpddwrjdczuqyixqwi` sudah ACTIVE_HEALTHY dan local CLI sudah linked;
+link memakai management login sehingga tidak memerlukan database password.
+
+Fresh bootstrap membuktikan schema pra-ledger tidak reproducible dari folder
+migration. Ditambahkan baseline `000`, runtime bridge `003`, dan bridge partial
+Finance `20260810175000`; chain staging sekarang berhasil diterapkan lengkap
+sampai `20260814170000` dan `supabase migration list --linked` menunjukkan
+seluruh Local/Remote version identik. Parser fresh-chain juga menemukan satu
+kurung tutup berlebih pada composed Expense read migration `20260813060000`;
+syntax dikoreksi tanpa mengubah response/business contract dan sisa chain
+kemudian berhasil diterapkan.
+Migration koreksi akun impor `20260810185000` dibuat fresh-safe: no-op bila
+tidak ada akun impor yang perlu didemosi, tetapi tetap menuntut linked Super
+Admin serta audit bila correction scope nyata ada. Rollout berikutnya menunggu
+satu Auth Super Admin staging sudah dibuat dan dipakai hanya sebagai actor
+provisioning/audit. PWA lint/build PASS; Backoffice lint/build PASS dengan 67
+route entries. Environment Vercel belum terpasang karena security reviewer
+memerlukan persetujuan eksplisit user untuk mentransfer publishable key staging
+ke kedua project serta service-role key hanya ke Backoffice staging. Setelah
+izin itu: pasang lima env Production target, deploy dua project, atur Auth URL,
+dan lakukan unauthenticated/authenticated smoke. Tidak ada key yang dicetak,
+ditulis ke repo, atau dipasang ke project Production.
+
 ### 2026-08-14 — MANUAL PENGGUNA BERBAHASA INDONESIA
 
 Ditambahkan `docs/MANUAL_PENGGUNA_KGS_POS.md` sebagai manual operasional

@@ -130,7 +130,7 @@ BEGIN
              AND document.id=request.document_id
             WHERE request.company_id=v_company
               AND request.payment_method_id=method.id
-              AND (v_status IS NULL OR document.status=v_status))))));
+              AND (v_status IS NULL OR document.status=v_status)))));
 END
 $$;
 

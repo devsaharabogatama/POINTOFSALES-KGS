@@ -17,6 +17,13 @@ manual gate adalah authenticated role/preset/two-Company E2E, Auth redirect,
 Storage branding/cache, dan Vercel Preview smoke; ini belum merupakan approval
 Production.
 
+Dua project Vercel staging dan satu Supabase staging terpisah sudah dibuat.
+Fresh-database bootstrap saat ini terverifikasi sampai G6 Phase 2 setelah
+baseline schema pra-ledger dan dua compatibility bridge ditambahkan. Sisa
+migration belum dinyatakan live di staging: rollout menunggu satu linked Auth
+Super Admin sebagai actor provisioning/audit G6, kemudian environment Vercel,
+Auth redirect, deployment, dan authenticated smoke tetap harus diselesaikan.
+
 PWA Expense Settlement modal menerima deployment UI forward-fix pada tanggal
 yang sama: nested dialog sekarang centered, field tidak overlap, konten scroll
 internal, dan tablet/mobile layout bounded. Tidak ada business flow atau RPC
