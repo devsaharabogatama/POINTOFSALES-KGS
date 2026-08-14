@@ -1,12 +1,11 @@
 # Active Development Handoff — KGS POS
 
-### 2026-08-14 — STAGING PROJECTS CREATED; SUPABASE BOOTSTRAP IN PROGRESS
+### 2026-08-14 — STAGING LIVE; AUTHENTICATED SMOKE MANUAL
 
 Git `main` lokal dan `origin/main` sama pada commit `fc25640` (`update manual
-book`) dan workspace awal bersih. Dua project Vercel baru sudah dibuat serta
+book`) dan workspace awal bersih. Dua project Vercel dibuat serta
 ditautkan ke repository GitHub: `pointofsales-kgs-staging` memakai root
-`backoffice`/Next.js dan `kgs-pos-pwa-staging` memakai root `pwa`/Vite. Kedua
-project sengaja belum diberi environment variable atau dideploy. Supabase
+`backoffice`/Next.js dan `kgs-pos-pwa-staging` memakai root `pwa`/Vite. Supabase
 staging `yjxpddwrjdczuqyixqwi` sudah ACTIVE_HEALTHY dan local CLI sudah linked;
 link memakai management login sehingga tidak memerlukan database password.
 
@@ -23,12 +22,19 @@ tidak ada akun impor yang perlu didemosi, tetapi tetap menuntut linked Super
 Admin serta audit bila correction scope nyata ada. Rollout berikutnya menunggu
 satu Auth Super Admin staging sudah dibuat dan dipakai hanya sebagai actor
 provisioning/audit. PWA lint/build PASS; Backoffice lint/build PASS dengan 67
-route entries. Environment Vercel belum terpasang karena security reviewer
-memerlukan persetujuan eksplisit user untuk mentransfer publishable key staging
-ke kedua project serta service-role key hanya ke Backoffice staging. Setelah
-izin itu: pasang lima env Production target, deploy dua project, atur Auth URL,
-dan lakukan unauthenticated/authenticated smoke. Tidak ada key yang dicetak,
-ditulis ke repo, atau dipasang ke project Production.
+route entries. User memberi persetujuan eksplisit dan lima Vercel
+Production-target env sudah terpasang: URL/publishable staging untuk kedua
+aplikasi, service-role staging hanya untuk Backoffice. Kedua alias stabil live:
+`https://pointofsales-kgs-staging.vercel.app` dan
+`https://kgs-pos-pwa-staging.vercel.app`. HTTP smoke membuktikan kedua root
+`200 text/html`, Backoffice unauthenticated API `401 application/json`, bundle
+PWA memakai project ref staging, dan tidak ada marker service-role/secret pada
+PWA bundle maupun Backoffice HTML. Browser internal tidak tersedia dan password
+user tidak dibagikan, sehingga authenticated login/role/terminal smoke masih
+manual. Supabase Auth Site URL/Redirect URL untuk invite/recovery juga masih
+perlu diatur manual di Dashboard; password login langsung tidak bergantung pada
+redirect tersebut. Tidak ada key yang dicetak, ditulis ke repo, atau dipasang
+ke project Production.
 
 ### 2026-08-14 — MANUAL PENGGUNA BERBAHASA INDONESIA
 
