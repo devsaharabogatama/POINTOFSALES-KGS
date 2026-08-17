@@ -2,6 +2,19 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna KGS POS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Template persiapan data go-live dan urutan cutover tersedia di
+[Paket Template Cutover Go-Live](docs/templates/go-live-cutover/README.md).
+Sepuluh CSV master di dalam paket mengikuti header Import & Export aktif;
+template opening AR/AP/Customer Deposit/GL adalah lembar pengumpulan data dan
+belum boleh diinjeksi sebelum workflow opening Finance/subledger tersedia.
+
+Recovery user tanpa Company sekarang local-ready: Super Admin tetap dapat
+membuka detail akun setelah membership terakhir dicabut, melihat status tanpa
+akses, dan menambahkan kembali Company tanpa mengetik ulang email. Modal tetap
+terbuka setelah revoke terakhir. Login Backoffice/PWA tetap fail-closed dan
+menampilkan pesan bahwa akun tidak memiliki akses perusahaan; authenticated
+staging smoke masih menunggu redeploy.
+
 G6 Phase 8 historical Finance closure sudah database-live dan user-confirmed
 PASS. Seluruh 32 Financial Event historis telah final: 31 Event mempunyai tepat
 satu canonical Journal dan satu exact-zero Goods Receipt ditutup sebagai

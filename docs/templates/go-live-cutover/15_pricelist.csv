@@ -1,0 +1,1 @@
+pricelist_key,name,scope,priority,is_default,applies_all_stores,store_codes,valid_from,valid_until,notes,is_active,product_sku,uom_name,min_qty,tier_qty_basis,pricing_method,final_unit_price,discount_amount_per_unit,discount_percent,rule_valid_from,rule_valid_until,rule_is_active

@@ -2756,7 +2756,24 @@ export default function App() {
 
   if (companies.length === 0) {
     return (
-      <CenteredMessage text="Akun ini belum memiliki akses ke Company aktif." />
+      <div className="grid min-h-screen place-items-center bg-slate-950 p-6 text-slate-100">
+        <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
+          <AlertTriangle className="mx-auto h-10 w-10 text-amber-400" />
+          <h1 className="mt-4 text-xl font-black">Tidak memiliki akses perusahaan</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            Akun ini tidak dapat membuka Company mana pun. Hubungi administrator
+            untuk mendapatkan akses.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950"
+          >
+            <LogOut className="h-4 w-4" />
+            Keluar
+          </button>
+        </div>
+      </div>
     )
   }
 

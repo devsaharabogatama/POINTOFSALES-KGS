@@ -20,28 +20,43 @@ export async function GET(request: Request) {
 
     const { data: targetMemberships, error: targetMembershipError } = await admin
       .from('company_memberships')
-      .select('company_id')
+      .select('company_id,created_at,is_default_company')
       .eq('user_id', userId)
       .eq('status', 'ACTIVE')
+      .order('is_default_company', { ascending: false })
+      .order('created_at')
     if (targetMembershipError) throw targetMembershipError
     const targetCompanyIds = new Set((targetMemberships ?? []).map((row) => row.company_id))
-    const selectedCompanyId = requestedCompanyId || activeCompanyId
-    if (!targetCompanyIds.has(selectedCompanyId)) {
+    let selectedCompanyId: string | null = null
+    if (requestedCompanyId) {
+      if (!targetCompanyIds.has(requestedCompanyId)) {
+        throw new ApiRouteError('TARGET_COMPANY_MEMBERSHIP_NOT_FOUND', 404)
+      }
+      selectedCompanyId = requestedCompanyId
+    } else if (targetCompanyIds.has(activeCompanyId)) {
+      selectedCompanyId = activeCompanyId
+    } else if (isSuperAdmin) {
+      selectedCompanyId = targetMemberships?.[0]?.company_id ?? null
+    } else {
       throw new ApiRouteError('TARGET_COMPANY_MEMBERSHIP_NOT_FOUND', 404)
     }
     if (!isSuperAdmin && selectedCompanyId !== activeCompanyId) {
       throw new ApiRouteError('COMPANY_ACCESS_DENIED', 403)
     }
 
-    const { data: permissionProfile, error: permissionError } = await caller.client.rpc(
-      'list_user_permission_profile',
-      { p_company_id: selectedCompanyId, p_target_user_id: userId },
-    )
-    if (permissionError) {
-      if (permissionError.message.includes('PERMISSION_TARGET_ACCESS_DENIED')) {
-        throw new ApiRouteError('PERMISSION_TARGET_ACCESS_DENIED', 403)
+    let permissionProfile: unknown = { items: [] }
+    if (selectedCompanyId) {
+      const { data, error: permissionError } = await caller.client.rpc(
+        'list_user_permission_profile',
+        { p_company_id: selectedCompanyId, p_target_user_id: userId },
+      )
+      if (permissionError) {
+        if (permissionError.message.includes('PERMISSION_TARGET_ACCESS_DENIED')) {
+          throw new ApiRouteError('PERMISSION_TARGET_ACCESS_DENIED', 403)
+        }
+        throw permissionError
       }
-      throw permissionError
+      permissionProfile = data
     }
 
     const [profileResult, membershipResult, storeMembershipResult, catalogResult, companyResult, storeResult] = await Promise.all([

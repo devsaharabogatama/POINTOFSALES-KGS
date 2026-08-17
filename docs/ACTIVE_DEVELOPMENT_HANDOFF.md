@@ -5273,3 +5273,46 @@ multi-Company user dengan distinct override belum ada. Runbook ACP-7 diperluas
 dengan satu setup final yang me-reuse Admin A sebagai Accounting B dan fixture
 multi-Company. Setelah setup, hanya rerun ACP-7 preflight dan PRD-1 preflight;
 tidak perlu mengulang behavioral regression historis.
+### 2026-08-17 — PAKET TEMPLATE CUTOVER GO-LIVE
+
+User meminta template seluruh data awal kecuali user agar data produksi dapat
+disiapkan dari pembukuan manual. Ditambahkan
+`docs/templates/go-live-cutover/README.md` beserta 26 CSV bernomor. Sepuluh file
+master (`UOM`, Product Category, Warehouse, Supplier, Customer Category, COA,
+Transaction Category, Product, Product-Supplier, dan Minimum Stock) cocok persis
+dengan `templateHeaders` runtime dan dapat memakai Global Data Exchange aktif.
+Company/Toko/Terminal, Tax, Customer, Pricelist, Payment Method, mapping Finance,
+dan Bundle ditandai sebagai form setup manual. Opening Stock tetap workflow
+khusus per Gudang/tanggal. Opening AR, AP, Customer Deposit, dan GL hanya
+data-collection contract karena runtime opening Finance/subledger belum tersedia;
+direct SQL atau transaksi palsu tetap dilarang.
+
+Evidence lokal: seluruh 26 CSV memiliki satu header non-kosong; sepuluh header
+import aktif dibandingkan exact-string dengan `backoffice/src/lib/master-import.ts`
+dan menghasilkan `ACTIVE_IMPORT_HEADERS_MATCH=10`. Tidak ada schema, API, UI,
+grant, runtime, atau data database yang berubah. Next safe step adalah user
+mengisi paket berdasarkan satu tanggal cut-off; implementasi OB-1 sampai OB-5
+harus dibuat sebelum empat template opening Finance dapat di-upload/post.
+### 2026-08-17 — ZERO-COMPANY USER RECOVERY LOCAL READY
+
+Bug `TARGET_COMPANY_MEMBERSHIP_NOT_FOUND` pada detail user setelah membership
+terakhir dicabut telah dikoreksi tanpa schema/grant baru. Endpoint detail kini
+mengizinkan membership aktif kosong hanya untuk Super Admin, memilih membership
+aktif deterministik bila masih ada, dan tidak memanggil resolver permission
+tanpa Company target. Company Owner/Admin tetap wajib mempunyai target aktif di
+Company aktif dan tidak dapat mengambil akun orphan.
+
+Modal detail menampilkan empty-state `Tidak memiliki akses perusahaan`, tetap
+terbuka setelah revoke terakhir, menyembunyikan editor role/permission tanpa
+Company, dan mempertahankan form reassign Super Admin. Daftar Tim membedakan
+membership inactive. Pesan login Backoffice dan PWA diperjelas; kedua aplikasi
+tetap tidak memuat navigation, Store, Terminal, atau data tenant bila daftar
+Company kosong. Lifecycle audit, inactive membership history, override cleanup,
+active-context cleanup, hierarchy, dan last-owner protection tidak berubah.
+
+Evidence lokal: Backoffice ESLint PASS; Next production build PASS dan 67 page/
+route entries; PWA oxlint PASS; TypeScript/Vite/PWA production build PASS.
+`git diff --check` PASS. Authenticated staging smoke masih manual: revoke last
+Company sebagai Super Admin, pastikan modal tetap terbuka dan target login
+fail-closed, assign kembali Company, lalu pastikan role/Store/permission serta
+login pulih. Tidak ada migration yang perlu dijalankan.

@@ -641,8 +641,8 @@ export default function Home() {
             Belum ada akses perusahaan
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Akun ini belum memiliki membership aktif. Minta platform admin atau
-            pemilik perusahaan menambahkan akses.
+            Akun ini tidak memiliki akses ke perusahaan mana pun. Minta
+            platform admin menambahkan kembali akses perusahaan.
           </p>
           <button
             onClick={logout}
@@ -1739,8 +1739,10 @@ function StaffView({
                   </div>
                   <ChevronRight className="mt-1 h-4 w-4 text-slate-300" />
                 </div>
-                <span className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                  {roleLabels[member.role] ?? member.role}
+                <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${member.status==='ACTIVE'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+                  {member.status==='ACTIVE'
+                    ? roleLabels[member.role] ?? member.role
+                    : 'Akses dicabut di Company ini'}
                 </span>
                 <p className="mt-3 text-xs font-semibold text-slate-400">
                   Klik untuk melihat detail akses

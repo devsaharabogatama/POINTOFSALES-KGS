@@ -3,6 +3,12 @@
 Panduan penggunaan untuk operator dan pengguna akhir tersedia di
 [`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md).
 
+Paket pengumpulan data dan urutan cutover go-live tersedia di
+[`templates/go-live-cutover/README.md`](templates/go-live-cutover/README.md).
+Paket tersebut membedakan template yang sudah dapat di-import, form setup
+manual, workflow Stok Awal, serta opening Finance/subledger yang masih menunggu
+runtime resmi.
+
 Finance G6 Phase 8:
 
 - [`runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`](runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md)
