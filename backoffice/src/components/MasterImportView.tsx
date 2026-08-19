@@ -94,6 +94,11 @@ const fieldLabels: Record<string, string> = {
   contactName: 'Nama kontak', phone: 'Telepon', address: 'Alamat', npwp: 'NPWP',
   paymentTerm: 'Termin pembayaran', bankName: 'Nama bank',
   bankAccountNumber: 'Nomor rekening', bankAccountHolder: 'Pemilik rekening',
+  customerCode: 'Kode Customer', customerName: 'Nama Customer',
+  parentCustomerName: 'Customer induk',
+  defaultPricelistName: 'Pricelist default', email: 'Email',
+  customerType: 'Tipe Customer', creditLimit: 'Limit kredit',
+  creditTermDays: 'Termin kredit (hari)', notes: 'Catatan',
   accountType: 'Tipe akun', normalBalance: 'Saldo normal',
   parentAccountId: 'Akun induk', parentAccountCode: 'Kode akun induk',
   systemFunctionKey: 'Fungsi akun sistem', isPostable: 'Dapat diposting',
@@ -112,6 +117,7 @@ const fieldLabels: Record<string, string> = {
   salesTaxRuleName: 'Pajak penjualan',
   purchaseTaxRuleName: 'Pajak pembelian',
   weightPerLargestUomKg: 'Berat UOM terbesar',
+  weightIfLargestKg: 'Berat bila UOM terbesar',
   productId: 'Product', supplierId: 'Supplier',
   purchaseUomId: 'UOM pembelian',
   supplierProductCode: 'Kode Product dari Supplier',
@@ -148,6 +154,34 @@ const errorLabels: Record<string, string> = {
   MANUAL_POSTING_REQUIRES_POSTABLE_ACCOUNT: 'Jurnal manual hanya boleh untuk akun yang dapat diposting.',
   SYSTEM_MASTER_IMPORT_FORBIDDEN: 'Data bawaan sistem hanya dapat diekspor dan tidak boleh diubah lewat import.',
   SYSTEM_CUSTOMER_CATEGORY_IMMUTABLE: 'Kategori pelanggan bawaan sistem tidak boleh diubah.',
+  INVALID_CUSTOMER_NAME: 'Nama Customer wajib diisi dan maksimal 200 karakter.',
+  INVALID_CUSTOMER_CODE: 'Kode Customer tidak valid atau merupakan kode sistem WALK-IN.',
+  INVALID_CUSTOMER_CATEGORY_NAME: 'Nama kategori Customer wajib diisi.',
+  ACTIVE_CUSTOMER_CATEGORY_NOT_FOUND: 'Kategori Customer aktif tidak ditemukan pada Company ini.',
+  AMBIGUOUS_CUSTOMER_CATEGORY: 'Nama kategori Customer cocok dengan lebih dari satu data.',
+  ACTIVE_ROOT_PARENT_CUSTOMER_NOT_FOUND: 'Customer induk aktif belum ada. Import Customer induk lebih dahulu.',
+  AMBIGUOUS_PARENT_CUSTOMER: 'Nama Customer induk cocok dengan lebih dari satu data.',
+  ACTIVE_CUSTOMER_PRICELIST_NOT_FOUND: 'Pricelist Customer aktif tidak ditemukan pada Company ini.',
+  AMBIGUOUS_CUSTOMER_PRICELIST: 'Nama Pricelist Customer cocok dengan lebih dari satu data.',
+  INVALID_CUSTOMER_TYPE: 'Tipe Customer harus INDIVIDUAL atau BUSINESS.',
+  INVALID_CUSTOMER_CREDIT_LIMIT: 'Limit kredit tidak boleh negatif.',
+  INVALID_CUSTOMER_CREDIT_TERM: 'Termin kredit harus 0 sampai 3650 hari.',
+  CUSTOMER_TEXT_TOO_LONG: 'Telepon, email, alamat, atau catatan terlalu panjang.',
+  SYSTEM_CUSTOMER_IMMUTABLE: 'Customer Walk-In bawaan sistem tidak boleh diubah lewat import.',
+  CUSTOMER_ID_NOT_FOUND: 'ID Customer tidak ditemukan pada Company aktif.',
+  CUSTOMER_IDENTITY_MISMATCH: 'ID internal dan nama Customer tidak merujuk data yang sama.',
+  DUPLICATE_CUSTOMER_IN_FILE: 'Nama Customer berulang dalam file yang sama.',
+  CUSTOMER_CANNOT_PARENT_ITSELF: 'Customer tidak dapat menjadi induk untuk dirinya sendiri.',
+  INVALID_CUSTOMER_VALUE: 'Nilai Customer tidak valid. Periksa angka, status, dan termin kredit.',
+  CUSTOMER_COMMIT_FAILED: 'Customer gagal disimpan. Periksa detail error pada baris ini.',
+  PRODUCT_UOM_FACTOR_MUST_EXCEED_BASE: 'UOM turunan harus mempunyai isi lebih dari 1 UOM dasar.',
+  PRODUCT_UOM_LARGEST_WEIGHT_REQUIRED: 'Berat wajib diisi karena UOM ini menjadi UOM terbesar.',
+  PRODUCT_UOM_NOT_LARGEST: 'Berat hanya boleh diisi untuk UOM terbesar.',
+  PRODUCT_UOM_RESELECTION_REQUIRED: 'Perubahan ini membuat UOM terbesar berpindah. Atur melalui form Product lengkap.',
+  PRODUCT_UOM_CONVERSION_LOCKED_BY_MOVEMENT: 'Isi UOM tidak dapat diubah karena Product sudah memiliki Stock Movement.',
+  PRODUCT_IDENTITY_MISMATCH: 'Nama Product tidak cocok dengan SKU pada template.',
+  DUPLICATE_PRODUCT_UOM_IN_FILE: 'Product dan UOM yang sama muncul lebih dari sekali dalam file.',
+  PRODUCT_UOM_COMMIT_FAILED: 'UOM Product gagal disimpan. Periksa detail error pada baris ini.',
   REQUIRED_TRANSACTION_CATEGORY_CANNOT_BE_DISABLED: 'Kategori transaksi wajib tidak boleh dinonaktifkan.',
   REQUIRED_TRANSACTION_CATEGORY_SYSTEM_EVENT_LOCKED: 'System Event kategori transaksi wajib tidak boleh diubah.',
   INVALID_PRODUCT_KEY: 'Kunci grup Product wajib diisi.',
@@ -662,6 +696,17 @@ export function MasterImportView({
             <p className="mt-1">Gunakan product_key yang sama untuk seluruh satuan milik satu Product. Satu baris harus berisi faktor 1 sebagai UOM dasar; faktor terbesar menjadi UOM acuan berat.</p>
             <p className="mt-1 font-semibold text-amber-700">Stok dan Saldo Awal tidak ikut diimpor dari file ini.</p>
             <p className="mt-1 text-amber-700">Product Bundle tersedia di export sebagai referensi, tetapi belum dapat dibuat atau diubah lewat import ini.</p>
+          </div>}
+          {importType === 'PRODUCT_UOM' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
+            <p className="font-bold">Cara menambah UOM pada Product existing:</p>
+            <p className="mt-1">Unduh Template CSV untuk memperoleh satu baris kosong per Product. Isi UOM dan faktor hanya pada Product yang ingin diubah; baris kosong otomatis dilewati.</p>
+            <p className="mt-1">UOM dasar tidak dapat diubah di sini. Jika UOM baru menjadi yang terbesar, isi berat UOM tersebut dalam kilogram.</p>
+            <p className="mt-1 font-semibold text-amber-700">UOM Product lainnya tetap dipertahankan dan tidak perlu dikirim ulang.</p>
+          </div>}
+          {importType === 'CUSTOMER' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
+            <p className="font-bold">Cara mengisi Customer:</p>
+            <p className="mt-1">Kategori, Customer induk, dan Pricelist harus sudah tersedia pada Company aktif. Jika memakai hierarki, import Customer induk lebih dahulu lalu import cabangnya.</p>
+            <p className="mt-1 font-semibold text-amber-700">Walk-In, saldo Customer, piutang awal, dan histori transaksi tidak ikut diimpor.</p>
           </div>}
           {importType === 'PRODUCT_SUPPLIER' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
             <p className="font-bold">Cara mengisi relasi Product–Supplier:</p>

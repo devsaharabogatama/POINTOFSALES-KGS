@@ -103,7 +103,11 @@ export function throwDatabaseError(error: DatabaseError): never {
   const knownCode = [
     'MASTER_NAME_ALREADY_EXISTS',
     'MASTER_VERSION_CONFLICT',
+    'MASTER_VERSION_REQUIRED',
     'MASTER_NOT_FOUND',
+    'UOM_IN_USE',
+    'PRODUCT_CATEGORY_IN_USE',
+    'UOM_SEMANTICS_LOCKED_BY_USAGE',
     'INVENTORY_MASTER_ACCESS_DENIED',
     'CUSTOM_PERMISSION_DENIED',
     'ACTIVE_COMPANY_CONTEXT_MISMATCH',
@@ -119,7 +123,13 @@ export function throwDatabaseError(error: DatabaseError): never {
   if (knownCode) {
     const status = knownCode === 'MASTER_NOT_FOUND' ? 404
       : ['INVENTORY_MASTER_ACCESS_DENIED', 'CUSTOM_PERMISSION_DENIED'].includes(knownCode) ? 403
-        : ['MASTER_NAME_ALREADY_EXISTS', 'MASTER_VERSION_CONFLICT'].includes(knownCode) ? 409
+        : [
+            'MASTER_NAME_ALREADY_EXISTS',
+            'MASTER_VERSION_CONFLICT',
+            'UOM_IN_USE',
+            'PRODUCT_CATEGORY_IN_USE',
+            'UOM_SEMANTICS_LOCKED_BY_USAGE',
+          ].includes(knownCode) ? 409
           : 400
     throw new ApiRouteError(knownCode, status)
   }

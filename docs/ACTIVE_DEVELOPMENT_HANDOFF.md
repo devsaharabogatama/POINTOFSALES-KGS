@@ -1,5 +1,99 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-19 — POS CART QUANTITY EDIT FIX LOCAL-READY
+
+Bug pengeditan quantity Cart diperbaiki: field angka kini boleh kosong sementara
+saat kasir mengganti nilai dan tidak lagi menghapus baris karena `Number('')`
+menjadi nol. Tombol minus berhenti pada satu step minimum sesuai precision UOM;
+penghapusan eksplisit hanya melalui tombol tong sampah. Input sementara ikut
+dibersihkan saat Draft dimuat, Product ditambah ulang, transaksi di-reset, atau
+baris dihapus. Evidence lokal: PWA `oxlint` PASS, production build PASS, dan
+`git diff --check` PASS. Deployment PWA serta authenticated browser smoke masih
+menunggu.
+
+### 2026-08-19 — NEGATIVE STOCK SESSION REQUEST LOCAL-READY
+
+Atas keputusan user, Sale stok minus online tetap final dan shortage yang masih
+outstanding saat close sesi kini dirancang menjadi tepat satu Stock Request
+`SUBMITTED` per sesi. Migration `20260819170000` menambah immutable source dan
+allocation lineage, mengizinkan snapshot sesi negatif, membungkus close secara
+atomik/idempotent, serta memberi readiness RPC yang menjelaskan entitlement,
+policy, Gudang, atau izin user yang belum siap. Request memakai Base UOM dan
+Purchasing tetap memilih Supplier/UOM/harga serta boleh membagi satu permintaan
+ke beberapa order. Offline dan Bundle tetap diblokir.
+
+PWA menampilkan penyebab konfigurasi yang spesifik dan nomor request hasil
+close; Supplier Order Backoffice memberi badge request otomatis. Preflight,
+postflight, rollback behavior, regression order, serta UAT dicatat pada
+`docs/runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md`. Evidence lokal:
+PWA `oxlint` PASS, PWA production build PASS, targeted Supplier Order ESLint
+PASS, Backoffice production build PASS (67 page), SQL delimiter/privilege
+static audit PASS, dan `git diff --check` PASS. Database behavior belum
+dijalankan lokal karena Docker/Postgres tidak tersedia; migration dan
+behavioral utama kemudian dijalankan user dan dikonfirmasi PASS. Fixture utama,
+G4 Phase 60, dan G5 Phase 2 kini memakai Auth identity rollback-only sehingga
+tidak berbenturan dengan sesi kasir operasional. Empat regression (G4 Phase 2,
+G4 Phase 60, G5 Phase 2, dan ACP Phase 5C) kemudian dikonfirmasi user PASS.
+Next safe step: final postflight ulang dan authenticated smoke POS → close sesi
+→ Purchasing sebelum deploy/go-live data dilanjutkan.
+
+### 2026-08-19 — CUSTOMER + ADDITIVE PRODUCT-UOM DATA EXCHANGE LOCAL-READY
+
+Atas permintaan user menjelang pengisian data go-live, Global Data Exchange
+sekarang mempunyai kontrak local-ready untuk `CUSTOMER` dan `PRODUCT_UOM`.
+Customer non-Walk-In dapat diekspor serta diimpor melalui job staging,
+mapping, preview, confirmation, optimistic version, dan audit. Kategori,
+Customer induk, dan Pricelist harus sudah ada pada Company aktif; saldo,
+opening AR, dan histori transaksi sengaja tidak ikut.
+
+`PRODUCT_UOM` adalah jalur additive terpisah dari import Product penuh. Tombol
+Template CSV mengambil seluruh Product aktif non-Bundle dan menghasilkan satu
+baris kosong per Product. Baris `uom_name` kosong menjadi `SKIP`; baris terisi
+menambah atau memperbarui pasangan Product+UOM, tanpa menonaktifkan/menghapus
+UOM lain. Base UOM tidak dapat diubah, faktor wajib >1, UOM terbesar wajib
+mempunyai berat, dan perubahan conversion existing ditolak setelah Product
+mempunyai Stock Movement. Template dijaga capability `IMPORT`, sedangkan export
+data dijaga `EXPORT`; keduanya tidak membuka direct table write.
+
+File local-ready: migration `20260819150000` lalu `20260819160000`, dua
+SELECT-only postflight, dua rollback behavioral test, Backoffice API/catalog/UI,
+runbook, manifest, requirement notes, paket cutover, serta PRD closing chain.
+Evidence lokal: targeted ESLint PASS, Next production build PASS (67 static
+pages), `git diff --check` PASS sebelum final documentation pass. Migration dan
+SQL behavior belum dijalankan pada Supabase; deployment/smoke authenticated juga
+belum dilakukan. Next safe step: rollout Customer lengkap, lalu Product-UOM;
+berhenti pada `FAIL`/error dan jangan deploy UI sebelum kedua postflight serta
+behavior PASS.
+
+### 2026-08-18 — GUARDED UOM/CATEGORY CLEANUP LOCAL-READY
+
+Atas keputusan user sebelum UAT, halaman Master Data menampilkan kembali nama
+UOM (stale CSS yang menyembunyikan kolom pertama dihapus), mempertahankan edit,
+dan menambah modal delete untuk UOM serta Kategori Produk. Browser hanya
+memanggil dua RPC baru yang membutuhkan `inventory.master_data MANAGE`, active
+Company, optimistic version, dan actor audit. Hard delete hanya berhasil untuk
+row tanpa referensi; master yang sudah dipakai harus dinonaktifkan. Tipe,
+decimal policy, dan precision UOM yang sudah direferensikan dikunci, tetapi nama
+dan status tetap dapat dikoreksi.
+
+File rollout local-ready: migration `20260818090000`, SELECT-only postflight,
+rollback behavioral test, serta runbook
+`PRD_GUARDED_INVENTORY_MASTER_CLEANUP.md`. PRD-1 required migration chain juga
+sudah memasukkan versi baru. Database staging/production belum diubah dan smoke
+authenticated belum dijalankan. Local TypeScript no-emit, ESLint, Next.js
+production build (67/67 static pages), SQL transaction/tag structure, migration
+checksum manifest, dan `git diff --check` PASS. Next safe step: migration → seluruh postflight
+PASS → behavioral `TEST PASSED`/ROLLBACK → postflight ulang → redeploy
+Backoffice → smoke edit/delete unused dan penolakan delete used master.
+
+Behavioral run pertama berhenti pada negative-access Finance karena fixture
+mengganti JWT actor tetapi belum membuat `user_active_company_contexts` untuk
+actor Finance tersebut. Migration/runtime tidak gagal. Test dikoreksi untuk
+memanggil guarded `set_active_company_context()` setelah pergantian actor,
+sehingga assertion berikutnya benar-benar menguji `CUSTOM_PERMISSION_DENIED`.
+Jalankan ulang behavioral file lengkap; transaksi sebelumnya gagal di dalam
+`BEGIN` dan tidak meninggalkan fixture final.
+
 ### 2026-08-14 — STAGING LIVE; AUTHENTICATED SMOKE MANUAL
 
 Git `main` lokal dan `origin/main` sama pada commit `fc25640` (`update manual
@@ -5316,3 +5410,46 @@ route entries; PWA oxlint PASS; TypeScript/Vite/PWA production build PASS.
 Company sebagai Super Admin, pastikan modal tetap terbuka dan target login
 fail-closed, assign kembali Company, lalu pastikan role/Store/permission serta
 login pulih. Tidak ada migration yang perlu dijalankan.
+
+### 2026-08-17 — CONTROLLED COMPANY TRANSACTION RESET LOCAL READY
+
+Ditambahkan controlled operation
+`supabase/operations/prd_reset_company_transactional_data.sql` untuk membersihkan
+data transaksi/uji coba milik tepat satu Company sebelum opening balance. File
+default ke preview-only, memerlukan UUID + nama Company persis, lalu
+`execute_reset=TRUE` dan frasa konfirmasi eksplisit. Eksekusi bersifat satu
+transaction, mengambil advisory/company lock, mematikan hanya USER trigger pada
+target, mengurutkan delete child-first dari live FK graph, dan rollback penuh
+jika ada error. Schema drift fail-closed: tabel `company_id` yang belum
+diklasifikasikan atau target tanpa `company_id` memblokir eksekusi.
+
+Target mencakup POS/Sale/Return/Delivery, Offline, stok/FIFO/Movement dan semua
+dokumen Inventory, Purchase/AP, Expense/kas/setoran/variance, Customer Balance,
+Financial Event/jurnal/queue/reconciliation/export history. Cache saldo Customer
+direset nol dan snapshot last purchase Product-Supplier dibersihkan. Master,
+user/membership/permission, konfigurasi, branding, policy, accounting period,
+posting/report definition, master audit/import history, migration ledger, dan
+private document counter dipertahankan. Runbook:
+`docs/runbooks/PRD_COMPANY_TRANSACTIONAL_DATA_RESET.md`.
+
+Belum ada database mutation yang dijalankan. Next safe step: user mengisi target,
+menjalankan preview, dan mengirim result Company + issues + count untuk audit.
+Eksekusi hanya setelah backup dan maintenance window.
+# 2026-08-19 — Nonterminal Master Import closure operation
+
+- Added `supabase/operations/cancel_nonterminal_master_import_jobs.sql` for the
+  rollout blocker encountered before Customer/Product-UOM import migrations.
+- The operation refuses to run when a job is genuinely `PROCESSING`; otherwise
+  it closes only `UPLOADED`, `MAPPED`, `VALIDATED`, and `READY` jobs as
+  `CANCELED`, increments `master_version`, and records a `CANCEL` audit event.
+- It preserves all staged rows and previously committed master data. Manual
+  gate: run the operation in Supabase SQL Editor, then rerun
+  `20260819150000_customer_master_import_export.sql` from the beginning.
+# 2026-08-19 — Customer import behavioral test ACP correction
+
+- Corrected `supabase/tests/customer_master_import_export_tests.sql`: storage
+  and audit assertions now use the canonical `get_contacts_customers(TRUE)`
+  composed RPC instead of forbidden authenticated reads on `customers` and
+  `customer_master_audit`.
+- This is test-only compatibility with enforced `contacts.customers`; the
+  Customer migration/runtime contract was not changed.

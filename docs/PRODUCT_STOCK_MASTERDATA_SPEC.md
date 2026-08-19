@@ -181,9 +181,11 @@ PROPOSED -> APPROVED -> IMPLEMENTED -> VERIFIED
 7. **Document driven:** setiap perubahan stok harus berasal dari dokumen yang dapat ditelusuri.
 8. **Idempotent:** import atau konfirmasi yang dikirim ulang tidak boleh menggandakan stok.
 9. **Soft archive:** master yang sudah dipakai transaksi tidak dihapus; cukup dinonaktifkan.
-10. **Explicit status:** draft tidak memengaruhi stok; hanya dokumen posted/confirmed yang memengaruhi stok.
-11. **Base UOM:** saldo internal harus disimpan dalam satu base UOM per produk.
-12. **Auditability:** actor, waktu, company, sumber, alasan, dan nilai sebelum/sesudah harus dapat dilihat.
+10. **Koreksi salah input/import:** UOM atau kategori produk boleh dihapus permanen hanya bila belum mempunyai referensi apa pun. Setelah dipakai oleh Product, konversi, pajak, dokumen, atau transaksi, delete wajib ditolak dan operator menggunakan status nonaktif.
+11. **Semantik UOM historis:** nama dan status UOM yang sudah dipakai masih dapat dikoreksi, tetapi tipe UOM, izin quantity pecahan, dan precision tidak boleh berubah tanpa migration konversi historis terkontrol.
+12. **Explicit status:** draft tidak memengaruhi stok; hanya dokumen posted/confirmed yang memengaruhi stok.
+13. **Base UOM:** saldo internal harus disimpan dalam satu base UOM per produk.
+14. **Auditability:** actor, waktu, company, sumber, alasan, dan nilai sebelum/sesudah harus dapat dilihat.
 
 ---
 
@@ -2393,6 +2395,7 @@ Keputusan yang sudah final:
 | 2026-07-14 | Opening Stock Import | Opening Stock terpisah dan hanya mengubah stok setelah dikonfirmasi | APPROVED |
 | 2026-07-14 | Format Produk-UOM | Import Produk memakai beberapa row per produk/UOM seperti pola Odoo | APPROVED |
 | 2026-07-14 | Protected Import Fields | SKU, tipe produk, base UOM, dan faktor konversi historis tidak dapat diubah lewat import biasa | APPROVED |
+| 2026-08-19 | Additive Product-UOM Import | Template dinamis berisi satu baris kosong per Product existing; baris terisi menambah/memperbarui satu UOM tanpa mengganti UOM lain, Base UOM tetap terkunci, dan perubahan faktor historis yang sudah mempunyai Movement ditolak | APPROVED dan LOCAL-READY |
 | 2026-07-14 | Rename via Import | Rename data existing wajib menggunakan mode ID, bukan mode Nama | APPROVED |
 | 2026-07-14 | Missing Reference | Kategori, UOM, atau gudang yang tidak ditemukan membuat record gagal tanpa auto-create | APPROVED |
 | 2026-07-14 | Opening Stock Eligibility | Opening Stock hanya untuk produk-gudang tanpa movement; perubahan berikutnya melalui Adjustment | APPROVED |
@@ -2530,3 +2533,17 @@ Keputusan yang sudah final:
 | 2026-07-15 | Ketul Final Guardrail | Status quantity/payment dipisah, movement append-only, shortage blocked, auto number, idempotency, CLOSED immutable | APPROVED |
 | 2026-07-15 | Ketul Inactive Vendor | Dispatch baru diblokir; dokumen dan outstanding lama tetap dapat diselesaikan | APPROVED |
 | 2026-07-15 | Company Admin Authority | Company Admin memiliki seluruh kewenangan role bawahan dalam company miliknya; Super Admin lintas company | APPROVED |
+## Addendum 2026-08-19 — Shortage per sesi menjadi Permintaan Barang
+
+- Stok minus hanya berlaku untuk Sale online non-Bundle yang lolos entitlement,
+  policy Company, opt-in Gudang, izin user, limit, dan alasan server-side.
+- Close sesi mengagregasi hanya allocation shortage milik Sale `POSTED` pada
+  sesi itu yang belum direplenish; saldo negatif Gudang tidak boleh dipakai
+  sebagai sumber karena dapat menggandakan kebutuhan antarsesi.
+- Satu sesi menghasilkan maksimal satu Stock Request otomatis `SUBMITTED`.
+  Product yang sama digabung dalam Base UOM dan setiap kuantitas tetap memiliki
+  lineage ke negative-sale allocation asal.
+- Purchasing menentukan Supplier, UOM beli, harga, dan pembagian Supplier Order.
+  Sistem tidak membuat Purchase Order otomatis.
+- Snapshot buka/tutup sesi boleh mencatat nilai negatif yang valid. Nilai itu
+  adalah bukti operasional, bukan sumber pembuatan request.

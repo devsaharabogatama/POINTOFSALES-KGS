@@ -19,7 +19,11 @@ WITH required_versions(version) AS (
         ('20260813080000'),('20260813090000'),('20260813100000'),
         ('20260813110000'),('20260813120000'),('20260813130000'),
         ('20260813140000'), -- explicit per-Company access lifecycle
-        ('20260813150000') -- Inventory-owned Surat Jalan authority
+        ('20260813150000'), -- Inventory-owned Surat Jalan authority
+        ('20260818090000'), -- guarded unused UOM/Category cleanup
+        ('20260819150000'), -- Customer master import/export
+        ('20260819160000'), -- additive Product-UOM import/export
+        ('20260819170000') -- negative Stock Session replenishment request
 ), expected_enforced_permissions(permission_key) AS (
     VALUES
         ('inventory.master_data'),('inventory.products'),

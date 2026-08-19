@@ -1,8 +1,29 @@
 -- G4 phase 60 behavior: authorized online shortage and replenishment.
 -- SAFETY: every fixture/final effect is rolled back.
 BEGIN;
+
+INSERT INTO auth.users(
+    id,email,instance_id,raw_app_meta_data,raw_user_meta_data,
+    is_super_admin,role,aud,email_confirmed_at
+) VALUES(
+    '00000000-0000-0000-0000-000000089091',
+    'g4-phase60-negative@example.invalid',
+    '00000000-0000-0000-0000-000000000000',
+    '{"provider":"email","providers":["email"]}'::JSONB,
+    '{"name":"G4 Phase 60 Negative Test"}'::JSONB,
+    FALSE,'authenticated','authenticated',clock_timestamp()
+) ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.profiles(id,email,name,role)
+VALUES(
+    '00000000-0000-0000-0000-000000089091',
+    'g4-phase60-negative@example.invalid','G4 Phase 60 Negative Test',
+    'super_admin'::public.user_role
+) ON CONFLICT(id) DO UPDATE SET
+    email=EXCLUDED.email,name=EXCLUDED.name,role=EXCLUDED.role;
+
 DO $test$
-DECLARE v_actor UUID; v_company UUID:='00000000-0000-0000-0000-000000089001';
+DECLARE v_actor UUID:='00000000-0000-0000-0000-000000089091';
+    v_company UUID:='00000000-0000-0000-0000-000000089001';
     v_store UUID:='00000000-0000-0000-0000-000000089011';
     v_terminal UUID:='00000000-0000-0000-0000-000000089021';
     v_warehouse UUID:='00000000-0000-0000-0000-000000089031';
@@ -13,13 +34,6 @@ DECLARE v_actor UUID; v_company UUID:='00000000-0000-0000-0000-000000089001';
     v_session UUID; v_customer UUID; v_cash UUID; v_sale UUID;
     v_result JSONB; v_payload JSONB; v_value NUMERIC; v_count BIGINT;
 BEGIN
-    SELECT profile.id INTO v_actor FROM public.profiles profile
-    JOIN auth.users auth_user ON auth_user.id=profile.id
-    WHERE profile.role='super_admin'::public.user_role
-    ORDER BY profile.id LIMIT 1;
-    IF v_actor IS NULL THEN
-        RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: linked Super Admin required';
-    END IF;
     INSERT INTO public.companies(id,company_code,company_name,company_slug,status)
     VALUES(v_company,'G89','G89 Negative Stock','g89-negative-stock','ACTIVE');
     INSERT INTO public.stores(id,company_id,store_code,store_name,status)

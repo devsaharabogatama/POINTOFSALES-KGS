@@ -3,9 +3,28 @@
 
 BEGIN;
 
+INSERT INTO auth.users(
+    id,email,instance_id,raw_app_meta_data,raw_user_meta_data,
+    is_super_admin,role,aud,email_confirmed_at
+) VALUES(
+    '00000000-0000-0000-0000-000000090091',
+    'g5-phase2-order@example.invalid',
+    '00000000-0000-0000-0000-000000000000',
+    '{"provider":"email","providers":["email"]}'::JSONB,
+    '{"name":"G5 Phase 2 Order Test"}'::JSONB,
+    FALSE,'authenticated','authenticated',clock_timestamp()
+) ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.profiles(id,email,name,role)
+VALUES(
+    '00000000-0000-0000-0000-000000090091',
+    'g5-phase2-order@example.invalid','G5 Phase 2 Order Test',
+    'super_admin'::public.user_role
+) ON CONFLICT(id) DO UPDATE SET
+    email=EXCLUDED.email,name=EXCLUDED.name,role=EXCLUDED.role;
+
 DO $test$
 DECLARE
-    v_actor UUID;
+    v_actor UUID:='00000000-0000-0000-0000-000000090091';
     v_company UUID:='00000000-0000-0000-0000-000000090001';
     v_company_b UUID:='00000000-0000-0000-0000-000000090002';
     v_store UUID:='00000000-0000-0000-0000-000000090011';
@@ -23,16 +42,6 @@ DECLARE
     v_stock_before BIGINT; v_batch_before BIGINT; v_movement_before BIGINT;
     v_event_before BIGINT; v_rejected BOOLEAN;
 BEGIN
-    SELECT p.id INTO v_actor FROM public.profiles p
-    JOIN auth.users u ON u.id=p.id
-    WHERE p.role='super_admin'::public.user_role
-      AND NOT EXISTS(SELECT 1 FROM public.cashier_sessions s
-          WHERE s.cashier_id=p.id AND s.status='OPEN'::public.session_status)
-    ORDER BY p.id LIMIT 1;
-    IF v_actor IS NULL THEN
-        RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: available linked Super Admin required';
-    END IF;
-
     INSERT INTO public.companies(id,company_code,company_name,company_slug,status)
     VALUES
         (v_company,'G90A','G90 Company A','g90-company-a','ACTIVE'),

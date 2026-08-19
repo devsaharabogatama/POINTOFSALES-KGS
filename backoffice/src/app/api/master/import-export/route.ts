@@ -27,7 +27,9 @@ export async function GET(request: Request) {
     } else {
       await requireImportManager(caller, companyId)
       if (importType === 'PRODUCT' ||
+          importType === 'PRODUCT_UOM' ||
           importType === 'PRODUCT_WAREHOUSE_MINIMUM_STOCK' ||
+          importType === 'CUSTOMER' ||
           importType === 'CUSTOMER_CATEGORY' ||
           importType === 'SUPPLIER' ||
           importType === 'PRODUCT_SUPPLIER') {
@@ -36,6 +38,28 @@ export async function GET(request: Request) {
     }
     const definition = importDefinitions[importType]
     if (kind === 'template') {
+      if (importType === 'PRODUCT_UOM') {
+        const templateResult = await caller.client.rpc('get_inventory_product_uom_import_template')
+        if (templateResult.error) throwImportError(templateResult.error)
+        const templateRows = ((templateResult.data ?? []) as Array<{
+          product_sku: string; product_name: string
+        }>).map((row) => ({
+          product_sku: row.product_sku,
+          product_name: row.product_name,
+          uom_name: '',
+          factor_to_base: '',
+          purchase_allowed: '',
+          sales_allowed: '',
+          purchase_price: '',
+          sale_price: '',
+          barcode: '',
+          weight_if_largest_kg: '',
+        }))
+        return csvResponse(
+          csvDocument(definition.templateHeaders, templateRows),
+          `template-${importType.toLowerCase()}.csv`,
+        )
+      }
       return csvResponse(csvDocument(definition.templateHeaders, []), `template-${importType.toLowerCase()}.csv`)
     }
 
@@ -94,6 +118,31 @@ export async function GET(request: Request) {
         npwp: row.npwp, payment_term: row.payment_term, bank_name: row.bank_name,
         bank_account_number: row.bank_account_number,
         bank_account_holder: row.bank_account_holder, is_active: row.is_active,
+      }))
+    } else if (importType === 'CUSTOMER') {
+      result = await caller.client.rpc('export_contacts_customers')
+      rows = ((result.data ?? []) as Array<{
+        id: string; customer_code: string; customer_name: string
+        customer_category_name: string; parent_customer_name: string | null
+        default_pricelist_name: string | null; phone: string | null
+        email: string | null; address: string | null; customer_type: string
+        credit_limit: number | string; credit_term_days: number | null
+        notes: string | null; is_active: boolean
+      }>).map((row) => ({
+        internal_id: row.id,
+        code: row.customer_code,
+        name: row.customer_name,
+        customer_category_name: row.customer_category_name,
+        parent_customer_name: row.parent_customer_name,
+        default_pricelist_name: row.default_pricelist_name,
+        phone: row.phone,
+        email: row.email,
+        address: row.address,
+        customer_type: row.customer_type,
+        credit_limit: row.credit_limit,
+        credit_term_days: row.credit_term_days,
+        notes: row.notes,
+        is_active: row.is_active,
       }))
     } else if (importType === 'CUSTOMER_CATEGORY') {
       result = await caller.client.rpc('export_contacts_customer_categories')
@@ -213,6 +262,22 @@ export async function GET(request: Request) {
           weight_per_largest_uom_kg: product.weight_per_uom_kg,
         })),
       )
+    } else if (importType === 'PRODUCT_UOM') {
+      result = await caller.client.rpc('export_inventory_product_uom_placeholders')
+      rows = ((result.data ?? []) as Array<{
+        product_sku: string; product_name: string
+      }>).map((row) => ({
+        product_sku: row.product_sku,
+        product_name: row.product_name,
+        uom_name: '',
+        factor_to_base: '',
+        purchase_allowed: '',
+        sales_allowed: '',
+        purchase_price: '',
+        sale_price: '',
+        barcode: '',
+        weight_if_largest_kg: '',
+      }))
     } else if (importType === 'PRODUCT_SUPPLIER') {
       result = await caller.client.rpc('export_contacts_product_suppliers')
       const relationRows = (result.data ?? []) as Array<{

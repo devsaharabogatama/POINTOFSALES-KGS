@@ -61,6 +61,7 @@ import {
   loadBootstrap,
   loadCatalog,
   loadCompanies,
+  loadNegativeStockReadiness,
   loadReceipt,
   loadSalesDeliveryDocument,
   loadSalesInvoiceDocument,
@@ -285,6 +286,14 @@ function friendlyError(code: string) {
       'Jumlah stok minus melampaui batas Company.',
     USER_NEGATIVE_STOCK_LIMIT_EXCEEDED:
       'Jumlah stok minus melampaui batas izin kasir.',
+    NEGATIVE_STOCK_FEATURE_DISABLED:
+      'Fitur stok minus belum diaktifkan untuk Company ini.',
+    NEGATIVE_STOCK_POLICY_INACTIVE:
+      'Policy stok minus Company belum aktif.',
+    NEGATIVE_STOCK_WAREHOUSE_NOT_OPTED_IN:
+      'Gudang penjualan sesi ini belum diizinkan memakai stok minus.',
+    NEGATIVE_STOCK_USER_PERMISSION_REQUIRED:
+      'Kasir ini belum memiliki izin stok minus aktif untuk gudang penjualan.',
     CUSTOMER_BALANCE_CREDIT_DISABLED:
       'Fitur Saldo Customer belum aktif untuk Company ini.',
     CUSTOMER_BALANCE_ELIGIBLE_CUSTOMER_REQUIRED:
@@ -380,6 +389,9 @@ export default function App() {
   >('NONE')
   const [globalDiscount, setGlobalDiscount] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
+  const [cartQuantityInputs, setCartQuantityInputs] = useState<
+    Record<string, string>
+  >({})
   const [draft, setDraft] = useState<SaleDraft | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [draftNotes, setDraftNotes] = useState('')
@@ -1373,7 +1385,10 @@ export default function App() {
       setOfflineCacheMessage('')
       setNotice(
         `Sesi ditutup. Expected ${money(Number(result.expectedCash ?? 0))}, ` +
-          `selisih ${money(Number(result.difference ?? 0))}.`,
+          `selisih ${money(Number(result.difference ?? 0))}.` +
+          (result.stockRequestNo
+            ? ` Permintaan barang ${String(result.stockRequestNo)} otomatis dikirim ke Purchasing untuk ${Number(result.stockRequestLineCount ?? 0)} barang.`
+            : ''),
       )
       resetSale()
       setSaleDrafts([])
@@ -1391,6 +1406,12 @@ export default function App() {
 
   function addToCart(product: ProductOption) {
     if (!cashierSession) return
+    setCartQuantityInputs((current) => {
+      if (!(product.productUomId in current)) return current
+      const next = { ...current }
+      delete next[product.productUomId]
+      return next
+    })
     setCart((current) => {
       const existing = current.find(
         (item) => item.product.productUomId === product.productUomId,
@@ -1428,6 +1449,56 @@ export default function App() {
     )
     setResolvedLines([])
     setShortages([])
+  }
+
+  function removeCartItem(productUomId: string) {
+    setCart((current) =>
+      current.filter((item) => item.product.productUomId !== productUomId),
+    )
+    setCartQuantityInputs((current) => {
+      if (!(productUomId in current)) return current
+      const next = { ...current }
+      delete next[productUomId]
+      return next
+    })
+    setResolvedLines([])
+    setShortages([])
+  }
+
+  function changeCartQuantityInput(item: CartItem, rawValue: string) {
+    const productUomId = item.product.productUomId
+    setCartQuantityInputs((current) => ({
+      ...current,
+      [productUomId]: rawValue,
+    }))
+    if (rawValue.trim() === '') return
+    const quantity = Number(rawValue)
+    if (Number.isFinite(quantity) && quantity > 0) {
+      updateCart(productUomId, { quantity })
+    }
+  }
+
+  function commitCartQuantityInput(item: CartItem) {
+    const productUomId = item.product.productUomId
+    setCartQuantityInputs((current) => {
+      if (!(productUomId in current)) return current
+      const next = { ...current }
+      delete next[productUomId]
+      return next
+    })
+  }
+
+  function adjustCartQuantity(item: CartItem, direction: -1 | 1) {
+    const precision = item.product.allowDecimal
+      ? item.product.decimalPrecision
+      : 0
+    const step = item.product.allowDecimal ? 10 ** -precision : 1
+    const quantity = Math.max(
+      step,
+      Number((item.quantity + direction * step).toFixed(precision)),
+    )
+    commitCartQuantityInput(item)
+    updateCart(item.product.productUomId, { quantity })
   }
 
   function draftLines() {
@@ -1661,6 +1732,7 @@ export default function App() {
         payments: [],
       })
 
+      setCartQuantityInputs({})
       setCart(nextCart)
       setDraft(repriced)
       setClientTransactionId(nextClientTransactionId)
@@ -2271,9 +2343,18 @@ export default function App() {
             ? (postResult.shortages as Array<Record<string, unknown>>)
             : [],
         )
-        setError(
-          'Stok belum cukup. Transaksi tetap Draft dan tidak membuat payment, movement, atau event final.',
-        )
+        let shortageMessage =
+          'Stok minus tidak dapat diotorisasi untuk transaksi ini. Bundle dan transaksi Offline tetap tidak mendukung stok minus.'
+        try {
+          const readiness = await loadNegativeStockReadiness()
+          if (readiness.blockerCode) {
+            shortageMessage = friendlyError(readiness.blockerCode)
+          }
+        } catch {
+          // Preserve the canonical Draft result when readiness diagnostics
+          // cannot be refreshed; a diagnostic failure must never post a Sale.
+        }
+        setError(`${shortageMessage} Transaksi tetap Draft tanpa efek final.`)
         return
       }
       const finalReceipt = await loadReceipt(companyId, finalDraft.salesId)
@@ -2327,6 +2408,7 @@ export default function App() {
       catalog.paymentMethods.find((item) => item.isDefault) ??
       catalog.paymentMethods[0]
     setCart([])
+    setCartQuantityInputs({})
     setDraft(null)
     setDraftLabel('')
     setDraftNotes('')
@@ -3078,9 +3160,7 @@ export default function App() {
                           </div>
                           <button
                             onClick={() =>
-                              updateCart(item.product.productUomId, {
-                                quantity: 0,
-                              })
+                              removeCartItem(item.product.productUomId)
                             }
                             className="pos-cart-icon-button is-remove"
                             aria-label={`Hapus ${item.product.name} dari keranjang`}
@@ -3091,11 +3171,7 @@ export default function App() {
                         </div>
                         <div className="mt-3 flex items-center gap-2">
                           <button
-                            onClick={() =>
-                              updateCart(item.product.productUomId, {
-                                quantity: item.quantity - 1,
-                              })
-                            }
+                            onClick={() => adjustCartQuantity(item, -1)}
                             className="pos-cart-icon-button"
                             aria-label={`Kurangi jumlah ${item.product.name}`}
                             title="Kurangi jumlah"
@@ -3110,20 +3186,19 @@ export default function App() {
                                 ? 10 ** -item.product.decimalPrecision
                                 : 1
                             }
-                            value={item.quantity}
-                            onChange={(event) =>
-                              updateCart(item.product.productUomId, {
-                                quantity: Number(event.target.value),
-                              })
+                            value={
+                              cartQuantityInputs[
+                                item.product.productUomId
+                              ] ?? String(item.quantity)
                             }
+                            onChange={(event) =>
+                              changeCartQuantityInput(item, event.target.value)
+                            }
+                            onBlur={() => commitCartQuantityInput(item)}
                             className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-center"
                           />
                           <button
-                            onClick={() =>
-                              updateCart(item.product.productUomId, {
-                                quantity: item.quantity + 1,
-                              })
-                            }
+                            onClick={() => adjustCartQuantity(item, 1)}
                             className="pos-cart-icon-button"
                             aria-label={`Tambah jumlah ${item.product.name}`}
                             title="Tambah jumlah"

@@ -9,6 +9,21 @@ Paket tersebut membedakan template yang sudah dapat di-import, form setup
 manual, workflow Stok Awal, serta opening Finance/subledger yang masih menunggu
 runtime resmi.
 
+Controlled operation untuk membersihkan data transaksi/uji coba milik satu
+Company sebelum cutover tersedia di
+[`runbooks/PRD_COMPANY_TRANSACTIONAL_DATA_RESET.md`](runbooks/PRD_COMPANY_TRANSACTIONAL_DATA_RESET.md).
+Operasi default ke preview dan bukan bagian dari migration deployment.
+
+Koreksi salah import UOM dan Kategori Produk sebelum UAT tersedia di
+[`runbooks/PRD_GUARDED_INVENTORY_MASTER_CLEANUP.md`](runbooks/PRD_GUARDED_INVENTORY_MASTER_CLEANUP.md).
+Hard delete hanya berlaku untuk master tanpa referensi; master yang sudah
+dipakai wajib dinonaktifkan.
+
+Rollout import/export Customer dan penambahan UOM Product secara additive:
+
+- [`runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md`](runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md)
+- [`runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md`](runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md)
+
 Finance G6 Phase 8:
 
 - [`runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`](runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md)
@@ -388,3 +403,6 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - Jangan mengubah schema/UI hanya karena requirement sudah disetujui.
 - Periksa execution path aktif sebelum menyatakan fitur selesai.
 - Setelah perubahan, perbarui source-of-truth dan decision log terkait saja; hindari menyalin keputusan ke banyak file kecuali diperlukan sebagai boundary lintas modul.
+## Rollout terbaru
+
+- [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

@@ -72,3 +72,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     return apiError(error)
   }
 }
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const caller = await requireCaller(request)
+    await requireActiveCompany(caller)
+    const params = await context.params
+    const id = uuidValue(params.id || '', 'MASTER_ID_INVALID')
+    const body = await readJsonObject(request)
+    const masterVersion = requiredVersion(body)
+
+    const { data, error } = await caller.client.rpc('delete_inventory_uom', {
+      p_uom_id: id,
+      p_expected_version: masterVersion,
+    })
+    if (error) throwDatabaseError(error)
+    return Response.json({ data: data?.data ?? data })
+  } catch (error) {
+    return apiError(error)
+  }
+}

@@ -120,10 +120,12 @@ const definitions: CatalogDefinition[] = [
   master("INVENTORY", "UOM", "Satuan (UOM)", "Master satuan beserta aturan quantity.", inventoryRoles),
   master("INVENTORY", "WAREHOUSE", "Gudang", "Gudang, tipe, Toko, dan fungsi operasional.", inventoryRoles),
   master("CONTACTS", "SUPPLIER", "Supplier", "Data Supplier dan informasi pembayarannya.", supplierRoles),
+  master("CONTACTS", "CUSTOMER", "Customer", "Identitas, kategori, induk, Pricelist, dan batas kredit Customer Company aktif.", salesRoles),
   master("CONTACTS", "CUSTOMER_CATEGORY", "Kategori Pelanggan", "Grouping pelanggan pada Company aktif.", salesRoles),
   master("FINANCE", "CHART_OF_ACCOUNT", "Chart of Account", "Daftar akun Company; akun sistem tetap read-only.", financeRoles),
   master("FINANCE", "TRANSACTION_CATEGORY", "Kategori Transaksi", "Kategori dan System Event Finance.", financeRoles),
   master("INVENTORY", "PRODUCT", "Produk + Satuan", "Produk dan seluruh Product-UOM sebagai satu grup.", inventoryRoles),
+  master("INVENTORY", "PRODUCT_UOM", "Tambah / Perbarui UOM Produk", "Tambah atau perbarui satu UOM tanpa mengganti UOM Product lainnya.", inventoryRoles),
   master("PURCHASE", "PRODUCT_SUPPLIER", "Produk–Supplier", "Relasi pembelian Product, Supplier, dan UOM.", supplierRoles),
   master("INVENTORY", "PRODUCT_WAREHOUSE_MINIMUM_STOCK", "Minimum Stock", "Konfigurasi minimum stock per Produk–Gudang.", inventoryRoles),
   inventoryReport("STOCK_REAL", "Stock Real", "Saldo aktual, minimum stock, dan valuasi FIFO per Produk–Gudang."),
@@ -220,9 +222,11 @@ export async function authorizedDataExchangeCatalog(
     ]);
   const scopedPermissions: Record<string, typeof productPermission> = {
     PRODUCT: productPermission,
+    PRODUCT_UOM: productPermission,
     STOCK_REAL: stockRealPermission,
     STOCK_MOVEMENTS: stockMovementPermission,
     PRODUCT_WAREHOUSE_MINIMUM_STOCK: minimumStockPermission,
+    CUSTOMER: customerPermission,
     CUSTOMER_CATEGORY: customerPermission,
     SUPPLIER: supplierPermission,
     PRODUCT_SUPPLIER: supplierPermission,
@@ -270,7 +274,7 @@ export async function requireDataExchangeAction(
   if (!actionsFor(definition, role).includes(action)) {
     throw new ApiRouteError("DATA_EXCHANGE_ACTION_FORBIDDEN", 403);
   }
-  const permissionKey = typeKey === "PRODUCT"
+  const permissionKey = typeKey === "PRODUCT" || typeKey === "PRODUCT_UOM"
     ? "inventory.products"
     : typeKey === "STOCK_REAL"
       ? "inventory.stock_real"
@@ -278,7 +282,7 @@ export async function requireDataExchangeAction(
         ? "inventory.stock_movements"
         : typeKey === "PRODUCT_WAREHOUSE_MINIMUM_STOCK"
           ? "inventory.minimum_stock"
-        : typeKey === "CUSTOMER_CATEGORY"
+        : typeKey === "CUSTOMER" || typeKey === "CUSTOMER_CATEGORY"
           ? "contacts.customers"
         : typeKey === "SUPPLIER" || typeKey === "PRODUCT_SUPPLIER"
           ? "contacts.suppliers"

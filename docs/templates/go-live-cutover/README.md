@@ -33,9 +33,10 @@ cut-off, lalu gunakan sumber data yang sama untuk seluruh template.
 | 09 | `09_transaction_category.csv` | IMPORT AKTIF | Tipe `TRANSACTION_CATEGORY`; biasanya cukup bawaan sistem |
 | 10 | `10_tax_rule.csv` | FORM MANUAL | Master Pajak; selesai sebelum Produk |
 | 11 | `11_product.csv` | IMPORT AKTIF | Tipe `PRODUCT`; satu baris per UOM |
+| 11A | Template dinamis Product-UOM | IMPORT AKTIF SETELAH ROLLOUT | Tipe `PRODUCT_UOM`; Template CSV memuat satu baris kosong per Product existing |
 | 12 | `12_product_supplier.csv` | IMPORT AKTIF | Tipe `PRODUCT_SUPPLIER` |
 | 13 | `13_minimum_stock.csv` | IMPORT AKTIF | Tipe `PRODUCT_WAREHOUSE_MINIMUM_STOCK` |
-| 14 | `14_customer.csv` | FORM MANUAL | Master Customer; jangan membuat Walk-In |
+| 14 | `14_customer.csv` | IMPORT AKTIF SETELAH ROLLOUT | Tipe `CUSTOMER`; jangan membuat Walk-In atau saldo awal |
 | 15 | `15_pricelist.csv` | FORM MANUAL | Master Pricelist dan rule Product-UOM |
 | 16 | `16_payment_method.csv` | FORM MANUAL | Metode bayar dan scope Toko |
 | 17 | `17_finance_account_mapping.csv` | FORM MANUAL | Mapping fungsi akun/rule Finance |
@@ -103,7 +104,9 @@ Jangan mulai transaksi live sebelum `25_reconciliation_control.csv` menunjukkan:
 - Opening Balance Clearing = 0;
 - tidak ada queue aktif, exception Finance terbuka, atau dokumen opening Draft.
 
-Saat ini hanya sepuluh template bertanda **IMPORT AKTIF** yang benar-benar dapat
-diunggah. File **MENUNGGU RUNTIME** adalah data-collection contract, bukan izin
+Sepuluh tipe lama tetap aktif. `CUSTOMER` dan `PRODUCT_UOM` menjadi aktif hanya
+setelah migration `20260819150000` dan `20260819160000`, postflight, behavior,
+serta deployment Backoffice selesai. File **MENUNGGU RUNTIME** adalah
+data-collection contract, bukan izin
 untuk direct SQL. Ini mencegah saldo go-live terlihat cocok di GL tetapi tidak
 memiliki subledger dan jejak audit yang benar.

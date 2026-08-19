@@ -283,6 +283,7 @@ Credit limit/piutang Customer berbeda dari saldo positif dan tetap dibahas pada 
 | Tanggal | Keputusan | Status |
 |---|---|---|
 | 2026-07-15 | Customer ditempatkan pada Sales Master Data | APPROVED |
+| 2026-08-19 | Customer Global Data Exchange | Customer non-Walk-In dapat di-export/import tenant-scoped dengan staging/preview/audit; kategori/induk/Pricelist harus existing dan saldo, piutang awal, serta histori tidak ikut | APPROVED dan LOCAL-READY |
 | 2026-07-15 | Pelanggan umum memakai default Global Pricelist | APPROVED |
 | 2026-07-15 | Cashier dapat memilih Pricelist eligible lain secara opsional | APPROVED |
 | 2026-07-15 | Kode otomatis editable Admin/Manager; Customer company-wide; quick-create tersedia di POS | APPROVED |

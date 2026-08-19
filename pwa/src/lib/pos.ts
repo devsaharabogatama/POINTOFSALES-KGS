@@ -492,6 +492,18 @@ export type CatalogData = {
   customerBalanceTenderEnabled: boolean
 }
 
+export type NegativeStockReadiness = {
+  enabled: boolean
+  blockerCode: string | null
+  onlineOnly: boolean
+  bundleSupported: boolean
+  requireReason: boolean
+  companyLimitBaseQty: number | null
+  userLimitBaseQty: number | null
+  warehouseId: string
+  permissionValidUntil: string | null
+}
+
 type DbRow = Record<string, unknown>
 
 function numberValue(value: unknown): number {
@@ -746,6 +758,31 @@ export async function closeCashierSession(
   })
   throwIfError(error)
   return data as DbRow
+}
+
+export async function loadNegativeStockReadiness(): Promise<NegativeStockReadiness> {
+  const { data, error } = await supabase.rpc('get_pos_negative_stock_readiness')
+  throwIfError(error)
+  const row = (data ?? {}) as DbRow
+  return {
+    enabled: Boolean(row.enabled),
+    blockerCode: row.blockerCode ? String(row.blockerCode) : null,
+    onlineOnly: Boolean(row.onlineOnly),
+    bundleSupported: Boolean(row.bundleSupported),
+    requireReason: Boolean(row.requireReason),
+    companyLimitBaseQty: row.companyLimitBaseQty === null ||
+      row.companyLimitBaseQty === undefined
+      ? null
+      : numberValue(row.companyLimitBaseQty),
+    userLimitBaseQty: row.userLimitBaseQty === null ||
+      row.userLimitBaseQty === undefined
+      ? null
+      : numberValue(row.userLimitBaseQty),
+    warehouseId: String(row.warehouseId ?? ''),
+    permissionValidUntil: row.permissionValidUntil
+      ? String(row.permissionValidUntil)
+      : null,
+  }
 }
 
 export async function loadCatalog(

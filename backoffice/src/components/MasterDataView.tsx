@@ -12,6 +12,7 @@ import {
   RefreshCcw,
   Ruler,
   Tags,
+  Trash2,
   Warehouse,
   X,
 } from 'lucide-react'
@@ -66,6 +67,13 @@ type Editor =
   | { kind: 'uom'; record?: Uom }
   | { kind: 'warehouse'; record?: WarehouseRow }
 
+type DeleteTarget = {
+  kind: 'category' | 'uom'
+  id: string
+  name: string
+  masterVersion: number
+}
+
 type ApiItem<T> = { data?: T; error?: string }
 type InventoryMastersPayload = {
   categories?: Category[]
@@ -116,6 +124,10 @@ function friendlyError(code?: string) {
     CURRENT_SALES_TAX_RULE_REQUIRED: 'Pilih aturan Pajak Penjualan aktif yang berlaku saat ini.',
     CURRENT_PURCHASE_TAX_RULE_REQUIRED: 'Pilih aturan Pajak Pembelian aktif yang berlaku saat ini.',
     PRODUCT_CATEGORY_NOT_FOUND: 'Kategori tidak ditemukan pada company aktif.',
+    UOM_IN_USE: 'UOM sudah dipakai oleh produk atau transaksi sehingga tidak dapat dihapus. Nonaktifkan UOM melalui menu Edit.',
+    PRODUCT_CATEGORY_IN_USE: 'Kategori sudah dipakai atau memiliki referensi sehingga tidak dapat dihapus. Pindahkan referensinya atau nonaktifkan kategori melalui menu Edit.',
+    UOM_SEMANTICS_LOCKED_BY_USAGE: 'Tipe dan aturan quantity UOM yang sudah dipakai tidak dapat diubah. Nama dan status masih dapat diperbarui.',
+    MASTER_NOT_FOUND: 'Data tidak ditemukan pada company aktif.',
   }
   return messages[code ?? ''] ?? code ?? 'Operasi master data gagal.'
 }
@@ -145,6 +157,7 @@ export function MasterDataView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editor, setEditor] = useState<Editor | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
 
   const loadMasters = useCallback(async () => {
     const response = await fetch('/api/master/inventory-masters?includeInactive=true', {
@@ -213,6 +226,22 @@ export function MasterDataView({
     setEditor(null)
     await refreshMasters()
     notify('Master data berhasil disimpan.')
+  }
+
+  async function remove(target: DeleteTarget) {
+    const path = target.kind === 'uom'
+      ? `/api/master/uoms/${target.id}`
+      : `/api/master/product-categories/${target.id}`
+    const response = await fetch(path, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+      body: JSON.stringify({ masterVersion: target.masterVersion }),
+    })
+    const payload = (await response.json()) as ApiItem<unknown>
+    if (!response.ok) throw new Error(friendlyError(payload.error))
+    setDeleteTarget(null)
+    await refreshMasters()
+    notify(`${target.kind === 'uom' ? 'UOM' : 'Kategori'} berhasil dihapus.`)
   }
 
   const currentCount =
@@ -292,9 +321,25 @@ export function MasterDataView({
             canManage={canManage}
             edit={(record) => setEditor({ kind: 'category', record })}
             editTax={(record) => setEditor({ kind: 'category-tax', record })}
+            remove={(record) => setDeleteTarget({
+              kind: 'category',
+              id: record.id,
+              name: record.category_name,
+              masterVersion: record.master_version,
+            })}
           />
         ) : activeTab === 'uom' ? (
-          <UomTable rows={uoms} canManage={canManage} edit={(record) => setEditor({ kind: 'uom', record })} />
+          <UomTable
+            rows={uoms}
+            canManage={canManage}
+            edit={(record) => setEditor({ kind: 'uom', record })}
+            remove={(record) => setDeleteTarget({
+              kind: 'uom',
+              id: record.id,
+              name: record.name,
+              masterVersion: record.master_version,
+            })}
+          />
         ) : (
           <WarehouseTable
             rows={warehouses}
@@ -316,6 +361,13 @@ export function MasterDataView({
           save={save}
         />
       )}
+      {deleteTarget && (
+        <DeleteMasterDialog
+          target={deleteTarget}
+          close={() => setDeleteTarget(null)}
+          remove={remove}
+        />
+      )}
     </>
   )
 }
@@ -332,17 +384,21 @@ function EditButton({ onClick }: { onClick: () => void }) {
   return <button onClick={onClick} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:text-emerald-600" aria-label="Edit"><Edit3 className="h-4 w-4" /></button>
 }
 
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  return <button onClick={onClick} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50" aria-label="Hapus"><Trash2 className="h-4 w-4" /></button>
+}
+
 function EmptyRow({ columns }: { columns: number }) {
   return <tr><td colSpan={columns} className="p-10 text-center text-sm text-slate-400">Belum ada data.</td></tr>
 }
 
-function CategoryTable({ rows, taxRules, canManage, edit, editTax }: { rows: Category[]; taxRules: TaxRuleOption[]; canManage: boolean; edit: (row: Category) => void; editTax: (row: Category) => void }) {
+function CategoryTable({ rows, taxRules, canManage, edit, editTax, remove }: { rows: Category[]; taxRules: TaxRuleOption[]; canManage: boolean; edit: (row: Category) => void; editTax: (row: Category) => void; remove: (row: Category) => void }) {
   const taxName = (id: string | null) => taxRules.find((rule) => rule.id === id)?.name ?? 'Tidak ada'
-  return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Nama kategori</th><th className="px-5 py-4">Pajak default</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-bold">{row.category_name}</td><td className="px-5 py-4 text-xs leading-5 text-slate-600"><span className="block">Jual: {taxName(row.default_sales_tax_rule_id)}</span><span className="block">Beli: {taxName(row.default_purchase_tax_rule_id)}</span></td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => editTax(row)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:text-blue-600" aria-label="Atur pajak kategori"><BadgePercent className="h-4 w-4" /></button><EditButton onClick={() => edit(row)} /></div></td>}</tr>)}{!rows.length && <EmptyRow columns={canManage ? 4 : 3} />}</tbody></table></div>
+  return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Nama kategori</th><th className="px-5 py-4">Pajak default</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-bold">{row.category_name}</td><td className="px-5 py-4 text-xs leading-5 text-slate-600"><span className="block">Jual: {taxName(row.default_sales_tax_rule_id)}</span><span className="block">Beli: {taxName(row.default_purchase_tax_rule_id)}</span></td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => editTax(row)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:text-blue-600" aria-label="Atur pajak kategori"><BadgePercent className="h-4 w-4" /></button><EditButton onClick={() => edit(row)} /><DeleteButton onClick={() => remove(row)} /></div></td>}</tr>)}{!rows.length && <EmptyRow columns={canManage ? 4 : 3} />}</tbody></table></div>
 }
 
-function UomTable({ rows, canManage, edit }: { rows: Uom[]; canManage: boolean; edit: (row: Uom) => void }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Nama satuan</th><th className="px-5 py-4">Tipe</th><th className="px-5 py-4">Quantity</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-bold">{row.name}</td><td className="px-5 py-4 text-slate-600">{uomTypeLabels[row.uom_type] ?? row.uom_type}</td><td className="px-5 py-4 text-slate-600">{row.allow_decimal ? `Desimal · ${row.decimal_precision} digit` : 'Bilangan bulat'}</td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4 text-right"><EditButton onClick={() => edit(row)} /></td>}</tr>)}{!rows.length && <EmptyRow columns={canManage ? 5 : 4} />}</tbody></table></div>
+function UomTable({ rows, canManage, edit, remove }: { rows: Uom[]; canManage: boolean; edit: (row: Uom) => void; remove: (row: Uom) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Nama satuan</th><th className="px-5 py-4">Tipe</th><th className="px-5 py-4">Quantity</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-bold">{row.name}</td><td className="px-5 py-4 text-slate-600">{uomTypeLabels[row.uom_type] ?? row.uom_type}</td><td className="px-5 py-4 text-slate-600">{row.allow_decimal ? `Desimal · ${row.decimal_precision} digit` : 'Bilangan bulat'}</td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4"><div className="flex justify-end gap-2"><EditButton onClick={() => edit(row)} /><DeleteButton onClick={() => remove(row)} /></div></td>}</tr>)}{!rows.length && <EmptyRow columns={canManage ? 5 : 4} />}</tbody></table></div>
 }
 
 function WarehouseTable({ rows, stores, canManage, edit }: { rows: WarehouseRow[]; stores: StoreOption[]; canManage: boolean; edit: (row: WarehouseRow) => void }) {
@@ -359,6 +415,25 @@ function MasterEditor({ editor, stores, taxRules, taxEntitlements, close, save }
 function EditorShell({ title, description, close, children }: { title: string; description: string; close: () => void; children: React.ReactNode }) {
   useEscapeClose(close)
   return <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"><div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{description}</p></div><button onClick={close} className="rounded-xl bg-slate-100 p-2 text-slate-500" aria-label="Tutup"><X className="h-4 w-4" /></button></div><div className="mt-7">{children}</div></div></div>
+}
+
+function DeleteMasterDialog({ target, close, remove }: { target: DeleteTarget; close: () => void; remove: (target: DeleteTarget) => Promise<void> }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function confirm() {
+    setLoading(true)
+    setError('')
+    try {
+      await remove(target)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal menghapus master data.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <EditorShell title={`Hapus ${target.kind === 'uom' ? 'UOM' : 'kategori'}?`} description={`Anda akan menghapus “${target.name}” secara permanen.`} close={close}><div className="space-y-4"><div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Penghapusan hanya berhasil jika data belum pernah dipakai. Jika sudah dipakai oleh produk, transaksi, pajak, atau konfigurasi lain, gunakan Edit lalu ubah status menjadi Nonaktif.</div>{error && <EditorError message={error} />}<div className="mt-7 flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" onClick={close} disabled={loading} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 disabled:opacity-60">Batal</button><button type="button" onClick={() => void confirm()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Hapus permanen</button></div></div></EditorShell>
 }
 
 function EditorActions({ close, loading }: { close: () => void; loading: boolean }) {

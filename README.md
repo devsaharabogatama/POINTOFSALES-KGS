@@ -2,9 +2,27 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna KGS POS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Import/export Customer dan import additive UOM Product sekarang local-ready di
+Global Data Exchange. Template additive UOM mengambil seluruh Product aktif dan
+memberi satu baris input kosong per Product; baris kosong dilewati, UOM existing
+tetap dipertahankan, Base UOM tidak dapat diganti, dan conversion historis yang
+sudah dipakai Movement tetap terkunci. Rollout database masih manual melalui
+[runbook Customer](docs/runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md) lalu
+[runbook Product-UOM](docs/runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md).
+Backoffice targeted ESLint dan production build sudah PASS.
+
+Koreksi Master Data UOM/Kategori sebelum UAT sekarang local-ready: nama UOM
+kembali terlihat, edit tetap melalui RPC berizin, dan hard delete baru hanya
+berlaku untuk row yang belum direferensikan. Master yang sudah dipakai harus
+dinonaktifkan; semantik quantity UOM historis dikunci. Migration, postflight,
+rollback behavioral test, dan authenticated staging smoke masih menunggu
+rollout manual sesuai [runbook](docs/runbooks/PRD_GUARDED_INVENTORY_MASTER_CLEANUP.md).
+Local TypeScript, lint, dan production build sudah PASS.
+
 Template persiapan data go-live dan urutan cutover tersedia di
 [Paket Template Cutover Go-Live](docs/templates/go-live-cutover/README.md).
-Sepuluh CSV master di dalam paket mengikuti header Import & Export aktif;
+Setelah dua migration Data Exchange terbaru diterapkan, dua belas tipe master
+di paket mengikuti kontrak Import & Export aktif;
 template opening AR/AP/Customer Deposit/GL adalah lembar pengumpulan data dan
 belum boleh diinjeksi sebelum workflow opening Finance/subledger tersedia.
 
@@ -327,6 +345,7 @@ Requirement lengkap:
 - Handoff aktif: [`docs/ACTIVE_DEVELOPMENT_HANDOFF.md`](docs/ACTIVE_DEVELOPMENT_HANDOFF.md)
 - Playbook agent: [`docs/AI_AGENT_CONTINUATION_PLAYBOOK.md`](docs/AI_AGENT_CONTINUATION_PLAYBOOK.md)
 - Requirement index: [`docs/POS_V1_MVP_REQUIREMENT_INDEX.md`](docs/POS_V1_MVP_REQUIREMENT_INDEX.md)
+- Controlled reset data transaksi per Company: [`docs/runbooks/PRD_COMPANY_TRANSACTIONAL_DATA_RESET.md`](docs/runbooks/PRD_COMPANY_TRANSACTIONAL_DATA_RESET.md)
 - Finance master API/UI rollout: [`docs/runbooks/G2_PHASE17_FINANCE_MASTER_API_UI_ROLLOUT.md`](docs/runbooks/G2_PHASE17_FINANCE_MASTER_API_UI_ROLLOUT.md)
 - Panduan Kategori Transaksi: [`docs/FINANCE_TRANSACTION_CATEGORY_USER_GUIDE.md`](docs/FINANCE_TRANSACTION_CATEGORY_USER_GUIDE.md)
 - Required-category rollout: [`docs/runbooks/G2_PHASE18_REQUIRED_TRANSACTION_CATEGORIES_ROLLOUT.md`](docs/runbooks/G2_PHASE18_REQUIRED_TRANSACTION_CATEGORIES_ROLLOUT.md)
@@ -416,3 +435,15 @@ Setiap perubahan material wajib memperbarui bagian yang relevan di file ini:
 README menjelaskan keadaan aplikasi untuk manusia. Detail operasional antar-agent
 tetap ditulis di `docs/ACTIVE_DEVELOPMENT_HANDOFF.md`, sedangkan keputusan bisnis
 tetap berada pada spesifikasi modul masing-masing.
+## Status lokal terbaru — 2026-08-19
+
+Alur stok minus POS ke Permintaan Barang per sesi telah **local-ready**, belum
+aktif di database sampai migration `20260819170000` dijalankan. Sale online
+yang mendapat otorisasi tetap dapat diposting; close sesi akan membuat tepat
+satu Stock Request `SUBMITTED` dari shortage sesi yang belum direplenish.
+Migration, preflight, postflight, rollback behavioral test, PWA readiness/error,
+notice penutupan, badge Purchasing, dan [runbook rollout](docs/runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)
+tersedia. PWA lint/build, targeted Backoffice lint, Backoffice production build,
+static SQL/diff gate, behavioral utama, dan empat regression sudah PASS.
+Final postflight serta authenticated smoke masih wajib sebelum dianggap siap
+dipakai pada data go-live.

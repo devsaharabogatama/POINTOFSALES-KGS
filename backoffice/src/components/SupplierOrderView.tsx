@@ -22,6 +22,7 @@ type RequestDoc = {
   id: string;
   request_no: string;
   store_id: string;
+  request_source: "MANUAL" | "NEGATIVE_STOCK_SESSION_CLOSE";
   needed_date: string | null;
   notes: string | null;
   status: string;
@@ -302,7 +303,14 @@ export function SupplierOrderView({
                 <div className="flex items-start gap-3">
                   <FilePlus2 className="mt-1 h-5 w-5 text-emerald-600" />
                   <div className="flex-1">
-                    <p className="font-black">{doc.request_no}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-black">{doc.request_no}</p>
+                      {doc.request_source === "NEGATIVE_STOCK_SESSION_CLOSE" && (
+                        <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-rose-700">
+                          Otomatis · stok minus sesi
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-sm text-slate-500">
                       {stores.get(doc.store_id) ?? "Toko"} ·{" "}
                       {
@@ -313,6 +321,11 @@ export function SupplierOrderView({
                       barang tersisa · perlu{" "}
                       {doc.needed_date ?? "belum ditentukan"}
                     </p>
+                    {doc.request_source === "NEGATIVE_STOCK_SESSION_CLOSE" && (
+                      <p className="mt-2 text-xs font-semibold text-rose-700">
+                        Dibuat saat kasir menutup sesi dari kekurangan yang belum direplenish.
+                      </p>
+                    )}
                   </div>
                   <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
                     {doc.status}

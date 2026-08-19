@@ -3,10 +3,12 @@ export type MasterImportType =
   | 'UOM'
   | 'WAREHOUSE'
   | 'SUPPLIER'
+  | 'CUSTOMER'
   | 'CUSTOMER_CATEGORY'
   | 'CHART_OF_ACCOUNT'
   | 'TRANSACTION_CATEGORY'
   | 'PRODUCT'
+  | 'PRODUCT_UOM'
   | 'PRODUCT_SUPPLIER'
   | 'PRODUCT_WAREHOUSE_MINIMUM_STOCK'
 export type ImportReferenceMode = 'REFERENCE_BY_ID' | 'REFERENCE_BY_NAME'
@@ -93,6 +95,37 @@ export const importDefinitions: Record<MasterImportType, ImportDefinition> = {
     templateHeaders: ['name', 'contact_name', 'phone', 'address', 'npwp', 'payment_term', 'bank_name', 'bank_account_number', 'bank_account_holder', 'is_active'],
     exportHeaders: ['internal_id', 'name', 'contact_name', 'phone', 'address', 'npwp', 'payment_term', 'bank_name', 'bank_account_number', 'bank_account_holder', 'is_active'],
   },
+  CUSTOMER: {
+    label: 'Customer',
+    description: 'Master Customer Company aktif. Walk-In, saldo berjalan, dan histori transaksi tidak dapat diimpor.',
+    fields: [
+      { key: 'internalId', label: 'ID internal (opsional)', required: false, aliases: ['internal_id', 'customer_id', 'id'] },
+      { key: 'customerCode', label: 'Kode Customer (opsional saat membuat)', required: false, aliases: ['code', 'customer_code', 'kode_customer', 'kode_pelanggan'] },
+      { key: 'customerName', label: 'Nama Customer', required: true, aliases: ['name', 'customer_name', 'nama_customer', 'nama_pelanggan'] },
+      { key: 'categoryName', label: 'Kategori Customer', required: true, aliases: ['customer_category_name', 'category_name', 'kategori_customer', 'kategori_pelanggan'] },
+      { key: 'parentCustomerName', label: 'Customer induk existing', required: false, aliases: ['parent_customer_name', 'nama_customer_induk', 'customer_induk'] },
+      { key: 'defaultPricelistName', label: 'Pricelist default existing', required: false, aliases: ['default_pricelist_name', 'pricelist_name', 'nama_pricelist'] },
+      { key: 'phone', label: 'Telepon', required: false, aliases: ['phone', 'telepon', 'no_telepon'] },
+      { key: 'email', label: 'Email', required: false, aliases: ['email'] },
+      { key: 'address', label: 'Alamat', required: false, aliases: ['address', 'alamat'] },
+      { key: 'customerType', label: 'Tipe Customer', required: false, aliases: ['customer_type', 'tipe_customer', 'tipe_pelanggan'] },
+      { key: 'creditLimit', label: 'Limit kredit', required: false, aliases: ['credit_limit', 'limit_kredit'] },
+      { key: 'creditTermDays', label: 'Termin kredit (hari)', required: false, aliases: ['credit_term_days', 'termin_kredit_hari', 'termin_hari'] },
+      { key: 'notes', label: 'Catatan', required: false, aliases: ['notes', 'catatan'] },
+      { key: 'isActive', label: 'Status aktif', required: false, aliases: ['is_active', 'aktif', 'status_aktif'] },
+    ],
+    templateHeaders: [
+      'code', 'name', 'customer_category_name', 'parent_customer_name',
+      'default_pricelist_name', 'phone', 'email', 'address', 'customer_type',
+      'credit_limit', 'credit_term_days', 'notes', 'is_active',
+    ],
+    exportHeaders: [
+      'internal_id', 'code', 'name', 'customer_category_name',
+      'parent_customer_name', 'default_pricelist_name', 'phone', 'email',
+      'address', 'customer_type', 'credit_limit', 'credit_term_days', 'notes',
+      'is_active',
+    ],
+  },
   CUSTOMER_CATEGORY: {
     label: 'Kategori Pelanggan',
     description: 'Nama grouping pelanggan dan status aktifnya. Kode dibuat otomatis. Kategori bawaan sistem hanya dapat diekspor.',
@@ -171,6 +204,32 @@ export const importDefinitions: Record<MasterImportType, ImportDefinition> = {
       'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
       'barcode', 'sales_tax_rule_name', 'purchase_tax_rule_name',
       'weight_per_largest_uom_kg',
+    ],
+  },
+  PRODUCT_UOM: {
+    label: 'Tambah / Perbarui UOM Produk',
+    description: 'Template berisi satu baris kosong per Product existing. Isi hanya baris UOM yang ingin ditambahkan atau diperbarui; UOM lain tidak dihapus.',
+    fields: [
+      { key: 'productSku', label: 'SKU Product', required: true, aliases: ['product_sku', 'sku', 'kode_produk'] },
+      { key: 'productName', label: 'Nama Product (referensi)', required: true, aliases: ['product_name', 'nama_produk'] },
+      { key: 'uomName', label: 'Nama UOM', required: false, aliases: ['uom_name', 'nama_uom', 'nama_satuan', 'satuan'] },
+      { key: 'factorToBase', label: 'Isi UOM dalam satuan dasar', required: false, aliases: ['factor_to_base', 'qty_uom', 'isi_uom'] },
+      { key: 'purchaseAllowed', label: 'Dapat dipakai untuk pembelian', required: false, aliases: ['purchase_allowed', 'boleh_beli', 'beli'] },
+      { key: 'salesAllowed', label: 'Dapat dipakai untuk penjualan', required: false, aliases: ['sales_allowed', 'boleh_jual', 'jual'] },
+      { key: 'purchasePrice', label: 'Harga beli per UOM', required: false, aliases: ['purchase_price', 'harga_beli'] },
+      { key: 'salePrice', label: 'Harga jual per UOM', required: false, aliases: ['sale_price', 'harga_jual'] },
+      { key: 'barcode', label: 'Barcode UOM', required: false, aliases: ['barcode', 'kode_barcode'] },
+      { key: 'weightIfLargestKg', label: 'Berat bila menjadi UOM terbesar (kg)', required: false, aliases: ['weight_if_largest_kg', 'berat_jika_terbesar_kg'] },
+    ],
+    templateHeaders: [
+      'product_sku', 'product_name', 'uom_name', 'factor_to_base',
+      'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
+      'barcode', 'weight_if_largest_kg',
+    ],
+    exportHeaders: [
+      'product_sku', 'product_name', 'uom_name', 'factor_to_base',
+      'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
+      'barcode', 'weight_if_largest_kg',
     ],
   },
   PRODUCT_SUPPLIER: {
