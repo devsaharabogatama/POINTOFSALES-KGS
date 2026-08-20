@@ -3,7 +3,7 @@ import {
   getCompanyBranding,
   removeCompanyBranding,
   requireBrandingManager,
-  saveCompanyDocumentLogoVisibility,
+  saveCompanyDocumentVisibility,
   uploadCompanyBranding,
 } from '@/lib/company-branding-server'
 
@@ -85,21 +85,24 @@ export async function PATCH(request: Request) {
       expectedMasterVersion?: unknown
       showLogoOnDocuments?: unknown
       showStampOnDocuments?: unknown
+      showBankAccountOnInvoice?: unknown
     }
     if (body.expectedMasterVersion !== null &&
         (!Number.isInteger(body.expectedMasterVersion) || Number(body.expectedMasterVersion) < 1)) {
       throw new ApiRouteError('INVALID_EXPECTED_MASTER_VERSION', 400)
     }
     if (typeof body.showLogoOnDocuments !== 'boolean' ||
-        typeof body.showStampOnDocuments !== 'boolean') {
-      throw new ApiRouteError('COMPANY_DOCUMENT_LOGO_VISIBILITY_REQUIRED', 400)
+        typeof body.showStampOnDocuments !== 'boolean' ||
+        typeof body.showBankAccountOnInvoice !== 'boolean') {
+      throw new ApiRouteError('COMPANY_DOCUMENT_VISIBILITY_REQUIRED', 400)
     }
-    const data = await saveCompanyDocumentLogoVisibility({
+    const data = await saveCompanyDocumentVisibility({
       caller,
       expectedMasterVersion: body.expectedMasterVersion === null
         ? null : Number(body.expectedMasterVersion),
       showLogoOnDocuments: body.showLogoOnDocuments,
       showStampOnDocuments: body.showStampOnDocuments,
+      showBankAccountOnInvoice: body.showBankAccountOnInvoice,
     })
     return Response.json({ companyId, data })
   } catch (error) {

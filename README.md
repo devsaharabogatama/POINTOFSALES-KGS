@@ -2,6 +2,11 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Staging terbaru berhasil dipublikasikan pada 20 Agustus 2026 dari commit
+`cc3efab`: PWA di `https://kgs-pos-pwa-staging.vercel.app` dan Backoffice di
+`https://pointofsales-kgs-staging.vercel.app`. Kedua build Vercel dan smoke HTTP
+publik PASS; deployment ini tidak mengubah database maupun project production.
+
 Paket MADS dokumen/PO/Terminal UI sekarang **local-ready**: Backoffice dapat
 mengunduh PDF Invoice dan Surat Jalan dengan nama Customer di depan, Supplier
 Order mempunyai export XLSX berizin, dan fitur operasional PWA dapat
@@ -479,3 +484,30 @@ tersedia. PWA lint/build, targeted Backoffice lint, Backoffice production build,
 static SQL/diff gate, behavioral utama, dan empat regression sudah PASS.
 Final postflight serta authenticated smoke masih wajib sebelum dianggap siap
 dipakai pada data go-live.
+
+## Status lokal terbaru — 2026-08-20 (Profil/Rekening Company)
+
+Profil Company dan tiga field rekening opsional telah **local-ready** melalui
+migration `20260820120000`; belum aktif di database sampai rollout manual.
+Platform **Profil Perusahaan** mencakup identitas, alamat, kontak, rekening,
+logo, dan setting dokumen. Rekening Supplier otomatis mengisi Draft Pembayaran
+Supplier. Toggle rekening Invoice default `OFF`; Invoice baru menyimpan snapshot
+rekening immutable, sedangkan Surat Jalan tidak menampilkannya. Backoffice
+targeted lint/build dan PWA lint/build PASS. Jalankan migration, postflight,
+behavior rollback, lalu staging smoke sesuai
+[`COMPANY_PROFILE_BANK_INVOICE_ROLLOUT.md`](docs/runbooks/COMPANY_PROFILE_BANK_INVOICE_ROLLOUT.md).
+
+Update rollout: user telah menjalankan migration, postflight terkoreksi, dan
+behavioral rollback test dengan hasil seluruhnya PASS pada database target yang
+diuji. Client build tetap menunggu deployment dan authenticated smoke sebelum
+fitur dinyatakan aktif end-to-end pada environment tersebut.
+
+## Status lokal terbaru - 2026-08-20 (Export PO Terpilih)
+
+Export Supplier Order kini **local-ready** untuk pilihan eksplisit: admin dapat
+memfilter daftar, mencentang PO satuan atau seluruh hasil filter, lalu mengunduh
+satu XLSX tiga-sheet yang hanya berisi maksimal 100 PO terpilih. Overload RPC
+baru memvalidasi capability EXPORT, active Company, UUID, duplikasi, dan tenant
+seluruh dokumen; GET/RPC tanpa argumen lama dipertahankan untuk compatibility.
+Migration/postflight/behavior serta rollout manual tersedia di
+[`SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md`](docs/runbooks/SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md).

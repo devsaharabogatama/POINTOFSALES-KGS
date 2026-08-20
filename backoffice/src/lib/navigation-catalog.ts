@@ -138,7 +138,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'finance-masters', label: 'Kategori & COA', description: 'Kategori transaksi, COA, dan mapping akun.', iconKey: 'landmark', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'finance', label: 'Jurnal Keuangan', description: 'Journal Entries, ledger, periode, dan laporan.', iconKey: 'dollar', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'companies', label: 'Perusahaan', description: 'Kelola tenant aktif pada platform.', iconKey: 'building', superOnly: true, capabilities: ['VIEW'] },
-  { id: 'company-branding', label: 'Logo Perusahaan', description: 'Logo dokumen resmi untuk Company aktif.', iconKey: 'image', roles: OWNER_ROLES, capabilities: ['VIEW', 'MANAGE'] },
+  { id: 'company-branding', label: 'Profil Perusahaan', description: 'Identitas, rekening, logo, dan tampilan dokumen Company aktif.', iconKey: 'image', roles: OWNER_ROLES, capabilities: ['VIEW', 'MANAGE'] },
   { id: 'module-settings', label: 'Pengaturan Modul', description: 'Entitlement dan kebijakan modul Company.', iconKey: 'settings', roles: ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'], capabilities: ['VIEW'] },
 ]
 

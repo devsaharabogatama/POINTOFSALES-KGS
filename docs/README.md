@@ -24,6 +24,11 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 - [`runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md`](runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md)
 - [`runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md`](runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md)
 
+Rollout profil/rekening Company, autofill rekening Supplier Payment, dan
+rekening opsional pada Invoice:
+
+- [`runbooks/COMPANY_PROFILE_BANK_INVOICE_ROLLOUT.md`](runbooks/COMPANY_PROFILE_BANK_INVOICE_ROLLOUT.md)
+
 Finance G6 Phase 8:
 
 - [`runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md`](runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md)
@@ -362,6 +367,7 @@ berada di [`../README.md`](../README.md).
 | SLD-3 POS/Backoffice printable document UAT | `runbooks/SLD3_POS_BACKOFFICE_PRINT_UI.md` | Pickup/Delivery checkout, Invoice/SJ A4 new-tab print, Backoffice lifecycle, role, tenant, offline, dan no-double-effect smoke |
 | Inventory Surat Jalan authority split | `runbooks/INVENTORY_DELIVERY_DOCUMENT_AUTHORITY_ROLLOUT.md` | Pisahkan Sales Invoice dan Inventory Surat Jalan tanpa mengubah canonical Sale/POS/history |
 | MADS dokumen, PO export, dan Terminal UI | `runbooks/MADS_DOCUMENT_PO_TERMINAL_UI_ROLLOUT.md` | PDF Invoice/SJ bernama Customer, XLSX Supplier Order, audited UI-only feature visibility per Terminal, dan branding visual MADS |
+| Export Supplier Order terpilih | `runbooks/SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md` | Checkbox per PO, pilih-semua hasil filter, XLSX gabungan maksimum 100 PO, tenant/capability guard, compatibility GET lama, postflight dan rollback behavior |
 | Pengaturan logo dan stempel dokumen | `runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md` | Sakelar Company terpisah dan diaudit untuk logo header serta cap visual pada print/PDF Invoice dan Surat Jalan tanpa menghapus file logo |
 | SLD-R1 Delivery fee preflight | `runbooks/SLD_R1_DELIVERY_FEE_PREFLIGHT.md` | SELECT-only audit Sale/payment/offline/Return/Invoice/Finance readiness sebelum canonical ongkir R2 |
 | SLD-R2 Delivery fee foundation rollout | `runbooks/SLD_R2_DELIVERY_FEE_FOUNDATION_ROLLOUT.md` | Additive fee schema, retry-safe Draft total, Payment/Invoice/Event reconciliation, Company revenue mapping, postflight, behavior, compatibility, dan controlled G6 deferral |

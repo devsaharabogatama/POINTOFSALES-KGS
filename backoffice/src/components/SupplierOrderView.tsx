@@ -44,6 +44,7 @@ type OrderDoc = {
   id: string;
   order_no: string;
   supplier_id: string;
+  store_id: string;
   status: string;
   line_count: number;
   estimated_total: number | string;
@@ -113,6 +114,16 @@ function friendly(code?: string) {
     REQUEST_ALLOCATION_EXCEEDS_REQUESTED_QUANTITY:
       "Alokasi melebihi sisa permintaan.",
     MASTER_VERSION_CONFLICT: "Dokumen berubah di tab lain. Muat ulang.",
+    SUPPLIER_ORDER_EXPORT_SELECTION_REQUIRED:
+      "Pilih minimal satu Supplier Order untuk diekspor.",
+    SUPPLIER_ORDER_EXPORT_SELECTION_LIMIT_EXCEEDED:
+      "Maksimal 100 Supplier Order dalam satu file Excel.",
+    SUPPLIER_ORDER_EXPORT_SELECTION_INVALID:
+      "Pilihan Supplier Order tidak valid. Muat ulang lalu pilih kembali.",
+    SUPPLIER_ORDER_EXPORT_NOT_FOUND_OR_ACCESS_DENIED:
+      "Salah satu Supplier Order tidak ditemukan atau bukan milik perusahaan aktif.",
+    SUPPLIER_ORDER_EXPORT_RESULT_INVALID:
+      "Hasil export tidak lengkap. Muat ulang lalu coba kembali.",
   };
   return map[code ?? ""] ?? code ?? "Operasi Supplier Order gagal.";
 }
@@ -139,7 +150,8 @@ export function SupplierOrderView({
     [exporting, setExporting] = useState(false),
     [exportStatus, setExportStatus] = useState('ALL'),
     [exportSupplier, setExportSupplier] = useState(''),
-    [exportStore, setExportStore] = useState('');
+    [exportStore, setExportStore] = useState(''),
+    [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const load = useCallback(async () => {
     const response = await fetch("/api/purchase/supplier-orders", {
       headers: headers(session),
@@ -151,6 +163,7 @@ export function SupplierOrderView({
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
+    setSelectedOrderIds(new Set());
     try {
       await load();
     } catch (reason) {
@@ -211,6 +224,13 @@ export function SupplierOrderView({
       new Map((payload.suppliers ?? []).map((v) => [v.id, v.supplier_name])),
     [payload.suppliers],
   );
+  const filteredOrders = useMemo(() => (payload.orders ?? []).filter((order) =>
+    (exportStatus === 'ALL' || order.status === exportStatus) &&
+    (!exportSupplier || order.supplier_id === exportSupplier) &&
+    (!exportStore || order.store_id === exportStore)
+  ), [exportStatus, exportStore, exportSupplier, payload.orders]);
+  const allFilteredSelected = filteredOrders.length > 0 &&
+    filteredOrders.every((order) => selectedOrderIds.has(order.id));
   const remainingLines = useMemo(() => {
     const activeOrderIds = new Set(
       (payload.orders ?? [])
@@ -260,12 +280,14 @@ export function SupplierOrderView({
     return (payload.requests ?? []).filter((request) => ids.has(request.id));
   }, [payload.requests, remainingLines]);
   async function exportOrders() {
+    if (selectedOrderIds.size<1) return
     setExporting(true); setError('')
     try {
-      const query = new URLSearchParams({ status: exportStatus })
-      if (exportSupplier) query.set('supplierId', exportSupplier)
-      if (exportStore) query.set('storeId', exportStore)
-      const response = await fetch(`/api/purchase/supplier-orders/export?${query}`, { headers: headers(session) })
+      const response = await fetch('/api/purchase/supplier-orders/export', {
+        method: 'POST',
+        headers: { ...headers(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentIds: Array.from(selectedOrderIds) }),
+      })
       if (!response.ok) {
         const body = await response.json() as { error?: string }
         throw new Error(friendly(body.error))
@@ -276,10 +298,39 @@ export function SupplierOrderView({
       const anchor = document.createElement('a')
       anchor.href = url; anchor.download = fileName; anchor.click()
       URL.revokeObjectURL(url)
+      setSelectedOrderIds(new Set())
       notify('Export Supplier Order berhasil diunduh.')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Export Supplier Order gagal.')
     } finally { setExporting(false) }
+  }
+  function toggleOrder(orderId: string) {
+    setError('')
+    if (!selectedOrderIds.has(orderId) && selectedOrderIds.size>=100) {
+      setError('Maksimal 100 Supplier Order dalam satu file Excel.')
+      return
+    }
+    setSelectedOrderIds((current) => {
+      const next = new Set(current)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }
+  function toggleAllFiltered() {
+    setError('')
+    if (!allFilteredSelected && filteredOrders.length>100) {
+      setError('Hasil filter lebih dari 100 PO. Persempit filter sebelum memilih semua.')
+      return
+    }
+    setSelectedOrderIds((current) => {
+      const next = new Set(current)
+      for (const order of filteredOrders) {
+        if (allFilteredSelected) next.delete(order.id)
+        else next.add(order.id)
+      }
+      return next
+    })
   }
   return (
     <>
@@ -295,9 +346,9 @@ export function SupplierOrderView({
             atau Finance pada tahap ini.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">{canExport && <button onClick={() => void exportOrders()} disabled={exporting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"><Download className="h-4 w-4"/>{exporting ? 'Menyiapkan...' : 'Export PO Excel'}</button>}<button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Muat ulang</button></div>
+        <div className="flex flex-wrap gap-2">{canExport && <button onClick={() => void exportOrders()} disabled={exporting || selectedOrderIds.size===0} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-4 w-4"/>{exporting ? 'Menyiapkan...' : `Export PO Terpilih (${selectedOrderIds.size})`}</button>}<button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Muat ulang</button></div>
       </div>
-      {canExport && <div className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Status<select value={exportStatus} onChange={(event) => setExportStatus(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="ALL">Semua status</option>{['DRAFT','CONFIRMED','PARTIALLY_RECEIVED','RECEIVED','CANCELED'].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Supplier<select value={exportSupplier} onChange={(event) => setExportSupplier(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Supplier</option>{(payload.suppliers ?? []).map((item) => <option key={item.id} value={item.id}>{item.supplier_name}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Toko<select value={exportStore} onChange={(event) => setExportStore(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Toko</option>{(payload.stores ?? []).map((item) => <option key={item.id} value={item.id}>{item.store_name}</option>)}</select></label></div>}
+      {canExport && <div className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Status<select value={exportStatus} onChange={(event) => { setExportStatus(event.target.value); setSelectedOrderIds(new Set()) }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="ALL">Semua status</option>{['DRAFT','CONFIRMED','PARTIALLY_RECEIVED','RECEIVED','CANCELED'].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Supplier<select value={exportSupplier} onChange={(event) => { setExportSupplier(event.target.value); setSelectedOrderIds(new Set()) }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Supplier</option>{(payload.suppliers ?? []).map((item) => <option key={item.id} value={item.id}>{item.supplier_name}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Toko<select value={exportStore} onChange={(event) => { setExportStore(event.target.value); setSelectedOrderIds(new Set()) }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Toko</option>{(payload.stores ?? []).map((item) => <option key={item.id} value={item.id}>{item.store_name}</option>)}</select></label></div>}
       {!canCreate && !canPost && (
         <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
           Akses baca saja sesuai permission Supplier Order Anda.
@@ -369,15 +420,17 @@ export function SupplierOrderView({
           )}
         </List>
         <List title="Riwayat Supplier Order">
-          {(payload.orders ?? []).length === 0 ? (
-            <Empty text="Belum ada Supplier Order." />
+          {canExport && filteredOrders.length>0 && <label className="mb-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700"><input type="checkbox" checked={allFilteredSelected} onChange={toggleAllFiltered} className="h-5 w-5 rounded border-slate-300 accent-emerald-600"/><span>Pilih semua hasil filter ({filteredOrders.length})</span><span className="ml-auto text-xs text-slate-500">Terpilih {selectedOrderIds.size}/100</span></label>}
+          {filteredOrders.length === 0 ? (
+            <Empty text="Tidak ada Supplier Order yang sesuai filter." />
           ) : (
-            (payload.orders ?? []).map((order) => (
+            filteredOrders.map((order) => (
               <article
                 key={order.id}
                 className="rounded-2xl border bg-white p-5 shadow-sm"
               >
                 <div className="flex items-start gap-3">
+                  {canExport && <input type="checkbox" aria-label={`Pilih ${order.order_no}`} checked={selectedOrderIds.has(order.id)} onChange={() => toggleOrder(order.id)} className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 accent-emerald-600"/>}
                   <ShoppingCart className="mt-1 h-5 w-5 text-slate-500" />
                   <div className="flex-1">
                     <p className="font-black">{order.order_no}</p>

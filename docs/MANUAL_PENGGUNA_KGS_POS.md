@@ -214,6 +214,11 @@ Pelanggan terikat pada perusahaan aktif. Pelanggan Umum adalah identitas sistem 
 
 Simpan identitas supplier, kontak, rekening bank, dan relasi produk–supplier. Supplier hanya dapat digunakan oleh perusahaan pemiliknya.
 
+Rekening supplier terdiri dari nama bank, nomor rekening, dan nama pemilik.
+Saat Supplier dipilih pada **Finance → Pembayaran Supplier**, ketiga field ini
+terisi otomatis agar Finance dapat menyalin nomor rekening tanpa mencari master
+Supplier. Nilainya tetap disimpan sebagai snapshot pada Draft pembayaran.
+
 ### 7.3 User & Akses
 
 1. Pilih pengguna untuk membuka detail.
@@ -234,9 +239,12 @@ Saat mencabut akses, nonaktifkan keanggotaan perusahaan.
 3. Pilih baris yang akan dipesan dan supplier tujuan.
 4. Buat Supplier Order, periksa harga estimasi, UOM, serta gudang tujuan.
 5. Konfirmasikan order.
-6. Gunakan **Export Excel** untuk mengunduh daftar dan detail barang PO sesuai
-   filter yang dipilih. Tombol hanya tersedia bagi pengguna yang memiliki
-   kemampuan **EXPORT** Supplier Order.
+6. Gunakan filter Status, Supplier, atau Toko untuk mempersempit daftar.
+7. Centang PO satu per satu atau gunakan **Pilih semua hasil filter**.
+8. Klik **Export PO Terpilih**. Satu workbook memuat sheet Daftar PO, Detail
+   Barang, dan Informasi Export hanya untuk PO yang dicentang. Maksimal 100 PO
+   per file. Tombol hanya tersedia bagi pengguna yang memiliki kemampuan
+   **EXPORT** Supplier Order.
 
 Baris yang sudah masuk Supplier Order tidak lagi ditampilkan sebagai kebutuhan terbuka. Baris lain tetap dapat dipesan ke supplier berbeda.
 
@@ -269,6 +277,12 @@ historis.
 
 Template Invoice tidak menampilkan nama perusahaan pada header dan menyediakan
 tanda tangan **Warehouse**, **Security**, **Driver**, serta **Customer**.
+
+Owner/Admin dapat membuka **Platform → Profil Perusahaan** untuk mengisi
+identitas, alamat, kontak, serta rekening Company. Rekening terdiri dari nama
+bank, nomor rekening, dan nama pemilik; isi lengkap atau kosongkan semuanya.
+Pilihan **Tampilkan rekening pada Invoice** default-nya mati. Jika diaktifkan,
+rekening tampil hanya pada Invoice baru dan tidak tampil pada Surat Jalan.
 
 ### 9.2 Pricelist
 

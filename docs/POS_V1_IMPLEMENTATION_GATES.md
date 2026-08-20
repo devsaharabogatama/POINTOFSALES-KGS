@@ -1002,6 +1002,16 @@ sebelum full E2E/Vercel Preview. Source of truth berada di
    alamat snapshot, daftar/reprint/status, template logo/no-logo.
 7. **PRD-1 — Closing regression:** full tenant/role/DEX/Sale/Return/Stock/FIFO/
    Finance/document/Storage/environment regression sebelum Vercel Preview.
+8. **BRD-2 — Company profile dan rekening:** detail administratif/kontak,
+   tiga field rekening opsional all-or-none, autofill rekening Supplier pada
+   Draft Pembayaran, serta toggle rekening Invoice default OFF. Invoice baru
+   menyimpan snapshot immutable; Surat Jalan dan histori lama tidak diubah.
+9. **POX-1 — Selected Supplier Order export:** daftar Purchase menyediakan
+   checkbox per PO dan pilih-semua hasil filter. Export menghasilkan satu XLSX
+   tiga-sheet hanya dari maksimal 100 PO terpilih; server memvalidasi active
+   Company, capability `purchase.supplier_orders EXPORT`, UUID, duplikasi, dan
+   kepemilikan setiap dokumen. Endpoint/RPC export seluruh PO lama tetap ada
+   hanya untuk compatibility client lama.
 
 Status 2026-08-11: UXD-1 COMPLETE. Audit menetapkan registry client belum
 memadai sebagai authority launcher, memisahkan `canView` dari capability aksi,

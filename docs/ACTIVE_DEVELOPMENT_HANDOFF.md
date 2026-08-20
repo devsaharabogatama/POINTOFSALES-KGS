@@ -1,5 +1,30 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-20 — SELECTED SUPPLIER ORDER EXPORT LOCAL READY
+
+- Supplier Order Backoffice sekarang memfilter daftar, menyediakan checkbox
+  per PO, pilih-semua hasil filter, indikator jumlah, dan export XLSX gabungan
+  hanya untuk dokumen yang dipilih. Batas satu workbook adalah 100 PO.
+- Migration `20260820130000_selected_supplier_order_export.sql` menambah
+  overload UUID-array yang memvalidasi effective EXPORT, active Company,
+  pilihan nonkosong, UUID/duplikasi, batas, dan tenant setiap PO. Signature
+  export tanpa argumen serta endpoint GET lama tetap dipertahankan.
+- XLSX tetap tiga sheet: Daftar PO, Detail Barang, dan Informasi Export.
+  Filter hanya mengubah daftar yang terlihat; perubahan filter membersihkan
+  pilihan agar admin tidak mengekspor PO tersembunyi tanpa sadar.
+- File verifikasi: SELECT-only postflight, rollback behavioral test, dan
+  `docs/runbooks/SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md`.
+- Evidence lokal: targeted ESLint PASS; Next production build PASS (70
+  route/page); SQL delimiter dan parentheses seimbang; `git diff --check` PASS.
+  Database migration, deployment, dan authenticated smoke belum dijalankan.
+- Next safe step: user menjalankan migration -> postflight seluruh PASS ->
+  behavior sukses/ROLLBACK -> staging smoke dua PO terpilih. Jangan deploy UI
+  ke environment yang belum menerima migration.
+- Behavioral fixture correction: database target tidak mempunyai kombinasi
+  Owner/Admin aktif pada Company yang berisi PO. Test kini mencoba kombinasi
+  tersebut lebih dahulu lalu memakai linked Super Admin dan Company aktif yang
+  mempunyai PO. Runtime migration dan aplikasi tidak berubah.
+
 ### 2026-08-19 — COMPANY TRANSACTION RESET UPDATED FOR NEGATIVE REQUEST
 
 Controlled operation `prd_reset_company_transactional_data.sql` tetap menjadi
@@ -5598,3 +5623,51 @@ Eksekusi hanya setelah backup dan maintenance window.
   split payment, Expense/Setor Kas, tombol header, backdrop/Batal, dan satu kali
   penutupan sesi disposable. Pastikan nilai server sama dengan angka sebelum
   separator display diterapkan.
+
+### 2026-08-20 - PWA AND BACKOFFICE STAGING DEPLOYED
+
+- Commit deployed: `cc3efab` (`main`), working tree bersih sebelum deploy.
+- Project staging PWA `kgs-pos-pwa-staging` berhasil build Vite/PWA dan dialias
+  ke `https://kgs-pos-pwa-staging.vercel.app`.
+- Project staging Backoffice `pointofsales-kgs-staging` berhasil build Next.js
+  16.2.10 dan dialias ke `https://pointofsales-kgs-staging.vercel.app`.
+- Smoke HTTP publik PASS: kedua alias mengembalikan HTTP 200. Tidak ada database
+  mutation, Supabase migration, environment update, atau deployment ke project
+  production.
+- Manual gate: hard refresh/PWA reload, login staging, lalu cek tombol Tutup
+  Sesi, format Rupiah, halaman Backoffice, dan satu flow disposable tanpa
+  menggunakan data production.
+
+### 2026-08-20 - COMPANY PROFILE/BANK/INVOICE LOCAL READY
+
+- Migration `20260820120000_company_profile_bank_invoice.sql` menambah detail
+  Company, rekening bank tiga-field yang all-or-none, optimistic version,
+  immutable audit, dan toggle rekening Invoice default OFF.
+- UI **Profil Perusahaan** menggantikan label Logo Perusahaan dan tetap memakai
+  active Company. Hanya Owner/Admin dapat mengubah profil serta setting.
+- Composed Supplier Payment kini mengembalikan rekening Supplier dan form
+  otomatis mengisinya ketika Supplier dipilih; snapshot Draft tetap editable.
+- Invoice POSTED baru menyimpan rekening Company dan flag tampilan pada snapshot.
+  Backoffice PDF/print serta PWA print menampilkan rekening hanya saat diizinkan;
+  Surat Jalan tidak berubah. Invoice historis sengaja tidak dibackfill.
+- Evidence lokal: Backoffice targeted ESLint PASS; Next production build PASS
+  (70 route/page); PWA oxlint PASS; TypeScript/Vite/PWA build PASS. SQL static:
+  delimiter 12, parentheses 220/220, zero direct table grant/secret.
+- Full Backoffice `npm run lint` mencapai timeout 120 detik tanpa diagnostic;
+  targeted ESLint seluruh file yang berubah kemudian PASS.
+- Manual gate menunggu user: migration -> postflight seluruh PASS -> behavioral
+  test sukses/ROLLBACK -> deploy staging -> smoke profil, autofill pembayaran,
+  Invoice ON/OFF, dan Surat Jalan tetap tanpa rekening. Runbook:
+  `docs/runbooks/COMPANY_PROFILE_BANK_INVOICE_ROLLOUT.md`.
+- Compatibility: RPC visibility tiga-arg lama dipertahankan; toggle baru OFF;
+  tidak ada DB mutation/deploy yang dilakukan oleh pekerjaan lokal ini.
+- Postflight portability correction: `num_nonnull(text,text,text)` tidak tersedia
+  pada database target. Check integritas rekening diganti dengan penjumlahan
+  tiga ekspresi `CASE` PostgreSQL standar. Migration/runtime tidak berubah dan
+  tidak perlu dijalankan ulang; hanya postflight yang perlu diulang dari awal.
+- User kemudian melaporkan postflight seluruhnya PASS dan behavioral test
+  SUCCESS. Database target yang diuji dinyatakan rollout PASS. Environment
+  target tidak ditebak di handoff; deployment client dan authenticated smoke
+  masih menunggu. Next safe step: deploy Backoffice/PWA ke environment yang
+  terhubung ke database tersebut, lalu smoke profil, Invoice ON/OFF, Surat Jalan
+  tanpa rekening, dan autofill rekening Supplier Payment.

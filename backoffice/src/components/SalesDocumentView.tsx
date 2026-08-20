@@ -25,6 +25,7 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
   const [detailLoading, setDetailLoading] = useState(false)
   const [showLogoOnDocuments, setShowLogoOnDocuments] = useState(true)
   const [showStampOnDocuments, setShowStampOnDocuments] = useState(false)
+  const [showBankAccountOnInvoice, setShowBankAccountOnInvoice] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -40,10 +41,11 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
       setDocuments(result.data ?? [])
       if (brandingResponse.ok) {
         const branding = await brandingResponse.json() as {
-          data?: { showLogoOnDocuments?: boolean; showStampOnDocuments?: boolean }
+          data?: { showLogoOnDocuments?: boolean; showStampOnDocuments?: boolean; showBankAccountOnInvoice?: boolean }
         }
         setShowLogoOnDocuments(branding.data?.showLogoOnDocuments ?? true)
         setShowStampOnDocuments(branding.data?.showStampOnDocuments ?? false)
+        setShowBankAccountOnInvoice(branding.data?.showBankAccountOnInvoice ?? false)
       }
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Invoice gagal dimuat.') }
     finally { setLoading(false) }
@@ -72,6 +74,7 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
     try {
       printSalesInvoiceDocument(
         detail.invoice, showLogoOnDocuments, showStampOnDocuments,
+        showBankAccountOnInvoice,
       )
       const response = await fetch(`/api/sales/documents/${selected.salesId}`, { method: 'POST', headers: headers(session, true), body: JSON.stringify({ documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
       const result = await response.json() as { error?: string }
@@ -85,6 +88,7 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
       await downloadSalesInvoicePdf(
         detail.invoice, selected.customerName, showLogoOnDocuments,
         showStampOnDocuments,
+        showBankAccountOnInvoice,
       )
       const response = await fetch(`/api/sales/documents/${selected.salesId}`, { method: 'POST', headers: headers(session, true), body: JSON.stringify({ documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
       const result = await response.json() as { error?: string }

@@ -165,11 +165,13 @@ export async function downloadSalesInvoicePdf(
   customerFileName?: string,
   showLogo = true,
   showStamp = false,
+  showBankAccount = false,
 ) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
   const snapshot = map(document.snapshot)
   const branding = map(snapshot.branding)
+  const company = map(snapshot.company)
   const store = map(snapshot.store)
   const customer = map(snapshot.customer)
   const totals = map(snapshot.totals)
@@ -217,6 +219,17 @@ export async function downloadSalesInvoicePdf(
     doc.text(label, 142, y)
     doc.text(pdfMoney(value), 194, y, { align: 'right' })
     y += 6
+  }
+  if (showBankAccount && company.bankName && company.bankAccountNumber && company.bankAccountHolder) {
+    y = ensurePdfPage(doc, y + 5, () => undefined)
+    doc.setFillColor(245, 243, 255)
+    doc.roundedRect(14, y, 86, 22, 2, 2, 'F')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+    doc.text('REKENING PEMBAYARAN', 18, y + 6)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    doc.text(`${String(company.bankName)} · ${String(company.bankAccountNumber)}`, 18, y + 12)
+    doc.text(`a.n. ${String(company.bankAccountHolder)}`, 18, y + 18)
+    y += 24
   }
   const signatureY = drawPdfSignatures(doc, y + 14)
   await drawPdfStamp(doc, branding.logoPublicUrl, showStamp, signatureY)
@@ -314,6 +327,7 @@ function openPrint(title: string, body: string) {
 
 export function printSalesInvoiceDocument(
   document: JsonMap, showLogo = true, showStamp = false,
+  showBankAccount = false,
 ) {
   const snapshot = map(document.snapshot)
   const company = map(snapshot.company)
@@ -335,7 +349,9 @@ export function printSalesInvoiceDocument(
     ? `<span class="stamp"><img src="${escapeHtml(branding.logoPublicUrl)}" alt="Stempel perusahaan"></span>` : ''
   const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td><td class="num">${quantity(line.quantity)}</td><td class="num">${money(line.unitPrice)}</td><td class="num">${money(line.discount)}</td><td class="num">${money(line.lineTotal)}</td></tr>`).join('')
   const paymentHtml = payments.map((payment) => `<div><span>${escapeHtml(payment.methodName)}</span><strong>${money(payment.amount)}</strong></div>`).join('')
-  openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${dateTime(snapshot.transactionAt)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}<br><span class="muted">Kasir: ${escapeHtml(map(snapshot.cashier).name)}</span></div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section><section class="signatures"><div class="signature">Warehouse${stamp}</div><div class="signature">Security</div><div class="signature">Driver</div><div class="signature">Customer</div></section>`)
+  const bank = showBankAccount && company.bankName && company.bankAccountNumber && company.bankAccountHolder
+    ? `<section class="box" style="margin-top:18px;max-width:390px;background:#f5f3ff"><b>Rekening pembayaran</b>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></section>` : ''
+  openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${dateTime(snapshot.transactionAt)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}<br><span class="muted">Kasir: ${escapeHtml(map(snapshot.cashier).name)}</span></div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}<section class="signatures"><div class="signature">Warehouse${stamp}</div><div class="signature">Security</div><div class="signature">Driver</div><div class="signature">Customer</div></section>`)
 }
 
 export function printSalesDeliveryDocument(

@@ -88,6 +88,9 @@ type Supplier = {
   supplier_code: string
   supplier_name: string
   is_active: boolean
+  bank_name: string | null
+  bank_account_number: string | null
+  bank_account_holder: string | null
 }
 
 type Account = {
@@ -230,6 +233,10 @@ export default function SupplierPaymentView({
   const handleSupplierChange = (supId: string) => {
     setSelectedSupplierId(supId)
     setFormAllocations({})
+    const supplier = suppliers.find((item) => item.id === supId)
+    setSupplierBankName(supplier?.bank_name ?? '')
+    setSupplierBankAccountNo(supplier?.bank_account_number ?? '')
+    setSupplierBankAccountHolder(supplier?.bank_account_holder ?? '')
   }
 
   // Handle allocation amount change in Form
