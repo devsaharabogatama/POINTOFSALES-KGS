@@ -244,7 +244,7 @@ export class ESCPOSPrinter {
   </head>
   <body>
     <main>
-      <h1>KGS POS</h1>
+      <h1>MADS POS</h1>
       <p class="subtitle">${escapeHtml(data.documentLabel ?? 'Struk transaksi')}</p>
       ${
         data.warning

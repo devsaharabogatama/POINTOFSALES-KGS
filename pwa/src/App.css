@@ -1776,23 +1776,95 @@ button {
   background: #b42318;
 }
 
-.pos-session-strip {
-  color: #344252;
-  border-color: #d7dee7 !important;
-  border-radius: 10px !important;
+.pos-close-session-trigger {
+  color: #9f1c24 !important;
+  border-color: #efb9bc !important;
+  background: #fff5f5 !important;
+}
+
+.pos-close-session-trigger:hover:not(:disabled) {
+  border-color: #dc777d !important;
+  background: #ffe9ea !important;
+}
+
+.pos-close-session-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 14px;
+  border: 1px solid #e2e8f0;
+}
+
+.pos-close-session-dialog > svg {
+  width: 42px;
+  height: 42px;
+  padding: 10px;
+  color: #9f1c24 !important;
+  border-radius: 12px;
+  background: #fff0f1;
+}
+
+.pos-close-session-dialog > label,
+.pos-close-session-note,
+.pos-close-session-actions {
+  grid-column: 1 / -1;
+}
+
+.pos-close-session-dialog > label {
+  display: block;
+  margin-top: 14px;
+  color: #344252 !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pos-close-session-dialog > label input {
+  display: block;
+  width: 100%;
+  min-height: 50px;
+  margin: 8px 0 0 !important;
+  color: #17202a !important;
+  border-color: #cbd5e1 !important;
   background: #ffffff !important;
-  box-shadow: 0 2px 8px rgb(31 41 55 / 5%);
+  font-size: 20px !important;
+  font-weight: 900;
 }
 
-.pos-session-strip .text-slate-400 {
-  color: #667382 !important;
+.pos-close-session-dialog > label input:focus {
+  border-color: #008f86 !important;
+  box-shadow: 0 0 0 3px rgb(0 143 134 / 13%);
+  outline: none;
 }
 
-.pos-session-strip > button {
-  min-height: 42px;
-  color: #b42318 !important;
-  border: 1px solid #dd756d !important;
-  background: #fff7f6;
+.pos-close-session-note {
+  margin-top: 8px;
+  padding: 11px 12px;
+  color: #7f1d1d;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff7f7;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pos-close-session-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pos-close-session-actions button {
+  min-height: 46px;
+}
+
+@media (max-width: 520px) {
+  .pos-close-session-dialog {
+    padding: 20px !important;
+  }
+
+  .pos-close-session-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .pos-session-open {

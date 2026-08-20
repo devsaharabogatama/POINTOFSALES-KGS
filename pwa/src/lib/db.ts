@@ -159,6 +159,7 @@ export interface OfflineOperationalScopeRecord {
   terminalId: string;
   terminalCode: string;
   terminalName: string;
+  hiddenFeatureKeys?: string[];
   warehouseId: string;
   warehouseName: string;
   cashierId: string;

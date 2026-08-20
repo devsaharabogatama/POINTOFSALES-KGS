@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Building2, ImageIcon, RefreshCcw, ShieldCheck, Trash2, Upload, X } from 'lucide-react'
+import { Building2, Eye, EyeOff, ImageIcon, RefreshCcw, ShieldCheck, Trash2, Upload, X } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
 
 type BrandingProfile = {
   companyId: string
   hasLogo: boolean
+  showLogoOnDocuments: boolean
+  showStampOnDocuments: boolean
   logoObjectPath: string | null
   logoPublicUrl: string | null
   logoMimeType: string | null
@@ -154,6 +156,37 @@ export function CompanyBrandingView({
     }
   }
 
+  async function saveDocumentVisibility(input: {
+    showLogoOnDocuments?: boolean
+    showStampOnDocuments?: boolean
+  }) {
+    if (!branding || !canManage || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/platform/company-branding', {
+        method: 'PATCH',
+        headers: { ...authHeaders(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedMasterVersion: branding.masterVersion,
+          showLogoOnDocuments: input.showLogoOnDocuments ?? branding.showLogoOnDocuments,
+          showStampOnDocuments: input.showStampOnDocuments ?? branding.showStampOnDocuments,
+        }),
+      })
+      const payload = await response.json() as Payload
+      if (!response.ok) throw new Error(friendlyError(payload.error))
+      if (!payload.data || payload.data.companyId !== companyId) {
+        throw new Error('Hasil pengaturan logo tidak cocok dengan Company aktif.')
+      }
+      setBranding(payload.data)
+      notify('Tampilan identitas pada Invoice dan Surat Jalan berhasil diperbarui.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Pengaturan logo dokumen gagal disimpan.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const visibleLogo = previewUrl ?? branding?.logoPublicUrl ?? null
 
   return <>
@@ -188,6 +221,16 @@ export function CompanyBrandingView({
           </label>
         </div>
 
+        <div className={`mt-5 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${(branding?.showLogoOnDocuments ?? true) ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="flex items-start gap-3">{(branding?.showLogoOnDocuments ?? true) ? <Eye className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700"/> : <EyeOff className="mt-0.5 h-5 w-5 shrink-0 text-slate-500"/>}<div><p className="text-sm font-black text-slate-900">Tampilkan logo pada dokumen</p><p className="mt-1 text-xs leading-5 text-slate-600">Berlaku untuk template print dan PDF Invoice serta Surat Jalan. File logo tidak dihapus saat dimatikan.</p></div></div>
+          <button type="button" role="switch" aria-checked={branding?.showLogoOnDocuments ?? true} onClick={() => void saveDocumentVisibility({ showLogoOnDocuments: !(branding?.showLogoOnDocuments ?? true) })} disabled={!branding || !canManage || saving} className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-50 ${(branding?.showLogoOnDocuments ?? true) ? 'bg-emerald-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${(branding?.showLogoOnDocuments ?? true) ? 'left-7' : 'left-1'}`}/><span className="sr-only">{(branding?.showLogoOnDocuments ?? true) ? 'Nonaktifkan logo dokumen' : 'Aktifkan logo dokumen'}</span></button>
+        </div>
+
+        <div className={`mt-3 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${(branding?.showStampOnDocuments ?? false) ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="flex items-start gap-3">{(branding?.showStampOnDocuments ?? false) ? <Eye className="mt-0.5 h-5 w-5 shrink-0 text-blue-700"/> : <EyeOff className="mt-0.5 h-5 w-5 shrink-0 text-slate-500"/>}<div><p className="text-sm font-black text-slate-900">Tampilkan stempel pada dokumen</p><p className="mt-1 text-xs leading-5 text-slate-600">Memakai logo yang sama dengan efek cap biru-transparan di area tanda tangan Warehouse.</p></div></div>
+          <button type="button" role="switch" aria-checked={branding?.showStampOnDocuments ?? false} onClick={() => void saveDocumentVisibility({ showStampOnDocuments: !(branding?.showStampOnDocuments ?? false) })} disabled={!branding || !branding.hasLogo || !canManage || saving} className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-50 ${(branding?.showStampOnDocuments ?? false) ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${(branding?.showStampOnDocuments ?? false) ? 'left-7' : 'left-1'}`}/><span className="sr-only">{(branding?.showStampOnDocuments ?? false) ? 'Nonaktifkan stempel dokumen' : 'Aktifkan stempel dokumen'}</span></button>
+        </div>
+
         {!canManage && <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />Logo hanya dapat diubah Owner atau Admin Company.</div>}
 
         {canManage && <div className="mt-6 flex flex-wrap justify-end gap-3">
@@ -203,6 +246,8 @@ export function CompanyBrandingView({
         </div>
         <dl className="mt-5 space-y-3 text-sm">
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Status</dt><dd className="font-bold text-slate-800">{branding?.hasLogo ? 'Logo aktif' : 'Belum ada logo'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Di dokumen</dt><dd className="font-bold text-slate-800">{(branding?.showLogoOnDocuments ?? true) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Stempel</dt><dd className="font-bold text-slate-800">{(branding?.showStampOnDocuments ?? false) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Format</dt><dd className="font-bold text-slate-800">{branding?.logoMimeType?.replace('image/', '').toUpperCase() ?? '—'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Ukuran</dt><dd className="font-bold text-slate-800">{formatBytes(branding?.logoSizeBytes ?? null)}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Versi logo</dt><dd className="font-bold text-slate-800">{branding?.logoVersion ?? 0}</dd></div>

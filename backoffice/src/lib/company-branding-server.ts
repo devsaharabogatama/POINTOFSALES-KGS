@@ -7,9 +7,11 @@ import { ApiRouteError, canManageCompany, createAdminClient } from '@/lib/server
 const BUCKET = 'company-branding'
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 
-type BrandingProfile = {
+export type BrandingProfile = {
   companyId: string
   hasLogo: boolean
+  showLogoOnDocuments: boolean
+  showStampOnDocuments: boolean
   logoObjectPath: string | null
   logoPublicUrl: string | null
   logoMimeType: string | null
@@ -73,6 +75,7 @@ function rpcErrorCode(message: string): ApiRouteError {
     'COMPANY_LOGO_PUBLIC_URL_INVALID',
     'COMPANY_LOGO_PUBLIC_URL_PATH_MISMATCH',
     'COMPANY_LOGO_STORAGE_OBJECT_NOT_FOUND',
+    'COMPANY_DOCUMENT_LOGO_VISIBILITY_REQUIRED',
   ]
   const code = codes.find((candidate) => message.includes(candidate))
   if (!code) return new ApiRouteError('COMPANY_BRANDING_OPERATION_FAILED', 500)
@@ -214,4 +217,22 @@ export async function removeCompanyBranding(input: {
     }
   }
   return { data: removed.data as BrandingProfile, cleanupPending }
+}
+
+export async function saveCompanyDocumentLogoVisibility(input: {
+  caller: CallerContext
+  expectedMasterVersion: number | null
+  showLogoOnDocuments: boolean
+  showStampOnDocuments: boolean
+}) {
+  const saved = await input.caller.client.rpc(
+    'save_company_document_logo_visibility',
+    {
+      p_expected_master_version: input.expectedMasterVersion,
+      p_show_logo_on_documents: input.showLogoOnDocuments,
+      p_show_stamp_on_documents: input.showStampOnDocuments,
+    },
+  )
+  if (saved.error) throw rpcErrorCode(saved.error.message)
+  return saved.data as BrandingProfile
 }

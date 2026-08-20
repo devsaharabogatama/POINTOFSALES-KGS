@@ -3,6 +3,7 @@ import {
   getCompanyBranding,
   removeCompanyBranding,
   requireBrandingManager,
+  saveCompanyDocumentLogoVisibility,
   uploadCompanyBranding,
 } from '@/lib/company-branding-server'
 
@@ -70,6 +71,37 @@ export async function DELETE(request: Request) {
       expectedMasterVersion: Number(body.expectedMasterVersion),
     })
     return Response.json({ companyId, ...result })
+  } catch (error) {
+    return apiError(error)
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const caller = await requireCaller(request)
+    const companyId = await requireActiveCompany(caller)
+    await requireBrandingManager(caller, companyId)
+    const body = await request.json() as {
+      expectedMasterVersion?: unknown
+      showLogoOnDocuments?: unknown
+      showStampOnDocuments?: unknown
+    }
+    if (body.expectedMasterVersion !== null &&
+        (!Number.isInteger(body.expectedMasterVersion) || Number(body.expectedMasterVersion) < 1)) {
+      throw new ApiRouteError('INVALID_EXPECTED_MASTER_VERSION', 400)
+    }
+    if (typeof body.showLogoOnDocuments !== 'boolean' ||
+        typeof body.showStampOnDocuments !== 'boolean') {
+      throw new ApiRouteError('COMPANY_DOCUMENT_LOGO_VISIBILITY_REQUIRED', 400)
+    }
+    const data = await saveCompanyDocumentLogoVisibility({
+      caller,
+      expectedMasterVersion: body.expectedMasterVersion === null
+        ? null : Number(body.expectedMasterVersion),
+      showLogoOnDocuments: body.showLogoOnDocuments,
+      showStampOnDocuments: body.showStampOnDocuments,
+    })
+    return Response.json({ companyId, data })
   } catch (error) {
     return apiError(error)
   }

@@ -1,7 +1,7 @@
 # Router Dokumen KGS POS
 
 Panduan penggunaan untuk operator dan pengguna akhir tersedia di
-[`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md).
+[`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md) (Manual Pengguna MADS).
 
 Paket pengumpulan data dan urutan cutover go-live tersedia di
 [`templates/go-live-cutover/README.md`](templates/go-live-cutover/README.md).
@@ -361,6 +361,8 @@ berada di [`../README.md`](../README.md).
 | SLD-2 Sales document foundation rollout | `runbooks/SLD2_SALES_DOCUMENT_FOUNDATION_ROLLOUT.md` | Immutable Invoice snapshot, delivery-only Surat Jalan, legacy cutover, deferred finalization, tenant/audit/logo retention, postflight dan regression tanpa double Stock/Finance effect |
 | SLD-3 POS/Backoffice printable document UAT | `runbooks/SLD3_POS_BACKOFFICE_PRINT_UI.md` | Pickup/Delivery checkout, Invoice/SJ A4 new-tab print, Backoffice lifecycle, role, tenant, offline, dan no-double-effect smoke |
 | Inventory Surat Jalan authority split | `runbooks/INVENTORY_DELIVERY_DOCUMENT_AUTHORITY_ROLLOUT.md` | Pisahkan Sales Invoice dan Inventory Surat Jalan tanpa mengubah canonical Sale/POS/history |
+| MADS dokumen, PO export, dan Terminal UI | `runbooks/MADS_DOCUMENT_PO_TERMINAL_UI_ROLLOUT.md` | PDF Invoice/SJ bernama Customer, XLSX Supplier Order, audited UI-only feature visibility per Terminal, dan branding visual MADS |
+| Pengaturan logo dan stempel dokumen | `runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md` | Sakelar Company terpisah dan diaudit untuk logo header serta cap visual pada print/PDF Invoice dan Surat Jalan tanpa menghapus file logo |
 | SLD-R1 Delivery fee preflight | `runbooks/SLD_R1_DELIVERY_FEE_PREFLIGHT.md` | SELECT-only audit Sale/payment/offline/Return/Invoice/Finance readiness sebelum canonical ongkir R2 |
 | SLD-R2 Delivery fee foundation rollout | `runbooks/SLD_R2_DELIVERY_FEE_FOUNDATION_ROLLOUT.md` | Additive fee schema, retry-safe Draft total, Payment/Invoice/Event reconciliation, Company revenue mapping, postflight, behavior, compatibility, dan controlled G6 deferral |
 | SLD-R3 Delivery checkout/print UAT | `runbooks/SLD_R3_DELIVERY_CHECKOUT_PRINT_UAT.md` | Authenticated online/offline smoke untuk checkbox final, Customer autofill, ongkir, payment, Invoice display mode, Surat Jalan, Draft restore, dan tenant boundary |

@@ -447,6 +447,8 @@ export default function Home() {
     supplierOrderNavigation?.capabilities.includes("CREATE_DRAFT") ?? false;
   const canPostSupplierOrder =
     supplierOrderNavigation?.capabilities.includes("POST") ?? false;
+  const canExportSupplierOrder =
+    supplierOrderNavigation?.capabilities.includes("EXPORT") ?? false;
   const purchaseReturnNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "purchase-returns");
@@ -1001,6 +1003,7 @@ export default function Home() {
               companyId={activeCompanyId}
               canCreate={canCreateSupplierOrder}
               canPost={canPostSupplierOrder}
+              canExport={canExportSupplierOrder}
               notify={setNotice}
             />
           )}
@@ -1224,7 +1227,7 @@ function LoginScreen() {
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500">
             <Store className="h-5 w-5" />
           </span>
-          KGS POS
+          MADS
         </div>
         <div className="max-w-xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-emerald-300">
@@ -1238,7 +1241,7 @@ function LoginScreen() {
             tenant yang aman dan mudah dipindah.
           </p>
         </div>
-        <p className="text-xs text-slate-600">KGS Mini ERP · Backoffice</p>
+        <p className="text-xs text-slate-600">Management Distribution System · Backoffice</p>
       </div>
 
       <div className="flex min-h-[calc(100vh-2rem)] items-center justify-center lg:min-h-screen">
@@ -1360,7 +1363,7 @@ function Sidebar({
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500">
               <Store className="h-5 w-5" />
             </span>
-            KGS POS
+            MADS
           </button>
           <button
             onClick={close}

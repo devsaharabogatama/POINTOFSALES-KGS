@@ -14,6 +14,7 @@ import {
   submitCashDeposit,
   type CashDepositEligibleSession,
 } from './lib/pos'
+import { CurrencyInput } from './CurrencyInput'
 
 type Props = {
   storeId: string
@@ -166,7 +167,7 @@ export function CashDepositModal({ storeId, storeName, close, completed }: Props
             const hold = Number(reserved[session.sessionId] || 0)
             return <div key={session.sessionId} className={`rounded-2xl border p-4 ${checked ? 'border-emerald-400 bg-emerald-50/50' : 'border-slate-200'}`}>
               <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" checked={checked} onChange={(event) => setSelected((current) => ({ ...current, [session.sessionId]: event.target.checked }))} className="mt-1 h-4 w-4 accent-emerald-600" /><span className="flex-1"><span className="block font-black">{session.sessionCode} · {session.cashierName}</span><span className="mt-1 block text-xs text-slate-500">Ditutup {dateTime(session.closedAt)}</span></span><strong>{money(session.availableDepositAmount)}</strong></label>
-              {checked && <div className="mt-4 grid gap-3 rounded-xl bg-white p-3 sm:grid-cols-3"><Info label="Kas penutupan" value={money(session.closingCashActual)} /><Info label="Sudah dialokasikan" value={money(session.postedDepositAllocations)} /><label className="text-xs font-black uppercase tracking-wider text-slate-500">Saldo sesi berikutnya<input type="number" min="0" max={session.availableDepositAmount} value={reserved[session.sessionId] ?? ''} onChange={(event) => setReserved((current) => ({ ...current, [session.sessionId]: event.target.value }))} placeholder="0" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500" /><span className="mt-2 block normal-case tracking-normal text-emerald-700">Disetor: {money(Math.max(session.availableDepositAmount - Math.max(hold, 0), 0))}</span></label></div>}
+              {checked && <div className="mt-4 grid gap-3 rounded-xl bg-white p-3 sm:grid-cols-3"><Info label="Kas penutupan" value={money(session.closingCashActual)} /><Info label="Sudah dialokasikan" value={money(session.postedDepositAllocations)} /><label className="text-xs font-black uppercase tracking-wider text-slate-500">Saldo sesi berikutnya<CurrencyInput value={reserved[session.sessionId] ?? ''} onValueChange={(value) => setReserved((current) => ({ ...current, [session.sessionId]: value }))} placeholder="0" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500" /><span className="mt-2 block normal-case tracking-normal text-emerald-700">Disetor: {money(Math.max(session.availableDepositAmount - Math.max(hold, 0), 0))}</span></label></div>}
             </div>
           })}</div>
         </div>
@@ -189,6 +190,6 @@ export function CashDepositModal({ storeId, storeName, close, completed }: Props
 }
 
 function Field({ label, value, setValue, type = 'text', placeholder }: { label: string; value: string; setValue: (value: string) => void; type?: string; placeholder?: string }) {
-  return <label className="block text-sm font-black text-slate-700">{label}<input type={type} min={type === 'number' ? 0 : undefined} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-emerald-500" /></label>
+  return <label className="block text-sm font-black text-slate-700">{label}{type === 'number' ? <CurrencyInput value={value} onValueChange={setValue} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-emerald-500" /> : <input type={type} value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-emerald-500" />}</label>
 }
 function Info({ label, value }: { label: string; value: string }) { return <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-sm font-black text-slate-800">{value}</p></div> }

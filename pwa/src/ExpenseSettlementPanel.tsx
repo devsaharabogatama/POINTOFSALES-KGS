@@ -20,6 +20,7 @@ import {
   type CatalogData,
   type OutstandingExpense,
 } from './lib/pos'
+import { CurrencyInput } from './CurrencyInput'
 
 type Operation = 'ACTUAL' | 'RETURN' | 'ADDITIONAL'
 
@@ -282,7 +283,7 @@ export function ExpenseSettlementPanel({
       <section role="dialog" aria-modal="true" className="pos-expense-confirm-card">
         <header><div><small>Penyelesaian Expense</small><h3>{operation === 'ACTUAL' ? 'Catat biaya aktual' : operation === 'RETURN' ? 'Terima pengembalian tunai' : 'Ajukan dana tambahan'}</h3><p>{selected.documentNo} · outstanding {rupiah(selected.outstandingAmount)}</p></div><button type="button" onClick={() => setSelected(null)} disabled={busy} aria-label="Tutup"><X className="h-5 w-5" /></button></header>
         <div className="pos-expense-confirm-content">
-          <label>Nominal<span className="pos-expense-money-input"><span>Rp</span><input type="number" min="0.01" step="any" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} autoFocus /></span></label>
+          <label>Nominal<span className="pos-expense-money-input"><span>Rp</span><CurrencyInput value={amount} onValueChange={setAmount} autoFocus /></span></label>
           <label>Link bukti HTTPS {operation === 'ACTUAL' && selected.evidenceRequired ? '(wajib)' : '(opsional)'}<input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="https://drive.google.com/…" /></label>
           <div className="pos-expense-boundary">{operation === 'ACTUAL' ? <FileCheck2 className="h-5 w-5" /> : operation === 'RETURN' ? <BanknoteArrowDown className="h-5 w-5" /> : <PlusCircle className="h-5 w-5" />}<div><strong>{operation === 'ACTUAL' ? 'Menunggu review' : operation === 'RETURN' ? 'Langsung menambah expected cash' : 'Belum mencairkan dana'}</strong><span>{operation === 'ACTUAL' ? 'Total Expense belum berubah sebelum Manager/Finance menyetujui.' : operation === 'RETURN' ? 'Pastikan uang benar-benar diterima di laci sesi ini.' : 'Permintaan mengikuti aturan approval dan belum memiliki cash effect.'}</span></div></div>
           <label className="pos-expense-confirm-check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>Saya sudah memeriksa dokumen dan nominal di atas.</span></label>

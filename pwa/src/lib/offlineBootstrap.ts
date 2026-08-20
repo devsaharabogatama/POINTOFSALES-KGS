@@ -23,6 +23,7 @@ export type OfflineOperationalScopeInput = {
     code: string
     name: string
     storeName: string
+    hiddenFeatureKeys: string[]
   }
   warehouse: {
     id: string
@@ -160,6 +161,7 @@ export async function retainOfflineOperationalScope(
     terminalId: input.terminal.id,
     terminalCode: input.terminal.code,
     terminalName: input.terminal.name,
+    hiddenFeatureKeys: input.terminal.hiddenFeatureKeys,
     warehouseId: input.warehouse.id,
     warehouseName: input.warehouse.name,
     cashierId: input.cashierId,
@@ -217,6 +219,7 @@ export async function restoreOfflineColdStart(
           code: scope.terminalCode,
           name: scope.terminalName,
           storeName: scope.storeName,
+          hiddenFeatureKeys: scope.hiddenFeatureKeys ?? [],
         },
       ],
       warehouses: [

@@ -10,6 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import {
   FilePlus2,
+  Download,
   Loader2,
   RefreshCcw,
   Send,
@@ -121,18 +122,24 @@ export function SupplierOrderView({
   companyId,
   canCreate,
   canPost,
+  canExport,
   notify,
 }: {
   session: Session;
   companyId: string;
   canCreate: boolean;
   canPost: boolean;
+  canExport: boolean;
   notify: (value: string) => void;
 }) {
   const [payload, setPayload] = useState<Payload>({}),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
-    [selected, setSelected] = useState<RequestDoc | null>(null);
+    [selected, setSelected] = useState<RequestDoc | null>(null),
+    [exporting, setExporting] = useState(false),
+    [exportStatus, setExportStatus] = useState('ALL'),
+    [exportSupplier, setExportSupplier] = useState(''),
+    [exportStore, setExportStore] = useState('');
   const load = useCallback(async () => {
     const response = await fetch("/api/purchase/supplier-orders", {
       headers: headers(session),
@@ -252,6 +259,28 @@ export function SupplierOrderView({
     const ids = new Set(remainingLines.map((line) => line.document_id));
     return (payload.requests ?? []).filter((request) => ids.has(request.id));
   }, [payload.requests, remainingLines]);
+  async function exportOrders() {
+    setExporting(true); setError('')
+    try {
+      const query = new URLSearchParams({ status: exportStatus })
+      if (exportSupplier) query.set('supplierId', exportSupplier)
+      if (exportStore) query.set('storeId', exportStore)
+      const response = await fetch(`/api/purchase/supplier-orders/export?${query}`, { headers: headers(session) })
+      if (!response.ok) {
+        const body = await response.json() as { error?: string }
+        throw new Error(friendly(body.error))
+      }
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'Supplier-Order.xlsx'
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = fileName; anchor.click()
+      URL.revokeObjectURL(url)
+      notify('Export Supplier Order berhasil diunduh.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Export Supplier Order gagal.')
+    } finally { setExporting(false) }
+  }
   return (
     <>
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -266,14 +295,9 @@ export function SupplierOrderView({
             atau Finance pada tahap ini.
           </p>
         </div>
-        <button
-          onClick={() => void refresh()}
-          className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold"
-        >
-          <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Muat ulang
-        </button>
+        <div className="flex flex-wrap gap-2">{canExport && <button onClick={() => void exportOrders()} disabled={exporting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"><Download className="h-4 w-4"/>{exporting ? 'Menyiapkan...' : 'Export PO Excel'}</button>}<button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Muat ulang</button></div>
       </div>
+      {canExport && <div className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Status<select value={exportStatus} onChange={(event) => setExportStatus(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="ALL">Semua status</option>{['DRAFT','CONFIRMED','PARTIALLY_RECEIVED','RECEIVED','CANCELED'].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Supplier<select value={exportSupplier} onChange={(event) => setExportSupplier(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Supplier</option>{(payload.suppliers ?? []).map((item) => <option key={item.id} value={item.id}>{item.supplier_name}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Toko<select value={exportStore} onChange={(event) => setExportStore(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-800"><option value="">Semua Toko</option>{(payload.stores ?? []).map((item) => <option key={item.id} value={item.id}>{item.store_name}</option>)}</select></label></div>}
       {!canCreate && !canPost && (
         <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
           Akses baca saja sesuai permission Supplier Order Anda.

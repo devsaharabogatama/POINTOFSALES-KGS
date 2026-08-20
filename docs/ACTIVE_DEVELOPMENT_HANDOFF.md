@@ -1,5 +1,19 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-19 — COMPANY TRANSACTION RESET UPDATED FOR NEGATIVE REQUEST
+
+Controlled operation `prd_reset_company_transactional_data.sql` tetap menjadi
+jalur reset hasil trial per Company tanpa menghapus master/config/user. Target
+delete kini mencakup `stock_request_negative_allocations` dari migration
+`20260819170000`, sehingga schema-drift guard tidak berhenti setelah fitur
+request stok minus per sesi dipasang. Operasi menghapus balance Stock, FIFO,
+Movement, dokumen operasional, POS/Purchase/Expense/Finance runtime, mereset
+cache saldo Customer serta last purchase price, tetapi mempertahankan Product,
+UOM, Customer, Supplier, Company, Gudang, COA, policy, dan permission. Static
+transaction/delimiter check serta `git diff --check` PASS; preview dan execute
+staging tetap manual serta membutuhkan exact Company UUID/name dan confirmation
+phrase.
+
 ### 2026-08-19 — POS CART QUANTITY EDIT FIX LOCAL-READY
 
 Bug pengeditan quantity Cart diperbaiki: field angka kini boleh kosong sementara
@@ -9,7 +23,15 @@ penghapusan eksplisit hanya melalui tombol tong sampah. Input sementara ikut
 dibersihkan saat Draft dimuat, Product ditambah ulang, transaksi di-reset, atau
 baris dihapus. Evidence lokal: PWA `oxlint` PASS, production build PASS, dan
 `git diff --check` PASS. Deployment PWA serta authenticated browser smoke masih
-menunggu.
+menunggu. PWA kemudian dideploy ke project staging eksplisit
+`kgs-pos-pwa-staging` dan unauthenticated HTTP smoke `200` PASS. Catatan insiden:
+percobaan CLI pertama dari target parent mengabaikan link folder dan sempat
+mengalihkan alias Backoffice production `pointofsales-kgs` ke deployment baru;
+user menerima deployment tersebut selama environment DB tidak diubah; tidak ada
+environment atau database production/staging yang dimutasi. Backoffice kemudian
+dideploy dengan project ID eksplisit ke `pointofsales-kgs-staging`. Kedua domain
+staging (`pointofsales-kgs-staging.vercel.app` dan
+`kgs-pos-pwa-staging.vercel.app`) memberi HTTP `200`.
 
 ### 2026-08-19 — NEGATIVE STOCK SESSION REQUEST LOCAL-READY
 
@@ -5453,3 +5475,126 @@ Eksekusi hanya setelah backup dan maintenance window.
   `customer_master_audit`.
 - This is test-only compatibility with enforced `contacts.customers`; the
   Customer migration/runtime contract was not changed.
+
+### 2026-08-20 - MADS DOCUMENT/PO/TERMINAL UI LOCAL READY
+
+- Invoice dan Surat Jalan Backoffice mempunyai unduhan PDF nyata; filename
+  memakai Customer di depan dengan fallback `PELANGGAN-UMUM`, sedangkan UUID
+  internal tidak ditampilkan sebagai filename.
+- Supplier Order mempunyai XLSX tiga sheet (daftar, detail barang, informasi
+  export) melalui capability `purchase.supplier_orders EXPORT` dan guarded RPC.
+- Pengaturan Modul mempunyai konfigurasi audited per Terminal untuk
+  menyembunyikan tujuh tombol PWA. Ini UI-only; RPC authorization tidak dibuka
+  dan Terminal existing tetap menampilkan seluruh fitur.
+- Branding visual Backoffice, PWA, manifest, metadata, dan manual menjadi MADS;
+  identifier `KGS` pada schema/migration/history tidak diubah.
+- Evidence lokal: Backoffice ESLint PASS dan production build PASS (69 page/
+  route entries); PWA oxlint PASS dan TypeScript/Vite/PWA build PASS.
+- Manual gate: jalankan migration `20260820100000`, postflight, behavioral
+  rollback, deploy dua client, lalu smoke PDF/XLSX/Terminal sesuai
+  `docs/runbooks/MADS_DOCUMENT_PO_TERMINAL_UI_ROLLOUT.md`. Belum ada database
+  production/staging yang diubah oleh pekerjaan lokal ini.
+
+#### Manual gate update
+
+- User menjalankan `mads_po_export_terminal_ui_behavior.sql`; output terakhir
+  adalah JWT claim authenticated dan tidak diikuti exception. Behavioral test
+  dinyatakan PASS serta berakhir melalui `ROLLBACK`.
+- Target lokal Vercel menunjuk `pointofsales-kgs-staging` dan
+  `kgs-pos-pwa-staging`, tetapi remote project inspection timeout. Deployment
+  tidak dijalankan agar tidak menebak target atau menyentuh production.
+- Next safe step: konfirmasi postflight seluruhnya PASS, verifikasi remote
+  project/root directory, lalu deploy kedua project staging dan lakukan smoke.
+
+### 2026-08-20 - BULK SURAT JALAN PDF LOCAL READY
+
+- Inventory Surat Jalan kini memiliki checkbox per dokumen, pilih-semua hasil
+  filter, progres, dan tombol `Unduh PDF Terpilih`; unduh satuan tetap tersedia.
+- Maksimal 50 dokumen, tiga worker fetch/PDF/audit, ZIP level 0 agar PDF yang
+  sudah terkompresi tidak membebani CPU. Setiap PDF tetap memakai filename
+  Customer-first; kegagalan parsial masuk `GAGAL-DIUNDUH.txt`.
+- Tidak ada migration, grant, schema, lifecycle, Stock, Payment, atau Finance
+  yang berubah. Existing guarded detail dan print-audit RPC dipakai ulang untuk
+  setiap dokumen.
+- Evidence lokal: Backoffice ESLint PASS, production build PASS (69 route/page),
+  dan `git diff --check` PASS.
+- Manual smoke menunggu deployment staging: pilih dua SJ, unduh ZIP, periksa dua
+  PDF individual, filename Customer-first, serta tombol unduh satuan.
+
+### 2026-08-20 - DOCUMENT SIGNATURE TEMPLATE LOCAL READY
+
+- Template browser print dan PDF Invoice/Surat Jalan tidak lagi merender nama
+  Company pada header. Logo snapshot tetap opsional; identitas Customer, Store,
+  nomor, tanggal, dan isi dokumen tidak berubah.
+- Tanda tangan kedua dokumen kini empat kolom: Warehouse, Security, Driver, dan
+  Customer. Generator Surat Jalan bulk memakai template yang sama.
+- Tidak ada perubahan schema, snapshot, audit, permission, atau transaksi.
+- Evidence lokal: Backoffice ESLint PASS, production build PASS (69 route/page),
+  dan `git diff --check` PASS.
+- Manual smoke menunggu staging: print dan unduh masing-masing satu Invoice/SJ,
+  lalu periksa header serta empat tanda tangan pada PDF dan print preview.
+
+### 2026-08-20 - COMPANY DOCUMENT LOGO/STAMP VISIBILITY LOCAL READY
+
+- Ditambahkan setting audited per Company `show_logo_on_documents` default
+  `TRUE` dan `show_stamp_on_documents` default `FALSE`, beserta guarded
+  Owner/Admin RPC dengan optimistic version dan exact retry. File logo tidak
+  dihapus ketika kedua setting dimatikan.
+- Platform -> Logo Perusahaan mempunyai sakelar **Tampilkan logo pada dokumen**.
+  Sakelar kedua menampilkan cap biru-transparan berbasis logo di area Warehouse.
+  Keduanya hanya memengaruhi print/PDF Invoice dan Surat Jalan, termasuk bulk
+  ZIP; logo navigasi aplikasi dan immutable document snapshot tidak berubah.
+- File utama: migration `20260820110000_company_document_logo_visibility.sql`,
+  postflight, behavioral rollback test, API branding PATCH, UI branding, serta
+  renderer Invoice/Surat Jalan.
+- Evidence lokal: Backoffice ESLint PASS; production build PASS (69 route/page);
+  `git diff --check` PASS setelah dokumentasi akhir.
+- Manual gate: migration -> postflight seluruhnya PASS -> behavioral test tanpa
+  exception -> deploy staging -> smoke ON/OFF per Company sesuai
+  `docs/runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md`.
+- Compatibility: Company existing tetap logo ON/stempel OFF; client lama tidak rusak; tidak ada
+  deployment atau database production/staging yang disentuh pada pekerjaan ini.
+- Next safe step: user menjalankan tiga file SQL sesuai urutan, mengirim hasil
+  postflight/behavioral, lalu deploy dan smoke staging.
+
+### 2026-08-20 - PWA NUMERIC WHEEL AND SESSION FOOTER UX LOCAL READY
+
+- Seluruh `input[type=number]` di PWA dilindungi oleh satu capture listener:
+  wheel pada field fokus tidak mengubah nilai dan delta scroll dialihkan ke
+  ancestor scrollable terdekat atau halaman. Ketik, tombol spinner, keyboard,
+  validasi, dan payload transaksi tidak diubah.
+- Footer kas penutupan/Tutup Sesi sekarang fixed di bawah viewport selama sesi
+  aktif. `pos-main` mendapat safe bottom spacing; layout di bawah 900px menumpuk
+  input dan tombol agar tetap terbaca pada tablet/mobile.
+- File berubah: `pwa/src/App.tsx`, `pwa/src/App.css`, manual, root README, dan
+  handoff ini. Tidak ada migration, database mutation, permission, Stock,
+  Payment, Finance, atau lifecycle sesi yang berubah.
+- Evidence lokal: PWA oxlint PASS; TypeScript/Vite/PWA production build PASS
+  (19 precache entries); `git diff --check` PASS.
+- Browser visual automation tidak tersedia pada environment saat verifikasi;
+  authenticated staging smoke tetap wajib untuk field Qty, nominal pembayaran,
+  modal operasional, footer tablet, dan footer mobile.
+- Next safe step: deploy PWA staging, fokuskan field Qty bernilai 1 lalu scroll
+  dan pastikan tetap 1; cek panel tetap bergulir; tambah banyak produk dan
+  pastikan footer sesi selalu terlihat tanpa menutup action/cart terakhir.
+
+### 2026-08-20 - PWA CLOSE SESSION MODAL AND RUPIAH INPUT LOCAL READY
+
+- Perubahan ini menggantikan keputusan footer fixed pada boundary sebelumnya.
+  Penutupan sesi kini tersedia sebagai tombol **Tutup Sesi** pada header hanya
+  saat sesi aktif; tombol membuka modal khusus untuk kas fisik, peringatan, Batal,
+  dan konfirmasi akhir.
+- Komponen `CurrencyInput` menampilkan pemisah ribuan `id-ID` tanpa mengubah
+  nilai mentah yang dipakai payload. Cakupan: kas awal/akhir, diskon nominal,
+  bagian pembayaran, uang diterima/transfer, ongkir, Expense, penyelesaian
+  Expense, saldo kas sesi berikutnya, dan nominal aktual Setor Kas. Qty dan
+  persen tetap memakai input numerik sesuai kontrak satuan/decimal precision.
+- Tidak ada migration, perubahan schema, RPC, izin, lifecycle sesi, Stock,
+  Payment, atau Finance effect.
+- Evidence lokal: `pwa` oxlint PASS; TypeScript/Vite/PWA production build PASS
+  dengan 19 precache entries. Warning chunk utama lebih dari 500 kB tetap
+  warning non-blocking yang sudah ada.
+- Manual gate: deploy staging lalu smoke tablet/mobile untuk format ketik/paste,
+  split payment, Expense/Setor Kas, tombol header, backdrop/Batal, dan satu kali
+  penutupan sesi disposable. Pastikan nilai server sama dengan angka sebelum
+  separator display diterapkan.

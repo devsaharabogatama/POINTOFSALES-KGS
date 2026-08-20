@@ -25,8 +25,8 @@ Semua row milik Company target pada kelompok berikut:
 3. inventory: saldo stok, FIFO batch, Stock Movement, Stok Awal, Transfer,
    Adjustment, dan Opname beserta line/alokasi/audit dokumennya;
 4. purchase/AP: Stock Request, Supplier Order, Goods Receipt, Purchase Return,
-   Supplier Invoice, Supplier Payment, allocation, tolerance result, audit, dan
-   tabel purchase legacy;
+   Supplier Invoice, Supplier Payment, allocation—including lineage request
+   otomatis dari stok minus—tolerance result, audit, dan tabel purchase legacy;
 5. expense/kas: Expense, pencairan, settlement, return, additional request,
    cash drawer/in, Setoran Kas, serta Deposit Variance;
 6. saldo Customer: correction request, ledger, audit, dan cache
@@ -81,4 +81,3 @@ token konfirmasi, maintenance window, dan backup wajib diperiksa.
 Script sengaja berhenti jika menemukan tabel `company_id` baru yang belum
 diklasifikasikan atau target lama tanpa `company_id`. Jangan menghapus guard
 tersebut; klasifikasikan schema baru terlebih dahulu.
-

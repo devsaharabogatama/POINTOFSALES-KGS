@@ -101,6 +101,7 @@ INSERT INTO kgs_reset_targets(table_name) VALUES
 
     -- Purchase, receipt, Return, AP Invoice, and Supplier Payment runtime
     ('stock_request_audit'),
+    ('stock_request_negative_allocations'),
     ('supplier_order_audit'),
     ('supplier_order_request_allocations'),
     ('supplier_order_lines'),

@@ -51,6 +51,7 @@ import {
   type OfflineCheckoutPreview,
 } from './lib/offlineCheckout'
 import './App.css'
+import { CurrencyInput } from './CurrencyInput'
 import {
   acquireSaleDraftLock,
   cancelSaleDraft,
@@ -184,6 +185,28 @@ function createPaymentLeg(paymentMethodId = ''): PaymentLeg {
     proofUrl: '',
     overpaymentDisposition: 'RETURNED',
   }
+}
+
+function wheelDeltaPixels(event: WheelEvent) {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight
+  return event.deltaY
+}
+
+function scrollNumberInputContainer(input: HTMLInputElement, delta: number) {
+  let container = input.parentElement
+  while (container) {
+    const style = window.getComputedStyle(container)
+    if (
+      /(auto|scroll)/.test(style.overflowY) &&
+      container.scrollHeight > container.clientHeight
+    ) {
+      container.scrollTop += delta
+      return
+    }
+    container = container.parentElement
+  }
+  window.scrollBy({ top: delta, behavior: 'auto' })
 }
 
 function errorMessage(error: unknown) {
@@ -448,7 +471,29 @@ export default function App() {
   const [error, setError] = useState('')
   const [actionDialog, setActionDialog] = useState<ActionDialog | null>(null)
   const [actionDialogReason, setActionDialogReason] = useState('')
+  const [closeSessionOpen, setCloseSessionOpen] = useState(false)
   const offlineBootstrapAttemptRef = useRef('')
+
+  useEffect(() => {
+    function preventNumberWheelChange(event: WheelEvent) {
+      const input = event.target
+      if (
+        event.ctrlKey ||
+        !(input instanceof HTMLInputElement) ||
+        input.type !== 'number' ||
+        document.activeElement !== input
+      ) return
+      event.preventDefault()
+      scrollNumberInputContainer(input, wheelDeltaPixels(event))
+    }
+    document.addEventListener('wheel', preventNumberWheelChange, {
+      capture: true,
+      passive: false,
+    })
+    return () => document.removeEventListener(
+      'wheel', preventNumberWheelChange, { capture: true },
+    )
+  }, [])
 
   const activeCompany = companies.find((item) => item.id === companyId)
   const canForceReleaseDraft = Boolean(
@@ -460,6 +505,8 @@ export default function App() {
   const activeTerminal = bootstrap?.terminals.find(
     (item) => item.id === (cashierSession?.terminalId || terminalId),
   )
+  const terminalFeatureVisible = (featureKey: string) =>
+    !(activeTerminal?.hiddenFeatureKeys ?? []).includes(featureKey)
   const activeWarehouse = bootstrap?.warehouses.find(
     (item) => item.id === (cashierSession?.warehouseId || warehouseId),
   )
@@ -1191,7 +1238,8 @@ export default function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (actionDialog) {
+      if (closeSessionOpen && !busy) setCloseSessionOpen(false)
+      else if (actionDialog) {
         setActionDialog(null)
         setActionDialogReason('')
       } else if (deliveryDetailsOpen) setDeliveryDetailsOpen(false)
@@ -1216,6 +1264,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [
     actionDialog,
+    busy,
+    closeSessionOpen,
     deliveryDetailsOpen,
     draftPanelOpen,
     error,
@@ -1343,14 +1393,7 @@ export default function App() {
 
   function handleCloseSession() {
     if (!cashierSession || !session || !companyId || !activeCompany) return
-    openActionDialog({
-      title: 'Tutup sesi kasir?',
-      description:
-        'Sistem akan menyimpan snapshot stok penutupan dan menghitung selisih kas fisik.',
-      confirmLabel: 'Tutup sesi',
-      tone: 'danger',
-      onConfirm: executeCloseSession,
-    })
+    setCloseSessionOpen(true)
   }
 
   async function executeCloseSession() {
@@ -1392,6 +1435,7 @@ export default function App() {
       )
       resetSale()
       setSaleDrafts([])
+      setCloseSessionOpen(false)
       await refreshBootstrap(
         companyId,
         session.user.id,
@@ -2506,7 +2550,7 @@ export default function App() {
     } catch (reason) {
       setError(
         errorMessage(reason) === 'POPUP_BLOCKED'
-          ? 'Browser memblokir tab struk. Izinkan pop-up untuk KGS POS lalu coba lagi.'
+          ? 'Browser memblokir tab struk. Izinkan pop-up untuk MADS POS lalu coba lagi.'
           : friendlyError(errorMessage(reason)),
       )
     }
@@ -2784,7 +2828,7 @@ export default function App() {
   }
 
   if (loading && !session) {
-    return <CenteredMessage text="Memuat KGS POS…" />
+    return <CenteredMessage text="Memuat MADS POS…" />
   }
 
   if (!session) {
@@ -2796,7 +2840,7 @@ export default function App() {
         >
           <div className="mb-8">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-400">
-              KGS POS Online
+              MADS POS Online
             </p>
             <h1 className="mt-2 text-3xl font-black">Masuk sebagai Kasir</h1>
             <p className="mt-2 text-sm text-slate-400">
@@ -2864,7 +2908,7 @@ export default function App() {
       <header className="pos-topbar sticky top-0 z-30 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex w-full flex-wrap items-center gap-3">
           <div className="pos-brand mr-auto">
-            <h1 className="text-xl font-black">KGS POS</h1>
+            <h1 className="text-xl font-black">MADS POS</h1>
             <p className="text-xs text-slate-400">
               {cashierSession
                 ? `${cashierSession.code} · ${activeTerminal?.name ?? 'Terminal'}`
@@ -2904,7 +2948,7 @@ export default function App() {
                 ? 'Offline · cache tersedia'
                 : 'Offline belum siap'}
           </div>
-          {cashierSession && (
+          {cashierSession && terminalFeatureVisible('SALES_RETURN') && (
             <button
               type="button"
               onClick={() => setSalesReturnOpen(true)}
@@ -2916,7 +2960,7 @@ export default function App() {
               <span className="pos-action-label">Return</span>
             </button>
           )}
-          {cashierSession && catalog.expenseEnabled && (
+          {cashierSession && catalog.expenseEnabled && terminalFeatureVisible('EXPENSE') && (
             <button
               type="button"
               onClick={() => setExpenseRequestOpen(true)}
@@ -2928,22 +2972,22 @@ export default function App() {
               <span className="pos-action-label">Expense</span>
             </button>
           )}
-          {cashierSession && (
+          {cashierSession && terminalFeatureVisible('STOCK_REQUEST') && (
             <button type="button" onClick={() => setStockRequestOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buat Permintaan Stok' : 'Permintaan Stok memerlukan koneksi online'}>
               <ClipboardList className="h-5 w-5" /><span className="pos-action-label">Minta Stok</span>
             </button>
           )}
-          {cashierSession && (
+          {cashierSession && terminalFeatureVisible('GOODS_RECEIPT') && (
             <button type="button" onClick={() => setGoodsReceiptOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Terima barang dari Supplier Order' : 'Penerimaan barang memerlukan koneksi online'}>
               <Package className="h-5 w-5" /><span className="pos-action-label">Terima Barang</span>
             </button>
           )}
-          {cashierSession && (
+          {cashierSession && terminalFeatureVisible('PURCHASE_RETURN') && (
             <button type="button" onClick={() => setPurchaseReturnOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buat draft retur barang ke Supplier' : 'Retur Pembelian memerlukan koneksi online'}>
               <PackageMinus className="h-5 w-5" /><span className="pos-action-label">Retur Supplier</span>
             </button>
           )}
-          {activeTerminal && (
+          {activeTerminal && terminalFeatureVisible('CASH_DEPOSIT') && (
             <button
               type="button"
               onClick={() => setCashDepositOpen(true)}
@@ -2955,7 +2999,7 @@ export default function App() {
               <span className="pos-action-label">Setor Kas</span>
             </button>
           )}
-          {cashierSession && (
+          {cashierSession && terminalFeatureVisible('OFFLINE') && (
             <button
               type="button"
               onClick={() => setOfflinePanelOpen(true)}
@@ -2990,6 +3034,18 @@ export default function App() {
               {isPrinterConnected ? 'Printer siap' : 'Hubungkan printer'}
             </span>
           </button>
+          {cashierSession && (
+            <button
+              type="button"
+              onClick={handleCloseSession}
+              disabled={busy}
+              className="pos-top-action pos-close-session-trigger rounded-xl p-2"
+              title="Tutup sesi kasir"
+            >
+              <Clock3 className="h-5 w-5" />
+              <span className="pos-action-label">Tutup Sesi</span>
+            </button>
+          )}
           <button
             onClick={handleLogout}
             disabled={busy}
@@ -3229,18 +3285,30 @@ export default function App() {
                             <option value="AMOUNT">Diskon nominal</option>
                             <option value="PERCENT">Diskon persen</option>
                           </select>
-                          <input
-                            type="number"
-                            min="0"
-                            disabled={!item.discountType}
-                            value={item.discountInput}
-                            onChange={(event) =>
-                              updateCart(item.product.productUomId, {
-                                discountInput: Number(event.target.value),
-                              })
-                            }
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
-                          />
+                          {item.discountType === 'AMOUNT' ? (
+                            <CurrencyInput
+                              value={item.discountInput}
+                              onValueChange={(value) =>
+                                updateCart(item.product.productUomId, {
+                                  discountInput: Number(value || 0),
+                                })
+                              }
+                              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              disabled={!item.discountType}
+                              value={item.discountInput}
+                              onChange={(event) =>
+                                updateCart(item.product.productUomId, {
+                                  discountInput: Number(event.target.value),
+                                })
+                              }
+                              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
+                            />
+                          )}
                         </div>
                       </div>
                     )
@@ -3347,12 +3415,10 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-xs font-semibold text-slate-400">
                     Diskon transaksi
-                    <input
-                      type="number"
-                      min="0"
+                    <CurrencyInput
                       value={globalDiscount}
-                      onChange={(event) => {
-                        setGlobalDiscount(event.target.value)
+                      onValueChange={(value) => {
+                        setGlobalDiscount(value)
                         setResolvedLines([])
                       }}
                       className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
@@ -3568,17 +3634,14 @@ export default function App() {
                                     </button>
                                   )}
                                 </div>
-                                <input
+                                <CurrencyInput
                                   id={`payment-amount-${leg.clientPaymentKey}`}
-                                  type="number"
-                                  min="0"
                                   value={leg.amount}
                                   readOnly={
                                     isCustomerBalance ||
                                     paymentLegs.length === 1
                                   }
-                                  onChange={(event) => {
-                                    const amount = event.target.value
+                                  onValueChange={(amount) => {
                                     updatePaymentLeg(leg.clientPaymentKey, {
                                       amount,
                                     ...(['CASH', 'TRANSFER'].includes(
@@ -3611,13 +3674,11 @@ export default function App() {
                                       ? 'Uang diterima'
                                       : 'Nominal transfer diterima'}
                                   </span>
-                                  <input
-                                    type="number"
-                                    min="0"
+                                  <CurrencyInput
                                     value={leg.tenderedAmount}
-                                    onChange={(event) =>
+                                    onValueChange={(value) =>
                                       updatePaymentLeg(leg.clientPaymentKey, {
-                                        tenderedAmount: event.target.value,
+                                        tenderedAmount: value,
                                       })
                                     }
                                     placeholder="Masukkan uang yang diterima"
@@ -3866,11 +3927,21 @@ export default function App() {
           </div>
         )}
 
-        {cashierSession && (
-          <section className="pos-session-strip mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        {closeSessionOpen && cashierSession && (
+          <div
+            className="pos-action-dialog-overlay fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target && !busy) {
+                setCloseSessionOpen(false)
+              }
+            }}
+          >
+          <section role="dialog" aria-modal="true" aria-labelledby="close-session-title" className="pos-close-session-dialog w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950 shadow-2xl">
             <Clock3 className="h-5 w-5 text-emerald-400" />
             <div className="mr-auto">
-              <p className="font-bold">{cashierSession.code}</p>
+              <p className="text-xs font-black uppercase tracking-wider text-rose-700">Penutupan kasir</p>
+              <h2 id="close-session-title" className="mt-1 text-2xl font-black">Tutup Sesi</h2>
+              <p className="mt-2 font-bold">{cashierSession.code}</p>
               <p className="text-xs text-slate-400">
                 {activeCompany?.name} · {activeTerminal?.storeName} ·{' '}
                 {activeWarehouse?.name}
@@ -3878,26 +3949,34 @@ export default function App() {
             </div>
             <label className="text-xs text-slate-400">
               Kas fisik penutupan
-              <input
-                type="number"
-                min="0"
+              <CurrencyInput
                 value={closingCash}
-                onChange={(event) => setClosingCash(event.target.value)}
+                onValueChange={setClosingCash}
+                autoFocus
+                placeholder="0"
                 className="ml-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
               />
             </label>
-            <button
-              disabled={busy}
-              onClick={handleCloseSession}
-              className="rounded-xl border border-rose-800 px-4 py-2 text-sm font-bold text-rose-300"
-            >
-              Tutup Sesi
-            </button>
+            <p className="pos-close-session-note">
+              Pastikan nominal sesuai kas fisik. Sesi yang sudah ditutup tidak
+              dapat dipakai untuk transaksi baru.
+            </p>
+            <footer className="pos-close-session-actions">
+              <button type="button" disabled={busy} onClick={() => setCloseSessionOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Batal</button>
+              <button
+                disabled={busy || closingCash === ''}
+                onClick={() => void executeCloseSession()}
+                className="rounded-xl border border-rose-700 bg-rose-700 px-4 py-2 text-sm font-bold text-white"
+              >
+                {busy ? 'Menutup...' : 'Konfirmasi Tutup'}
+              </button>
+            </footer>
           </section>
+          </div>
         )}
       </main>
 
-      {offlinePanelOpen && cashierSession && (
+      {offlinePanelOpen && cashierSession && terminalFeatureVisible('OFFLINE') && (
         <div
           className="pos-offline-drawer-overlay fixed inset-0 z-50 bg-black/60 p-3 sm:p-6"
           onMouseDown={(event) => {
@@ -3982,7 +4061,7 @@ export default function App() {
         />
       )}
 
-      {salesReturnOpen && cashierSession && activeCompany && (
+      {salesReturnOpen && cashierSession && activeCompany && terminalFeatureVisible('SALES_RETURN') && (
         <Suspense fallback={<CenteredMessage text="Membuka Return…" />}>
           <SalesReturnModal
             companyId={activeCompany.id}
@@ -3998,7 +4077,7 @@ export default function App() {
         </Suspense>
       )}
 
-      {expenseRequestOpen && cashierSession && session && (
+      {expenseRequestOpen && cashierSession && session && terminalFeatureVisible('EXPENSE') && (
         <Suspense fallback={<CenteredMessage text="Membuka Expense…" />}>
           <ExpenseRequestModal
             cashierSession={cashierSession}
@@ -4027,7 +4106,7 @@ export default function App() {
         </Suspense>
       )}
 
-      {cashDepositOpen && activeTerminal && (
+      {cashDepositOpen && activeTerminal && terminalFeatureVisible('CASH_DEPOSIT') && (
         <Suspense fallback={<CenteredMessage text="Membuka Setor Kas…" />}>
           <CashDepositModal
             storeId={activeTerminal.storeId}
@@ -4042,13 +4121,13 @@ export default function App() {
         </Suspense>
       )}
 
-      {stockRequestOpen && cashierSession && activeCompany && (
+      {stockRequestOpen && cashierSession && activeCompany && terminalFeatureVisible('STOCK_REQUEST') && (
         <Suspense fallback={<CenteredMessage text="Membuka Permintaan Stok…" />}>
           <StockRequestModal companyId={activeCompany.id} cashierSessionId={cashierSession.id} close={() => setStockRequestOpen(false)} completed={(message) => { setStockRequestOpen(false); setNotice(message); setError('') }} />
         </Suspense>
       )}
 
-      {goodsReceiptOpen && cashierSession && activeCompany && (
+      {goodsReceiptOpen && cashierSession && activeCompany && terminalFeatureVisible('GOODS_RECEIPT') && (
         <Suspense fallback={<CenteredMessage text="Membuka Penerimaan Barang…" />}>
           <GoodsReceiptModal
             companyId={activeCompany.id}
@@ -4064,7 +4143,7 @@ export default function App() {
         </Suspense>
       )}
 
-      {purchaseReturnOpen && cashierSession && activeCompany && (
+      {purchaseReturnOpen && cashierSession && activeCompany && terminalFeatureVisible('PURCHASE_RETURN') && (
         <Suspense fallback={<CenteredMessage text="Membuka Retur Pembelian…" />}>
           <PurchaseReturnModal
             companyId={activeCompany.id}
@@ -4261,12 +4340,9 @@ export default function App() {
               </label>
               <label>
                 <span>Ongkir</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
+                <CurrencyInput
                   value={deliveryFeeAmount}
-                  onChange={(event) => setDeliveryFeeAmount(event.target.value)}
+                  onValueChange={setDeliveryFeeAmount}
                   placeholder="0"
                 />
               </label>
@@ -5258,12 +5334,10 @@ function SessionOpenPanel({
       </div>
       <label className="mt-4 block text-sm font-semibold text-slate-300">
         Modal kas fisik
-        <input
-          type="number"
-          min="0"
+        <CurrencyInput
           required
           value={openingCash}
-          onChange={(event) => onOpeningCashChange(event.target.value)}
+          onValueChange={onOpeningCashChange}
           className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
         />
       </label>

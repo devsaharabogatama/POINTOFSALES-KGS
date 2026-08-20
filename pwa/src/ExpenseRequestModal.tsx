@@ -20,6 +20,7 @@ import {
   type CatalogData,
 } from './lib/pos'
 import { ExpenseSettlementPanel } from './ExpenseSettlementPanel'
+import { CurrencyInput } from './CurrencyInput'
 
 type Props = {
   cashierSession: CashierSession
@@ -368,14 +369,10 @@ export function ExpenseRequestModal({
                 Nominal yang diajukan
                 <span className="pos-expense-money-input">
                   <span>Rp</span>
-                  <input
+                  <CurrencyInput
                     required
-                    type="number"
-                    inputMode="decimal"
-                    min="0.01"
-                    step="any"
                     value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
+                    onValueChange={setAmount}
                     placeholder="0"
                   />
                 </span>

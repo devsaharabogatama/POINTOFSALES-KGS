@@ -44,9 +44,9 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
         manifest: {
-          name: 'KGS POS Kasir',
-          short_name: 'KGS POS',
-          description: 'Terminal Kasir Point of Sales Offline-First KGS',
+          name: 'MADS POS Kasir',
+          short_name: 'MADS POS',
+          description: 'Terminal kasir Management Distribution System',
           theme_color: '#0f172a',
           background_color: '#0f172a',
           display: 'standalone',

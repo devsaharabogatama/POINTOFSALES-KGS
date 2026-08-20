@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KGS Backoffice Dashboard",
-  description: "Dashboard Manajemen ERP KGS - Point of Sales, Stok Multi-Warehouse, & Accounting Double-Entry.",
+  title: "MADS Backoffice",
+  description: "Management Distribution System untuk Point of Sale, stok multi-warehouse, purchasing, dan finance.",
 };
 
 export default function RootLayout({

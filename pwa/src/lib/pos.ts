@@ -13,6 +13,7 @@ export type TerminalOption = {
   code: string
   name: string
   storeName: string
+  hiddenFeatureKeys: string[]
 }
 
 export type WarehouseOption = {
@@ -641,7 +642,7 @@ export async function loadBootstrap(
       .eq('status', 'ACTIVE'),
     supabase
       .from('pos_terminals')
-      .select('id,store_id,pos_code,pos_name')
+      .select('id,store_id,pos_code,pos_name,hidden_feature_keys')
       .eq('company_id', companyId)
       .eq('status', 'ACTIVE'),
     supabase
@@ -696,6 +697,9 @@ export async function loadBootstrap(
       code: row.pos_code,
       name: row.pos_name,
       storeName: storeNames.get(row.store_id) ?? 'Store',
+      hiddenFeatureKeys: Array.isArray(row.hidden_feature_keys)
+        ? row.hidden_feature_keys.map(String)
+        : [],
     }))
   const warehouses = (warehousesResult.data ?? []).map((row) => ({
     id: row.id,

@@ -1,15 +1,15 @@
-# Manual Pengguna KGS POS
+# Manual Pengguna MADS
 
 Versi dokumen: 14 Agustus 2026  
 Sasaran pembaca: pemilik perusahaan, administrator, manajer toko, staf gudang, kasir, Finance, dan Accounting.
 
-Manual ini menjelaskan penggunaan Backoffice dan PWA KGS POS berdasarkan fitur yang tersedia saat ini. Menu dan tindakan yang terlihat dapat berbeda karena akses ditentukan oleh perusahaan aktif, peran, pengaturan modul, penugasan toko, serta pembatasan khusus pengguna.
+Manual ini menjelaskan penggunaan Backoffice dan PWA MADS berdasarkan fitur yang tersedia saat ini. Menu dan tindakan yang terlihat dapat berbeda karena akses ditentukan oleh perusahaan aktif, peran, pengaturan modul, penugasan toko, serta pembatasan khusus pengguna.
 
 > Catatan penting: status **Draft**, **Diajukan**, atau **Menunggu Persetujuan** belum menimbulkan dampak final terhadap stok, kas, utang, saldo pelanggan, atau jurnal. Dampak final hanya terjadi melalui tindakan seperti **Post**, **Validasi**, **Cairkan**, atau **Setujui**, sesuai alur masing-masing dokumen.
 
 ## Daftar Isi
 
-1. [Mengenal KGS POS](#1-mengenal-kgs-pos)
+1. [Mengenal MADS](#1-mengenal-mads)
 2. [Peran dan hak akses](#2-peran-dan-hak-akses)
 3. [Masuk, keluar, dan memilih perusahaan](#3-masuk-keluar-dan-memilih-perusahaan)
 4. [Navigasi Backoffice](#4-navigasi-backoffice)
@@ -37,9 +37,9 @@ Manual ini menjelaskan penggunaan Backoffice dan PWA KGS POS berdasarkan fitur y
 
 ---
 
-## 1. Mengenal KGS POS
+## 1. Mengenal MADS
 
-KGS POS terdiri atas dua aplikasi:
+MADS (Management Distribution System) terdiri atas dua aplikasi:
 
 - **Backoffice** untuk pengaturan master, persediaan, pembelian, penjualan, Finance, laporan, perusahaan, pengguna, serta pertukaran data.
 - **PWA POS** untuk kegiatan kasir: membuka sesi, menjual, menyimpan Draft, menerima pembayaran, mencetak dokumen, membuat permintaan stok, menerima barang, retur, Expense, setor kas, dan transaksi offline yang diizinkan.
@@ -158,11 +158,21 @@ Posting opname membuat Penyesuaian Stok kanonis.
 
 1. Buka **Inventory → Surat Jalan**.
 2. Cari dokumen berdasarkan nomor, pelanggan, atau status.
-3. Buka detail dan cetak dokumen.
+3. Buka detail, lalu pilih **Cetak** atau **Unduh PDF**.
 4. Ubah status menjadi dikirim ketika barang berangkat.
 5. Konfirmasikan terkirim setelah penerima menerima barang.
 
 Perubahan status Surat Jalan tidak mengurangi stok untuk kedua kalinya.
+Nama berkas PDF diawali nama pelanggan, misalnya
+`PT-MAJU-JAYA_SJ-20260820-000007.pdf`, agar mudah dikelompokkan.
+
+Untuk mengunduh banyak dokumen, tandai Surat Jalan yang diperlukan lalu pilih
+**Unduh PDF Terpilih**. Sistem membuat satu ZIP dengan setiap Surat Jalan tetap
+sebagai PDF terpisah. Maksimal 50 dokumen per proses; kegagalan parsial dicatat
+dalam `GAGAL-DIUNDUH.txt` tanpa membatalkan PDF lain yang berhasil.
+
+Template cetak tidak menampilkan nama perusahaan pada header. Bagian tanda
+tangan terdiri dari **Warehouse**, **Security**, **Driver**, dan **Customer**.
 
 ### 6.7 Produk & UOM
 
@@ -224,6 +234,9 @@ Saat mencabut akses, nonaktifkan keanggotaan perusahaan.
 3. Pilih baris yang akan dipesan dan supplier tujuan.
 4. Buat Supplier Order, periksa harga estimasi, UOM, serta gudang tujuan.
 5. Konfirmasikan order.
+6. Gunakan **Export Excel** untuk mengunduh daftar dan detail barang PO sesuai
+   filter yang dipilih. Tombol hanya tersedia bagi pengguna yang memiliki
+   kemampuan **EXPORT** Supplier Order.
 
 Baris yang sudah masuk Supplier Order tidak lagi ditampilkan sebagai kebutuhan terbuka. Baris lain tetap dapat dipesan ke supplier berbeda.
 
@@ -249,7 +262,13 @@ Retur sebagian dus dalam satuan lebih kecil diperbolehkan jika konversi UOM ters
 
 ### 9.1 Invoice Penjualan
 
-Menampilkan snapshot invoice final untuk melihat, mencetak ulang, dan menelusuri bukti transaksi. Perubahan master tidak mengubah invoice historis.
+Menampilkan snapshot invoice final untuk melihat, mencetak ulang, mengunduh PDF,
+dan menelusuri bukti transaksi. Nama berkas PDF diawali nama pelanggan, misalnya
+`PT-MAJU-JAYA_INV-20260820-000012.pdf`. Perubahan master tidak mengubah invoice
+historis.
+
+Template Invoice tidak menampilkan nama perusahaan pada header dan menyediakan
+tanda tangan **Warehouse**, **Security**, **Driver**, serta **Customer**.
 
 ### 9.2 Pricelist
 
@@ -345,11 +364,28 @@ Kelola identitas perusahaan. Perubahan hanya berlaku pada perusahaan terpilih.
 
 ### 11.2 Logo Perusahaan
 
-Unggah, ganti, atau hapus logo. Logo tampil di samping nama perusahaan dan dipakai pada dokumen. Berkas yang sudah dirujuk snapshot historis tetap dipertahankan.
+Unggah, ganti, atau hapus logo. Logo tetap tampil di samping nama perusahaan
+sebagai identitas aplikasi.
+
+Gunakan sakelar **Tampilkan logo pada dokumen** untuk menentukan apakah logo
+dicetak pada Invoice dan Surat Jalan, termasuk PDF satuan dan ZIP Surat Jalan.
+Jika sakelar dimatikan, berkas logo tidak dihapus dan tetap dapat dipakai lagi
+ketika pengaturan diaktifkan. Berkas yang sudah dirujuk snapshot historis tetap
+dipertahankan.
+
+Sakelar **Tampilkan stempel pada dokumen** memakai file logo yang sama sebagai
+cap biru-transparan di area tanda tangan Warehouse. Logo header dan stempel
+dapat diaktifkan atau dimatikan secara terpisah. Stempel ini merupakan tampilan
+template dokumen, bukan tanda tangan digital tersertifikasi.
 
 ### 11.3 Pengaturan Modul
 
 Aktifkan/nonaktifkan fitur per perusahaan. Menonaktifkan modul menutup operasi baru, tetapi tidak menghapus histori.
+
+Bagian **Tampilan Fitur Terminal POS** dapat menyembunyikan tombol operasional
+tertentu hanya pada Terminal yang dipilih. Pengaturan ini hanya mengatur
+tampilan; hak akses server tetap berlaku dan tidak berubah. Terminal lama
+menampilkan seluruh fitur sampai pengaturannya disimpan.
 
 ## 12. Data Exchange
 
@@ -386,6 +422,15 @@ Satu kasir tidak boleh mempunyai dua sesi terbuka yang tumpang tindih.
 
 Tersedia daftar produk, kategori, keranjang, pelanggan/pricelist, Draft, checkout, Return, Expense, Minta Stok, Terima Barang, Retur Supplier, Setor Kas, Offline, printer, dan tutup sesi.
 
+Roda mouse atau gesture scroll pada field angka tidak mengubah nominal maupun
+kuantitas yang sedang diketik. Scroll tetap menggerakkan panel atau halaman.
+Nominal uang ditampilkan dengan pemisah ribuan, misalnya `100.000`, agar kasir
+lebih mudah memeriksa jumlah sebelum menyimpan transaksi.
+
+Tombol **Tutup Sesi** tersedia pada header selama sesi aktif. Tombol tersebut
+membuka modal khusus untuk memasukkan kas fisik penutupan dan melakukan
+konfirmasi akhir.
+
 ### Draft
 
 Gunakan saat transaksi belum siap dibayar. Draft tidak mengurangi stok dan belum membentuk jurnal. Kunci edit mencegah Draft ditimpa kasir lain.
@@ -396,7 +441,10 @@ Tambahkan beberapa pembayaran, pilih metode, lalu isi **Uang diterima** per meto
 
 ### Menutup sesi
 
-Pastikan transaksi selesai, antrean Offline diperiksa, isi kas penutupan aktual, lalu tutup sesi. Sesi dengan kewajiban Offline aktif dapat ditolak.
+Pastikan transaksi selesai dan antrean Offline sudah diperiksa. Klik **Tutup
+Sesi** pada header, isi kas penutupan aktual pada modal, periksa kembali nominal
+yang ditampilkan, lalu pilih **Konfirmasi Tutup**. Sesi dengan kewajiban Offline
+aktif dapat ditolak.
 
 ## 14. Alur penjualan lengkap
 

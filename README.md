@@ -1,6 +1,38 @@
-# KGS POS
+# MADS — Management Distribution System
 
-Panduan penggunaan lengkap: [Manual Pengguna KGS POS](docs/MANUAL_PENGGUNA_KGS_POS.md).
+Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
+
+Paket MADS dokumen/PO/Terminal UI sekarang **local-ready**: Backoffice dapat
+mengunduh PDF Invoice dan Surat Jalan dengan nama Customer di depan, Supplier
+Order mempunyai export XLSX berizin, dan fitur operasional PWA dapat
+disembunyikan per Terminal tanpa mengubah otorisasi server. Branding visual
+menjadi **MADS - Management Distribution System**; identifier database
+historis tetap dipertahankan. Migration dan authenticated smoke masih menunggu
+rollout manual sesuai [runbook](docs/runbooks/MADS_DOCUMENT_PO_TERMINAL_UI_ROLLOUT.md).
+
+Surat Jalan juga mendukung bulk download lokal tanpa schema baru: pengguna
+dapat memilih hingga 50 dokumen dan menerima satu ZIP yang tetap berisi PDF
+individual Customer-first. Unduh satuan, print, lifecycle pengiriman, tenant,
+dan audit dokumen tidak berubah.
+
+Template print/PDF Invoice dan Surat Jalan tidak lagi merender nama Company.
+Logo tetap opsional, sedangkan tanda tangan kedua dokumen memakai empat pihak:
+Warehouse, Security, Driver, dan Customer.
+
+Pengaturan logo dokumen sekarang **local-ready** per Company. Owner/Admin dapat
+mengatur logo header dan stempel visual secara independen pada print/PDF Invoice
+dan Surat Jalan tanpa menghapus file logo atau menghilangkannya dari navigasi
+aplikasi. Stempel memakai logo sebagai cap biru-transparan di area Warehouse.
+Company existing default menampilkan logo header dan menyembunyikan stempel.
+Rollout database dan smoke staging masih manual sesuai
+[runbook](docs/runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md).
+
+UX PWA POS untuk input angka dan penutupan sesi juga **local-ready**. Wheel pada
+field numerik kini menggulir container tanpa mengubah nilai. Penutupan sesi
+diakses melalui tombol **Tutup Sesi** di header dan kas fisik diisi dalam modal
+konfirmasi. Field nominal utama menampilkan pemisah ribuan Indonesia, misalnya
+`100.000`, sementara payload server tetap berupa nilai numerik mentah. Tidak ada
+kontrak transaksi atau schema yang berubah.
 
 Import/export Customer dan import additive UOM Product sekarang local-ready di
 Global Data Exchange. Template additive UOM mengambil seluruh Product aktif dan
@@ -157,7 +189,7 @@ Company selector eksplisit pada detail user, edit role/Store tenant-scoped,
 guarded revoke, last-owner protection, override cleanup ber-audit, serta active
 context repair. Authenticated UI smoke masih menunggu user.
 
-KGS POS adalah aplikasi Point of Sale dan mini ERP multi-Company yang sedang
+MADS adalah aplikasi Management Distribution System multi-Company yang sedang
 dibangun bertahap dengan Supabase sebagai backend, Next.js untuk Backoffice,
 serta React/Vite PWA untuk kasir.
 
