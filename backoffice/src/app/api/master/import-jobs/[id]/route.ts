@@ -85,7 +85,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         throw new ApiRouteError('IMPORT_ROWS_INVALID', 400)
       }
       const seen = new Set<number>()
-      const rows = body.rows.map((raw) => {
+      const parsedRows = body.rows.map((raw) => {
         const row = readObject(raw)
         const rowNumber = Number(row.rowNumber)
         const sourceData = readObject(row.sourceData)
@@ -103,6 +103,72 @@ export async function PATCH(request: Request, context: RouteContext) {
         }
         return { rowNumber, sourceData: cleanSource }
       })
+      const rows = jobScope.import_type === 'PRODUCT_UOM'
+        ? parsedRows.filter((row) => {
+            const mode = Object.entries(row.sourceData).find(([key]) =>
+              key.trim().toLowerCase() === 'row_mode')?.[1]
+            return mode?.trim().toUpperCase() !== 'REFERENCE'
+          })
+        : parsedRows
+      if (rows.length < 1) throw new ApiRouteError('IMPORT_ROWS_INVALID', 400)
+      if (jobScope.import_type === 'PRODUCT_UOM') {
+        const mappedValue = (
+          row: { sourceData: Record<string, string> }, field: string,
+        ) => {
+          const column = mapping[field]
+          return typeof column === 'string' ? row.sourceData[column]?.trim() ?? '' : ''
+        }
+        const inputFields = [
+          'factorToBase', 'purchaseAllowed', 'salesAllowed', 'purchasePrice',
+          'salePrice', 'barcode', 'weightIfLargestKg',
+        ]
+        const missingUomRows = rows.filter((row) =>
+          !mappedValue(row, 'uomName') &&
+          inputFields.some((field) => mappedValue(row, field) !== ''),
+        )
+        if (missingUomRows.length > 0) {
+          throw new ApiRouteError(
+            `PRODUCT_UOM_NAME_REQUIRED:${missingUomRows
+              .slice(0, 10).map((row) => row.rowNumber).join(',')}`,
+            400,
+          )
+        }
+        const modeOf = (row: { sourceData: Record<string, string> }) =>
+          Object.entries(row.sourceData).find(([key]) =>
+            key.trim().toLowerCase() === 'row_mode')?.[1]?.trim().toUpperCase() ?? ''
+        const normalizedBarcode = (value: string) =>
+          value.replace(/\s+/g, '').toUpperCase()
+        const pairOf = (row: { sourceData: Record<string, string> }) =>
+          `${mappedValue(row, 'productSku').toUpperCase()}|${mappedValue(row, 'uomName').toLocaleUpperCase('id-ID')}`
+        const referenceBarcodePairs = new Map<string, string>()
+        for (const row of parsedRows) {
+          if (modeOf(row) !== 'REFERENCE') continue
+          const barcode = normalizedBarcode(mappedValue(row, 'barcode'))
+          if (barcode) referenceBarcodePairs.set(barcode, pairOf(row))
+        }
+        const inputBarcodePairs = new Map<string, string>()
+        const conflictingBarcodeRows: number[] = []
+        for (const row of rows) {
+          const barcode = normalizedBarcode(mappedValue(row, 'barcode'))
+          if (!barcode) continue
+          const pair = pairOf(row)
+          const referencePair = referenceBarcodePairs.get(barcode)
+          const inputPair = inputBarcodePairs.get(barcode)
+          if ((referencePair && referencePair !== pair) ||
+              (inputPair && inputPair !== pair)) {
+            conflictingBarcodeRows.push(row.rowNumber)
+          } else {
+            inputBarcodePairs.set(barcode, pair)
+          }
+        }
+        if (conflictingBarcodeRows.length > 0) {
+          throw new ApiRouteError(
+            `PRODUCT_UOM_BARCODE_CONFLICT:${conflictingBarcodeRows
+              .slice(0, 10).join(',')}`,
+            400,
+          )
+        }
+      }
       const cleanMapping: Record<string, string> = {}
       for (const [key, value] of Object.entries(mapping)) {
         if (typeof value !== 'string' || value.length > 120) {
@@ -172,6 +238,17 @@ export async function PATCH(request: Request, context: RouteContext) {
         p_job_id: id,
         p_master_version: masterVersion,
         p_confirm_update_count: updateCount,
+      })
+      if (error) throwImportError(error)
+      return Response.json({ data })
+    }
+
+    if (body.action === 'CANCEL') {
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : null
+      const { data, error } = await caller.client.rpc('cancel_master_import_job', {
+        p_job_id: id,
+        p_master_version: masterVersion,
+        p_reason: reason || null,
       })
       if (error) throwImportError(error)
       return Response.json({ data })

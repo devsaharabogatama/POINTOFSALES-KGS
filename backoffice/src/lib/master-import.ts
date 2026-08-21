@@ -222,12 +222,12 @@ export const importDefinitions: Record<MasterImportType, ImportDefinition> = {
       { key: 'weightIfLargestKg', label: 'Berat bila menjadi UOM terbesar (kg)', required: false, aliases: ['weight_if_largest_kg', 'berat_jika_terbesar_kg'] },
     ],
     templateHeaders: [
-      'product_sku', 'product_name', 'uom_name', 'factor_to_base',
+      'row_mode', 'product_sku', 'product_name', 'uom_name', 'factor_to_base',
       'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
       'barcode', 'weight_if_largest_kg',
     ],
     exportHeaders: [
-      'product_sku', 'product_name', 'uom_name', 'factor_to_base',
+      'row_mode', 'product_sku', 'product_name', 'uom_name', 'factor_to_base',
       'purchase_allowed', 'sales_allowed', 'purchase_price', 'sale_price',
       'barcode', 'weight_if_largest_kg',
     ],

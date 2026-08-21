@@ -23,7 +23,9 @@ WITH required_versions(version) AS (
         ('20260818090000'), -- guarded unused UOM/Category cleanup
         ('20260819150000'), -- Customer master import/export
         ('20260819160000'), -- additive Product-UOM import/export
-        ('20260819170000') -- negative Stock Session replenishment request
+        ('20260819170000'), -- negative Stock Session replenishment request
+        ('20260821100000'), -- contextual Product-UOM template and job cancellation
+        ('20260821110000') -- Product-UOM partial validation restore
 ), expected_enforced_permissions(permission_key) AS (
     VALUES
         ('inventory.master_data'),('inventory.products'),

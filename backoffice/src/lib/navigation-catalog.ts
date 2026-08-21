@@ -30,6 +30,7 @@ export type NavigationViewId =
   | 'finance'
   | 'staff'
   | 'companies'
+  | 'platform-pos'
   | 'company-branding'
   | 'module-settings'
 
@@ -57,6 +58,7 @@ export type NavigationIconKey =
   | 'rotate'
   | 'scroll'
   | 'settings'
+  | 'store'
   | 'shopping-cart'
   | 'tags'
   | 'truck'
@@ -138,6 +140,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'finance-masters', label: 'Kategori & COA', description: 'Kategori transaksi, COA, dan mapping akun.', iconKey: 'landmark', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'finance', label: 'Jurnal Keuangan', description: 'Journal Entries, ledger, periode, dan laporan.', iconKey: 'dollar', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'companies', label: 'Perusahaan', description: 'Kelola tenant aktif pada platform.', iconKey: 'building', superOnly: true, capabilities: ['VIEW'] },
+  { id: 'platform-pos', label: 'Point of Sales', description: 'Kelola Toko dan Terminal POS pada Company aktif.', iconKey: 'store', roles: OWNER_ROLES, capabilities: ['VIEW', 'MANAGE'] },
   { id: 'company-branding', label: 'Profil Perusahaan', description: 'Identitas, rekening, logo, dan tampilan dokumen Company aktif.', iconKey: 'image', roles: OWNER_ROLES, capabilities: ['VIEW', 'MANAGE'] },
   { id: 'module-settings', label: 'Pengaturan Modul', description: 'Entitlement dan kebijakan modul Company.', iconKey: 'settings', roles: ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER'], capabilities: ['VIEW'] },
 ]
@@ -148,7 +151,7 @@ const moduleDefinitions: ModuleDefinition[] = [
   { id: 'purchase', name: 'Purchase', description: 'Pesanan supplier dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'purchase-returns'] },
   { id: 'sales', name: 'Sales', description: 'Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
   { id: 'finance', name: 'Finance', description: 'Kas, expense, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
-  { id: 'platform', name: 'Platform', description: 'Company, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['companies', 'company-branding', 'module-settings'] },
+  { id: 'platform', name: 'Platform', description: 'Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },
 ]
 

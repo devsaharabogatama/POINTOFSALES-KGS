@@ -7,6 +7,12 @@ Staging terbaru berhasil dipublikasikan pada 20 Agustus 2026 dari commit
 `https://pointofsales-kgs-staging.vercel.app`. Kedua build Vercel dan smoke HTTP
 publik PASS; deployment ini tidak mengubah database maupun project production.
 
+Deployment staging berikutnya pada 20 Agustus 2026 mempublikasikan seluruh
+working tree terbaru, termasuk Profil/Rekening Company dan export PO terpilih,
+langsung ke project ID staging yang terverifikasi. Build Backoffice (70 route)
+dan PWA berhasil; kedua alias memberi HTTP 200. Project, environment, database,
+dan domain production tidak disentuh.
+
 Paket MADS dokumen/PO/Terminal UI sekarang **local-ready**: Backoffice dapat
 mengunduh PDF Invoice dan Surat Jalan dengan nama Customer di depan, Supplier
 Order mempunyai export XLSX berizin, dan fitur operasional PWA dapat
@@ -47,6 +53,16 @@ sudah dipakai Movement tetap terkunci. Rollout database masih manual melalui
 [runbook Customer](docs/runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md) lalu
 [runbook Product-UOM](docs/runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md).
 Backoffice targeted ESLint dan production build sudah PASS.
+
+Koreksi lanjutan Product-UOM **local-ready**: Template dan Export kini
+menampilkan UOM existing sebagai baris `REFERENCE`, diikuti satu baris `INPUT`
+kosong per Product. Reference tidak masuk staging. Validasi yang mengandung
+error mempertahankan baris valid agar tetap dapat di-commit, sementara baris
+error dapat diunduh dan job nonterminal dapat dibatalkan manual dari Riwayat
+Import. Job upload/pemetaan milik pengguna yang
+ditinggalkan lebih dari 15 menit juga ditutup otomatis dengan audit setelah
+permission import diperiksa ulang. Migration, postflight, behavior, dan
+smoke staging mengikuti [runbook koreksi](docs/runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md).
 
 Koreksi Master Data UOM/Kategori sebelum UAT sekarang local-ready: nama UOM
 kembali terlihat, edit tetap melalui RPC berizin, dan hard delete baru hanya
@@ -511,3 +527,33 @@ baru memvalidasi capability EXPORT, active Company, UUID, duplikasi, dan tenant
 seluruh dokumen; GET/RPC tanpa argumen lama dipertahankan untuk compatibility.
 Migration/postflight/behavior serta rollout manual tersedia di
 [`SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md`](docs/runbooks/SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md).
+
+## Operasi terkontrol - Duplikasi konfigurasi Finance antar-Company
+
+Untuk onboarding Company baru tersedia operasi SQL preview/apply yang memetakan
+COA, hierarchy, Transaction Category, Account Function mapping, dan approved
+Posting Rules dari Company sumber ke UUID baru milik Company tujuan. Operasi
+menolak target yang sudah mempunyai Financial Event atau Journal; baseline
+mapping target tanpa histori dinonaktifkan/di-retire secara audited;
+tidak menyalin saldo, transaksi, master operasional, identitas, entitlement,
+atau policy Store/Warehouse/Terminal. Panduan dan batas operasinya tersedia di
+[`COMPANY_FINANCE_CONFIGURATION_CLONE.md`](docs/runbooks/COMPANY_FINANCE_CONFIGURATION_CLONE.md).
+
+Persiapan Company baru dapat dilanjutkan dengan duplikasi template master
+Product tanpa membawa transaksi atau stok. Cakupan, exclusion, dan preflight
+fail-closed tersedia di
+[`COMPANY_MASTER_TEMPLATE_CLONE.md`](docs/runbooks/COMPANY_MASTER_TEMPLATE_CLONE.md).
+Setelah preflight Company tujuan seluruhnya `PASS`, operasi atomik
+`clone_company_product_master.sql` dapat dijalankan dalam mode PREVIEW lalu
+APPLY. Baseline Global Pricelist direuse berdasarkan code; postflight terpisah
+memverifikasi semantic parity dan memastikan tidak ada Stock/transaksi terbawa.
+
+## Status lokal terbaru - 2026-08-21 (Platform POS: Toko & Terminal)
+
+Menu **Platform > Point of Sales** kini local-ready untuk mengelola Toko dan
+Terminal pada Company aktif. Mutation guarded, audited, versioned, dan direct
+browser write ditutup. PWA mempertahankan satu login multi-Company: Company dan
+Terminal/Toko dipilih sebelum membuka sesi, lalu selector Company terkunci
+selama sesi aktif. Backoffice lint dan production build PASS; rollout database
+dan authenticated smoke masih manual gate. Panduan ada di
+[`PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md`](docs/runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md).

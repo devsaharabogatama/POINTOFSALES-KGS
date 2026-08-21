@@ -13,6 +13,36 @@ function csvResponse(content: string, fileName: string) {
   })
 }
 
+type ProductUomExchangeRow = {
+  row_mode: 'REFERENCE' | 'INPUT'
+  product_sku: string
+  product_name: string
+  uom_name: string | null
+  factor_to_base: number | string | null
+  purchase_allowed: boolean | null
+  sales_allowed: boolean | null
+  purchase_price: number | string | null
+  sale_price: number | string | null
+  barcode: string | null
+  weight_if_largest_kg: number | string | null
+}
+
+function productUomCsvRows(data: unknown) {
+  return ((data ?? []) as ProductUomExchangeRow[]).map((row) => ({
+    row_mode: row.row_mode,
+    product_sku: row.product_sku,
+    product_name: row.product_name,
+    uom_name: row.uom_name ?? '',
+    factor_to_base: row.factor_to_base ?? '',
+    purchase_allowed: row.purchase_allowed ?? '',
+    sales_allowed: row.sales_allowed ?? '',
+    purchase_price: row.purchase_price ?? '',
+    sale_price: row.sale_price ?? '',
+    barcode: row.barcode ?? '',
+    weight_if_largest_kg: row.weight_if_largest_kg ?? '',
+  }))
+}
+
 export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
@@ -41,22 +71,8 @@ export async function GET(request: Request) {
       if (importType === 'PRODUCT_UOM') {
         const templateResult = await caller.client.rpc('get_inventory_product_uom_import_template')
         if (templateResult.error) throwImportError(templateResult.error)
-        const templateRows = ((templateResult.data ?? []) as Array<{
-          product_sku: string; product_name: string
-        }>).map((row) => ({
-          product_sku: row.product_sku,
-          product_name: row.product_name,
-          uom_name: '',
-          factor_to_base: '',
-          purchase_allowed: '',
-          sales_allowed: '',
-          purchase_price: '',
-          sale_price: '',
-          barcode: '',
-          weight_if_largest_kg: '',
-        }))
         return csvResponse(
-          csvDocument(definition.templateHeaders, templateRows),
+          csvDocument(definition.templateHeaders, productUomCsvRows(templateResult.data)),
           `template-${importType.toLowerCase()}.csv`,
         )
       }
@@ -264,20 +280,7 @@ export async function GET(request: Request) {
       )
     } else if (importType === 'PRODUCT_UOM') {
       result = await caller.client.rpc('export_inventory_product_uom_placeholders')
-      rows = ((result.data ?? []) as Array<{
-        product_sku: string; product_name: string
-      }>).map((row) => ({
-        product_sku: row.product_sku,
-        product_name: row.product_name,
-        uom_name: '',
-        factor_to_base: '',
-        purchase_allowed: '',
-        sales_allowed: '',
-        purchase_price: '',
-        sale_price: '',
-        barcode: '',
-        weight_if_largest_kg: '',
-      }))
+      rows = productUomCsvRows(result.data)
     } else if (importType === 'PRODUCT_SUPPLIER') {
       result = await caller.client.rpc('export_contacts_product_suppliers')
       const relationRows = (result.data ?? []) as Array<{

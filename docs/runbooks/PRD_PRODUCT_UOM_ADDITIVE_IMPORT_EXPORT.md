@@ -7,9 +7,9 @@ Local-ready. Migration database dan smoke test user masih wajib dijalankan.
 ## Perilaku
 
 - Data Exchange menyediakan tipe `PRODUCT_UOM`.
-- Template CSV berisi satu baris kosong per Product aktif non-Bundle dan dijaga
-  dengan capability `IMPORT`; hak `EXPORT` tidak diperlukan untuk memperoleh
-  template referensi ini.
+- Setelah migration koreksi `20260821100000`, Template CSV dan Export Data
+  menampilkan UOM existing sebagai `REFERENCE`, lalu tepat satu baris `INPUT`
+  kosong per Product aktif non-Bundle. Hanya baris INPUT yang masuk staging.
 - Baris dengan `uom_name` kosong dilewati tanpa error.
 - Baris terisi menambah atau memperbarui pasangan `product_sku + uom_name`.
 - Saat memperbarui pasangan existing, kolom izin, harga, dan barcode yang
@@ -22,6 +22,10 @@ Local-ready. Migration database dan smoke test user masih wajib dijalankan.
 - Seluruh mutation tenant-scoped, `IMPORT`-guarded, optimistic, dan masuk audit
   Product. Browser tidak memperoleh RPC direct-write UOM; commit memakai private
   core setelah preview tervalidasi.
+- Validasi Product-UOM mempertahankan preview parsial: baris valid dapat
+  di-commit dan baris error tetap dapat diunduh. Job yang ditinggalkan sebelum
+  validasi otomatis ditutup setelah 15 menit; job nonterminal juga dapat
+  dibatalkan manual dari Riwayat Import.
 
 ## Urutan rollout
 
@@ -34,9 +38,12 @@ Local-ready. Migration database dan smoke test user masih wajib dijalankan.
 7. Smoke: Data Exchange → Inventory → Tambah / Perbarui UOM Produk →
    Template CSV → isi satu baris → preview → commit.
 
+8. Lanjutkan rollout koreksi kontekstual dan cancel melalui
+   `PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md`.
+
 ## Kolom
 
-`product_sku,product_name,uom_name,factor_to_base,purchase_allowed,sales_allowed,purchase_price,sale_price,barcode,weight_if_largest_kg`
+`row_mode,product_sku,product_name,uom_name,factor_to_base,purchase_allowed,sales_allowed,purchase_price,sale_price,barcode,weight_if_largest_kg`
 
 Jika perlu lebih dari satu UOM baru pada Product yang sama, duplikasi baris Product.
 Jangan mengubah `product_sku` atau `product_name` hasil Template CSV.

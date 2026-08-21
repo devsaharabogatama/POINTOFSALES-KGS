@@ -18,6 +18,8 @@ export async function GET(request: Request) {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)
     await requireImportManager(caller, companyId)
+    const cleanup = await caller.client.rpc('cleanup_stale_master_import_jobs')
+    if (cleanup.error) throwImportError(cleanup.error)
     const optionalPermission = (permissionKey: string) => requirePermissionCapability(
       caller, companyId, permissionKey, 'VIEW',
     ).catch((error) => {

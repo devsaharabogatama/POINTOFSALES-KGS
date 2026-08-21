@@ -12,6 +12,7 @@ import {
   Loader2,
   RefreshCcw,
   Upload,
+  XCircle,
 } from 'lucide-react'
 import {
   csvDocument,
@@ -56,7 +57,7 @@ type ImportRow = {
   operation: 'PENDING' | 'CREATE' | 'UPDATE' | 'SKIP' | 'ERROR'
   row_status: string
   warnings: { code?: string }[]
-  errors: { code?: string }[]
+  errors: { code?: string; message?: string }[]
   before_state: Record<string, unknown> | null
   after_state: Record<string, unknown> | null
 }
@@ -77,6 +78,7 @@ const operationLabels: Record<ImportOperationMode, string> = {
 const statusLabels: Record<string, string> = {
   UPLOADED: 'File diterima', MAPPED: 'Kolom dipetakan', VALIDATED: 'Siap dikonfirmasi',
   COMPLETED: 'Selesai', COMPLETED_WITH_ERRORS: 'Selesai sebagian', FAILED: 'Gagal',
+  CANCELED: 'Dibatalkan',
 }
 const operationStyles: Record<string, string> = {
   CREATE: 'bg-emerald-50 text-emerald-700', UPDATE: 'bg-blue-50 text-blue-700',
@@ -327,6 +329,7 @@ function formatDate(value: string | null) {
 
 function friendlyError(code?: string) {
   const first = code?.split('\n')[0]
+  const [errorCode, errorDetail] = first?.split(':', 2) ?? []
   const messages: Record<string, string> = {
     MASTER_IMPORT_ADMIN_REQUIRED: 'Hanya Pemilik atau Admin Company yang dapat menjalankan import.',
     MASTER_VERSION_CONFLICT: 'Job berubah di proses lain. Muat ulang riwayat lalu coba lagi.',
@@ -338,8 +341,23 @@ function friendlyError(code?: string) {
     IMPORT_PRODUCT_MAPPING_REQUIRED: 'Kolom wajib template Product belum dipetakan.',
     IMPORT_PRODUCT_SUPPLIER_MAPPING_REQUIRED: 'Kolom wajib template Relasi Produk–Supplier belum dipetakan.',
     IMPORT_MINIMUM_STOCK_MAPPING_REQUIRED: 'Kolom wajib template Minimum Stock belum dipetakan.',
+    IMPORT_JOB_NOT_CANCELABLE: 'Job sedang diproses atau sudah selesai sehingga tidak dapat dibatalkan.',
+    PRODUCT_UOM_NAME_REQUIRED: 'Nama UOM turunan wajib diisi pada setiap baris INPUT yang mempunyai faktor, harga, izin, barcode, atau berat.',
+    PRODUCT_UOM_BARCODE_CONFLICT: 'Barcode UOM turunan sama dengan barcode UOM lain. Kosongkan barcode atau gunakan barcode kemasan yang berbeda.',
   }
-  return messages[first ?? ''] ?? errorLabels[first ?? ''] ?? first ?? 'Proses import gagal.'
+  const message = messages[errorCode ?? ''] ?? errorLabels[errorCode ?? '']
+  if (message) {
+    return errorDetail ? `${message} Periksa baris: ${errorDetail}.` : message
+  }
+  return first ?? 'Proses import gagal.'
+}
+
+function friendlyRowError(item: { code?: string; message?: string }) {
+  const label = errorLabels[item.code ?? ''] ?? item.code ?? 'Kesalahan import'
+  if (item.message && item.code?.endsWith('_COMMIT_FAILED')) {
+    return `${label} Detail: ${item.message}`
+  }
+  return label
 }
 
 function triggerDownload(content: Blob, fileName: string) {
@@ -382,6 +400,7 @@ export function MasterImportView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [confirmUpdate, setConfirmUpdate] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const [clientRequestId, setClientRequestId] = useState(() => crypto.randomUUID())
 
   const loadJobs = useCallback(async () => {
@@ -397,6 +416,7 @@ export function MasterImportView({
     if (!response.ok) throw new Error(friendlyError(payload.error))
     setDetail(payload)
     setConfirmUpdate(false)
+    setConfirmCancel(false)
   }, [session])
 
   useEffect(() => {
@@ -417,6 +437,7 @@ export function MasterImportView({
   function resetPreview() {
     setDetail(null)
     setConfirmUpdate(false)
+    setConfirmCancel(false)
     setClientRequestId(crypto.randomUUID())
   }
 
@@ -451,24 +472,62 @@ export function MasterImportView({
     if (!csv || missingMapping.length || detail) return
     setBusy(true)
     setError('')
+    let pendingJob: { id: string; masterVersion: number } | null = null
+    let validationFinished = false
     try {
       const created = await request('/api/master/import-jobs', 'POST', {
         clientRequestId, importType, referenceMode, operationMode,
         fileName: csv.fileName, fileChecksum: csv.checksum, delimiter: csv.delimiter,
       })
       const jobId = String(created.jobId)
+      pendingJob = { id: jobId, masterVersion: Number(created.masterVersion) }
       const staged = await request(`/api/master/import-jobs/${jobId}`, 'PATCH', {
         action: 'STAGE', masterVersion: Number(created.masterVersion), mapping, rows: csv.rows,
       })
-      await request(`/api/master/import-jobs/${jobId}`, 'PATCH', {
+      pendingJob.masterVersion = Number(staged.masterVersion)
+      const validated = await request(`/api/master/import-jobs/${jobId}`, 'PATCH', {
         action: 'VALIDATE', masterVersion: Number(staged.masterVersion),
       })
+      validationFinished = true
       await Promise.all([loadDetail(jobId), loadJobs()])
-      notify('Preview import selesai. Belum ada master data yang diubah.')
+      if (validated.status === 'CANCELED') {
+        notify('Validasi menemukan baris bermasalah. Job otomatis dibatalkan; master data tidak berubah.')
+      } else {
+        notify('Preview import selesai. Belum ada master data yang diubah.')
+      }
     } catch (reason) {
+      if (pendingJob && !validationFinished) {
+        try {
+          await request(`/api/master/import-jobs/${pendingJob.id}`, 'PATCH', {
+            action: 'CANCEL', masterVersion: pendingJob.masterVersion,
+            reason: 'CLIENT_VALIDATION_ABORTED',
+          })
+          await loadJobs()
+        } catch { /* best effort; manual cancel remains available */ }
+      }
       setError(reason instanceof Error ? reason.message : 'Validasi import gagal.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function cancelJob() {
+    const job = detail?.data
+    if (!job || !['UPLOADED', 'MAPPED', 'VALIDATED', 'READY'].includes(job.status)) return
+    setBusy(true)
+    setError('')
+    try {
+      await request(`/api/master/import-jobs/${job.id}`, 'PATCH', {
+        action: 'CANCEL', masterVersion: job.master_version,
+        reason: 'USER_CANCELED',
+      })
+      await Promise.all([loadDetail(job.id), loadJobs()])
+      notify('Job import dibatalkan. Tidak ada master data yang diubah.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Job import gagal dibatalkan.')
+    } finally {
+      setBusy(false)
+      setConfirmCancel(false)
     }
   }
 
@@ -522,7 +581,7 @@ export function MasterImportView({
       ...row.source_data,
       _baris: row.row_number,
       _status: operationText[row.operation],
-      _error: row.errors.map((item) => errorLabels[item.code ?? ''] ?? item.code).join(' | '),
+      _error: row.errors.map(friendlyRowError).join(' | '),
     }))
     triggerDownload(new Blob([csvDocument(headers, data)], { type: 'text/csv;charset=utf-8' }), 'baris-import-bermasalah.csv')
   }
@@ -619,7 +678,7 @@ export function MasterImportView({
       </td>
       <td className="px-4 py-3 text-slate-600">
         {row.errors.length > 0
-          ? <ul className="space-y-1 text-rose-700">{row.errors.map((item, index) => <li key={`${item.code}-${index}`}>{errorLabels[item.code ?? ''] ?? item.code}</li>)}</ul>
+          ? <ul className="space-y-1 text-rose-700">{row.errors.map((item, index) => <li key={`${item.code}-${index}`}>{friendlyRowError(item)}</li>)}</ul>
           : product
             ? <span>{row.operation === 'SKIP' ? 'Tidak ada perubahan.' : 'Baris UOM valid dan akan disimpan bersama seluruh grup Product.'}</span>
             : productSupplier
@@ -699,9 +758,9 @@ export function MasterImportView({
           </div>}
           {importType === 'PRODUCT_UOM' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
             <p className="font-bold">Cara menambah UOM pada Product existing:</p>
-            <p className="mt-1">Unduh Template CSV untuk memperoleh satu baris kosong per Product. Isi UOM dan faktor hanya pada Product yang ingin diubah; baris kosong otomatis dilewati.</p>
+            <p className="mt-1">Baris <span className="font-bold">REFERENCE</span> menampilkan UOM existing dari terkecil sampai terbesar dan tidak ikut diimport. Isi baris <span className="font-bold">INPUT</span> kosong di bawah Product; duplikasi baris INPUT jika perlu lebih dari satu UOM.</p>
             <p className="mt-1">UOM dasar tidak dapat diubah di sini. Jika UOM baru menjadi yang terbesar, isi berat UOM tersebut dalam kilogram.</p>
-            <p className="mt-1 font-semibold text-amber-700">UOM Product lainnya tetap dipertahankan dan tidak perlu dikirim ulang.</p>
+            <p className="mt-1 font-semibold text-amber-700">Jangan mengubah atau menghapus nilai row_mode. UOM Product existing tetap dipertahankan.</p>
           </div>}
           {importType === 'CUSTOMER' && <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 text-blue-950">
             <p className="font-bold">Cara mengisi Customer:</p>
@@ -757,8 +816,12 @@ export function MasterImportView({
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Preview / Hasil</p><h2 className="mt-1 text-xl font-black text-slate-950">{detail.data.file_name}</h2><p className="mt-1 text-sm text-slate-500">{importDefinitions[detail.data.import_type].label} · {statusLabels[detail.data.status] ?? detail.data.status}</p></div>
-            {(detail.data.error_rows > 0) && <button onClick={downloadErrors} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-700 hover:bg-rose-50"><Download className="h-4 w-4" /> Unduh baris error</button>}
+            <div className="flex flex-wrap gap-2">
+              {(detail.data.error_rows > 0) && <button onClick={downloadErrors} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-700 hover:bg-rose-50"><Download className="h-4 w-4" /> Unduh baris error</button>}
+              {['UPLOADED', 'MAPPED', 'VALIDATED', 'READY'].includes(detail.data.status) && <button onClick={() => setConfirmCancel(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><XCircle className="h-4 w-4" /> Batalkan job</button>}
+            </div>
           </div>
+          {confirmCancel && <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p className="font-black">Batalkan job import ini?</p><p className="mt-1">Data master belum berubah. Job akan ditutup agar tidak menghambat import berikutnya.</p><div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void cancelJob()} className="rounded-xl bg-rose-600 px-4 py-2 font-bold text-white disabled:opacity-50">Ya, batalkan</button><button disabled={busy} onClick={() => setConfirmCancel(false)} className="rounded-xl border border-rose-200 bg-white px-4 py-2 font-bold">Kembali</button></div></div>}
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
             {(isProductPreview
               ? [

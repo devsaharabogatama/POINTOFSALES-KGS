@@ -56,6 +56,7 @@ import { FinanceMasterView } from "@/components/FinanceMasterView";
 import { TaxMasterView } from "@/components/TaxMasterView";
 import { ModuleSettingsView } from "@/components/ModuleSettingsView";
 import { CompanyBrandingView } from "@/components/CompanyBrandingView";
+import { PlatformPosSetupView } from "@/components/PlatformPosSetupView";
 import { StaffAccessDetailModal } from "@/components/StaffAccessDetailModal";
 import { DataExchangeView } from "@/components/DataExchangeView";
 import { MinimumStockView } from "@/components/MinimumStockView";
@@ -153,6 +154,7 @@ const iconByKey: Record<NavigationIconKey, typeof Boxes> = {
   rotate: RotateCcw,
   scroll: ScrollText,
   settings: Settings2,
+  store: Store,
   "shopping-cart": ShoppingCart,
   tags: Tags,
   truck: Truck,
@@ -1121,6 +1123,16 @@ export default function Home() {
             <CompaniesView
               companies={context.companies}
               openCreate={() => setShowTenant(true)}
+            />
+          )}
+
+          {activeView === "platform-pos" && (
+            <PlatformPosSetupView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              companyName={activeCompany.company_name}
+              notify={setNotice}
             />
           )}
 

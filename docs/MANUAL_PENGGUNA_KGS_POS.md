@@ -421,6 +421,25 @@ Pilihan dataset hanya muncul jika pengguna memiliki akses modul dan kemampuan **
 
 Impor tidak boleh menulis transaksi final, histori stok, jurnal, atau pembayaran secara langsung.
 
+### Menambah atau memperbarui UOM Product
+
+1. Pilih **Inventory → Tambah / Perbarui UOM Produk**.
+2. Unduh Template CSV. Baris `REFERENCE` menampilkan UOM existing dan tidak
+   ikut diimport. Baris `INPUT` kosong tersedia setelah UOM setiap Product.
+3. Isi hanya baris `INPUT`: nama UOM, isi dalam UOM dasar, izin beli/jual,
+   harga per UOM, barcode opsional, serta berat jika menjadi UOM terbesar.
+   Jika kolom selain identitas Product sudah diisi, `uom_name` tidak boleh
+   kosong. Barcode UOM turunan harus kosong atau berbeda dari UOM dasar.
+   Satu barcode hanya boleh dimiliki satu pasangan Product-UOM dalam Company.
+4. Jangan mengubah `row_mode`, SKU, atau nama Product referensi. Duplikasi
+   baris INPUT jika perlu beberapa UOM baru.
+5. Upload dan validasi. Baris valid tetap dapat disimpan; baris bermasalah
+   ditampilkan pada preview dan dapat diunduh untuk diperbaiki.
+6. Job yang berhenti sebelum commit dapat dibuka dari **Riwayat import** lalu
+   ditutup dengan **Batalkan job**.
+7. Job milik pengguna yang berhenti pada tahap upload/pemetaan lebih dari 15
+   menit otomatis dibatalkan ketika Riwayat Import dimuat ulang.
+
 ## 13. Menggunakan PWA POS
 
 ### Membuka sesi

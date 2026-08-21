@@ -1,5 +1,66 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-21 — PRODUCT-UOM CONTEXT TEMPLATE AND JOB CANCEL LOCAL READY
+
+- User mengoreksi UX additive Product-UOM: template placeholder satu baris
+  tidak menjelaskan Base/UOM existing dan Export Data identik dengan template
+  kosong. Target baru menampilkan semua UOM existing sebagai `REFERENCE`, urut
+  faktor, lalu satu `INPUT` kosong di bawah setiap Product.
+- Migration `20260821100000_product_uom_context_template_job_cancel.sql`
+  mengganti dua read RPC, menambah guarded cancel RPC/core, menutup invalid
+  Product-UOM validation secara otomatis, dan mengaudit cleanup job
+  Product-UOM lama berstatus UPLOADED/MAPPED/VALIDATED/READY.
+- API staging mengabaikan REFERENCE row server-side. UI menjelaskan row_mode,
+  memberikan custom confirmation **Batalkan job**, dan best-effort cancel jika
+  create/stage/validation request berhenti sebelum preview selesai.
+- Riwayat Import memanggil guarded stale cleanup: job milik actor yang tetap
+  UPLOADED/MAPPED lebih dari 15 menit otomatis CANCELED dan diaudit; VALIDATED,
+  PROCESSING, job user lain, serta job Company lain tidak disentuh.
+- Postflight SELECT-only, rollback behavioral test, runbook, Manual Pengguna,
+  Gate, dan README telah ditambahkan/diperbarui.
+- Behavioral test mencakup invalid-validation auto-cancel, cancel manual, dan
+  cleanup job tanpa validasi yang melewati 15 menit. Cleanup memeriksa ulang
+  permission efektif per jenis import sebelum menutup job.
+- Evidence lokal: targeted ESLint PASS; Backoffice production build/TypeScript
+  PASS (70 route/page); SQL dollar delimiter dan parentheses seimbang;
+  `git diff --check` PASS. Database migration belum dijalankan.
+- Manual gate: migration -> postflight PASS -> behavior sukses/ROLLBACK ->
+  deploy staging -> smoke reference/input, valid commit, invalid auto-cancel,
+  dan cancel manual. Jangan deploy client sebelum migration berhasil.
+- Live postflight pertama menemukan dua false negative source-text pada
+  `product_uom_reference_input_contract` dan
+  `stale_unvalidated_cleanup_contract`; seluruh routine presence, privilege,
+  ledger, serta invalid-validation auto-cancel PASS dan inventory nonterminal
+  nol. Diagnostic diperbaiki untuk memeriksa `pg_proc.prosrc` lowercase alih-alih
+  format hasil `pg_get_functiondef`. Migration/runtime tidak berubah dan tidak
+  perlu dijalankan ulang; hanya postflight yang perlu diulang.
+- Setelah user mencoba file berisi banyak perubahan, ditemukan interpretasi
+  bisnis yang salah: migration awal membatalkan seluruh job bila satu baris
+  invalid, sehingga semua baris valid tidak pernah dapat di-commit. Forward-fix
+  `20260821110000_product_uom_partial_validation_restore.sql` mengembalikan
+  kontrak partial preview/commit: valid tetap disimpan, error tetap dapat
+  diunduh. Auto-cancel hanya untuk job UPLOADED/MAPPED yang ditinggalkan; cancel
+  manual tetap tersedia. CSV user dapat di-upload ulang tanpa diisi ulang.
+- Regression Product-UOM lama diselaraskan dengan template REFERENCE/INPUT dan
+  sekarang membuktikan satu update valid tetap committed walau file yang sama
+  mempunyai satu row invalid. Forward migration, postflight, dan behavioral
+  test baru masih menunggu user rollout; database tidak diubah dari repo.
+- File nyata user kemudian menunjukkan seluruh INPUT mempunyai faktor/izin/
+  harga/berat tetapi `uom_name` kosong. Validator existing menganggapnya blank
+  placeholder sehingga preview menghasilkan 0 create, 0 update, 0 error. API
+  staging sekarang menolak kondisi setengah terisi dengan
+  `PRODUCT_UOM_NAME_REQUIRED` beserta nomor baris; INPUT yang seluruh kolom
+  mutasinya kosong tetap sah sebagai placeholder. Barcode turunan yang sama
+  dengan Base dan faktor turunan <=1 tetap ditangani validator canonical.
+- Evidence koreksi UI/API: targeted ESLint PASS; Next production build dan
+  TypeScript PASS (70 route/page). Database dan deployment belum disentuh.
+- Error export nyata berikutnya membuktikan mayoritas commit gagal karena
+  barcode INPUT menyalin barcode Base UOM. API sekarang membandingkan barcode
+  INPUT terhadap seluruh REFERENCE dan INPUT dalam template sebelum staging;
+  pasangan berbeda ditolak dengan `PRODUCT_UOM_BARCODE_CONFLICT` dan nomor
+  baris. Detail `message` dari `*_COMMIT_FAILED` kini ikut tampil/terunduh agar
+  constraint database tidak lagi disamarkan sebagai error generik.
+
 ### 2026-08-20 — SELECTED SUPPLIER ORDER EXPORT LOCAL READY
 
 - Supplier Order Backoffice sekarang memfilter daftar, menyediakan checkbox
@@ -24,6 +85,17 @@
   Owner/Admin aktif pada Company yang berisi PO. Test kini mencoba kombinasi
   tersebut lebih dahulu lalu memakai linked Super Admin dan Company aktif yang
   mempunyai PO. Runtime migration dan aplikasi tidak berubah.
+- User mengonfirmasi behavioral test terkoreksi sukses. Backoffice kemudian
+  dideploy menggunakan project ID eksplisit hanya ke
+  `pointofsales-kgs-staging`; Vercel Next build PASS (70 route/page) dan alias
+  `https://pointofsales-kgs-staging.vercel.app` memberi HTTP 200.
+- PWA dideploy terpisah menggunakan project ID eksplisit hanya ke
+  `kgs-pos-pwa-staging`; TypeScript/Vite/PWA build PASS (19 precache entries)
+  dan alias `https://kgs-pos-pwa-staging.vercel.app` memberi HTTP 200. Warning
+  chunk >500 kB tetap non-blocking. Tidak ada project, environment, database,
+  atau domain production yang dimutasi.
+- Authenticated smoke tersisa: hard refresh, login staging, pilih dua PO pada
+  Backoffice, export, lalu verifikasi workbook hanya memuat dua PO tersebut.
 
 ### 2026-08-19 — COMPANY TRANSACTION RESET UPDATED FOR NEGATIVE REQUEST
 
@@ -5671,3 +5743,87 @@ Eksekusi hanya setelah backup dan maintenance window.
   masih menunggu. Next safe step: deploy Backoffice/PWA ke environment yang
   terhubung ke database tersebut, lalu smoke profil, Invoice ON/OFF, Surat Jalan
   tanpa rekening, dan autofill rekening Supplier Payment.
+
+### 2026-08-21 - CONTROLLED COMPANY FINANCE CONFIG CLONE LOCAL READY
+
+- Ditambahkan operasi SQL preview/apply
+  `supabase/operations/clone_company_finance_configuration.sql` untuk clone
+  konfigurasi Finance Company sumber ke Company tujuan dengan UUID tenant baru.
+- Cakupan: COA/hierarchy, Transaction Category, current ACTIVE transaction
+  mapping/fallback, serta current APPROVED posting expressions. Saldo, Journal,
+  Financial Event, transaksi, master operasional, identitas, entitlement dan
+  policy Store/Warehouse/Terminal tidak disalin.
+- Live PREVIEW KGS -> KMS menunjukkan target tanpa Finance history, tetapi
+  mempunyai provisioned baseline: 33 Transaction Rules, 3 fallback, 1 Posting
+  Rule Set, serta 1 beda kode system-function account. Operation direvisi:
+  baseline target ditutup sebagai versi INACTIVE/RETIRED secara audited,
+  mapping clone memakai nomor versi berikutnya, dan system account dipetakan
+  berdasarkan function sambil mempertahankan identity target.
+- APPLY tetap fail-closed bila target sudah mempunyai Finance history, nama
+  akun/kategori bentrok, actor tidak berwenang, atau verifikasi hasil tidak
+  cocok. Seluruh write berada dalam satu DO block atomik dan dicatat pada
+  Finance master/posting-rule audit.
+- Runbook:
+  `docs/runbooks/COMPANY_FINANCE_CONFIGURATION_CLONE.md`.
+- Evidence lokal: delimiter DO berpasangan, parentheses seimbang, dan
+  `git diff --check` PASS untuk operation. PostgreSQL parser/runtime belum
+  tersedia lokal; PREVIEW Supabase dan APPLY KGS -> KMS masih manual gate.
+- Tidak ada database, Vercel, staging, atau production yang disentuh oleh agent.
+  Next safe step: jalankan ulang PREVIEW file terbaru. `REPLACE`/`REMAP`
+  expected, tetapi seluruh `BLOCKER` wajib nol sebelum APPLY.
+
+### 2026-08-21 - COMPANY MASTER TEMPLATE CLONE PREFLIGHT LOCAL READY
+
+- User meminta Company baru dapat memakai template KGS untuk COA/configuration
+  Finance dan seluruh master Product tanpa membawa transaksi.
+- Ditambahkan SELECT-only preflight
+  `supabase/diagnostics/company_master_template_clone_preflight.sql` serta
+  runbook `docs/runbooks/COMPANY_MASTER_TEMPLATE_CLONE.md`.
+- Cakupan rencana: Category, UOM, Tax Rule/current version, Product/Product-UOM,
+  Bundle, dan Global Pricelist/rules. Finance tetap memakai operasi clone
+  Finance yang terpisah dan dijalankan lebih dahulu.
+- Boundary: tidak menyalin Stock/FIFO/Opening/Movement, transaksi/Journal,
+  Customer/Customer Pricelist, Supplier/Product-Supplier, Store/Warehouse/
+  Terminal, user/access, entitlement, atau policy. HTTPS Product image URL
+  direferensikan ulang; binary tidak digandakan.
+- User menjalankan preflight target aktual: seluruh gate `PASS`; target memiliki
+  zero operational history, zero Product master, satu baseline Global Pricelist,
+  dan zero Tax. Sumber berisi 1 Category, 2 UOM, 61 Product, 119 Product-UOM,
+  tanpa Bundle, active Tax version, atau Pricelist Rule.
+- Ditambahkan operasi atomik default-PREVIEW
+  `supabase/operations/clone_company_product_master.sql`. ID master diremap,
+  baseline Pricelist target direuse berdasarkan normalized code, audit dicatat,
+  dan exact count/dependency/zero-stock diverifikasi sebelum commit.
+- Tidak ada database yang disentuh agent. Manual gate: isi config operasi,
+  jalankan PREVIEW dan pastikan tanpa `BLOCKER`; lalu set `execute_clone=TRUE`
+  dengan confirmation `CLONE_PRODUCT_MASTER`. Output wajib memuat
+  `clone_result=APPLIED` dengan 1/2/61/119.
+
+### 2026-08-21 - PLATFORM POS STORE/TERMINAL MANAGEMENT LOCAL READY
+
+- Ditambahkan menu `Platform > Point of Sales`, API
+  `/api/platform/pos-setup`, dan workspace tambah/edit Toko serta Terminal.
+- Migration `20260821120000_platform_pos_store_terminal_management.sql`
+  menambah operational version, immutable audit, guarded composed read/save,
+  dependency guards, dan menutup direct authenticated write.
+- PWA sudah mempunyai selector Company multi-membership yang terkunci ketika
+  sesi terbuka, serta selector Terminal berlabel Toko dan Gudang sebelum sesi;
+  tidak ada perubahan core PWA yang diperlukan.
+- Evidence lokal: Backoffice full ESLint PASS, Next production build PASS (71
+  route/page), dan diff check file runtime/SQL PASS.
+- Database/deploy belum disentuh. Manual gate: migration -> postflight ->
+  behavioral rollback -> staging deploy -> authenticated smoke Backoffice/PWA.
+  Runbook: `docs/runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md`.
+- Behavioral test correction: temporary context table dihapus setelah SQL
+  Editor target melaporkan `relation platform_pos_test_context does not exist`.
+  Actor, Company, active context, dan JWT claims kini disiapkan dalam satu
+  transaction-local DO block sebelum `SET LOCAL ROLE authenticated`; migration
+  dan runtime tidak berubah, hanya file behavioral yang perlu dijalankan ulang.
+- User menemukan UI bug pada detail User: dropdown Role/Toko panel hijau
+  (membership terpilih) dan panel biru (assignment Company baru) memakai state
+  React yang sama. `StaffAccessDetailModal.tsx` diperbaiki dengan state dan
+  payload API yang sepenuhnya terpisah untuk kedua form. Mengubah Company,
+  Role, atau Toko pada panel biru kini tidak mengubah nilai panel hijau.
+- Evidence koreksi UI: targeted ESLint PASS, Next production build PASS (71
+  route/page), dan diff check PASS. Tidak ada schema, database, atau deploy yang
+  berubah; authenticated browser smoke masih perlu setelah client dideploy.

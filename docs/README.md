@@ -23,6 +23,7 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 
 - [`runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md`](runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md)
 - [`runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md`](runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md)
+- [`runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md`](runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md)
 
 Rollout profil/rekening Company, autofill rekening Supplier Payment, dan
 rekening opsional pada Invoice:
@@ -348,6 +349,7 @@ berada di [`../README.md`](../README.md).
 | G6 corrective phase 7 operations/pilot preflight | `runbooks/G6_PHASE7_FINANCE_OPERATIONS_PILOT_PREFLIGHT.md` | SELECT-only gate canonical posting queue, append-only reversal gap, period lifecycle, pilot roles, tenant/browser boundary, reports, dan deferred FIFO–GL/HOLD exposure |
 | G6 corrective phase 7A append-only reversal rollout | `runbooks/G6_PHASE7A_APPEND_ONLY_JOURNAL_REVERSAL_ROLLOUT.md` | Guarded reversal jurnal Manual/Opening Balance pada period terbuka, exact idempotency, immutable source snapshot, audit, tenant/role boundary, dan source-controlled operational correction |
 | G6 corrective phase 7B Finance Operations UI | `runbooks/G6_PHASE7B_FINANCE_OPERATIONS_UI.md` | Role-aware canonical jurnal, append-only reversal, accounting period, controlled STOCK_OPENING queue, POSTED reports, pending analysis, dan current-only reconciliation smoke |
+| Controlled Company Finance configuration clone | `runbooks/COMPANY_FINANCE_CONFIGURATION_CLONE.md` | Preview/apply atomik COA, hierarchy, kategori, account-function mapping dan posting expressions antar-Company tanpa saldo, transaksi, atau histori |
 | G6 corrective phase 7B human IDs, Ledger, dan Excel | `runbooks/G6_PHASE7B_FINANCE_HUMAN_IDS_LEDGER_EXPORT.md` | Manual rollout `JUR/JRB/PST/EXC/REC`, Buku Besar account-centric expandable, Journal Entries document-centric, monthly XLSX, compatibility, dan tenant smoke |
 | G4 fase 15 Offline PWA catalog cache | `runbooks/G4_PHASE15_OFFLINE_PWA_CATALOG_CACHE_FOUNDATION.md` | Dexie v4 retained snapshot, exact scope/hash/freshness/invalidation, dan local allowance reconciliation tanpa membuka checkout Offline |
 | G4 fase 16 Offline status/cache PWA UI | `runbooks/G4_PHASE16_OFFLINE_STATUS_CACHE_PWA_UI.md` | Read-only connection/snapshot/scope/age/allowance panel, lazy cache chunk, explicit blocked-checkout state, dan authenticated smoke tertutup |
@@ -368,6 +370,7 @@ berada di [`../README.md`](../README.md).
 | Inventory Surat Jalan authority split | `runbooks/INVENTORY_DELIVERY_DOCUMENT_AUTHORITY_ROLLOUT.md` | Pisahkan Sales Invoice dan Inventory Surat Jalan tanpa mengubah canonical Sale/POS/history |
 | MADS dokumen, PO export, dan Terminal UI | `runbooks/MADS_DOCUMENT_PO_TERMINAL_UI_ROLLOUT.md` | PDF Invoice/SJ bernama Customer, XLSX Supplier Order, audited UI-only feature visibility per Terminal, dan branding visual MADS |
 | Export Supplier Order terpilih | `runbooks/SELECTED_SUPPLIER_ORDER_EXPORT_ROLLOUT.md` | Checkbox per PO, pilih-semua hasil filter, XLSX gabungan maksimum 100 PO, tenant/capability guard, compatibility GET lama, postflight dan rollback behavior |
+| Duplikasi template master antar-Company | `runbooks/COMPANY_MASTER_TEMPLATE_CLONE.md` | Urutan clone Finance, Product/Category/UOM/Tax/Bundle/Global Pricelist, exclusion transaksi/stok/identitas, dan SELECT-only preflight Company tujuan |
 | Pengaturan logo dan stempel dokumen | `runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md` | Sakelar Company terpisah dan diaudit untuk logo header serta cap visual pada print/PDF Invoice dan Surat Jalan tanpa menghapus file logo |
 | SLD-R1 Delivery fee preflight | `runbooks/SLD_R1_DELIVERY_FEE_PREFLIGHT.md` | SELECT-only audit Sale/payment/offline/Return/Invoice/Finance readiness sebelum canonical ongkir R2 |
 | SLD-R2 Delivery fee foundation rollout | `runbooks/SLD_R2_DELIVERY_FEE_FOUNDATION_ROLLOUT.md` | Additive fee schema, retry-safe Draft total, Payment/Invoice/Event reconciliation, Company revenue mapping, postflight, behavior, compatibility, dan controlled G6 deferral |
@@ -413,4 +416,5 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - Setelah perubahan, perbarui source-of-truth dan decision log terkait saja; hindari menyalin keputusan ke banyak file kecuali diperlukan sebagai boundary lintas modul.
 ## Rollout terbaru
 
+- [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

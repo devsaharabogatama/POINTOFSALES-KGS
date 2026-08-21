@@ -134,6 +134,13 @@ Jangan lanjut G1 jika schema repo dan schema live belum dapat dibandingkan atau 
 - Phase-43 Backoffice template/export dan preview grouped Product local-ready
   untuk authenticated smoke. Ringkasan dihitung per `product_key`, detail
   memakai nama UOM, dan Opening Stock tetap workflow terpisah;
+- Koreksi Product-UOM additive 2026-08-21 local-ready: Template dan Export
+  menampilkan UOM existing sebagai `REFERENCE` serta satu baris `INPUT` kosong
+  per Product. Reference row tidak masuk staging; validasi mempertahankan
+  partial preview agar baris valid tetap dapat di-commit dan baris error dapat
+  diunduh. Job nonterminal dapat dibatalkan manual, dan
+  upload/pemetaan milik actor yang ditinggalkan 15 menit ditutup otomatis
+  setelah permission jenis import diperiksa ulang.
 - Phase-44 Product-Supplier migration, 11-check postflight, behavioral test,
   dan regression suite dikonfirmasi PASS. Phase-45 template/export/preview UI
   lint/build dan authenticated smoke PASS; relasi wajib memakai
