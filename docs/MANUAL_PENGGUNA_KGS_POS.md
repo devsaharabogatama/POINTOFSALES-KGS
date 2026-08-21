@@ -1,6 +1,6 @@
 # Manual Pengguna MADS
 
-Versi dokumen: 14 Agustus 2026  
+Versi dokumen: 21 Agustus 2026
 Sasaran pembaca: pemilik perusahaan, administrator, manajer toko, staf gudang, kasir, Finance, dan Accounting.
 
 Manual ini menjelaskan penggunaan Backoffice dan PWA MADS berdasarkan fitur yang tersedia saat ini. Menu dan tindakan yang terlihat dapat berbeda karena akses ditentukan oleh perusahaan aktif, peran, pengaturan modul, penugasan toko, serta pembatasan khusus pengguna.
@@ -78,8 +78,14 @@ Jika menu tidak tampil, periksa perusahaan aktif, status keanggotaan, peran, pen
 
 1. Buka alamat PWA POS.
 2. Masuk menggunakan akun yang mempunyai penugasan kasir aktif.
-3. Pilih terminal POS dan gudang penjualan yang tersedia.
-4. Buka sesi kasir dan isi kas awal bila diminta.
+3. Bila akun memiliki lebih dari satu Company, pilih Company yang akan dipakai.
+4. Pilih Terminal POS. Nama Toko ditampilkan bersama nama Terminal.
+5. Pilih Gudang penjualan yang tersedia untuk Toko tersebut.
+6. Buka sesi kasir dan isi kas awal bila diminta.
+
+Company dan Toko tidak dapat diganti selama sesi kasir masih terbuka. Tutup sesi
+terlebih dahulu, kemudian pilih Company dan Terminal/Toko lain tanpa perlu
+logout atau login ulang.
 
 Pesan **ACTIVE STORE MEMBERSHIP REQUIRED** berarti pengguna belum mempunyai penugasan toko aktif pada perusahaan yang sedang dipilih.
 
@@ -107,7 +113,8 @@ Urutan persiapan yang disarankan:
 
 1. Lengkapi identitas dan logo perusahaan.
 2. Aktifkan modul yang diperlukan.
-3. Buat toko, gudang, terminal POS, dan UOM.
+3. Buat Toko dan Terminal melalui **Platform → Point of Sales**, lalu buat
+   Gudang sumber penjualan dan UOM melalui Inventory.
 4. Buat kategori serta produk.
 5. Atur metode pembayaran, pajak, dan pricelist.
 6. Buat pelanggan dan supplier.
@@ -197,7 +204,9 @@ Tetapkan ambang minimum per produk dan gudang. Peringatan kebutuhan tidak otomat
 
 ### 6.10 Master Inventory
 
-Berisi toko, gudang, terminal POS, UOM, kategori produk, serta pengaturan terkait. Nonaktifkan master yang sudah digunakan daripada menghapusnya.
+Berisi Gudang, UOM, kategori produk, serta pengaturan Inventory terkait. Toko
+dan Terminal POS dikelola dari **Platform → Point of Sales**. Nonaktifkan master
+yang sudah digunakan daripada menghapusnya.
 
 ## 7. Modul Contacts
 
@@ -223,12 +232,16 @@ Supplier. Nilainya tetap disimpan sebagai snapshot pada Draft pembayaran.
 
 1. Pilih pengguna untuk membuka detail.
 2. Pilih perusahaan yang hendak diatur.
-3. Tambahkan atau ubah peran perusahaan.
-4. Tambahkan penugasan toko bila diperlukan.
+3. Pada panel hijau, ubah role atau Toko hanya untuk Company yang sedang dipilih.
+4. Pada panel biru **Tambahkan ke perusahaan lain**, pilih Company, role, dan
+   Toko untuk membership baru. Nilai panel ini tidak mengubah panel hijau.
 5. Opsional: atur pembatasan khusus per modul/submodul.
 6. Simpan dan periksa catatan audit.
 
-Saat mencabut akses, nonaktifkan keanggotaan perusahaan.
+Satu user hanya mempunyai satu role utama per Company, tetapi role dan Toko
+dapat berbeda antar-Company. Kasir wajib memiliki Toko penugasan. Saat mencabut
+akses, nonaktifkan membership Company; akses dan histori Company lain tidak
+berubah.
 
 ## 8. Modul Purchase
 
@@ -376,7 +389,23 @@ Nomor tampilan seperti `JUR/...` digunakan di UI; UUID internal tetap disimpan s
 
 Kelola identitas perusahaan. Perubahan hanya berlaku pada perusahaan terpilih.
 
-### 11.2 Logo Perusahaan
+### 11.2 Point of Sales
+
+Menu ini tersedia untuk Super Admin serta Owner/Admin Company aktif.
+
+1. Buka **Platform → Point of Sales**.
+2. Pada tab **Toko**, buat Toko dan isi kode, nama, alamat, zona waktu, serta
+   status. Kode tidak dapat diganti setelah disimpan.
+3. Pada tab **Terminal POS**, buat Terminal dan hubungkan ke Toko aktif.
+4. Perhatikan indikator Gudang jual. Jika nilainya nol, buka Inventory dan atur
+   Gudang aktif sebagai sumber penjualan sebelum POS digunakan.
+5. Assign Kasir ke Toko melalui **Contacts → User & Akses**.
+
+Terminal dengan sesi terbuka tidak dapat diubah. Terminal yang sudah memiliki
+riwayat sesi tidak dapat dipindahkan ke Toko lain. Toko juga tidak dapat
+dinonaktifkan selama masih mempunyai sesi, Terminal aktif, atau Gudang aktif.
+
+### 11.3 Profil Perusahaan dan Logo
 
 Unggah, ganti, atau hapus logo. Logo tetap tampil di samping nama perusahaan
 sebagai identitas aplikasi.
@@ -392,7 +421,7 @@ cap biru-transparan di area tanda tangan Warehouse. Logo header dan stempel
 dapat diaktifkan atau dimatikan secara terpisah. Stempel ini merupakan tampilan
 template dokumen, bukan tanda tangan digital tersertifikasi.
 
-### 11.3 Pengaturan Modul
+### 11.4 Pengaturan Modul
 
 Aktifkan/nonaktifkan fitur per perusahaan. Menonaktifkan modul menutup operasi baru, tetapi tidak menghapus histori.
 

@@ -5827,3 +5827,13 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Evidence koreksi UI: targeted ESLint PASS, Next production build PASS (71
   route/page), dan diff check PASS. Tidak ada schema, database, atau deploy yang
   berubah; authenticated browser smoke masih perlu setelah client dideploy.
+- README dan Manual Pengguna MADS diperbarui untuk menu Platform Point of Sales,
+  urutan setup Toko/Terminal/Gudang, perpindahan Company/Toko PWA, serta state
+  form membership dan assignment Company yang terpisah.
+- Staging deployment 21 Agustus 2026 selesai dari working tree yang sama:
+  Backoffice dialias ke `https://pointofsales-kgs-staging.vercel.app` dan PWA ke
+  `https://kgs-pos-pwa-staging.vercel.app`. Vercel build Backoffice (71 route)
+  dan PWA PASS; warning chunk PWA >500 kB tetap non-blocking yang sudah dikenal.
+  Smoke publik: kedua root HTTP 200 HTML dan `/api/platform/pos-setup` tanpa sesi
+  HTTP 401 JSON. Tidak ada Supabase mutation, environment change, atau project
+  production yang disentuh. Authenticated UI smoke tetap manual.

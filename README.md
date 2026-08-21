@@ -2,6 +2,17 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Update 21 Agustus 2026: Platform kini memiliki workspace **Point of Sales**
+untuk membuat dan mengubah Toko/Terminal secara guarded dan audited. PWA
+multi-Company memilih Company serta Terminal/Toko sebelum membuka sesi dan
+mengunci perpindahan selama sesi aktif. Form User & Akses juga telah diperbaiki:
+state role/Toko membership terpilih tidak lagi bercampur dengan form assignment
+Company baru. Backoffice dan PWA lint/build PASS. Perubahan sudah dipublikasikan
+ke `https://pointofsales-kgs-staging.vercel.app` dan
+`https://kgs-pos-pwa-staging.vercel.app`; kedua root memberi HTTP 200 dan API
+Backoffice tanpa sesi tetap menolak dengan HTTP 401 JSON. Project/database
+production tidak disentuh.
+
 Staging terbaru berhasil dipublikasikan pada 20 Agustus 2026 dari commit
 `cc3efab`: PWA di `https://kgs-pos-pwa-staging.vercel.app` dan Backoffice di
 `https://pointofsales-kgs-staging.vercel.app`. Kedua build Vercel dan smoke HTTP
