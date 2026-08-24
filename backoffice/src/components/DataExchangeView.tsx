@@ -14,7 +14,8 @@ import {
   Tags,
 } from 'lucide-react'
 import { MasterImportView } from '@/components/MasterImportView'
-import { isImportType, type MasterImportType } from '@/lib/master-import'
+import { DistributorPricelistImportView } from '@/components/DistributorPricelistImportView'
+import { isImportType } from '@/lib/master-import'
 
 type CatalogItem = {
   moduleKey: 'INVENTORY' | 'CONTACTS' | 'PURCHASE' | 'SALES' | 'FINANCE'
@@ -87,6 +88,7 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
   const [items, setItems] = useState<CatalogItem[]>([])
   const [action, setAction] = useState<'EXPORT' | 'IMPORT'>('EXPORT')
   const [selectedType, setSelectedType] = useState('')
+  const [selectedImportType, setSelectedImportType] = useState('')
   const [month, setMonth] = useState(currentMonth())
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
@@ -108,6 +110,10 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
         nextItems.some((item) => item.typeKey === current && item.allowedActions.includes('EXPORT'))
           ? current
           : (nextItems.find((item) => item.allowedActions.includes('EXPORT'))?.typeKey ?? ''))
+      setSelectedImportType((current) =>
+        nextItems.some((item) => item.typeKey === current && item.allowedActions.includes('IMPORT'))
+          ? current
+          : (nextItems.find((item) => item.allowedActions.includes('IMPORT'))?.typeKey ?? ''))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Katalog gagal dimuat.')
     } finally {
@@ -126,10 +132,8 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
     () => items.filter((item) => item.allowedActions.includes('EXPORT')),
     [items],
   )
-  const importTypes = useMemo(
-    () => items.filter((item) =>
-      item.allowedActions.includes('IMPORT') && isImportType(item.typeKey))
-      .map((item) => item.typeKey as MasterImportType),
+  const importItems = useMemo(
+    () => items.filter((item) => item.allowedActions.includes('IMPORT')),
     [items],
   )
   const selected = exportItems.find((item) => item.typeKey === selectedType) ?? null
@@ -222,7 +226,7 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
         >
           Export
         </button>
-        {importTypes.length > 0 && (
+        {importItems.length > 0 && (
           <button
             type="button"
             onClick={() => setAction('IMPORT')}
@@ -239,14 +243,26 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
         <div className="grid min-h-56 place-items-center rounded-3xl border border-slate-200 bg-white">
           <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
         </div>
-      ) : action === 'IMPORT' && importTypes.length > 0 ? (
-        <MasterImportView
-          session={session}
-          companyId={companyId}
-          notify={notify}
-          allowedTypes={importTypes}
-          embedded
-        />
+      ) : action === 'IMPORT' && importItems.length > 0 ? (
+        <div className="space-y-5">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+            <p className="text-xs font-black uppercase tracking-[.16em] text-slate-400">Pilih jenis import</p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {importItems.map((item) => <button key={item.typeKey} type="button" onClick={() => setSelectedImportType(item.typeKey)} className={`rounded-2xl border p-4 text-left ${selectedImportType === item.typeKey ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 hover:bg-slate-50'}`}><b className="text-sm text-slate-900">{item.label}</b><span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span></button>)}
+            </div>
+          </section>
+          {selectedImportType === 'PRICELISTS' ? (
+            <DistributorPricelistImportView session={session} companyName={companyName} notify={notify} />
+          ) : isImportType(selectedImportType) ? (
+            <MasterImportView
+              session={session}
+              companyId={companyId}
+              notify={notify}
+              allowedTypes={[selectedImportType]}
+              embedded
+            />
+          ) : null}
+        </div>
       ) : exportItems.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
           <FileSpreadsheet className="mx-auto h-9 w-9 text-slate-300" />
@@ -317,7 +333,7 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
                   {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {downloading ? 'Menyiapkan file…' : `Export ${selected.formats[0]}`}
                 </button>
-                {importTypes.length > 0 && <p className="mt-4 text-xs leading-5 text-slate-500">
+                {importItems.length > 0 && <p className="mt-4 text-xs leading-5 text-slate-500">
                   Gunakan tab Import untuk template, upload, preview, konfirmasi, dan riwayat import.
                 </p>}
               </>

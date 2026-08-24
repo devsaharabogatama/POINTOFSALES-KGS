@@ -1,5 +1,37 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-24 - DISTRIBUTOR PRICELIST IMPORT LOCAL READY
+
+- Global Data Exchange menerima `.xlsx`/`.csv` Price List Distributor untuk
+  Company aktif dan mencocokkan `Kode Produk` ke SKU tanpa UUID.
+- COGS/Retail dibaca per PACK lalu Product-UOM aktif diturunkan dengan faktor
+  konversi. Agen/SM, Spesial, dan Khusus menjadi Pricelist Customer; tier
+  60/100/150 PACK masuk Global default memakai Base-UOM equivalent.
+- Migration `20260824100000_distributor_pricelist_import.sql` menambah IMPORT
+  capability, guarded preview/apply atomik, immutable evidence, exact replay,
+  serta Product/Pricelist audit tanpa menyentuh transaksi/Stock/Finance.
+- UI, API, parser XLSX memakai `fflate` existing, postflight, behavioral test,
+  runbook, Manual, Gate, dan README telah ditambah.
+- Final review memisahkan capability `IMPORT` dari wrapper interaktif
+  `MANAGE`: RPC memakai core transactional yang sudah dikarantina setelah dua
+  guard IMPORT lolos. Katalog/API juga mensyaratkan IMPORT Pricelist sekaligus
+  Product. UOM jual PACK ambigu dan profil harga target nonaktif kini memblokir
+  Apply dengan pesan eksplisit, bukan memilih/mengaktifkan data diam-diam.
+- SKU yang tidak ditemukan pada Company aktif kini berstatus `SKIPPED` dan
+  tidak memblokir SKU valid lain. Apply tetap diblokir bila tidak ada satu pun
+  SKU cocok atau terdapat error nilai/UOM pada Product yang ditemukan.
+- Base migration ternyata sudah dipasang user sebelum keputusan SKIP. Karena
+  itu dibuat forward-fix terpisah
+  `20260824110000_distributor_pricelist_missing_sku_skip.sql`; base migration
+  tidak boleh dijalankan ulang. Postflight kini membuktikan ledger dan source
+  contract forward-fix tersebut.
+- Evidence lokal: targeted ESLint PASS; TypeScript `--noEmit` PASS; Next
+  production build PASS (72 static/dynamic routes); SQL delimiter/parentheses
+  seimbang dan targeted `git diff --check` PASS.
+- Manual gate: migration → postflight non-INFO PASS → behavioral tanpa
+  exception → deploy staging → smoke satu file kecil per Company. Database dan
+  deployment belum disentuh agent.
+
 ### 2026-08-21 — PRODUCT-UOM CONTEXT TEMPLATE AND JOB CANCEL LOCAL READY
 
 - User mengoreksi UX additive Product-UOM: template placeholder satu baris
@@ -5837,3 +5869,22 @@ Eksekusi hanya setelah backup dan maintenance window.
   Smoke publik: kedua root HTTP 200 HTML dan `/api/platform/pos-setup` tanpa sesi
   HTTP 401 JSON. Tidak ada Supabase mutation, environment change, atau project
   production yang disentuh. Authenticated UI smoke tetap manual.
+
+### 2026-08-21 - REGISTERED USER IDENTITY SQL OPERATIONS
+
+- Ditambahkan SELECT-only `supabase/operations/find_registered_user.sql` untuk
+  mencari akun lewat UUID/email/nama sekaligus melihat provider dan membership.
+- Ditambahkan `supabase/operations/update_registered_user_identity.sql` untuk
+  sinkronisasi atomik email `auth.users`, `public.profiles`, email
+  `auth.identities`, dan nama metadata/profile. Default PREVIEW; APPLY memerlukan
+  `execute_change=TRUE` serta confirmation `UPDATE_REGISTERED_USER`.
+- Operasi menolak target nol/ambigu, email invalid/duplikat, dan final state yang
+  tidak sinkron. Password, role, Company/Store membership, permission, active
+  context, dan histori transaksi tidak disentuh. Perubahan email SQL langsung
+  dianggap confirmed dan user harus login ulang dengan email baru.
+- Tidak ada database/deployment yang dilakukan. Evidence lokal: transaction/DO
+  delimiter statik dan `git diff --check` PASS; PostgreSQL runtime tetap manual.
+- UX correction: user menolak keharusan memasukkan UUID untuk melihat akun.
+  `find_registered_user.sql` kini langsung menampilkan seluruh akun beserta
+  Company/role/status; `search_text` kosong adalah default dan filter nama/email
+  hanya opsional. Update cukup memakai `current_email`; UUID hanya fallback.

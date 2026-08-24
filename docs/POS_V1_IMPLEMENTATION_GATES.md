@@ -1431,6 +1431,14 @@ STOCK tetap milik `inventory.products`, Bundle tidak mempunyai stok/FIFO fisik,
 POS melakukan server-side component expansion dengan session authority sendiri,
 dan Sales Return memakai immutable allocation tanpa memperoleh Bundle MANAGE.
 
+Additive extension 24 Agustus 2026: import Pricelist Distributor local-ready
+di Global Data Exchange. File dicocokkan dengan Company aktif + SKU, harga PACK
+diturunkan ke Product-UOM berdasarkan faktor, Pricelist Customer reusable dan
+tier Global dibuat atomik, serta IMPORT memakai capability efektif
+`sales.pricelists` dan `inventory.products`. Status tetap local-ready sampai
+migration, postflight, behavior rollback, deployment, dan authenticated smoke
+selesai; transaksi serta histori final tidak dibackfill.
+
 Live ACP-5G preflight kemudian diterima tanpa `BLOCKER`/`BACKFILL`. Paket
 enforcement local-ready membuat composed Bundle management/reference read,
 menjaga atomic save dan availability melalui capability efektif, menutup hanya

@@ -469,6 +469,27 @@ Impor tidak boleh menulis transaksi final, histori stok, jurnal, atau pembayaran
 7. Job milik pengguna yang berhenti pada tahap upload/pemetaan lebih dari 15
    menit otomatis dibatalkan ketika Riwayat Import dimuat ulang.
 
+### Mengimpor Pricelist Distributor
+
+1. Pilih Company target sebelum membuka Data Exchange.
+2. Buka **Data Exchange → Import → Pricelist**.
+3. Upload file Excel/CSV berisi `Kode Produk`, `COGS`, `Retail`, `Agen/SM`,
+   `Spesial`, `Khusus`, dan tier minimum PACK.
+4. Sistem mencocokkan Kode Produk dengan SKU Company aktif; UUID tidak perlu.
+5. COGS dan Retail dibaca per PACK. Harga DUS/UOM lain dihitung otomatis dari
+   isi UOM dalam satuan dasar.
+6. SKU yang tidak ditemukan ditandai **Dilewati**; SKU valid lain tetap dapat
+   diproses. UOM jual PACK yang tidak tersedia atau nilai harga yang rusak harus
+   diperbaiki karena tetap memblokir penyimpanan.
+7. Centang konfirmasi lalu simpan. Proses atomik sehingga kegagalan tidak
+   meninggalkan sebagian Pricelist tersimpan.
+8. Pricelist `Harga Agen / SM`, `Harga Spesial`, dan `Harga Khusus` dipilih dari
+   master Customer. Tier 60/100/150 PACK memakai Global default.
+9. Untuk Company lain, pindahkan Company aktif dan upload file kembali.
+
+Import ini tidak mengubah stok, FIFO, transaksi, Customer assignment,
+pembayaran, atau jurnal yang sudah tercatat.
+
 ## 13. Menggunakan PWA POS
 
 ### Membuka sesi

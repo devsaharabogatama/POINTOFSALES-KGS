@@ -2,6 +2,27 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Import Pricelist Distributor kini **local-ready** melalui Global Data Exchange.
+File Excel/CSV dicocokkan berdasarkan Company aktif dan SKU; COGS/Retail PACK
+menjadi harga dasar, harga DUS/UOM lain diturunkan dari faktor UOM, tiga harga
+Customer reusable dibuat/diperbarui, dan tier 60/100/150 PACK masuk Global
+default. Preview, apply atomik, audit, exact retry, postflight, behavioral test,
+dan rollout tersedia pada
+[runbook Import Pricelist Distributor](docs/runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md).
+Database dan deployment belum diubah oleh perubahan lokal ini.
+Jika migration dasar import sudah terpasang, gunakan forward-fix
+`20260824110000_distributor_pricelist_missing_sku_skip.sql`; SKU yang tidak
+ditemukan akan dilewati tanpa membatalkan SKU valid lainnya.
+
+Operasi admin manual untuk akun terdaftar tersedia sebagai SQL terpisah:
+[`find_registered_user.sql`](supabase/operations/find_registered_user.sql)
+bersifat SELECT-only dan langsung menampilkan seluruh akun beserta Company,
+role, serta status membership tanpa perlu UUID; sedangkan
+[`update_registered_user_identity.sql`](supabase/operations/update_registered_user_identity.sql)
+default PREVIEW dan menyinkronkan email login, profile, email identity, serta
+nama metadata secara atomik setelah konfirmasi eksplisit. Password, role,
+membership, permission, dan histori tidak diubah.
+
 Update 21 Agustus 2026: Platform kini memiliki workspace **Point of Sales**
 untuk membuat dan mengubah Toko/Terminal secara guarded dan audited. PWA
 multi-Company memilih Company serta Terminal/Toko sebelum membuka sesi dan

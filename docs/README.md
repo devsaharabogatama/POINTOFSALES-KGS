@@ -24,6 +24,7 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 - [`runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md`](runbooks/PRD_CUSTOMER_MASTER_IMPORT_EXPORT.md)
 - [`runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md`](runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md)
 - [`runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md`](runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md)
+- [`runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md`](runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md)
 
 Rollout profil/rekening Company, autofill rekening Supplier Payment, dan
 rekening opsional pada Invoice:

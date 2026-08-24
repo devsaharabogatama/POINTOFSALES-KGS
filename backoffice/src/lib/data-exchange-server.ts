@@ -115,6 +115,20 @@ const salesReport = (
   filters: [],
 });
 
+const salesPricelistExchange: CatalogDefinition = {
+  moduleKey: "SALES",
+  typeKey: "PRICELISTS",
+  label: "Pricelist",
+  description: "Harga Product-UOM, Pricelist Customer, dan tier kuantitas Global.",
+  exportRoles: salesRoles,
+  importRoles: ownerRoles,
+  // Existing export remains CSV; the dedicated importer accepts CSV and XLSX.
+  formats: ["CSV"],
+  scopeKind: "COMPANY",
+  exportOnly: false,
+  filters: [],
+};
+
 const definitions: CatalogDefinition[] = [
   master("INVENTORY", "PRODUCT_CATEGORY", "Kategori Produk", "Daftar kategori produk aktif dan nonaktif.", inventoryRoles),
   master("INVENTORY", "UOM", "Satuan (UOM)", "Master satuan beserta aturan quantity.", inventoryRoles),
@@ -131,7 +145,7 @@ const definitions: CatalogDefinition[] = [
   inventoryReport("STOCK_REAL", "Stock Real", "Saldo aktual, minimum stock, dan valuasi FIFO per Produk–Gudang."),
   inventoryReport("STOCK_MOVEMENTS", "Kartu Stok", "Ledger perubahan stok final beserta dokumen sumber."),
   salesReport("SALES_DOCUMENTS", "Invoice Penjualan", "Snapshot final Invoice penjualan."),
-  salesReport("PRICELISTS", "Pricelist", "Daftar harga, rule Product-UOM, periode, dan cakupan Toko."),
+  salesPricelistExchange,
   financeReport("JOURNAL_ENTRIES", "Journal Entries", "Dokumen jurnal beserta seluruh baris debit/kredit."),
   financeReport("GENERAL_LEDGER", "Buku Besar", "Ringkasan akun dan detail ledger POSTED."),
   financeReport("TRIAL_BALANCE", "Neraca Saldo", "Saldo awal, mutasi, dan saldo akhir akun POSTED."),
@@ -245,6 +259,12 @@ export async function authorizedDataExchangeCatalog(
       allowedActions = allowedActions.filter((action) =>
         permission.effectiveCapabilities.includes(action));
     }
+    if (definition.typeKey === "PRICELISTS") {
+      // Distributor Pricelist import also mutates authoritative Product-UOM
+      // prices. Do not advertise IMPORT when Product import is restricted.
+      allowedActions = allowedActions.filter((action) => action !== "IMPORT"
+        || Boolean(productPermission?.effectiveCapabilities.includes("IMPORT")));
+    }
     if (!allowedActions.length) return [];
     return [{
       moduleKey: definition.moduleKey,
@@ -301,6 +321,9 @@ export async function requireDataExchangeAction(
         : null;
   if (permissionKey) {
     await requirePermissionCapability(caller, companyId, permissionKey, action);
+  }
+  if (typeKey === "PRICELISTS" && action === "IMPORT") {
+    await requirePermissionCapability(caller, companyId, "inventory.products", "IMPORT");
   }
   return definition;
 }
