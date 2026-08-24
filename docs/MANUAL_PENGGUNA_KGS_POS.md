@@ -164,7 +164,9 @@ Posting opname membuat Penyesuaian Stok kanonis.
 ### 6.6 Surat Jalan
 
 1. Buka **Inventory → Surat Jalan**.
-2. Cari dokumen berdasarkan nomor, pelanggan, atau status.
+2. Cari dokumen berdasarkan nomor/pelanggan, status, atau rentang tanggal.
+   Tanggal awal dan akhir bersifat inklusif serta mengikuti timezone Company.
+   Kosongkan keduanya atau pilih **Semua tanggal** untuk melihat seluruh periode.
 3. Buka detail, lalu pilih **Cetak** atau **Unduh PDF**.
 4. Ubah status menjadi dikirim ketika barang berangkat.
 5. Konfirmasikan terkirim setelah penerima menerima barang.

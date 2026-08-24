@@ -1622,6 +1622,13 @@ quantity-only read, guarded print/lifecycle, dan memisahkan UI/API. POS tetap
 memakai posted-Sale session authority. Manual rollout, postflight, behavior,
 ACP-7/PRD-1 rerun, dan authenticated role smoke wajib lulus sebelum closure.
 
+Additive UX 24 Agustus 2026 menambah filter tanggal awal/akhir pada Inventory
+Surat Jalan. Overload RPC baru menyaring tanggal efektif
+`scheduled_at/created_at` secara inklusif dalam timezone Company sebelum limit
+500, sementara RPC tanpa argumen tetap dipertahankan untuk compatibility.
+Migration `20260824120000`, postflight, behavior rollback-safe, client build,
+dan authenticated staging smoke menjadi gate perubahan ini.
+
 ### Deployment timing
 
 Kondisi project saat G1 adalah **runtime lokal + GitHub untuk versioning + Supabase**. Belum ada Vercel project dan tidak perlu membuat deployment hanya untuk menyelesaikan migration gate.

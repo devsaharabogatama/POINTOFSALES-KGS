@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
-  Archive, Ban, CheckCircle2, Download, Eye, FileText, Loader2,
+  Archive, Ban, CalendarRange, CheckCircle2, Download, Eye, FileText, Loader2,
   RefreshCcw, Search, Send, X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
@@ -54,6 +54,9 @@ function friendly(code?: string) {
     MASTER_VERSION_CONFLICT: 'Dokumen berubah. Muat ulang lalu coba lagi.',
     INVALID_SALES_DELIVERY_TRANSITION: 'Perubahan status tidak valid.',
     CANCEL_REASON_REQUIRED: 'Alasan pembatalan wajib diisi.',
+    INVALID_DELIVERY_DATE_RANGE: 'Tanggal awal tidak boleh melewati tanggal akhir.',
+    DELIVERY_DATE_FROM_INVALID: 'Tanggal awal tidak valid.',
+    DELIVERY_DATE_TO_INVALID: 'Tanggal akhir tidak valid.',
   } as Record<string, string>)[code ?? ''] ?? code ?? 'Operasi Surat Jalan gagal.'
 }
 function saveBlob(blob: Blob, fileName: string) {
@@ -78,6 +81,8 @@ export function DeliveryDocumentView({
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [selected, setSelected] = useState<DeliverySummary | null>(null)
   const [detail, setDetail] = useState<JsonMap | null>(null)
   const [action, setAction] = useState<'DISPATCH' | 'DELIVER' | 'CANCEL' | null>(null)
@@ -88,11 +93,21 @@ export function DeliveryDocumentView({
   const [showStampOnDocuments, setShowStampOnDocuments] = useState(false)
 
   const load = useCallback(async () => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setError(friendly('INVALID_DELIVERY_DATE_RANGE'))
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError('')
     try {
+      const query = new URLSearchParams()
+      if (dateFrom) query.set('dateFrom', dateFrom)
+      if (dateTo) query.set('dateTo', dateTo)
       const [response, brandingResponse] = await Promise.all([
-        fetch('/api/inventory/delivery-documents', { headers: headers(session) }),
+        fetch(`/api/inventory/delivery-documents?${query}`, {
+          headers: headers(session), cache: 'no-store',
+        }),
         fetch('/api/platform/company-branding', {
           headers: headers(session), cache: 'no-store',
         }),
@@ -113,7 +128,7 @@ export function DeliveryDocumentView({
     } finally {
       setLoading(false)
     }
-  }, [session])
+  }, [dateFrom, dateTo, session])
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- rows follow active Company context
     void load()
@@ -262,9 +277,12 @@ export function DeliveryDocumentView({
         <button onClick={() => void load()} disabled={loading || bulkDownloading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button>
       </div>
     </header>
-    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_auto]">
+    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(260px,1fr)_auto_auto_auto_auto] lg:items-end">
       <label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari SJ, Invoice, penerima, toko, atau gudang" className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3"/></label>
       <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 px-3"><option value="ALL">Semua status</option><option value="READY">Siap dikirim</option><option value="DISPATCHED">Dalam perjalanan</option><option value="DELIVERED">Terkirim</option><option value="CANCELED">Dibatalkan</option></select>
+      <label className="text-xs font-black text-slate-600">Tanggal awal<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
+      <label className="text-xs font-black text-slate-600">Tanggal akhir<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
+      <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }} disabled={!dateFrom && !dateTo} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700 disabled:text-slate-300"><CalendarRange className="h-4 w-4"/>Semua tanggal</button>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm">
       <label className="inline-flex items-center gap-3 font-black text-blue-950"><input type="checkbox" checked={allFilteredMarked} onChange={toggleFiltered} disabled={!selectableFiltered.length || bulkDownloading} className="h-5 w-5 accent-blue-600"/>Pilih semua hasil filter{filtered.length > MAX_BULK_DOCUMENTS ? ` (maksimal ${MAX_BULK_DOCUMENTS})` : ''}</label>

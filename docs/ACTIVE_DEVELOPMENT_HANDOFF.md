@@ -1,5 +1,37 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-24 - INVENTORY DELIVERY DATE FILTER LOCAL READY
+
+- Inventory > Surat Jalan kini memiliki filter tanggal awal/akhir inklusif dan
+  tombol `Semua tanggal`, berdampingan dengan pencarian serta filter status.
+- API memvalidasi tanggal dan memanggil overload guarded
+  `get_inventory_delivery_documents(date,date)`. Database menyaring tanggal
+  efektif `scheduled_at/created_at` dalam timezone Company sebelum limit 500;
+  RPC tanpa argumen dipertahankan untuk compatibility.
+- Migration `20260824120000_inventory_delivery_date_range_filter.sql`,
+  postflight SELECT-only, dan behavioral rollback-safe ditambahkan. User
+  mengonfirmasi migration tanpa masalah.
+- Backoffice staging berhasil dideploy ke alias
+  `https://pointofsales-kgs-staging.vercel.app`; Vercel build PASS (72 route),
+  root HTTP 200, dan API tanggal tanpa sesi HTTP 401 JSON. PWA dan seluruh
+  project production tidak disentuh. Authenticated smoke rentang tanggal dan
+  reset filter masih manual gate user.
+
+### 2026-08-24 - DISTRIBUTOR PRICELIST STAGING DEPLOYED
+
+- Working tree commit `90cc795` dideploy hanya ke dua project staging yang
+  terverifikasi: `pointofsales-kgs-staging` (Root Directory `backoffice`) dan
+  `kgs-pos-pwa-staging` (Root Directory `pwa`). Project production dan database
+  production tidak disentuh; environment variable juga tidak diubah.
+- Vercel build Backoffice PASS (Next.js 16.2.10, 72 route) termasuk
+  `/api/sales/pricelists/import`. Vercel build PWA PASS; warning chunk utama
+  561.09 kB tetap non-blocking dan tidak berubah menjadi build failure.
+- Alias aktif: `https://pointofsales-kgs-staging.vercel.app` dan
+  `https://kgs-pos-pwa-staging.vercel.app`.
+- Smoke publik PASS: kedua root HTTP 200, manifest PWA HTTP 200, serta katalog
+  Data Exchange Backoffice tanpa sesi HTTP 401 JSON. Authenticated smoke import
+  Pricelist dan PWA login tetap manual gate user.
+
 ### 2026-08-24 - DISTRIBUTOR PRICELIST IMPORT LOCAL READY
 
 - Global Data Exchange menerima `.xlsx`/`.csv` Price List Distributor untuk

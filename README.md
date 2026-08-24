@@ -2,6 +2,16 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Deployment staging 24 Agustus 2026 sudah diperbarui pada
+`https://pointofsales-kgs-staging.vercel.app` dan
+`https://kgs-pos-pwa-staging.vercel.app`; kedua root dan manifest PWA lulus
+smoke publik. Project serta database production tidak disentuh.
+
+Filter rentang tanggal Inventory Surat Jalan sudah dipasang melalui migration
+`20260824120000_inventory_delivery_date_range_filter.sql` dan dideploy ke
+Backoffice staging. Penyaringan memakai timezone Company; authenticated UI
+smoke tetap menunggu konfirmasi user.
+
 Import Pricelist Distributor kini **local-ready** melalui Global Data Exchange.
 File Excel/CSV dicocokkan berdasarkan Company aktif dan SKU; COGS/Retail PACK
 menjadi harga dasar, harga DUS/UOM lain diturunkan dari faktor UOM, tiga harga
