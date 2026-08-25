@@ -1,5 +1,102 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-25 - POS TERMINAL PRICE OVERRIDE LOCAL READY
+
+- Point terakhir diimplementasikan sebagai policy per Terminal default OFF,
+  bukan permission per kasir. Backoffice Platform dapat menyimpan policy secara
+  versioned/audited bersama pengaturan UI Terminal.
+- Migration `20260825120000_pos_terminal_price_override.sql` menambah policy
+  Terminal serta snapshot harga canonical/final, actor, Terminal, sesi, source,
+  dan waktu pada Sale line. Wrapper server memvalidasi Online, Company, Store,
+  Terminal aktif, sesi OPEN, actor kasir, dan policy pada Save/Post.
+- PWA menampilkan harga Pricelist sebagai default. Saat policy aktif kasir dapat
+  edit/reset harga per line; Draft menyimpan dan memulihkan override. Jika
+  policy dimatikan ketika Draft masih membawa override, input dikunci dan kasir
+  harus meresetnya sebelum Save/Post. Offline tetap menolak override.
+- File verifikasi: `pos_terminal_price_override_preflight.sql`, postflight, dan
+  behavior rollback-safe. Runbook:
+  `docs/runbooks/POS_TERMINAL_PRICE_OVERRIDE_ROLLOUT.md`.
+- Evidence lokal: PWA oxlint PASS, PWA TypeScript/Vite production build PASS,
+  Backoffice Next.js production build PASS (72 route). User mengonfirmasi
+  preflight, migration, dan postflight seluruhnya PASS; database sekarang live dengan
+  seluruh 4 Terminal default OFF. User kemudian mengonfirmasi behavior
+  rollback-safe PASS. Manual gate tersisa: postflight ulang -> deploy staging -> authenticated two-Terminal
+  ON/OFF/Offline/retry reconciliation smoke.
+
+### 2026-08-25 - COMPANY PACK-ONLY UOM CUTOVER OPERATION READY
+
+- Point 4 disiapkan sebagai operasi tenant-scoped, bukan perubahan global:
+  `supabase/operations/convert_company_products_to_pack_only.sql`.
+- Operasi default PREVIEW dan menerima kode atau UUID Company serta konfirmasi eksplisit
+  untuk APPLY. PACK menjadi UOM beli/jual aktif; DUS dinonaktifkan untuk
+  transaksi baru tanpa mengubah referensi transaksi historis.
+- Relasi Supplier aktif dikonversi dari harga per DUS ke harga per PACK, rule
+  Pricelist DUS aktif dipensiunkan, dan referensi berat DUS diskalakan ke PACK.
+  DUS sebagai base UOM, Bundle, PACK hilang/harga kosong, atau konversi tidak
+  valid menjadi BLOCKER agar data tidak dipaksa.
+- Audit Product, Supplier, Pricelist, dan UOM ditulis pada APPLY. Runbook:
+  `docs/runbooks/COMPANY_PACK_ONLY_UOM_CUTOVER.md`.
+- Local static verification: `git diff --check` PASS. Manual gate menunggu user:
+  jalankan PREVIEW pada Company tujuan; APPLY hanya jika seluruh BLOCKER PASS.
+- Follow-up UI: editor Product sekarang hanya merender Product-UOM aktif.
+  Product-UOM DUS nonaktif tetap tersimpan untuk referensi histori, tetapi tidak
+  lagi muncul sebagai kemasan operasional atau pilihan editor.
+
+### 2026-08-25 - TERMINAL PRICE OVERRIDE DECISION DOCUMENTED (SUPERSEDED)
+
+- Catatan keputusan awal ini sudah dilanjutkan oleh implementasi local-ready di
+  bagian paling atas. Price override per line menjadi policy Terminal/POS
+  default OFF, bukan permission per Cashier.
+- Jika Terminal mengizinkan, seluruh Cashier sah pada Terminal itu dapat memakai
+  override; harga awal tetap canonical Pricelist dan override eksplisit
+  mengalahkan seluruh Pricelist hanya pada line terkait.
+- Server wajib memvalidasi policy pada Save/Post serta menyimpan harga resolver
+  asal, harga override, actor, Terminal, Session, dan waktu. Master Product-UOM
+  dan Pricelist tidak berubah. Scope awal online-only; Offline belum dibuka.
+- Rencana lima tahap ditulis di `docs/POS_TERMINAL_PRICE_OVERRIDE_PLAN.md` dan
+  dirujuk dari requirement index, POS notes, Pricelist notes, docs router, serta
+  root README. Status implementasi terkini mengikuti handoff paling atas.
+
+### 2026-08-25 - POS TEMPO TRANSACTION DATE LOCAL READY
+
+- PWA TEMPO menampilkan tanggal transaksi/order read-only dan jatuh tempo.
+  Server mengembalikan `sales_headers.transaction_date` pada hasil Save Draft
+  dan daftar Draft sehingga edit ulang tidak membuat tanggal baru.
+- Referensi Customer POS memperoleh `credit_limit` dan `credit_term_days`.
+  Tenor hanya menyarankan due date; input kasir tetap dapat menggantinya.
+- Migration additive `20260825110000_pos_tempo_transaction_date.sql`, postflight,
+  authenticated read behavior, dan runbook ditambahkan. Request payload, core
+  Save/Post, Finance, dan Offline TEMPO boundary tidak diubah.
+- Wrapper Save menjadi `SECURITY DEFINER` hanya untuk membaca kembali tanggal
+  Sale setelah core berhasil; `search_path` dipatok, hasil dibatasi active
+  Company, execute anon tetap tertutup, dan core tetap mengulang otorisasi.
+- Verification lokal: PWA oxlint PASS; TypeScript + Vite/PWA production build
+  PASS; SQL transaction/delimiter scan dan `git diff --check` PASS. Build awal
+  menemukan fixture Offline belum mengisi dua field Customer baru; fixture kini
+  memberi nilai netral karena TEMPO Offline memang tertutup, lalu build ulang
+  PASS. Manual gate: migration → postflight → behavior → authenticated TEMPO
+  smoke.
+
+### 2026-08-25 - PRICELIST PERCENTAGE TIER UI LOCAL READY
+
+- Backoffice Pricelist kini selalu menawarkan `DISCOUNT_PERCENT` untuk rule
+  Global dengan minimum quantity lebih dari satu; sebelumnya opsi hanya tampil
+  untuk data percent existing sehingga rule baru tidak dapat dibuat lewat UI.
+- Bantuan input dibedakan untuk harga final, potongan nominal, dan persen.
+  Estimasi harga akhir tampil langsung dari harga normal Product-UOM; input
+  persen tetap dibatasi 0–100.
+- Tidak ada perubahan database. API parser, guarded save RPC, resolver POS
+  online, dan resolver Offline memang telah mendukung `DISCOUNT_PERCENT`.
+  Import Pricelist Distributor tetap memakai harga final absolut dan tidak
+  diubah atau menebak persentase.
+- File berubah: `backoffice/src/components/PricelistMasterView.tsx`, Manual,
+  root README, dan handoff ini.
+- Verification: targeted ESLint PASS dan Backoffice production build PASS (72
+  routes). Full-repository lint melewati batas 120 detik tanpa diagnostic;
+  targeted file lint kemudian PASS. Manual smoke: buat Global tier minimum > 1,
+  pilih Diskon persen, simpan, lalu pastikan preview POS dan Draft/Post
+  menghasilkan harga yang sama.
+
 ### 2026-08-24 - INVENTORY DELIVERY DATE FILTER LOCAL READY
 
 - Inventory > Surat Jalan kini memiliki filter tanggal awal/akhir inklusif dan
@@ -5920,3 +6017,72 @@ Eksekusi hanya setelah backup dan maintenance window.
   `find_registered_user.sql` kini langsung menampilkan seluruh akun beserta
   Company/role/status; `search_text` kosong adalah default dan filter nama/email
   hanya opsional. Update cukup memakai `current_email`; UUID hanya fallback.
+
+### 2026-08-25 - POS LIVE PRICELIST PREVIEW LOCAL READY
+
+- User meminta bug nomor 5 diperbaiki lebih dahulu: POS menampilkan harga umum
+  sampai transaksi disimpan sebagai Draft, lalu baru menampilkan Pricelist.
+- Root cause pada `pwa/src/App.tsx`: perubahan Customer/Pricelist/cart menghapus
+  `resolvedLines`; kartu Product selalu membaca `fallbackPrice`, sedangkan
+  resolver server baru dijalankan oleh Save Draft.
+- Migration additive `20260825100000_pos_live_pricelist_preview.sql` menambah
+  RPC `preview_pos_sale_prices`. RPC wajib auth + active Company + open Cashier
+  session milik actor, memvalidasi Customer tenant, membatasi payload, dan
+  memanggil `private.resolve_pos_sale_price`; tidak ada Draft/table mutation.
+- PWA memanggil preview dengan debounce 200 ms dan chunk 250 Product-UOM.
+  Quantity Product yang sudah berada di cart ikut dikirim sehingga perubahan
+  quantity tier langsung terlihat. Stale response diabaikan dengan request ID.
+- Kartu Product dan cart sekarang memakai harga preview; fallback hanya dipakai
+  selama preview belum tersedia/gagal. Save Draft/Post, Offline snapshot,
+  discount, tax, payment, stock, dan Finance core tidak diubah.
+- File verifikasi:
+  `supabase/tests/pos_live_pricelist_preview_postflight.sql` dan
+  `supabase/tests/pos_live_pricelist_preview_behavior.sql`; runbook:
+  `docs/runbooks/POS_LIVE_PRICELIST_PREVIEW_ROLLOUT.md`.
+- Evidence lokal: `pwa/npm.cmd run lint` PASS; `pwa/npm.cmd run build` PASS
+  (Vite/PWA, warning chunk >500 kB tetap warning lama non-blocking).
+- Manual gate: migration -> postflight seluruh PASS -> pastikan open Session lalu
+  behavior rollback PASS -> deploy PWA target -> smoke Customer default,
+  override Global, quantity tier, Save Draft parity, dan Offline regression.
+- Tidak ada database atau deployment yang dilakukan. Next safe step adalah
+  menjalankan rollout pada database target, bukan mengubah resolver Save/Post.
+- Behavioral test forward-fix: pencarian Customer lintas Company dipindahkan ke
+  fixture sebelum `SET LOCAL ROLE authenticated`. Versi awal salah melakukan
+  direct SELECT `customers` setelah pergantian role dan terkena boundary ACP;
+  runtime migration/RPC tidak berubah. Jalankan ulang behavioral file dari awal.
+
+### 2026-08-25 - POS LAPTOP TWO-PANEL WORKSPACE LOCAL READY
+
+- Atas instruksi user, UI transaksi PWA diubah tanpa perubahan schema maupun
+  business function: panel kiri sekarang berisi searchable Product dropdown dan
+  keranjang, sedangkan panel kanan berisi seluruh detail transaksi/pembayaran.
+- Product picker mencari nama, SKU, barcode, dan UOM, mempertahankan filter
+  kategori, serta menampilkan harga preview Pricelist dan stok. Pemilihan tetap
+  memanggil `addToCart`; Product-UOM yang sama tetap menaikkan quantity existing.
+- Pada laptop/desktop, kedua panel mengikuti tinggi viewport. Cart dan checkout
+  detail scroll secara independen; action Draft/Post tetap berada pada checkout
+  form existing. Mobile kembali ke susunan satu kolom dan picker memakai panel
+  layar yang dibatasi viewport.
+- File runtime berubah: `pwa/src/App.tsx`, `pwa/src/App.css`. Dokumentasi berubah:
+  `README.md`, `docs/POS_DEVELOPMENT_NOTES.md`,
+  `docs/MANUAL_PENGGUNA_KGS_POS.md`, dan handoff ini.
+- Evidence lokal: `pwa/npm.cmd run lint` PASS; `pwa/npm.cmd run build` PASS.
+  Warning chunk utama >500 kB adalah warning lama non-blocking.
+- Tidak ada migration, database mutation, atau deployment. Authenticated smoke
+  yang masih wajib: tambah Product melalui nama/SKU, kategori, harga Pricelist,
+  duplicate quantity, edit/remove cart, scroll kedua panel, Save Draft, reload
+  Draft, checkout Cash/Transfer/TEMPO, serta responsive mobile.
+- Koreksi requirement pada turn berikutnya: user menegaskan Compact adalah UI
+  alternatif, bukan pengganti. Runtime kemudian diperbaiki agar mode `Katalog`
+  lama tetap default, tombol `Katalog/Compact` tersedia selama sesi, pilihan
+  disimpan di `localStorage`, dan pergantian mode tidak mereset cart/Draft.
+- Switcher selanjutnya dipindahkan dari workspace ke header sebagai satu
+  segmented group. Perubahan jumlah menu Terminal hanya membuat action header
+  wrap sebagai unit; pada viewport sempit label switcher disembunyikan, tetapi
+  ikon, title, dan `aria-pressed` tetap tersedia. Shell desktop menghitung area
+  kerja dari sisa tinggi setelah header dinamis sehingga baris switcher tidak
+  lagi mengurangi workspace.
+- Compact Product picker dirapikan setelah visual review user: selector input
+  kini hanya memiliki satu focus border dengan jarak ikon/placeholder konsisten;
+  kategori memakai chip kecil yang wrap dan tidak lagi menampilkan scrollbar
+  horizontal. Tidak ada handler atau business contract yang berubah.

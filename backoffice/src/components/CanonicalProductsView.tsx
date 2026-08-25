@@ -358,7 +358,7 @@ export function CanonicalProductsView({
         <ProductEditor
           record={editor === 'create' ? undefined : editor}
           categories={categories.filter((item) => item.is_active || item.id === (editor === 'create' ? '' : editor.category_id))}
-          uoms={uoms.filter((item) => item.is_active || (editor !== 'create' && editor.product_uoms.some((row) => row.uom_id === item.id)))}
+          uoms={uoms.filter((item) => item.is_active || (editor !== 'create' && editor.product_uoms.some((row) => row.is_active && row.uom_id === item.id)))}
           taxRules={taxRules}
           taxEntitlements={taxEntitlements}
           close={() => setEditor(null)}
@@ -396,6 +396,7 @@ function initialDraft(record: ProductRow | undefined, categories: Category[], uo
       salesTaxRuleId: record.sales_tax_rule_id,
       purchaseTaxRuleId: record.purchase_tax_rule_id,
       uoms: record.product_uoms
+        .filter((row) => row.is_active)
         .slice()
         .sort((a, b) => Number(a.factor_to_base) - Number(b.factor_to_base))
         .map((row) => ({

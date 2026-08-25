@@ -32,10 +32,14 @@ export async function PATCH(request: Request) {
     if (!Array.isArray(body.hiddenFeatureKeys) || body.hiddenFeatureKeys.some(
       (value) => typeof value !== 'string' || !featureKeys.has(value.toUpperCase()),
     )) throw new ApiRouteError('INVALID_POS_TERMINAL_UI_FEATURE', 400)
+    if (typeof body.allowPriceOverride !== 'boolean') {
+      throw new ApiRouteError('INVALID_POS_TERMINAL_PRICE_OVERRIDE_POLICY', 400)
+    }
     const { data, error } = await caller.client.rpc('save_pos_terminal_ui_settings', {
       p_terminal_id: uuidValue(String(body.terminalId ?? '')),
       p_expected_version: requiredVersion(body),
       p_hidden_feature_keys: body.hiddenFeatureKeys.map((value) => String(value).toUpperCase()),
+      p_allow_price_override: body.allowPriceOverride,
     })
     if (error) rpcFailure(error.message)
     return Response.json({ data })

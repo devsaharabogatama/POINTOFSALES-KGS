@@ -306,6 +306,18 @@ rekening tampil hanya pada Invoice baru dan tidak tampil pada Surat Jalan.
 3. Pilih cakupan toko/pelanggan bila bukan global.
 4. Tentukan default jika diperlukan.
 
+Untuk Pricelist Global bertingkat, isi **Minimum pembelian** lebih dari 1 lalu
+pilih salah satu cara menentukan harga:
+
+- **Harga akhir per UOM** untuk menetapkan harga tier secara langsung;
+- **Potongan per UOM** untuk mengurangi nominal tertentu dari harga normal UOM;
+- **Diskon persen** untuk mengurangi harga normal UOM berdasarkan persentase.
+
+Contoh: harga normal PACK Rp100.000, minimum pembelian 10 PACK, dan diskon 5%
+akan menghasilkan harga tier Rp95.000 per PACK. Form menampilkan perkiraan harga
+akhir sebelum disimpan. Perhitungan final tetap dilakukan server ketika transaksi
+dipreview, disimpan, atau diposting.
+
 Di POS, pricelist pelanggan menjadi pilihan awal, tetapi kasir dapat memilih alternatif yang aktif dan memenuhi syarat. Harga final selalu dihitung server.
 
 ### 9.3 Bundle
@@ -432,6 +444,14 @@ tertentu hanya pada Terminal yang dipilih. Pengaturan ini hanya mengatur
 tampilan; hak akses server tetap berlaku dan tidak berubah. Terminal lama
 menampilkan seluruh fitur sampai pengaturannya disimpan.
 
+Bagian **Kebijakan harga Terminal** dapat mengaktifkan **Kasir boleh mengubah
+harga jual**. Secara default kebijakan ini nonaktif. Jika aktif, seluruh kasir
+sah pada Terminal tersebut dapat mengubah harga per baris di cart POS Online.
+Harga awal tetap mengikuti Pricelist. Baris yang diubah menampilkan label
+**Harga diubah**, harga Pricelist semula, serta tombol **Kembalikan ke
+Pricelist**. Perubahan hanya berlaku pada transaksi tersebut dan tidak mengubah
+master Product atau Pricelist. Mode Offline tidak mendukung override harga.
+
 ## 12. Data Exchange
 
 Pilihan dataset hanya muncul jika pengguna memiliki akses modul dan kemampuan **EXPORT** atau **IMPORT** yang sesuai.
@@ -505,7 +525,32 @@ Satu kasir tidak boleh mempunyai dua sesi terbuka yang tumpang tindih.
 
 ### Area utama
 
-Tersedia daftar produk, kategori, keranjang, pelanggan/pricelist, Draft, checkout, Return, Expense, Minta Stok, Terima Barang, Retur Supplier, Setor Kas, Offline, printer, dan tutup sesi.
+Saat sesi aktif tersedia dua pilihan tampilan pada switcher di header POS:
+
+- **Katalog** adalah tampilan kartu Product sebelumnya dan tetap menjadi
+  pilihan awal;
+- **Compact** adalah alternatif untuk laptop dengan searchable Product dropdown.
+
+Pilihan terakhir disimpan pada browser/perangkat tersebut. Dalam mode Compact,
+layar transaksi dibagi menjadi dua panel:
+
+- panel kiri berisi tombol **Tambah produk** dan daftar barang dalam keranjang;
+- panel kanan berisi Customer, Pricelist, aturan transaksi, pengiriman,
+  pembayaran, total, serta tindakan Draft/Post;
+- daftar keranjang dan detail transaksi dapat digulir secara terpisah sehingga
+  kasir tidak perlu menggulir satu halaman panjang.
+
+Untuk menambahkan barang, klik **Tambah produk**, lalu cari berdasarkan nama,
+SKU, barcode, atau satuan. Kategori dapat dipilih di dalam daftar tersebut.
+Setiap hasil menampilkan UOM, harga Pricelist aktif, dan ketersediaan stok.
+Klik hasil yang benar untuk memasukkannya ke keranjang. Memilih Product-UOM yang
+sudah ada akan menambah kuantitas baris tersebut, bukan membuat baris duplikat.
+
+Pilih **Katalog** kapan saja untuk kembali ke tampilan kartu Product tanpa
+mengubah isi keranjang atau transaksi yang sedang dikerjakan.
+
+Fitur lain yang tersedia meliputi Draft, Return, Expense, Minta Stok, Terima
+Barang, Retur Supplier, Setor Kas, Offline, printer, dan tutup sesi.
 
 Roda mouse atau gesture scroll pada field angka tidak mengubah nominal maupun
 kuantitas yang sedang diketik. Scroll tetap menggerakkan panel atau halaman.
@@ -523,6 +568,21 @@ Gunakan saat transaksi belum siap dibayar. Draft tidak mengurangi stok dan belum
 ### Split payment
 
 Tambahkan beberapa pembayaran, pilih metode, lalu isi **Uang diterima** per metode. Jumlah dasar harus memenuhi total. Kembalian dan kredit saldo mengikuti kebijakan.
+
+### Penjualan TEMPO
+
+1. Pilih Customer reguler; Pelanggan Umum tidak dapat memakai TEMPO.
+2. Aktifkan **Transaksi TEMPO**.
+3. Periksa **Tanggal transaksi/order** yang ditampilkan read-only. Sistem
+   menguncinya saat Draft pertama kali disimpan.
+4. Periksa **Tanggal jatuh tempo**. Jika Finance telah mengatur tenor Customer,
+   POS memberikan saran otomatis dari tanggal transaksi ditambah jumlah hari
+   tenor. Kasir tetap dapat menggantinya sebelum posting.
+5. Simpan Draft atau lanjutkan posting. Saat Draft dibuka kembali, tanggal
+   transaksi asli dan jatuh tempo pilihan kasir harus tetap sama.
+
+TEMPO hanya tersedia saat online. Nilai tanggal transaksi berasal dari server;
+jam perangkat kasir bukan sumber kebenaran transaksi.
 
 ### Menutup sesi
 

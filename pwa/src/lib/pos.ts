@@ -14,6 +14,7 @@ export type TerminalOption = {
   name: string
   storeName: string
   hiddenFeatureKeys: string[]
+  allowPriceOverride: boolean
 }
 
 export type WarehouseOption = {
@@ -195,6 +196,8 @@ export type CustomerOption = {
   isWalkIn: boolean
   defaultPricelistId: string | null
   currentBalance: number
+  creditLimit: number
+  creditTermDays: number | null
 }
 
 export type QuickCustomerInput = {
@@ -329,12 +332,14 @@ export type DraftLine = {
   quantity: number
   lineDiscountType?: 'AMOUNT' | 'PERCENT'
   lineDiscountInput?: number
+  overrideUnitPrice?: number
 }
 
 export type SaleDraft = {
   salesId: string
   draftNo: string
   clientTransactionId: string
+  transactionAt: string
   masterVersion: number
   grandTotalBeforeRounding: number
   roundingAdjustment: number
@@ -356,6 +361,7 @@ export type SaleDraftListItem = {
   createdBy: string
   createdByName: string
   createdAt: string
+  transactionAt: string
   updatedAt: string
   masterVersion: number
   grandTotal: number
@@ -377,9 +383,26 @@ export type ResolvedSaleLine = {
   uomName: string
   quantity: number
   unitPrice: number
+  canonicalUnitPrice: number
+  priceOverrideApplied: boolean
   discount: number
   taxAmount: number
   lineTotal: number
+}
+
+export type PosPricePreviewLine = {
+  lineKey: string
+  productUomId: string
+  productName: string
+  productSku: string
+  uomName: string
+  quantity: number
+  baseUnitPrice: number
+  unitPrice: number
+  pricelistId: string | null
+  pricelistRuleId: string | null
+  pricelistName: string | null
+  pricingSelectionSource: 'AUTO' | 'CASHIER_OVERRIDE'
 }
 
 export type SaleReceipt = {
@@ -642,7 +665,7 @@ export async function loadBootstrap(
       .eq('status', 'ACTIVE'),
     supabase
       .from('pos_terminals')
-      .select('id,store_id,pos_code,pos_name,hidden_feature_keys')
+      .select('id,store_id,pos_code,pos_name,hidden_feature_keys,allow_price_override')
       .eq('company_id', companyId)
       .eq('status', 'ACTIVE'),
     supabase
@@ -700,6 +723,7 @@ export async function loadBootstrap(
       hiddenFeatureKeys: Array.isArray(row.hidden_feature_keys)
         ? row.hidden_feature_keys.map(String)
         : [],
+      allowPriceOverride: Boolean(row.allow_price_override),
     }))
   const warehouses = (warehousesResult.data ?? []).map((row) => ({
     id: row.id,
@@ -978,6 +1002,8 @@ export async function loadCatalog(
     is_system_customer: boolean
     default_pricelist_id: string | null
     current_balance: number | string
+    credit_limit: number | string
+    credit_term_days: number | string | null
   }>
 
   return {
@@ -992,6 +1018,10 @@ export async function loadCatalog(
       isWalkIn: Boolean(row.is_system_customer),
       defaultPricelistId: row.default_pricelist_id,
       currentBalance: numberValue(row.current_balance),
+      creditLimit: numberValue(row.credit_limit),
+      creditTermDays: row.credit_term_days === null || row.credit_term_days === undefined
+        ? null
+        : numberValue(row.credit_term_days),
     })),
     pricelists,
     paymentMethods,
@@ -1698,6 +1728,48 @@ export async function quickCreatePosCustomer(input: QuickCustomerInput) {
   }
 }
 
+export async function previewPosSalePrices(input: {
+  cashierSessionId: string
+  customerId: string
+  selectedPricelistId: string | null
+  lines: Array<{
+    lineKey: string
+    productUomId: string
+    quantity: number
+  }>
+}): Promise<PosPricePreviewLine[]> {
+  const { data, error } = await supabase.rpc('preview_pos_sale_prices', {
+    p_cashier_session_id: input.cashierSessionId,
+    p_customer_id: input.customerId,
+    p_selected_pricelist_id: input.selectedPricelistId,
+    p_lines: input.lines,
+  })
+  throwIfError(error)
+  const payload = (data ?? {}) as DbRow
+  const rows = Array.isArray(payload.lines)
+    ? payload.lines as DbRow[]
+    : []
+  return rows.map((row) => ({
+    lineKey: String(row.lineKey),
+    productUomId: String(row.productUomId),
+    productName: String(row.productName),
+    productSku: String(row.productSku),
+    uomName: String(row.uomName),
+    quantity: numberValue(row.quantity),
+    baseUnitPrice: numberValue(row.baseUnitPrice),
+    unitPrice: numberValue(row.unitPrice),
+    pricelistId: row.pricelistId ? String(row.pricelistId) : null,
+    pricelistRuleId: row.pricelistRuleId
+      ? String(row.pricelistRuleId)
+      : null,
+    pricelistName: row.pricelistName ? String(row.pricelistName) : null,
+    pricingSelectionSource:
+      row.pricingSelectionSource === 'CASHIER_OVERRIDE'
+        ? 'CASHIER_OVERRIDE'
+        : 'AUTO',
+  }))
+}
+
 export async function saveSaleDraft(input: {
   draft: SaleDraft | null
   clientTransactionId: string
@@ -1781,6 +1853,9 @@ export async function saveSaleDraft(input: {
     salesId: String(row.salesId),
     draftNo: String(row.draftNo ?? input.draft?.draftNo ?? ''),
     clientTransactionId: input.clientTransactionId,
+    transactionAt: String(
+      row.transactionAt ?? input.draft?.transactionAt ?? new Date().toISOString(),
+    ),
     masterVersion: numberValue(row.masterVersion),
     grandTotalBeforeRounding: numberValue(row.grandTotalBeforeRounding),
     roundingAdjustment: numberValue(row.roundingAdjustment),
@@ -1814,6 +1889,7 @@ export async function listSaleDrafts(
     createdBy: String(row.createdBy),
     createdByName: String(row.createdByName),
     createdAt: String(row.createdAt),
+    transactionAt: String(row.transactionAt ?? row.createdAt),
     updatedAt: String(row.updatedAt),
     masterVersion: numberValue(row.masterVersion),
     grandTotal: numberValue(row.grandTotal),
@@ -1901,7 +1977,7 @@ export async function loadResolvedSaleLines(
   const { data, error } = await supabase
     .from('sales_details')
     .select(
-      'client_line_key,product_uom_id,product_name_snapshot,product_sku_snapshot,sale_uom_name_snapshot,qty,resolved_unit_price,line_discount_amount,allocated_order_discount_amount,tax_amount,line_total',
+      'client_line_key,product_uom_id,product_name_snapshot,product_sku_snapshot,sale_uom_name_snapshot,qty,resolved_unit_price,canonical_resolved_unit_price,price_override_applied,line_discount_amount,allocated_order_discount_amount,tax_amount,line_total',
     )
     .eq('company_id', companyId)
     .eq('sales_id', salesId)
@@ -1915,6 +1991,8 @@ export async function loadResolvedSaleLines(
     uomName: row.sale_uom_name_snapshot,
     quantity: numberValue(row.qty),
     unitPrice: numberValue(row.resolved_unit_price),
+    canonicalUnitPrice: numberValue(row.canonical_resolved_unit_price),
+    priceOverrideApplied: Boolean(row.price_override_applied),
     discount:
       numberValue(row.line_discount_amount) +
       numberValue(row.allocated_order_discount_amount),

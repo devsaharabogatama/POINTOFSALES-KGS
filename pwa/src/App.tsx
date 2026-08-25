@@ -69,6 +69,7 @@ import {
   loadResolvedSaleLines,
   openCashierSession,
   postSale,
+  previewPosSalePrices,
   quickCreatePosCustomer,
   recordSalesDocumentPrint,
   releaseSaleDraftLock,
@@ -81,6 +82,7 @@ import {
   type CatalogData,
   type CompanyOption,
   type ProductOption,
+  type PosPricePreviewLine,
   type ResolvedSaleLine,
   type SaleDraft,
   type SaleDraftListItem,
@@ -128,6 +130,7 @@ type CartItem = {
   quantity: number
   discountType: '' | 'AMOUNT' | 'PERCENT'
   discountInput: number
+  overrideUnitPrice: number | null
 }
 
 type PaymentLeg = {
@@ -174,6 +177,21 @@ const EMPTY_CATALOG: CatalogData = {
 
 function money(value: number) {
   return `Rp ${Math.round(value).toLocaleString('id-ID')}`
+}
+
+function localDateTimeInput(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return localTime.toISOString().slice(0, 16)
+}
+
+function suggestedTempoDueDate(transactionAt: string, termDays: number | null) {
+  if (termDays === null) return ''
+  const date = new Date(transactionAt)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setDate(date.getDate() + termDays)
+  return localDateTimeInput(date.toISOString())
 }
 
 function createPaymentLeg(paymentMethodId = ''): PaymentLeg {
@@ -371,6 +389,12 @@ function friendlyError(code: string) {
       'Draft server yang sedang terbuka harus diselesaikan saat online sebelum membuat transaksi Offline.',
     OFFLINE_TEMPO_NOT_ALLOWED:
       'Penjualan Tempo tidak tersedia dalam mode Offline.',
+    OFFLINE_PRICE_OVERRIDE_NOT_ALLOWED:
+      'Harga manual hanya tersedia saat POS Online. Kembalikan seluruh harga ke Pricelist sebelum menyimpan Offline.',
+    POS_TERMINAL_PRICE_OVERRIDE_DISABLED:
+      'Terminal ini tidak mengizinkan perubahan harga jual.',
+    INVALID_POS_PRICE_OVERRIDE_AMOUNT:
+      'Harga manual tidak valid.',
     OFFLINE_CATALOG_SCOPE_MISMATCH:
       'Scope snapshot tidak sama dengan Company, Terminal, Gudang, atau sesi aktif.',
     OFFLINE_FINAL_RECEIPT_NOT_AVAILABLE:
@@ -406,7 +430,9 @@ export default function App() {
   const [selectedPricelistId, setSelectedPricelistId] = useState('')
   const [paymentLegs, setPaymentLegs] = useState<PaymentLeg[]>([])
   const [isTempo, setIsTempo] = useState(false)
+  const [transactionAt, setTransactionAt] = useState(() => new Date().toISOString())
   const [dueDate, setDueDate] = useState('')
+  const [dueDateIsManual, setDueDateIsManual] = useState(false)
   const [roundingDirection, setRoundingDirection] = useState<
     'NONE' | 'DOWN' | 'UP'
   >('NONE')
@@ -424,6 +450,11 @@ export default function App() {
     crypto.randomUUID(),
   )
   const [resolvedLines, setResolvedLines] = useState<ResolvedSaleLine[]>([])
+  const [pricePreviewLines, setPricePreviewLines] = useState<
+    PosPricePreviewLine[]
+  >([])
+  const [pricePreviewLoading, setPricePreviewLoading] = useState(false)
+  const [pricePreviewError, setPricePreviewError] = useState('')
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null)
   const [salesDocuments, setSalesDocuments] = useState<{
     invoice: SalesInvoiceDocument
@@ -444,6 +475,14 @@ export default function App() {
   const [shortages, setShortages] = useState<Array<Record<string, unknown>>>([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Semua')
+  const [productPickerOpen, setProductPickerOpen] = useState(false)
+  const [workspaceLayout, setWorkspaceLayout] = useState<
+    'CATALOG' | 'COMPACT'
+  >(() =>
+    window.localStorage.getItem('mads-pos-workspace-layout') === 'COMPACT'
+      ? 'COMPACT'
+      : 'CATALOG',
+  )
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [offlineCache, setOfflineCache] =
     useState<OfflineCatalogReadResult | null>(null)
@@ -473,6 +512,13 @@ export default function App() {
   const [actionDialogReason, setActionDialogReason] = useState('')
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
   const offlineBootstrapAttemptRef = useRef('')
+  const pricePreviewRequestRef = useRef(0)
+
+  useEffect(() => {
+    window.localStorage.setItem('mads-pos-workspace-layout', workspaceLayout)
+    setProductPickerOpen(false)
+    setSearch('')
+  }, [workspaceLayout])
 
   useEffect(() => {
     function preventNumberWheelChange(event: WheelEvent) {
@@ -559,19 +605,36 @@ export default function App() {
         product.name.toLowerCase().includes(query) ||
         product.sku.toLowerCase().includes(query) ||
         product.uomName.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase() === query
+        product.barcode?.toLowerCase().includes(query)
       return matchesCategory && matchesQuery
     })
   }, [catalog.products, category, search])
 
+  const pricePreviewByProductUom = useMemo(
+    () => new Map(
+      pricePreviewLines.map((line) => [line.productUomId, line]),
+    ),
+    [pricePreviewLines],
+  )
+
   const fallbackSubtotal = useMemo(
     () =>
       cart.reduce(
-        (total, item) =>
-          total + item.product.fallbackPrice * item.quantity,
+        (total, item) => {
+          const unitPrice = item.overrideUnitPrice ??
+            pricePreviewByProductUom.get(item.product.productUomId)?.unitPrice ??
+            item.product.fallbackPrice
+          const gross = unitPrice * item.quantity
+          const discount = item.discountType === 'AMOUNT'
+            ? item.discountInput
+            : item.discountType === 'PERCENT'
+              ? gross * item.discountInput / 100
+              : 0
+          return total + Math.max(gross - discount, 0)
+        },
         0,
       ),
-    [cart],
+    [cart, pricePreviewByProductUom],
   )
   const offlineCalculation = useMemo(() => {
     if (isOnline || !offlineCache || !customerId || cart.length === 0) {
@@ -964,6 +1027,65 @@ export default function App() {
   ])
 
   useEffect(() => {
+    const requestId = ++pricePreviewRequestRef.current
+    setPricePreviewLines([])
+    setPricePreviewError('')
+    if (
+      !isOnline ||
+      !cashierSession ||
+      !customerId ||
+      catalog.products.length === 0
+    ) {
+      setPricePreviewLoading(false)
+      return
+    }
+
+    const quantityByProductUom = new Map(
+      cart.map((item) => [item.product.productUomId, item.quantity]),
+    )
+    const lines = catalog.products.map((product) => ({
+      lineKey: product.productUomId,
+      productUomId: product.productUomId,
+      quantity: quantityByProductUom.get(product.productUomId) ?? 1,
+    }))
+    const timer = window.setTimeout(() => {
+      setPricePreviewLoading(true)
+      const chunks: typeof lines[] = []
+      for (let index = 0; index < lines.length; index += 250) {
+        chunks.push(lines.slice(index, index + 250))
+      }
+      void Promise.all(chunks.map((chunk) => previewPosSalePrices({
+        cashierSessionId: cashierSession.id,
+        customerId,
+        selectedPricelistId: selectedPricelistId || null,
+        lines: chunk,
+      })))
+        .then((results) => {
+          if (pricePreviewRequestRef.current !== requestId) return
+          setPricePreviewLines(results.flat())
+        })
+        .catch((reason) => {
+          if (pricePreviewRequestRef.current !== requestId) return
+          setPricePreviewError(friendlyError(errorMessage(reason)))
+        })
+        .finally(() => {
+          if (pricePreviewRequestRef.current === requestId) {
+            setPricePreviewLoading(false)
+          }
+        })
+    }, 200)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    cart,
+    cashierSession,
+    catalog.products,
+    customerId,
+    isOnline,
+    selectedPricelistId,
+  ])
+
+  useEffect(() => {
     if (!isOnline || !session || !companyId || !coldStartRestored) return
     let active = true
     setActiveCompany(companyId)
@@ -1243,6 +1365,7 @@ export default function App() {
         setActionDialog(null)
         setActionDialogReason('')
       } else if (deliveryDetailsOpen) setDeliveryDetailsOpen(false)
+      else if (productPickerOpen) setProductPickerOpen(false)
       else if (offlineSlip) setOfflineSlip(null)
       else if (receipt) {
         setReceipt(null)
@@ -1277,6 +1400,7 @@ export default function App() {
     notice,
     offlineSlip,
     offlinePanelOpen,
+    productPickerOpen,
     quickCustomerOpen,
     receipt,
     salesReturnOpen,
@@ -1297,11 +1421,31 @@ export default function App() {
     setCustomerId(nextCustomerId)
     setSelectedPricelistId('')
     setResolvedLines([])
+    if (isTempo && !dueDateIsManual) {
+      setDueDate(suggestedTempoDueDate(transactionAt, customer?.creditTermDays ?? null))
+    }
     if (fulfillmentMode === 'DELIVERY' && customer) {
       setDeliveryRecipientName(customer.isWalkIn ? '' : customer.name)
       setDeliveryRecipientPhone(customer.phone)
       setDeliveryAddress(customer.address)
     }
+  }
+
+  function toggleTempo(enabled: boolean) {
+    setIsTempo(enabled)
+    setResolvedLines([])
+    if (!enabled) {
+      setDueDate('')
+      setDueDateIsManual(false)
+      return
+    }
+    const nextTransactionAt = draft?.transactionAt ?? new Date().toISOString()
+    setTransactionAt(nextTransactionAt)
+    setDueDate(suggestedTempoDueDate(
+      nextTransactionAt,
+      activeCustomer?.creditTermDays ?? null,
+    ))
+    setDueDateIsManual(false)
   }
 
   function selectFulfillmentMode(mode: 'PICKUP' | 'DELIVERY') {
@@ -1474,6 +1618,7 @@ export default function App() {
           quantity: 1,
           discountType: '',
           discountInput: 0,
+          overrideUnitPrice: null,
         },
       ]
     })
@@ -1556,6 +1701,9 @@ export default function App() {
             lineDiscountInput: item.discountInput,
           }
         : {}),
+      ...(item.overrideUnitPrice !== null
+        ? { overrideUnitPrice: item.overrideUnitPrice }
+        : {}),
     }))
   }
 
@@ -1612,6 +1760,7 @@ export default function App() {
       payments,
     })
     setDraft(saved)
+    setTransactionAt(saved.transactionAt)
     setResolvedLines(await loadResolvedSaleLines(companyId, saved.salesId))
     await refreshSaleDrafts(cashierSession)
     return saved
@@ -1684,6 +1833,10 @@ export default function App() {
           quantity: Number(line.quantity ?? 0),
           discountType,
           discountInput: Number(line.lineDiscountInput ?? 0),
+          overrideUnitPrice:
+            line.overrideUnitPrice === null || line.overrideUnitPrice === undefined
+              ? null
+              : Number(line.overrideUnitPrice),
         }
       })
       if (nextCart.length === 0) throw new Error('DRAFT_HAS_NO_LINES')
@@ -1703,7 +1856,7 @@ export default function App() {
       const nextIsTempo = Boolean(payload.isTempo)
       const nextDueDate =
         nextIsTempo && payload.dueDate
-          ? String(payload.dueDate).slice(0, 16)
+          ? localDateTimeInput(String(payload.dueDate))
           : ''
       const nextRoundingDirection =
         payload.roundingDirection === 'DOWN' ||
@@ -1728,6 +1881,7 @@ export default function App() {
         salesId: item.salesId,
         draftNo: item.draftNo,
         clientTransactionId: nextClientTransactionId,
+        transactionAt: item.transactionAt,
         masterVersion: item.masterVersion,
         grandTotalBeforeRounding: item.grandTotal,
         roundingAdjustment: 0,
@@ -1779,6 +1933,7 @@ export default function App() {
       setCartQuantityInputs({})
       setCart(nextCart)
       setDraft(repriced)
+      setTransactionAt(repriced.transactionAt)
       setClientTransactionId(nextClientTransactionId)
       setCustomerId(nextCustomerId)
       setSelectedPricelistId(nextPricelistId)
@@ -1788,6 +1943,7 @@ export default function App() {
       setRoundingDirection(nextRoundingDirection)
       setIsTempo(nextIsTempo)
       setDueDate(nextDueDate)
+      setDueDateIsManual(Boolean(nextDueDate))
       setFulfillmentMode(nextFulfillmentMode)
       setDeliveryRecipientName(String(payload.deliveryRecipientName ?? ''))
       setDeliveryRecipientPhone(String(payload.deliveryRecipientPhone ?? ''))
@@ -2076,6 +2232,9 @@ export default function App() {
     try {
       if (draft) throw new Error('OFFLINE_EXISTING_DRAFT_REQUIRES_ONLINE')
       if (isTempo) throw new Error('OFFLINE_TEMPO_NOT_ALLOWED')
+      if (cart.some((item) => item.overrideUnitPrice !== null)) {
+        throw new Error('OFFLINE_PRICE_OVERRIDE_NOT_ALLOWED')
+      }
       if (
         fulfillmentMode === 'DELIVERY' &&
         (!deliveryRecipientName.trim() ||
@@ -2463,7 +2622,9 @@ export default function App() {
     setPaymentLegs([createPaymentLeg(defaultPayment?.id ?? '')])
     setGlobalDiscount('')
     setIsTempo(false)
+    setTransactionAt(new Date().toISOString())
     setDueDate('')
+    setDueDateIsManual(false)
     setRoundingDirection('NONE')
     setFulfillmentMode('PICKUP')
     setDeliveryRecipientName('')
@@ -2474,6 +2635,8 @@ export default function App() {
     setDeliveryFeeAmount('0')
     setDeliveryFeeInvoiceDisplayMode('SHOW_SEPARATE')
     setDeliveryDetailsOpen(false)
+    setProductPickerOpen(false)
+    setSearch('')
     setClientTransactionId(crypto.randomUUID())
   }
 
@@ -2948,6 +3111,33 @@ export default function App() {
                 ? 'Offline · cache tersedia'
                 : 'Offline belum siap'}
           </div>
+          {cashierSession && (
+            <div
+              className="pos-header-layout-switcher"
+              aria-label="Pilihan tampilan POS"
+            >
+              <button
+                type="button"
+                className={workspaceLayout === 'CATALOG' ? 'is-active' : ''}
+                aria-pressed={workspaceLayout === 'CATALOG'}
+                title="Gunakan tampilan Katalog"
+                onClick={() => setWorkspaceLayout('CATALOG')}
+              >
+                <Package className="h-4 w-4" />
+                <span>Katalog</span>
+              </button>
+              <button
+                type="button"
+                className={workspaceLayout === 'COMPACT' ? 'is-active' : ''}
+                aria-pressed={workspaceLayout === 'COMPACT'}
+                title="Gunakan tampilan Compact"
+                onClick={() => setWorkspaceLayout('COMPACT')}
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span>Compact</span>
+              </button>
+            </div>
+          )}
           {cashierSession && terminalFeatureVisible('SALES_RETURN') && (
             <button
               type="button"
@@ -3076,26 +3266,136 @@ export default function App() {
             onSubmit={handleOpenSession}
           />
         ) : (
-          <div className="pos-workspace grid gap-3">
+          <div
+            className={`pos-workspace grid gap-3 ${
+              workspaceLayout === 'COMPACT'
+                ? 'is-compact-layout'
+                : 'is-catalog-layout'
+            }`}
+          >
             <section className="pos-catalog min-w-0 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4">
+              {workspaceLayout === 'COMPACT' ? (
+                <>
               <div className="pos-panel-heading">
                 <div>
-                  <p className="pos-eyebrow">Katalog</p>
-                  <h2>Pilih produk</h2>
+                  <p className="pos-eyebrow">Transaksi aktif</p>
+                  <h2>Produk & keranjang</h2>
                 </div>
-                <span>{filteredProducts.length} item</span>
+                <span>{cart.length} item dipilih</span>
               </div>
-              <div className="pos-search-row mb-4 flex flex-wrap items-center gap-3">
-                <div className="relative min-w-[260px] flex-1">
-                  <Search className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cari nama, SKU, barcode, atau satuan…"
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 outline-none focus:border-emerald-500"
-                  />
+              <div className="pos-product-picker-row">
+                <div className="pos-product-picker">
+                  <button
+                    type="button"
+                    className="pos-product-picker-trigger"
+                    aria-expanded={productPickerOpen}
+                    aria-controls="pos-product-picker-menu"
+                    onClick={() => setProductPickerOpen((current) => !current)}
+                  >
+                    <span className="pos-product-picker-trigger-icon">
+                      <Plus className="h-5 w-5" />
+                    </span>
+                    <span>
+                      <strong>Tambah produk</strong>
+                      <small>Cari nama, SKU, barcode, atau satuan</small>
+                    </span>
+                    <ChevronDown
+                      className={`h-5 w-5 ${productPickerOpen ? 'is-open' : ''}`}
+                    />
+                  </button>
+                  {productPickerOpen && (
+                    <>
+                      <button
+                        type="button"
+                        className="pos-product-picker-backdrop"
+                        aria-label="Tutup pilihan produk"
+                        onClick={() => setProductPickerOpen(false)}
+                      />
+                      <div
+                        id="pos-product-picker-menu"
+                        className="pos-product-picker-menu"
+                      >
+                        <div className="pos-product-picker-search">
+                          <Search className="h-5 w-5" />
+                          <input
+                            autoFocus
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Ketik nama, SKU, barcode, atau satuan..."
+                          />
+                        </div>
+                        <div className="pos-category-tabs">
+                          {categories.map((item) => (
+                            <button
+                              type="button"
+                              key={item}
+                              onClick={() => setCategory(item)}
+                              className={`whitespace-nowrap rounded-full px-4 py-2 text-sm ${
+                                category === item
+                                  ? 'bg-emerald-500 font-bold text-slate-950'
+                                  : 'border border-slate-700 bg-slate-950 text-slate-300'
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pos-product-picker-results">
+                          {filteredProducts.length === 0 ? (
+                            <div className="pos-product-picker-empty">
+                              <Package className="h-8 w-8" />
+                              <p>Produk tidak ditemukan.</p>
+                            </div>
+                          ) : (
+                            filteredProducts.map((product) => {
+                              const preview = pricePreviewByProductUom.get(
+                                product.productUomId,
+                              )
+                              return (
+                                <button
+                                  type="button"
+                                  key={product.productUomId}
+                                  className="pos-product-picker-option"
+                                  onClick={() => {
+                                    addToCart(product)
+                                    setProductPickerOpen(false)
+                                    setSearch('')
+                                  }}
+                                >
+                                  <span className="pos-product-picker-product">
+                                    <strong>{product.name}</strong>
+                                    <small>
+                                      {product.sku} · {product.categoryName} ·{' '}
+                                      {product.uomName}
+                                    </small>
+                                  </span>
+                                  <span className="pos-product-picker-meta">
+                                    <strong>
+                                      {money(preview?.unitPrice ?? product.fallbackPrice)}
+                                    </strong>
+                                    <small>
+                                      {product.availableQuantity === null
+                                        ? 'Stok dicek server'
+                                        : `Stok ± ${product.availableQuantity} ${product.uomName}`}
+                                    </small>
+                                  </span>
+                                  <Plus className="h-5 w-5" />
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                        {pricePreviewLoading && (
+                          <p className="pos-product-picker-status">
+                            Memuat harga Pricelist terbaru...
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <button
+                  type="button"
                   disabled={loading}
                   onClick={() => refreshCatalog(cashierSession)}
                   className="pos-secondary-button flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm"
@@ -3104,57 +3404,106 @@ export default function App() {
                   Stok terbaru
                 </button>
               </div>
-              <div className="pos-category-tabs mb-4 flex gap-2 overflow-x-auto pb-1">
-                {categories.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setCategory(item)}
-                    className={`whitespace-nowrap rounded-full px-4 py-2 text-sm ${
-                      category === item
-                        ? 'bg-emerald-500 font-bold text-slate-950'
-                        : 'border border-slate-700 bg-slate-950 text-slate-300'
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-              <div className="pos-product-grid grid gap-2.5">
-                {filteredProducts.map((product) => (
-                  <button
-                    key={product.productUomId}
-                    onClick={() => addToCart(product)}
-                    className="pos-product-card rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-emerald-700"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-xs text-slate-500">{product.sku}</p>
-                        <h3 className="mt-1 font-bold">{product.name}</h3>
-                      </div>
-                      <span className="pos-add-icon">
-                        <Plus className="h-5 w-5 text-emerald-400" />
-                      </span>
+                </>
+              ) : (
+                <>
+                  <div className="pos-panel-heading">
+                    <div>
+                      <p className="pos-eyebrow">Katalog</p>
+                      <h2>Pilih produk</h2>
                     </div>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {product.categoryName} · {product.uomName}
-                    </p>
-                    <p className="mt-3 font-black text-emerald-400">
-                      {money(product.fallbackPrice)}
-                      <span className="ml-1 text-[10px] font-normal text-slate-500">
-                        fallback
-                      </span>
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {product.availableQuantity === null
-                        ? 'Bundle: stok dicek server'
-                        : `Tersedia ± ${product.availableQuantity} ${product.uomName}`}
-                    </p>
-                  </button>
-                ))}
-              </div>
+                    <span>{filteredProducts.length} item</span>
+                  </div>
+                  <div className="pos-search-row mb-4 flex flex-wrap items-center gap-3">
+                    <div className="relative min-w-[260px] flex-1">
+                      <Search className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                      <input
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Cari nama, SKU, barcode, atau satuan..."
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => refreshCatalog(cashierSession)}
+                      className="pos-secondary-button flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Stok terbaru
+                    </button>
+                  </div>
+                  <div className="pos-category-tabs mb-4 flex gap-2 overflow-x-auto pb-1">
+                    {categories.map((item) => (
+                      <button
+                        type="button"
+                        key={item}
+                        onClick={() => setCategory(item)}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm ${
+                          category === item
+                            ? 'bg-emerald-500 font-bold text-slate-950'
+                            : 'border border-slate-700 bg-slate-950 text-slate-300'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pos-product-grid grid gap-2.5">
+                    {filteredProducts.length === 0 ? (
+                      <div className="pos-product-picker-empty">
+                        <Package className="h-10 w-10" />
+                        <p>Produk tidak ditemukan.</p>
+                      </div>
+                    ) : (
+                      filteredProducts.map((product) => {
+                        const preview = pricePreviewByProductUom.get(
+                          product.productUomId,
+                        )
+                        return (
+                          <button
+                            type="button"
+                            key={product.productUomId}
+                            onClick={() => addToCart(product)}
+                            className="pos-product-card rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-emerald-700"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-xs text-slate-500">{product.sku}</p>
+                                <h3 className="mt-1 font-bold">{product.name}</h3>
+                              </div>
+                              <span className="pos-add-icon">
+                                <Plus className="h-5 w-5 text-emerald-400" />
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400">
+                              {product.categoryName} · {product.uomName}
+                            </p>
+                            <p className="mt-3 font-black text-emerald-400">
+                              {money(preview?.unitPrice ?? product.fallbackPrice)}
+                              <span className="ml-1 text-[10px] font-normal text-slate-500">
+                                {pricePreviewLoading
+                                  ? 'memuat harga'
+                                  : preview?.pricelistName ??
+                                    (preview ? 'harga server' : 'fallback')}
+                              </span>
+                            </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {product.availableQuantity === null
+                                ? 'Bundle: stok dicek server'
+                                : `Tersedia ± ${product.availableQuantity} ${product.uomName}`}
+                            </p>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </>
+              )}
             </section>
 
-            <aside className="pos-checkout rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:p-4">
+            <section className="pos-cart-panel min-w-0">
               <div className="pos-order-head flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                   <p className="pos-eyebrow">Pesanan aktif</p>
@@ -3197,6 +3546,15 @@ export default function App() {
                     const offlineResolved = offlinePreview?.lines.find(
                       (line) => line.lineKey === item.product.productUomId,
                     )
+                    const livePreview = pricePreviewByProductUom.get(
+                      item.product.productUomId,
+                    )
+                    const canonicalUnitPrice = resolved?.canonicalUnitPrice ??
+                      livePreview?.unitPrice ?? item.product.fallbackPrice
+                    const effectiveUnitPrice = item.overrideUnitPrice ??
+                      resolved?.unitPrice ?? canonicalUnitPrice
+                    const overrideApplied = item.overrideUnitPrice !== null ||
+                      Boolean(resolved?.priceOverrideApplied)
                     return (
                       <div
                         key={item.product.productUomId}
@@ -3207,10 +3565,14 @@ export default function App() {
                             <p className="font-bold">{item.product.name}</p>
                             <p className="text-xs text-slate-400">
                               {item.product.uomName} ·{' '}
-                              {resolved
+                              {overrideApplied
+                                ? `${money(effectiveUnitPrice)} harga diubah`
+                                : resolved
                                 ? `${money(resolved.unitPrice)} hasil server`
                                 : offlineResolved
                                   ? `${money(offlineResolved.unitPrice)} snapshot Offline`
+                                  : livePreview
+                                    ? `${money(livePreview.unitPrice)} ${livePreview.pricelistName ?? 'hasil server'}`
                                   : `${money(item.product.fallbackPrice)} fallback`}
                             </p>
                           </div>
@@ -3264,10 +3626,42 @@ export default function App() {
                           <span className="ml-auto font-bold">
                             {money(
                               resolved?.lineTotal ??
-                                item.product.fallbackPrice * item.quantity,
+                                effectiveUnitPrice * item.quantity,
                             )}
                           </span>
                         </div>
+                        {isOnline && (
+                          activeTerminal?.allowPriceOverride ||
+                          item.overrideUnitPrice !== null
+                        ) && (
+                          <div className={`mt-2 rounded-lg border p-2.5 ${overrideApplied ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <label className="text-xs font-bold text-slate-300">Harga jual / {item.product.uomName}</label>
+                              {overrideApplied && (
+                                <button type="button" onClick={() => updateCart(item.product.productUomId, { overrideUnitPrice: null })} className="text-[11px] font-black text-amber-300 hover:text-amber-200">
+                                  Kembalikan ke Pricelist
+                                </button>
+                              )}
+                            </div>
+                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                              <CurrencyInput
+                                value={item.overrideUnitPrice ?? canonicalUnitPrice}
+                                onValueChange={(value) => updateCart(item.product.productUomId, { overrideUnitPrice: Number(value || 0) })}
+                                disabled={!activeTerminal?.allowPriceOverride}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm font-bold"
+                              />
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${overrideApplied ? 'bg-amber-400 text-amber-950' : 'bg-slate-800 text-slate-400'}`}>
+                                {overrideApplied ? 'Harga diubah' : 'Pricelist'}
+                              </span>
+                            </div>
+                            {overrideApplied && <p className="mt-1.5 text-[11px] text-amber-200">Harga Pricelist semula {money(canonicalUnitPrice)}.</p>}
+                            {!activeTerminal?.allowPriceOverride && item.overrideUnitPrice !== null && (
+                              <p className="mt-1.5 text-[11px] font-bold text-rose-300">
+                                Izin Terminal sudah nonaktif. Kembalikan ke Pricelist sebelum menyimpan atau Post.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div className="mt-2 grid grid-cols-[1fr_100px] gap-2">
                           <select
                             value={item.discountType}
@@ -3315,7 +3709,16 @@ export default function App() {
                   })
                 )}
               </div>
+            </section>
 
+            <aside className="pos-checkout rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:p-4">
+              <div className="pos-checkout-heading">
+                <div>
+                  <p className="pos-eyebrow">Detail transaksi</p>
+                  <h2>Pembayaran & penyelesaian</h2>
+                </div>
+                <span>{draft ? draft.draftNo : 'Transaksi baru'}</span>
+              </div>
               <div className="pos-checkout-form space-y-3 border-t border-slate-800 pt-3">
                 <div className="pos-draft-meta-grid">
                   <label className="block text-xs font-semibold text-slate-400">
@@ -3404,6 +3807,11 @@ export default function App() {
                     Default mengikuti Customer. Override hanya berlaku untuk
                     transaksi ini.
                   </span>
+                  {pricePreviewError && (
+                    <span className="mt-1 block text-[11px] font-semibold text-amber-400">
+                      Preview harga belum tersedia: {pricePreviewError}
+                    </span>
+                  )}
                 </label>
                 <div className="pos-section-heading">
                   <span>2</span>
@@ -3446,7 +3854,7 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={isTempo}
-                    onChange={(event) => setIsTempo(event.target.checked)}
+                    onChange={(event) => toggleTempo(event.target.checked)}
                   />
                   Transaksi TEMPO
                 </label>
@@ -3493,15 +3901,40 @@ export default function App() {
                   </div>
                 </div>
                 {isTempo ? (
-                  <label className="block text-xs font-semibold text-slate-400">
-                    Jatuh tempo
-                    <input
-                      type="datetime-local"
-                      value={dueDate}
-                      onChange={(event) => setDueDate(event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-                    />
-                  </label>
+                  <div className="grid gap-2 rounded-xl border border-slate-800 p-3 sm:grid-cols-2">
+                    <label className="block text-xs font-semibold text-slate-400">
+                      Tanggal transaksi / order
+                      <input
+                        type="datetime-local"
+                        value={localDateTimeInput(transactionAt)}
+                        readOnly
+                        className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300"
+                      />
+                      <span className="mt-1 block text-[11px] font-normal text-slate-500">
+                        Dikunci server saat Draft pertama disimpan.
+                      </span>
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-400">
+                      Tanggal jatuh tempo
+                      <input
+                        required
+                        type="datetime-local"
+                        min={localDateTimeInput(transactionAt)}
+                        value={dueDate}
+                        onChange={(event) => {
+                          setDueDate(event.target.value)
+                          setDueDateIsManual(true)
+                        }}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                      />
+                      <span className="mt-1 block text-[11px] font-normal text-slate-500">
+                        {activeCustomer?.creditTermDays === null ||
+                        activeCustomer?.creditTermDays === undefined
+                          ? 'Tenor Customer belum diatur; pilih tanggal manual.'
+                          : `Saran otomatis dari tenor ${activeCustomer.creditTermDays} hari.`}
+                      </span>
+                    </label>
+                  </div>
                 ) : (
                   <div className="pos-payment-area">
                     <p className="pos-payment-guidance">
@@ -3854,7 +4287,11 @@ export default function App() {
 
                 <div className="pos-total-card rounded-xl bg-slate-950 p-3">
                   <div className="flex justify-between text-sm text-slate-400">
-                    <span>Subtotal sementara</span>
+                    <span>
+                      {pricePreviewLines.length > 0
+                        ? 'Subtotal harga Pricelist'
+                        : 'Subtotal sementara'}
+                    </span>
                     <span>{money(fallbackSubtotal)}</span>
                   </div>
                   <div className="mt-2 flex justify-between text-lg font-black">

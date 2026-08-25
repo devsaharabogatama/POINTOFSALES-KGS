@@ -350,6 +350,13 @@ expected_deposit_remaining
 - Pricelist Global dapat berlaku pada seluruh store atau store tertentu dalam company yang sama.
 - Customer umum memakai Pricelist Global default. Cashier dapat memilih Pricelist aktif lain yang eligible untuk store secara opsional; override tersimpan sebagai snapshot/audit transaksi.
 - Diskon manual dapat diterapkan di atas Global maupun Customer Exclusive price.
+- Price override per line merupakan kebijakan Terminal/POS opsional dan default
+  OFF. Jika aktif, semua Cashier sah pada Terminal tersebut dapat mengisi harga
+  final yang mengalahkan Pricelist untuk line itu; tanpa input override, harga
+  tetap berasal dari resolver canonical seperti sekarang. Kebijakan wajib
+  ditegakkan server-side, versioned, audited, dan tidak mengubah master
+  Product-UOM/Pricelist. Scope awal online-only; detail implementasi ada pada
+  `docs/POS_TERMINAL_PRICE_OVERRIDE_PLAN.md`.
 - Harga yang ditampilkan/dibayar POS bersifat tax-inclusive ketika `SALES_TAX` aktif. Entitlement hanya ditoggle Super Admin; resolver, inclusive extraction, snapshot, rounding, retur, dan jurnal mengikuti `docs/TAX_ENGINE_SPEC.md`.
 - Draft yang dilanjutkan selalu memakai hasil resolver terkini dan menampilkan perubahan terhadap snapshot awal.
 
@@ -755,6 +762,15 @@ Kebutuhan existing menyebut POS offline-first. Untuk fitur inventory baru:
 ## 10. UX Minimum
 
 - Touch-friendly untuk tablet/desktop kasir.
+- Pada layar laptop/desktop, mode `Compact` menjadi alternatif dari mode kartu
+  `Katalog`, bukan pengganti. Mode Katalog tetap default; pilihan disimpan per
+  browser. Switcher berada di header sebagai satu grup responsif agar tidak
+  mengurangi tinggi workspace ketika menu Terminal aktif/nonaktif. Compact
+  memakai Product picker dan keranjang di kiri serta detail transaksi/pembayaran
+  di kanan dengan scroll terpisah.
+- Product dipilih melalui dropdown searchable berdasarkan nama, SKU, barcode,
+  atau UOM. Hasil tetap menampilkan harga resolver aktif serta stok, dan aksi
+  pilih tetap memakai cart handler yang sama dengan katalog sebelumnya.
 - Status online/offline terlihat jelas.
 - Loading dan double-click protection pada seluruh posting.
 - Draft/sync/error state tidak hanya dibedakan dengan warna.
@@ -945,6 +961,9 @@ Agent POS wajib:
 | 2026-07-20 | Debit/Credit Note tidak mengubah stock, memakai source/tax snapshot asal, dan refund/payment diproses terpisah | APPROVED |
 | 2026-07-17 | Write-off diajukan Finance dan memerlukan approval Company Admin | APPROVED; mapping resolved 2026-07-19 |
 | 2026-07-17 | Customer Statement TEMPO mendukung filter Customer/store/tanggal/status dan export Excel/PDF | APPROVED |
+| 2026-08-25 | Price override per line dapat diaktifkan per Terminal/POS; berlaku bagi semua kasir Terminal, mengalahkan Pricelist hanya bila dipakai, default tetap harga canonical, dan wajib server-guarded/audited | IMPLEMENTED LOCAL; ROLLOUT/SMOKE PENDING |
+| 2026-08-25 | POS mempertahankan mode Katalog sebagai default dan menambah mode Compact alternatif: searchable Product dropdown dan keranjang di kiri, detail transaksi/pembayaran di kanan; pilihan disimpan per browser dan tidak mengubah checkout contract | IMPLEMENTED LOCAL; SMOKE PENDING |
+| 2026-08-25 | Cutover UOM PACK-only dilakukan per Company melalui operasi PREVIEW/APPLY; PACK aktif untuk beli/jual, DUS hanya dipertahankan pada histori dan dinonaktifkan dari transaksi baru | OPERATION READY; COMPANY PREVIEW PENDING |
 | 2026-07-17 | Write-off dapat parsial/penuh per Pro Forma; full write-off menjadi WRITTEN_OFF dan tidak menerbitkan Invoice final | APPROVED |
 | 2026-07-17 | Recovery setelah write-off menjadi event baru yang mereferensikan histori tanpa membuka jurnal lama | APPROVED; mapping resolved 2026-07-19 |
 | 2026-07-17 | Finance wajib menjadi maker write-off dan Company Admin menjadi approver terpisah | APPROVED |

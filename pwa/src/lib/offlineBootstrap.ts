@@ -78,6 +78,8 @@ function catalogFromSnapshot(snapshot: OfflineCatalogSnapshot): CatalogData {
       isWalkIn: item.isWalkIn,
       defaultPricelistId: item.defaultPricelistId ?? null,
       currentBalance: 0,
+      creditLimit: 0,
+      creditTermDays: null,
     })),
     pricelists: snapshot.pricelists
       .map((item) => ({
@@ -220,6 +222,7 @@ export async function restoreOfflineColdStart(
           name: scope.terminalName,
           storeName: scope.storeName,
           hiddenFeatureKeys: scope.hiddenFeatureKeys ?? [],
+          allowPriceOverride: false,
         },
       ],
       warehouses: [

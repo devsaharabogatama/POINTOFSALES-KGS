@@ -26,6 +26,10 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 - [`runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md`](runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md)
 - [`runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md`](runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md)
 
+Koreksi preview harga Pricelist langsung pada kartu Product dan cart POS:
+
+- [`runbooks/POS_LIVE_PRICELIST_PREVIEW_ROLLOUT.md`](runbooks/POS_LIVE_PRICELIST_PREVIEW_ROLLOUT.md)
+
 Rollout profil/rekening Company, autofill rekening Supplier Payment, dan
 rekening opsional pada Invoice:
 
@@ -391,6 +395,8 @@ berada di [`../README.md`](../README.md).
 | Simulasi quota | `CAPACITY_SIMULATION_HANDOFF.md` | Route/schema aktif dan dashboard metrik saat pengukuran |
 | Bukti pembayaran, foto, attachment | `EXTERNAL_EVIDENCE_LINK_POLICY.md` | Spesifikasi modul untuk status/approval dokumen |
 | Pedoman development | `DEVELOPMENT_TRACEABILITY_AND_FREE_TIER_NOTES.md` | README modul target ketika sudah dibuat |
+| Kebijakan override harga per Terminal POS | `POS_TERMINAL_PRICE_OVERRIDE_PLAN.md` | POS, Pricelist, Terminal policy, Sale snapshot, Return/Invoice, dan Finance |
+| Rollout override harga per Terminal POS | `runbooks/POS_TERMINAL_PRICE_OVERRIDE_ROLLOUT.md` | Preflight, migration, postflight, Online ON/OFF smoke, Offline denial, retry, dan forward-fix |
 | Playbook wajib agent/handoff berulang | `AI_AGENT_CONTINUATION_PLAYBOOK.md` | Index requirement, gate aktif, gap audit, dan spesifikasi modul target |
 | Arah POS menjadi ERP modular | `ERP_EVOLUTION_ARCHITECTURE_NOTES.md` | Pedoman development dan spesifikasi modul aktif |
 
@@ -417,5 +423,6 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - Setelah perubahan, perbarui source-of-truth dan decision log terkait saja; hindari menyalin keputusan ke banyak file kecuali diperlukan sebagai boundary lintas modul.
 ## Rollout terbaru
 
+- [Tanggal transaksi dan jatuh tempo POS TEMPO](runbooks/POS_TEMPO_TRANSACTION_DATE_ROLLOUT.md)
 - [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

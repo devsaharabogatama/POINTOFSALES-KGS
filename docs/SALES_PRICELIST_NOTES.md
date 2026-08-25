@@ -241,6 +241,10 @@ Bundle mempunyai SKU khusus dan harus dipilih atau di-scan secara eksplisit oleh
 - Pricing resolver dijalankan server-side/RPC transactional, bukan dipercaya dari harga yang dikirim browser.
 - Checkout melakukan resolve/validate ulang tepat sebelum posting.
 - Cashier tidak boleh mengirim `resolved_unit_price` arbitrer tanpa rule/audit yang valid.
+- Pengecualian price override hanya boleh ada bila Terminal/POS mengaktifkan
+  kebijakan khusus yang divalidasi server. Override eksplisit mengalahkan hasil
+  Pricelist pada line tersebut, tetapi wajib menyimpan hasil resolver asal dan
+  snapshot audit; detail ada pada `POS_TERMINAL_PRICE_OVERRIDE_PLAN.md`.
 - Service-role key tidak boleh berada pada frontend.
 - Rule inactive/expired tidak berlaku pada transaksi baru.
 - Company Admin dan Store Manager dapat CRUD/activate Pricelist hanya untuk company yang di-assign kepada user melalui membership aktif.
@@ -295,3 +299,4 @@ Aturan Draft/Hold final:
 | 2026-07-15 | Harga POS tax-inclusive; pemisahan pajak dibahas saat fase Tax/Finance | APPROVED |
 | 2026-07-16 | Draft selalu resolve harga terbaru; Cashier dapat menjaga harga lama yang lebih murah melalui diskon manual ter-audit | APPROVED |
 | 2026-07-16 | Jika harga terbaru turun, POS wajib memakai harga terbaru dan tidak mempertahankan snapshot lama yang lebih mahal | APPROVED |
+| 2026-08-25 | Terminal/POS dapat mengizinkan price override bagi seluruh Cashier; tanpa override tetap memakai Pricelist canonical, sedangkan override eksplisit mengalahkan semua Pricelist hanya pada line terkait | APPROVED; NOT IMPLEMENTED |

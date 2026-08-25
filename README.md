@@ -12,6 +12,12 @@ Filter rentang tanggal Inventory Surat Jalan sudah dipasang melalui migration
 Backoffice staging. Penyaringan memakai timezone Company; authenticated UI
 smoke tetap menunggu konfirmasi user.
 
+Operasi cutover Product-UOM per Company ke PACK-only sudah **local-ready**.
+Operasi default PREVIEW, mengaktifkan PACK untuk beli/jual, menonaktifkan DUS
+dari transaksi baru tanpa menghapus histori, serta menjaga referensi Supplier,
+Pricelist, berat, dan audit. Database belum diubah; jalankan sesuai
+[runbook PACK-only](docs/runbooks/COMPANY_PACK_ONLY_UOM_CUTOVER.md).
+
 Import Pricelist Distributor kini **local-ready** melalui Global Data Exchange.
 File Excel/CSV dicocokkan berdasarkan Company aktif dan SKU; COGS/Retail PACK
 menjadi harga dasar, harga DUS/UOM lain diturunkan dari faktor UOM, tiga harga
@@ -599,3 +605,61 @@ Terminal/Toko dipilih sebelum membuka sesi, lalu selector Company terkunci
 selama sesi aktif. Backoffice lint dan production build PASS; rollout database
 dan authenticated smoke masih manual gate. Panduan ada di
 [`PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md`](docs/runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md).
+
+## Status lokal terbaru - 2026-08-25 (Preview harga Pricelist POS)
+
+Bug harga umum yang tetap tampil sampai Draft disimpan telah diperbaiki secara
+local-ready. PWA sekarang meminta preview read-only untuk seluruh Product-UOM
+dari resolver Pricelist canonical ketika Customer, Pricelist, atau quantity
+berubah. Kartu Product dan cart menampilkan harga server tanpa membuat Draft;
+Save/Post tetap menghitung ulang dan tetap menjadi sumber kebenaran. Migration
+additive `20260825100000`, postflight, behavior rollback-safe, dan urutan rollout
+tersedia di
+[`POS_LIVE_PRICELIST_PREVIEW_ROLLOUT.md`](docs/runbooks/POS_LIVE_PRICELIST_PREVIEW_ROLLOUT.md).
+PWA oxlint serta production build sudah PASS; database rollout dan authenticated
+smoke masih manual sehingga fitur belum dinyatakan aktif pada staging/production.
+
+## Status lokal terbaru - 2026-08-25 (Tier Pricelist diskon persen)
+
+Form Pricelist Backoffice kini dapat membuat rule quantity tier dengan metode
+**Diskon persen**, selain harga akhir langsung dan potongan nominal per UOM.
+Nilai dibatasi 0–100% dan form menampilkan perkiraan harga akhir berdasarkan
+harga normal Product-UOM. Resolver canonical online/offline serta kontrak API
+yang sudah ada tetap menjadi sumber kebenaran; tidak ada perubahan schema atau
+format Import Pricelist Distributor.
+
+## Status lokal terbaru - 2026-08-25 (Tanggal transaksi TEMPO)
+
+Checkout TEMPO PWA kini menampilkan tanggal transaksi/order read-only dan
+tanggal jatuh tempo secara berdampingan. Tanggal transaksi berasal dari
+`sales_headers.transaction_date`; default tenor Customer hanya memberikan saran
+jatuh tempo dan kasir tetap dapat mengubahnya sebelum Post. Migration additive
+`20260825110000`, postflight, behavior read-only, dan runbook rollout tersedia.
+Core Save/Post, Finance, serta larangan TEMPO Offline tidak berubah.
+
+## Status lokal terbaru - 2026-08-25 (Price override per Terminal POS)
+
+Point 1 sekarang **local-ready**. Terminal/POS mempunyai policy default OFF
+untuk mengizinkan override harga per line bagi seluruh kasir sah pada Terminal.
+Harga awal tetap resolver Pricelist canonical; hanya override eksplisit yang
+menang. Save Draft dan Post memvalidasi ulang policy, sesi aktif, actor, Store,
+Terminal, serta channel Online di server. Sale line menyimpan harga canonical,
+harga final, actor, Terminal, sesi, source, dan waktu resolve. Offline tetap
+menolak override. Migration `20260825120000`, preflight, postflight, runbook,
+Backoffice setting, dan PWA edit/reset sudah tersedia. User mengonfirmasi
+preflight, migration, postflight awal, dan behavior rollback-safe PASS.
+Postflight ulang menjadi closing database berikutnya; deployment client staging
+dan authenticated smoke masih manual.
+
+## Status lokal terbaru - 2026-08-25 (Workspace POS laptop dua panel)
+
+PWA POS kini local-ready dengan dua pilihan tampilan. Mode **Katalog** lama tetap
+menjadi default. Mode **Compact** menjadi alternatif laptop: searchable Product
+dropdown dan keranjang berada di kiri, sedangkan Customer, Pricelist, aturan
+transaksi, pembayaran, total, serta aksi Draft/Post berada di kanan. Pilihan
+disimpan per browser dan switcher berada di header sebagai satu grup responsif,
+sehingga area kerja tidak terdorong turun ketika menu Terminal aktif/nonaktif.
+Mode dapat diganti tanpa mengubah isi transaksi. Handler cart, preview
+Pricelist, Save Draft, checkout, Offline, stock, payment, dan
+Finance tidak diubah. PWA lint serta production build PASS; authenticated
+browser smoke dan deployment staging/production belum dilakukan.
