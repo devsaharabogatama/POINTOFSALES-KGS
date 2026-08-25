@@ -265,12 +265,22 @@ Baris yang sudah masuk Supplier Order tidak lagi ditampilkan sebagai kebutuhan t
 
 ### 8.2 Penerimaan Barang
 
-1. Di PWA, buka **Terima Barang**.
-2. Pilih Supplier Order yang memenuhi syarat untuk toko/sesi.
-3. Masukkan kuantitas diterima, baik, rusak, atau ditolak.
-4. Konfirmasi penerimaan.
+Penerimaan dapat dilakukan melalui dua channel yang menghasilkan efek server
+yang sama:
 
-Barang baik menambah stok/FIFO. Barang rusak atau ditolak dicatat terpisah.
+- Kasir: di PWA buka **Terima Barang**; wajib memakai sesi Kasir dan Toko aktif.
+- Gudang: di Backoffice buka **Purchase → Penerimaan Barang**; tersedia bagi
+  Owner, Company Admin, atau Warehouse Admin sesuai permission Company aktif.
+
+1. Pilih Supplier Order berstatus Confirmed atau Partially Received.
+2. Pastikan gudang tujuan dan supplier benar.
+3. Masukkan kuantitas diterima, baik, rusak, atau ditolak.
+4. Simpan Draft bila pemeriksaan belum selesai, atau pilih **Post & Tambah Stok**.
+
+Draft tidak mengubah stok. Saat Post, barang baik menambah stok/FIFO, barang
+rusak masuk Gudang Rusak, barang ditolak tidak menambah stok/tagihan, AP
+sementara serta event Finance dibuat satu kali, dan status Supplier Order
+diperbarui. Draft Backoffice hanya dapat dilanjutkan pembuatnya.
 
 ### 8.3 Retur Pembelian
 
@@ -548,6 +558,13 @@ sudah ada akan menambah kuantitas baris tersebut, bukan membuat baris duplikat.
 
 Pilih **Katalog** kapan saja untuk kembali ke tampilan kartu Product tanpa
 mengubah isi keranjang atau transaksi yang sedang dikerjakan.
+
+Pada mode **Katalog**, keranjang memakai baris horizontal panjang dan ringkas.
+Setiap baris menampilkan nama Product, jumlah/UOM, indikator hanya jika harga
+atau diskon berubah, dan tombol **Edit**. Tiga Product dapat terlihat sekaligus
+pada laptop sebelum daftar perlu digulir. Tombol **Edit** membuka pengaturan
+quantity, harga jual jika Terminal mengizinkan, diskon, dan hapus. Pada mode
+**Compact**, kartu disusun 3–4 kolom pada laptop/desktop.
 
 Fitur lain yang tersedia meliputi Draft, Return, Expense, Minta Stok, Terima
 Barang, Retur Supplier, Setor Kas, Offline, printer, dan tutup sesi.

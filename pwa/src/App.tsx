@@ -23,6 +23,7 @@ import {
   Minus,
   Package,
   PackageMinus,
+  Pencil,
   Plus,
   Printer,
   RefreshCw,
@@ -441,6 +442,7 @@ export default function App() {
   const [cartQuantityInputs, setCartQuantityInputs] = useState<
     Record<string, string>
   >({})
+  const [editingCartProductUomId, setEditingCartProductUomId] = useState('')
   const [draft, setDraft] = useState<SaleDraft | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [draftNotes, setDraftNotes] = useState('')
@@ -1361,6 +1363,7 @@ export default function App() {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (closeSessionOpen && !busy) setCloseSessionOpen(false)
+      else if (editingCartProductUomId) setEditingCartProductUomId('')
       else if (actionDialog) {
         setActionDialog(null)
         setActionDialogReason('')
@@ -1391,6 +1394,7 @@ export default function App() {
     closeSessionOpen,
     deliveryDetailsOpen,
     draftPanelOpen,
+    editingCartProductUomId,
     error,
     cashDepositOpen,
     goodsReceiptOpen,
@@ -1652,6 +1656,9 @@ export default function App() {
     })
     setResolvedLines([])
     setShortages([])
+    setEditingCartProductUomId((current) =>
+      current === productUomId ? '' : current,
+    )
   }
 
   function changeCartQuantityInput(item: CartItem, rawValue: string) {
@@ -2612,6 +2619,7 @@ export default function App() {
       catalog.paymentMethods[0]
     setCart([])
     setCartQuantityInputs({})
+    setEditingCartProductUomId('')
     setDraft(null)
     setDraftLabel('')
     setDraftNotes('')
@@ -3066,8 +3074,41 @@ export default function App() {
     )
   }
 
+  const editingCartItem = cart.find(
+    (item) => item.product.productUomId === editingCartProductUomId,
+  )
+  const editingResolvedLine = editingCartItem
+    ? resolvedLines.find(
+        (line) => line.lineKey === editingCartItem.product.productUomId,
+      )
+    : undefined
+  const editingLivePreview = editingCartItem
+    ? pricePreviewByProductUom.get(editingCartItem.product.productUomId)
+    : undefined
+  const editingCanonicalUnitPrice = editingCartItem
+    ? editingResolvedLine?.canonicalUnitPrice ??
+      editingLivePreview?.unitPrice ??
+      editingCartItem.product.fallbackPrice
+    : 0
+  const editingEffectiveUnitPrice = editingCartItem
+    ? editingCartItem.overrideUnitPrice ??
+      editingResolvedLine?.unitPrice ??
+      editingCanonicalUnitPrice
+    : 0
+  const editingOverrideApplied = Boolean(
+    editingCartItem &&
+      (editingCartItem.overrideUnitPrice !== null ||
+        editingResolvedLine?.priceOverrideApplied),
+  )
+
   return (
-    <div className="pos-shell min-h-screen bg-slate-950 text-slate-100">
+    <div
+      className={`pos-shell min-h-screen bg-slate-950 text-slate-100 ${
+        cashierSession && workspaceLayout === 'CATALOG'
+          ? 'is-catalog-shell'
+          : ''
+      }`}
+    >
       <header className="pos-topbar sticky top-0 z-30 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex w-full flex-wrap items-center gap-3">
           <div className="pos-brand mr-auto">
@@ -3503,6 +3544,7 @@ export default function App() {
               )}
             </section>
 
+            <div className="pos-order-column">
             <section className="pos-cart-panel min-w-0">
               <div className="pos-order-head flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
@@ -3532,7 +3574,11 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              <div className="pos-cart-list space-y-2.5 overflow-y-auto py-3">
+              <div
+                className={`pos-cart-list overflow-y-auto py-3 ${
+                  workspaceLayout === 'CATALOG' ? 'space-y-2.5' : ''
+                }`}
+              >
                 {cart.length === 0 ? (
                   <div className="grid place-items-center py-12 text-center text-slate-500">
                     <Package className="mb-2 h-10 w-10" />
@@ -3541,9 +3587,6 @@ export default function App() {
                 ) : (
                   cart.map((item) => {
                     const resolved = resolvedLines.find(
-                      (line) => line.lineKey === item.product.productUomId,
-                    )
-                    const offlineResolved = offlinePreview?.lines.find(
                       (line) => line.lineKey === item.product.productUomId,
                     )
                     const livePreview = pricePreviewByProductUom.get(
@@ -3555,155 +3598,253 @@ export default function App() {
                       resolved?.unitPrice ?? canonicalUnitPrice
                     const overrideApplied = item.overrideUnitPrice !== null ||
                       Boolean(resolved?.priceOverrideApplied)
+                    if (workspaceLayout === 'CATALOG') {
+                      return (
+                        <div
+                          key={item.product.productUomId}
+                          className="pos-cart-item pos-catalog-cart-item rounded-xl border border-slate-800 bg-slate-950 p-3"
+                        >
+                          <div className="pos-catalog-cart-row">
+                            <div className="pos-catalog-cart-product">
+                              <p title={item.product.name}>{item.product.name}</p>
+                              {(overrideApplied ||
+                                (item.discountType &&
+                                  item.discountInput > 0)) && (
+                                <div className="pos-catalog-cart-notes">
+                                  {overrideApplied && <span>Harga diubah</span>}
+                                  {item.discountType &&
+                                    item.discountInput > 0 && (
+                                      <span>
+                                        Diskon{' '}
+                                        {item.discountType === 'PERCENT'
+                                          ? `${item.discountInput}%`
+                                          : money(item.discountInput)}
+                                      </span>
+                                    )}
+                                </div>
+                              )}
+                            </div>
+                            <strong className="pos-catalog-cart-quantity">
+                              {item.quantity} {item.product.uomName}
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingCartProductUomId(
+                                  item.product.productUomId,
+                                )
+                              }
+                              className="pos-cart-edit-button"
+                              aria-label={`Edit ${item.product.name}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </button>
+                          </div>
+                          <div className="pos-catalog-cart-hidden mt-3 flex items-center gap-2">
+                            <button
+                              onClick={() => adjustCartQuantity(item, -1)}
+                              className="pos-cart-icon-button"
+                              aria-label={`Kurangi jumlah ${item.product.name}`}
+                              title="Kurangi jumlah"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              step={
+                                item.product.allowDecimal
+                                  ? 10 ** -item.product.decimalPrecision
+                                  : 1
+                              }
+                              value={
+                                cartQuantityInputs[
+                                  item.product.productUomId
+                                ] ?? String(item.quantity)
+                              }
+                              onChange={(event) =>
+                                changeCartQuantityInput(item, event.target.value)
+                              }
+                              onBlur={() => commitCartQuantityInput(item)}
+                              className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-center"
+                            />
+                            <button
+                              onClick={() => adjustCartQuantity(item, 1)}
+                              className="pos-cart-icon-button"
+                              aria-label={`Tambah jumlah ${item.product.name}`}
+                              title="Tambah jumlah"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                            <span className="ml-auto font-bold">
+                              {money(
+                                resolved?.lineTotal ??
+                                  effectiveUnitPrice * item.quantity,
+                              )}
+                            </span>
+                          </div>
+                          {isOnline &&
+                            (activeTerminal?.allowPriceOverride ||
+                              item.overrideUnitPrice !== null) && (
+                              <div
+                                className={`pos-catalog-cart-hidden mt-2 rounded-lg border p-2.5 ${overrideApplied ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-700 bg-slate-900'}`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <label className="text-xs font-bold text-slate-300">
+                                    Harga jual / {item.product.uomName}
+                                  </label>
+                                  {overrideApplied && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateCart(
+                                          item.product.productUomId,
+                                          { overrideUnitPrice: null },
+                                        )
+                                      }
+                                      className="text-[11px] font-black text-amber-300 hover:text-amber-200"
+                                    >
+                                      Kembalikan ke Pricelist
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                  <CurrencyInput
+                                    value={
+                                      item.overrideUnitPrice ??
+                                      canonicalUnitPrice
+                                    }
+                                    onValueChange={(value) =>
+                                      updateCart(
+                                        item.product.productUomId,
+                                        {
+                                          overrideUnitPrice: Number(value || 0),
+                                        },
+                                      )
+                                    }
+                                    disabled={
+                                      !activeTerminal?.allowPriceOverride
+                                    }
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm font-bold"
+                                  />
+                                  <span
+                                    className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${overrideApplied ? 'bg-amber-400 text-amber-950' : 'bg-slate-800 text-slate-400'}`}
+                                  >
+                                    {overrideApplied
+                                      ? 'Harga diubah'
+                                      : 'Pricelist'}
+                                  </span>
+                                </div>
+                                {overrideApplied && (
+                                  <p className="mt-1.5 text-[11px] text-amber-200">
+                                    Harga Pricelist semula{' '}
+                                    {money(canonicalUnitPrice)}.
+                                  </p>
+                                )}
+                                {!activeTerminal?.allowPriceOverride &&
+                                  item.overrideUnitPrice !== null && (
+                                    <p className="mt-1.5 text-[11px] font-bold text-rose-300">
+                                      Izin Terminal sudah nonaktif. Kembalikan
+                                      ke Pricelist sebelum menyimpan atau Post.
+                                    </p>
+                                  )}
+                              </div>
+                            )}
+                          <div className="pos-catalog-cart-hidden mt-2 grid grid-cols-[1fr_100px] gap-2">
+                            <select
+                              value={item.discountType}
+                              onChange={(event) =>
+                                updateCart(item.product.productUomId, {
+                                  discountType: event.target.value as
+                                    | ''
+                                    | 'AMOUNT'
+                                    | 'PERCENT',
+                                })
+                              }
+                              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs"
+                            >
+                              <option value="">Tanpa diskon line</option>
+                              <option value="AMOUNT">Diskon nominal</option>
+                              <option value="PERCENT">Diskon persen</option>
+                            </select>
+                            {item.discountType === 'AMOUNT' ? (
+                              <CurrencyInput
+                                value={item.discountInput}
+                                onValueChange={(value) =>
+                                  updateCart(item.product.productUomId, {
+                                    discountInput: Number(value || 0),
+                                  })
+                                }
+                                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                disabled={!item.discountType}
+                                value={item.discountInput}
+                                onChange={(event) =>
+                                  updateCart(item.product.productUomId, {
+                                    discountInput: Number(event.target.value),
+                                  })
+                                }
+                                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )
+                    }
                     return (
                       <div
                         key={item.product.productUomId}
                         className="pos-cart-item rounded-xl border border-slate-800 bg-slate-950 p-3"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-bold">{item.product.name}</p>
-                            <p className="text-xs text-slate-400">
-                              {item.product.uomName} ·{' '}
-                              {overrideApplied
-                                ? `${money(effectiveUnitPrice)} harga diubah`
-                                : resolved
-                                ? `${money(resolved.unitPrice)} hasil server`
-                                : offlineResolved
-                                  ? `${money(offlineResolved.unitPrice)} snapshot Offline`
-                                  : livePreview
-                                    ? `${money(livePreview.unitPrice)} ${livePreview.pricelistName ?? 'hasil server'}`
-                                  : `${money(item.product.fallbackPrice)} fallback`}
+                        <div className="pos-cart-item-summary">
+                          <div className="min-w-0">
+                            <p className="pos-cart-item-name" title={item.product.name}>
+                              {item.product.name}
+                            </p>
+                            <p className="pos-cart-item-quantity">
+                              {item.quantity} {item.product.uomName}
                             </p>
                           </div>
-                          <button
-                            onClick={() =>
-                              removeCartItem(item.product.productUomId)
-                            }
-                            className="pos-cart-icon-button is-remove"
-                            aria-label={`Hapus ${item.product.name} dari keranjang`}
-                            title="Hapus dari keranjang"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="mt-3 flex items-center gap-2">
-                          <button
-                            onClick={() => adjustCartQuantity(item, -1)}
-                            className="pos-cart-icon-button"
-                            aria-label={`Kurangi jumlah ${item.product.name}`}
-                            title="Kurangi jumlah"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            step={
-                              item.product.allowDecimal
-                                ? 10 ** -item.product.decimalPrecision
-                                : 1
-                            }
-                            value={
-                              cartQuantityInputs[
-                                item.product.productUomId
-                              ] ?? String(item.quantity)
-                            }
-                            onChange={(event) =>
-                              changeCartQuantityInput(item, event.target.value)
-                            }
-                            onBlur={() => commitCartQuantityInput(item)}
-                            className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-center"
-                          />
-                          <button
-                            onClick={() => adjustCartQuantity(item, 1)}
-                            className="pos-cart-icon-button"
-                            aria-label={`Tambah jumlah ${item.product.name}`}
-                            title="Tambah jumlah"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                          <span className="ml-auto font-bold">
+                          <strong className="pos-cart-item-total">
                             {money(
                               resolved?.lineTotal ??
                                 effectiveUnitPrice * item.quantity,
                             )}
-                          </span>
+                          </strong>
                         </div>
-                        {isOnline && (
-                          activeTerminal?.allowPriceOverride ||
-                          item.overrideUnitPrice !== null
-                        ) && (
-                          <div className={`mt-2 rounded-lg border p-2.5 ${overrideApplied ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-700 bg-slate-900'}`}>
-                            <div className="flex items-center justify-between gap-3">
-                              <label className="text-xs font-bold text-slate-300">Harga jual / {item.product.uomName}</label>
-                              {overrideApplied && (
-                                <button type="button" onClick={() => updateCart(item.product.productUomId, { overrideUnitPrice: null })} className="text-[11px] font-black text-amber-300 hover:text-amber-200">
-                                  Kembalikan ke Pricelist
-                                </button>
-                              )}
-                            </div>
-                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                              <CurrencyInput
-                                value={item.overrideUnitPrice ?? canonicalUnitPrice}
-                                onValueChange={(value) => updateCart(item.product.productUomId, { overrideUnitPrice: Number(value || 0) })}
-                                disabled={!activeTerminal?.allowPriceOverride}
-                                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm font-bold"
-                              />
-                              <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${overrideApplied ? 'bg-amber-400 text-amber-950' : 'bg-slate-800 text-slate-400'}`}>
-                                {overrideApplied ? 'Harga diubah' : 'Pricelist'}
-                              </span>
-                            </div>
-                            {overrideApplied && <p className="mt-1.5 text-[11px] text-amber-200">Harga Pricelist semula {money(canonicalUnitPrice)}.</p>}
-                            {!activeTerminal?.allowPriceOverride && item.overrideUnitPrice !== null && (
-                              <p className="mt-1.5 text-[11px] font-bold text-rose-300">
-                                Izin Terminal sudah nonaktif. Kembalikan ke Pricelist sebelum menyimpan atau Post.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        <div className="mt-2 grid grid-cols-[1fr_100px] gap-2">
-                          <select
-                            value={item.discountType}
-                            onChange={(event) =>
-                              updateCart(item.product.productUomId, {
-                                discountType: event.target.value as
-                                  | ''
-                                  | 'AMOUNT'
-                                  | 'PERCENT',
-                              })
-                            }
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs"
-                          >
-                            <option value="">Tanpa diskon line</option>
-                            <option value="AMOUNT">Diskon nominal</option>
-                            <option value="PERCENT">Diskon persen</option>
-                          </select>
-                          {item.discountType === 'AMOUNT' ? (
-                            <CurrencyInput
-                              value={item.discountInput}
-                              onValueChange={(value) =>
-                                updateCart(item.product.productUomId, {
-                                  discountInput: Number(value || 0),
-                                })
-                              }
-                              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
-                            />
-                          ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              disabled={!item.discountType}
-                              value={item.discountInput}
-                              onChange={(event) =>
-                                updateCart(item.product.productUomId, {
-                                  discountInput: Number(event.target.value),
-                                })
-                              }
-                              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs disabled:opacity-40"
-                            />
+                        <div className="pos-cart-item-notes">
+                          {item.discountType && item.discountInput > 0 && (
+                            <span>
+                              Diskon{' '}
+                              {item.discountType === 'PERCENT'
+                                ? `${item.discountInput}%`
+                                : money(item.discountInput)}
+                            </span>
+                          )}
+                          {overrideApplied && <span>Harga diubah</span>}
+                          {!item.discountType && !overrideApplied && (
+                            <span>
+                              {money(effectiveUnitPrice)} / {item.product.uomName}
+                            </span>
                           )}
                         </div>
+                        <button
+                          type="button"
+                          className="pos-cart-edit-button"
+                          onClick={() =>
+                            setEditingCartProductUomId(
+                              item.product.productUomId,
+                            )
+                          }
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Edit
+                        </button>
                       </div>
                     )
                   })
@@ -4361,6 +4502,7 @@ export default function App() {
                 </div>
               </div>
             </aside>
+            </div>
           </div>
         )}
 
@@ -4412,6 +4554,202 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {editingCartItem && (
+        <div
+          className="pos-cart-editor-overlay fixed inset-0 z-[65] grid place-items-center bg-black/60 p-4"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) {
+              setEditingCartProductUomId('')
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-cart-editor-title"
+            className="pos-cart-editor-dialog"
+          >
+            <header className="pos-cart-editor-header">
+              <div className="min-w-0">
+                <p className="pos-eyebrow">Edit produk</p>
+                <h2 id="pos-cart-editor-title">{editingCartItem.product.name}</h2>
+                <p>{editingCartItem.product.uomName}</p>
+              </div>
+              <button
+                type="button"
+                className="pos-cart-editor-close"
+                onClick={() => setEditingCartProductUomId('')}
+                aria-label="Tutup edit produk"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="pos-cart-editor-content">
+              <div className="pos-cart-editor-section">
+                <label>Jumlah</label>
+                <div className="pos-cart-editor-quantity">
+                  <button
+                    type="button"
+                    onClick={() => adjustCartQuantity(editingCartItem, -1)}
+                    className="pos-cart-icon-button"
+                    aria-label={`Kurangi jumlah ${editingCartItem.product.name}`}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    step={
+                      editingCartItem.product.allowDecimal
+                        ? 10 ** -editingCartItem.product.decimalPrecision
+                        : 1
+                    }
+                    value={
+                      cartQuantityInputs[editingCartItem.product.productUomId] ??
+                      String(editingCartItem.quantity)
+                    }
+                    onChange={(event) =>
+                      changeCartQuantityInput(
+                        editingCartItem,
+                        event.target.value,
+                      )
+                    }
+                    onBlur={() => commitCartQuantityInput(editingCartItem)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adjustCartQuantity(editingCartItem, 1)}
+                    className="pos-cart-icon-button"
+                    aria-label={`Tambah jumlah ${editingCartItem.product.name}`}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <strong>
+                    {money(
+                      editingResolvedLine?.lineTotal ??
+                        editingEffectiveUnitPrice * editingCartItem.quantity,
+                    )}
+                  </strong>
+                </div>
+              </div>
+
+              {isOnline && (
+                activeTerminal?.allowPriceOverride ||
+                editingCartItem.overrideUnitPrice !== null
+              ) && (
+                <div className="pos-cart-editor-section">
+                  <div className="pos-cart-editor-label-row">
+                    <label>
+                      Harga jual / {editingCartItem.product.uomName}
+                    </label>
+                    {editingOverrideApplied && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateCart(editingCartItem.product.productUomId, {
+                            overrideUnitPrice: null,
+                          })
+                        }
+                      >
+                        Kembalikan ke Pricelist
+                      </button>
+                    )}
+                  </div>
+                  <CurrencyInput
+                    value={
+                      editingCartItem.overrideUnitPrice ??
+                      editingCanonicalUnitPrice
+                    }
+                    onValueChange={(value) =>
+                      updateCart(editingCartItem.product.productUomId, {
+                        overrideUnitPrice: Number(value || 0),
+                      })
+                    }
+                    disabled={!activeTerminal?.allowPriceOverride}
+                  />
+                  {editingOverrideApplied && (
+                    <p>
+                      Harga Pricelist semula {money(editingCanonicalUnitPrice)}.
+                    </p>
+                  )}
+                  {!activeTerminal?.allowPriceOverride &&
+                    editingCartItem.overrideUnitPrice !== null && (
+                      <p className="is-error">
+                        Izin Terminal sudah nonaktif. Kembalikan ke Pricelist
+                        sebelum menyimpan atau Post.
+                      </p>
+                    )}
+                </div>
+              )}
+
+              <div className="pos-cart-editor-section">
+                <label>Diskon produk</label>
+                <div className="pos-cart-editor-discount">
+                  <select
+                    value={editingCartItem.discountType}
+                    onChange={(event) =>
+                      updateCart(editingCartItem.product.productUomId, {
+                        discountType: event.target.value as
+                          | ''
+                          | 'AMOUNT'
+                          | 'PERCENT',
+                      })
+                    }
+                  >
+                    <option value="">Tanpa diskon line</option>
+                    <option value="AMOUNT">Diskon nominal</option>
+                    <option value="PERCENT">Diskon persen</option>
+                  </select>
+                  {editingCartItem.discountType === 'AMOUNT' ? (
+                    <CurrencyInput
+                      value={editingCartItem.discountInput}
+                      onValueChange={(value) =>
+                        updateCart(editingCartItem.product.productUomId, {
+                          discountInput: Number(value || 0),
+                        })
+                      }
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      disabled={!editingCartItem.discountType}
+                      value={editingCartItem.discountInput}
+                      onChange={(event) =>
+                        updateCart(editingCartItem.product.productUomId, {
+                          discountInput: Number(event.target.value),
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <footer className="pos-cart-editor-footer">
+              <button
+                type="button"
+                className="is-remove"
+                onClick={() =>
+                  removeCartItem(editingCartItem.product.productUomId)
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+                Hapus produk
+              </button>
+              <button
+                type="button"
+                className="is-done"
+                onClick={() => setEditingCartProductUomId('')}
+              >
+                Selesai
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {offlinePanelOpen && cashierSession && terminalFeatureVisible('OFFLINE') && (
         <div

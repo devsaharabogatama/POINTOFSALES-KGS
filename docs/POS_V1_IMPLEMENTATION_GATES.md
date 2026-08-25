@@ -797,6 +797,13 @@ database rollout/regression selesai.
 
 ## 7. G5 — Purchasing Dasar
 
+**Penyesuaian local-ready 2026-08-25:** Goods Receipt ditambah sebagai channel
+Backoffice untuk Owner/Admin/Warehouse Admin tanpa mewajibkan sesi Kasir.
+Channel hanya memisahkan authority dan Draft input; Post tetap memakai runtime
+canonical lama sehingga Stock/FIFO, AP provisional, Financial Event, Supplier
+Order, idempotency, dan audit tidak bercabang. Rollout database dan smoke user
+masih menunggu runbook `BACKOFFICE_GOODS_RECEIPT_ROLLOUT.md`.
+
 **Status aktif 2026-08-06:** Phase 2 Stock Request + Supplier Order database
 telah dikonfirmasi user seluruhnya PASS, Phase 3 UI diterima, dan Phase 4
 Goods Receipt preflight seluruhnya PASS. Request hanya

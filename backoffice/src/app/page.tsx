@@ -75,6 +75,7 @@ import { CashDepositApprovalView } from "@/components/CashDepositApprovalView";
 import { DepositVarianceResolutionView } from "@/components/DepositVarianceResolutionView";
 import { CustomerBalanceView } from "@/components/CustomerBalanceView";
 import { SupplierOrderView } from "@/components/SupplierOrderView";
+import { GoodsReceiptView } from "@/components/GoodsReceiptView";
 import { PurchaseReturnApprovalView } from "@/components/PurchaseReturnApprovalView";
 import { SupplierInvoiceMatchingView } from "@/components/SupplierInvoiceMatchingView";
 import SupplierPaymentView from "@/components/SupplierPaymentView";
@@ -350,6 +351,9 @@ export default function Home() {
         if (!response.ok)
           throw new Error(payload.error ?? "Gagal memuat akses aplikasi");
         if (!canceled) {
+          setNotice((current) =>
+            current === "PERMISSION_KEY_NOT_FOUND" ? null : current,
+          );
           setNavigationModules(payload.modules ?? []);
           setActiveModuleId((current) =>
             current &&
@@ -451,6 +455,15 @@ export default function Home() {
     supplierOrderNavigation?.capabilities.includes("POST") ?? false;
   const canExportSupplierOrder =
     supplierOrderNavigation?.capabilities.includes("EXPORT") ?? false;
+  const goodsReceiptNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "goods-receipts");
+  const canCreateGoodsReceipt =
+    goodsReceiptNavigation?.capabilities.includes("CREATE_DRAFT") ?? false;
+  const canPostGoodsReceipt =
+    goodsReceiptNavigation?.capabilities.includes("POST") ?? false;
+  const canCancelGoodsReceipt =
+    goodsReceiptNavigation?.capabilities.includes("CANCEL_FINAL") ?? false;
   const purchaseReturnNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "purchase-returns");
@@ -1006,6 +1019,18 @@ export default function Home() {
               canCreate={canCreateSupplierOrder}
               canPost={canPostSupplierOrder}
               canExport={canExportSupplierOrder}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === "goods-receipts" && (
+            <GoodsReceiptView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              canCreate={canCreateGoodsReceipt}
+              canPost={canPostGoodsReceipt}
+              canCancel={canCancelGoodsReceipt}
               notify={setNotice}
             />
           )}

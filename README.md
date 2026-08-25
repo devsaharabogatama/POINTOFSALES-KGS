@@ -2,6 +2,17 @@
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Penerimaan Barang melalui Backoffice Gudang sekarang **local-ready**. Menu baru
+`Purchase → Penerimaan Barang` memberi Owner/Admin/Warehouse Admin jalur Draft
+tanpa sesi Kasir, tetapi Post tetap memakai mesin canonical Goods Receipt yang
+sama dengan PWA untuk Stock, FIFO, AP provisional, Financial Event, status PO,
+idempotency, dan audit. Database belum diubah; rollout manual mengikuti
+[runbook Penerimaan Barang Backoffice](docs/runbooks/BACKOFFICE_GOODS_RECEIPT_ROLLOUT.md).
+
+Forward-fix workspace, postflight, dan behavioral test telah dikonfirmasi PASS
+oleh user. Navigation Backoffice juga dibuat fail-closed per permission agar
+satu key bermasalah tidak lagi mengosongkan seluruh aplikasi Super Admin.
+
 Deployment staging 24 Agustus 2026 sudah diperbarui pada
 `https://pointofsales-kgs-staging.vercel.app` dan
 `https://kgs-pos-pwa-staging.vercel.app`; kedua root dan manifest PWA lulus
@@ -649,7 +660,10 @@ menolak override. Migration `20260825120000`, preflight, postflight, runbook,
 Backoffice setting, dan PWA edit/reset sudah tersedia. User mengonfirmasi
 preflight, migration, postflight awal, dan behavior rollback-safe PASS.
 Postflight ulang menjadi closing database berikutnya; deployment client staging
-dan authenticated smoke masih manual.
+dan authenticated smoke masih manual. User kemudian mengonfirmasi seluruh
+dependency/closing PASS; Backoffice dan PWA berhasil dideploy ke dua alias
+staging dengan root/manifest HTTP 200. Authenticated ON/OFF transaction smoke
+tetap menjadi gate terakhir sebelum status operasional dinyatakan selesai.
 
 ## Status lokal terbaru - 2026-08-25 (Workspace POS laptop dua panel)
 
@@ -663,3 +677,10 @@ Mode dapat diganti tanpa mengubah isi transaksi. Handler cart, preview
 Pricelist, Save Draft, checkout, Offline, stock, payment, dan
 Finance tidak diubah. PWA lint serta production build PASS; authenticated
 browser smoke dan deployment staging/production belum dilakukan.
+
+Atas koreksi user, mode Katalog memakai kembali layout sebelum Compact: kategori
+dan kartu Product berada di kiri, sedangkan satu kolom kanan sticky memuat
+keranjang dan checkout. Baris keranjang Katalog dibuat horizontal dan ringkas:
+nama Product, quantity/UOM, indikator perubahan harga/diskon bila ada, dan
+tombol **Edit**, dengan tiga Product terlihat sebelum scroll. Mode Compact tetap
+menampilkan 3–4 kartu keranjang per baris pada desktop.

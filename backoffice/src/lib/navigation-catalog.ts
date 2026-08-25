@@ -21,6 +21,7 @@ export type NavigationViewId =
   | 'minimum-stock'
   | 'suppliers'
   | 'supplier-orders'
+  | 'goods-receipts'
   | 'purchase-returns'
   | 'customers'
   | 'pricelists'
@@ -99,6 +100,7 @@ export const STOCK_ADJUSTMENT_OPERATOR_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN'
 export const OPENING_STOCK_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 export const SUPPLIER_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
 export const PURCHASE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
+export const GOODS_RECEIPT_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'WAREHOUSE_ADMIN']
 export const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 export const SALES_RETURN_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
 export const EXPENSE_REVIEW_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
@@ -122,6 +124,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'customers', label: 'Pelanggan', description: 'Customer utama, cabang, kategori, dan pricelist.', iconKey: 'contact', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'suppliers', label: 'Supplier', description: 'Identitas supplier dan relasi produk pembelian.', iconKey: 'package-search', roles: SUPPLIER_ROLES, capabilities: ['VIEW'] },
   { id: 'supplier-orders', label: 'Supplier Order', description: 'Permintaan stok dan pesanan ke supplier.', iconKey: 'shopping-cart', roles: PURCHASE_ROLES, capabilities: ['VIEW'] },
+  { id: 'goods-receipts', label: 'Penerimaan Barang', description: 'Terima Supplier Order dan tambah stok Gudang.', iconKey: 'package-plus', roles: GOODS_RECEIPT_ROLES, capabilities: ['VIEW'] },
   { id: 'purchase-returns', label: 'Retur Pembelian', description: 'Review dan posting retur ke supplier.', iconKey: 'package-minus', roles: PURCHASE_ROLES, capabilities: ['VIEW'] },
   { id: 'staff', label: 'User & Akses', description: 'Anggota Company, role, dan assignment toko.', iconKey: 'users', roles: OWNER_ROLES, capabilities: ['VIEW'] },
   { id: 'pricelists', label: 'Pricelist', description: 'Harga jual final per kelompok dan periode.', iconKey: 'tags', roles: SALES_ROLES, capabilities: ['VIEW'] },
@@ -148,7 +151,7 @@ const itemDefinitions: ItemDefinition[] = [
 const moduleDefinitions: ModuleDefinition[] = [
   { id: 'inventory', name: 'Inventory', description: 'Produk, gudang, saldo aktual, mutasi, transfer, opname, Surat Jalan, dan konfigurasi stok.', iconKey: 'boxes', color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'delivery-documents', 'products', 'opening-stock', 'minimum-stock', 'masters'] },
   { id: 'contacts', name: 'Kontak', description: 'Pelanggan, supplier, dan user Company.', iconKey: 'contact', color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
-  { id: 'purchase', name: 'Purchase', description: 'Pesanan supplier dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'purchase-returns'] },
+  { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
   { id: 'sales', name: 'Sales', description: 'Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
   { id: 'finance', name: 'Finance', description: 'Kas, expense, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['companies', 'platform-pos', 'company-branding', 'module-settings'] },

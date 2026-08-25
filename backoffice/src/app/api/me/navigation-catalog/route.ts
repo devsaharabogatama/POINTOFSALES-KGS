@@ -5,6 +5,24 @@ import {
 } from "@/lib/server-auth";
 import { buildNavigationCatalog } from "@/lib/navigation-catalog";
 
+type PermissionResult = {
+  data: unknown;
+  error: { message?: string } | null;
+};
+
+function permissionCapabilities(result: PermissionResult): string[] {
+  if (result.error) {
+    // Navigation must fail closed per permission, not collapse the entire app
+    // when client code reaches a database whose additive permission migration
+    // has not been applied yet.
+    if (result.error.message?.includes("PERMISSION_KEY_NOT_FOUND")) return [];
+    throw result.error;
+  }
+  return (
+    result.data as { effectiveCapabilities?: string[] } | null
+  )?.effectiveCapabilities ?? [];
+}
+
 export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request);
@@ -21,6 +39,7 @@ export async function GET(request: Request) {
       customerPermissionResult,
       supplierPermissionResult,
       supplierOrderPermissionResult,
+      goodsReceiptPermissionResult,
       purchaseReturnPermissionResult,
       salesDocumentPermissionResult,
       deliveryDocumentPermissionResult,
@@ -88,6 +107,11 @@ export async function GET(request: Request) {
       caller.client.rpc("resolve_user_permission", {
         p_company_id: companyId,
         p_target_user_id: caller.user.id,
+        p_permission_key: "purchase.goods_receipts",
+      }),
+      caller.client.rpc("resolve_user_permission", {
+        p_company_id: companyId,
+        p_target_user_id: caller.user.id,
         p_permission_key: "purchase.purchase_returns",
       }),
       caller.client.rpc("resolve_user_permission", {
@@ -119,30 +143,6 @@ export async function GET(request: Request) {
     if (profileResult.error) throw profileResult.error;
     if (membershipResult.error) throw membershipResult.error;
     if (featureResult.error) throw featureResult.error;
-    if (masterPermissionResult.error) throw masterPermissionResult.error;
-    if (productPermissionResult.error) throw productPermissionResult.error;
-    if (stockRealPermissionResult.error) throw stockRealPermissionResult.error;
-    if (stockMovementPermissionResult.error)
-      throw stockMovementPermissionResult.error;
-    if (stockTransferPermissionResult.error)
-      throw stockTransferPermissionResult.error;
-    if (customerPermissionResult.error) throw customerPermissionResult.error;
-    if (supplierPermissionResult.error) throw supplierPermissionResult.error;
-    if (supplierOrderPermissionResult.error)
-      throw supplierOrderPermissionResult.error;
-    if (purchaseReturnPermissionResult.error)
-      throw purchaseReturnPermissionResult.error;
-    if (salesDocumentPermissionResult.error)
-      throw salesDocumentPermissionResult.error;
-    if (deliveryDocumentPermissionResult.error)
-      throw deliveryDocumentPermissionResult.error;
-    if (pricelistPermissionResult.error)
-      throw pricelistPermissionResult.error;
-    if (supplierPaymentPermissionResult.error)
-      throw supplierPaymentPermissionResult.error;
-    if (supplierInvoicePermissionResult.error)
-      throw supplierInvoicePermissionResult.error;
-
     const isSuperAdmin = profileResult.data.role === "super_admin";
     const roleCode = isSuperAdmin
       ? "SUPER_ADMIN"
@@ -159,90 +159,39 @@ export async function GET(request: Request) {
           (featureResult.data ?? []).map((row) => row.feature_code),
         ),
         effectiveCapabilities: {
-          masters:
-            (
-              masterPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          products:
-            (
-              productPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "stock-real":
-            (
-              stockRealPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "stock-movements":
-            (
-              stockMovementPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "stock-transfers":
-            (
-              stockTransferPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          customers:
-            (
-              customerPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          suppliers:
-            (
-              supplierPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "supplier-orders":
-            (
-              supplierOrderPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "purchase-returns":
-            (
-              purchaseReturnPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "sales-documents":
-            (
-              salesDocumentPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "delivery-documents":
-            (
-              deliveryDocumentPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          pricelists:
-            (
-              pricelistPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "supplier-payments":
-            (
-              supplierPaymentPermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
-          "supplier-invoices":
-            (
-              supplierInvoicePermissionResult.data as {
-                effectiveCapabilities?: string[];
-              }
-            )?.effectiveCapabilities ?? [],
+          masters: permissionCapabilities(masterPermissionResult),
+          products: permissionCapabilities(productPermissionResult),
+          "stock-real": permissionCapabilities(stockRealPermissionResult),
+          "stock-movements": permissionCapabilities(
+            stockMovementPermissionResult,
+          ),
+          "stock-transfers": permissionCapabilities(
+            stockTransferPermissionResult,
+          ),
+          customers: permissionCapabilities(customerPermissionResult),
+          suppliers: permissionCapabilities(supplierPermissionResult),
+          "supplier-orders": permissionCapabilities(
+            supplierOrderPermissionResult,
+          ),
+          "goods-receipts": permissionCapabilities(
+            goodsReceiptPermissionResult,
+          ),
+          "purchase-returns": permissionCapabilities(
+            purchaseReturnPermissionResult,
+          ),
+          "sales-documents": permissionCapabilities(
+            salesDocumentPermissionResult,
+          ),
+          "delivery-documents": permissionCapabilities(
+            deliveryDocumentPermissionResult,
+          ),
+          pricelists: permissionCapabilities(pricelistPermissionResult),
+          "supplier-payments": permissionCapabilities(
+            supplierPaymentPermissionResult,
+          ),
+          "supplier-invoices": permissionCapabilities(
+            supplierInvoicePermissionResult,
+          ),
         },
       }),
     });

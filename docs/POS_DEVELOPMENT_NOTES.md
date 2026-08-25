@@ -963,6 +963,7 @@ Agent POS wajib:
 | 2026-07-17 | Customer Statement TEMPO mendukung filter Customer/store/tanggal/status dan export Excel/PDF | APPROVED |
 | 2026-08-25 | Price override per line dapat diaktifkan per Terminal/POS; berlaku bagi semua kasir Terminal, mengalahkan Pricelist hanya bila dipakai, default tetap harga canonical, dan wajib server-guarded/audited | IMPLEMENTED LOCAL; ROLLOUT/SMOKE PENDING |
 | 2026-08-25 | POS mempertahankan mode Katalog sebagai default dan menambah mode Compact alternatif: searchable Product dropdown dan keranjang di kiri, detail transaksi/pembayaran di kanan; pilihan disimpan per browser dan tidak mengubah checkout contract | IMPLEMENTED LOCAL; SMOKE PENDING |
+| 2026-08-25 | Koreksi akhir UI POS: mode Katalog memakai kembali struktur sebelum Compact, dengan keranjang berupa baris horizontal nama + quantity + indikator perubahan + Edit dan tiga Product terlihat sebelum scroll; Compact tetap grid 3–4 kartu | IMPLEMENTED LOCAL; SMOKE PENDING |
 | 2026-08-25 | Cutover UOM PACK-only dilakukan per Company melalui operasi PREVIEW/APPLY; PACK aktif untuk beli/jual, DUS hanya dipertahankan pada histori dan dinonaktifkan dari transaksi baru | OPERATION READY; COMPANY PREVIEW PENDING |
 | 2026-07-17 | Write-off dapat parsial/penuh per Pro Forma; full write-off menjadi WRITTEN_OFF dan tidak menerbitkan Invoice final | APPROVED |
 | 2026-07-17 | Recovery setelah write-off menjadi event baru yang mereferensikan histori tanpa membuka jurnal lama | APPROVED; mapping resolved 2026-07-19 |

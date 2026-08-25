@@ -10,14 +10,17 @@ WITH checks AS (
   WHERE version IN('20260825100000','20260825110000')
   UNION ALL
   SELECT 'canonical_pos_runtime',
-    CASE WHEN count(*)=3 THEN 'PASS' ELSE 'BLOCKER' END,
-    jsonb_build_object('routineRows',count(*),'expected',3)
+    CASE WHEN count(*) FILTER(WHERE to_regprocedure(signature) IS NOT NULL)=3
+      THEN 'PASS' ELSE 'BLOCKER' END,
+    jsonb_build_object('routineRows',count(*) FILTER(
+      WHERE to_regprocedure(signature) IS NOT NULL),'expected',3,
+      'missing',COALESCE(jsonb_agg(signature ORDER BY signature) FILTER(
+        WHERE to_regprocedure(signature) IS NULL),'[]'::JSONB))
   FROM unnest(ARRAY[
     'private.resolve_pos_sale_price(uuid,uuid,uuid,uuid,numeric,timestamptz)',
     'private.reprice_pos_sale_draft(uuid,uuid,uuid,jsonb,timestamptz)',
     'public.save_pos_terminal_ui_settings(uuid,bigint,text[])'
   ]) signature
-  WHERE to_regprocedure(signature) IS NOT NULL
   UNION ALL
   SELECT 'nonterminal_offline_submission',
     CASE WHEN count(*)=0 THEN 'PASS' ELSE 'BLOCKER' END,

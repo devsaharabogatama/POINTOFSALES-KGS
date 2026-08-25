@@ -1,5 +1,78 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-25 - POS CATALOG RESTORE AND COMPACT CART LOCAL READY
+
+- Atas koreksi user, mode Katalog dikembalikan ke baseline sebelum Compact
+  (`cc3efab`): halaman kembali scroll normal, Katalog berada di kiri, sedangkan
+  satu kolom kanan sticky memuat keranjang vertikal dan seluruh checkout.
+  Kategori/Product card memakai CSS baseline; quantity, price override,
+  discount, dan hapus tetap langsung pada card keranjang.
+- Keranjang Katalog kemudian diringkas tanpa mengubah baseline layout: setiap
+  Product menjadi satu baris horizontal berisi nama, quantity/UOM, indikator
+  hanya bila harga/diskon berubah, dan tombol `Edit`. Tinggi daftar menampung
+  tiga baris pada laptop sebelum scroll. Compact tetap memakai grid tiga kolom
+  dan menjadi empat pada lebar >=1180px; mobile tetap satu kolom.
+- Pergantian mode tetap tidak mengubah cart, Draft, pricing, maupun checkout.
+- PWA oxlint PASS, TypeScript/Vite/PWA production build PASS (19 precache
+  entries). Warning chunk >500 kB tetap warning lama non-blocking.
+- Browser visual connector gagal tersedia pada environment agent; authenticated
+  localhost smoke mode Katalog restored, Compact/modal Edit, Draft reload, dan Post
+  masih manual. Tidak ada schema, RPC, Stock, pricing, payment, atau Finance
+  contract yang berubah.
+
+### 2026-08-25 - BACKOFFICE GOODS RECEIPT CHANNEL LOCAL READY
+
+- Ditambahkan menu `Purchase → Penerimaan Barang` untuk Owner, Company Admin,
+  dan Warehouse Admin. Draft Backoffice tidak membutuhkan sesi Kasir; PWA
+  Goods Receipt lama tetap kompatibel.
+- Migration `20260825130000_backoffice_goods_receipt_channel.sql` menambah
+  permission `purchase.goods_receipts`, channel snapshot `POS/BACKOFFICE`,
+  composed workspace RPC, serta guarded Draft/Post/Cancel wrappers. Wrapper
+  Post memanggil canonical `post_goods_receipt`, bukan membuat mesin stok baru.
+- API Backoffice dan UI mendukung daftar PO receivable, Draft/resume/cancel,
+  partial/over receipt, kondisi baik/rusak/ditolak, dan atomic Post.
+- Evidence lokal: targeted ESLint PASS; Next.js production build PASS (76 route,
+  termasuk tiga route Goods Receipt). Full lint mencapai timeout 120 detik tanpa
+  diagnostic sebelum targeted lint dijalankan.
+- SQL rollout belum dijalankan. Manual gate: preflight → migration → postflight
+  → rollback behavior → authenticated Backoffice smoke. Runbook:
+  `docs/runbooks/BACKOFFICE_GOODS_RECEIPT_ROLLOUT.md`.
+- Rollout manual kemudian menemukan `draftLines` mengurutkan `line_no` yang
+  belum diproyeksikan. Fresh migration diperbaiki dan forward-fix additive
+  `20260825131000_backoffice_goods_receipt_workspace_line_no_fix.sql` wajib
+  dijalankan sebelum postflight/behavior. Behavioral sekarang memakai fixture
+  synthetic penuh dan tidak membutuhkan data frontend/existing.
+- User mengonfirmasi forward-fix, postflight, dan behavioral test PASS. Login
+  Super Admin berikutnya memperlihatkan navigation catalog runtuh total ketika
+  satu resolver mengembalikan `PERMISSION_KEY_NOT_FOUND`. Audit read-only pada
+  database yang dipakai `backoffice/.env.local` membuktikan seluruh 15 key
+  navigation tersedia, termasuk `purchase.goods_receipts` berstatus ENFORCED.
+  Endpoint navigation sekarang fail-closed per menu: hanya key yang tidak dapat
+  diresolusikan yang disembunyikan; katalog lain dan Super Admin tidak lagi
+  dikosongkan. Error resolver selain missing-key tetap diteruskan. Targeted
+  ESLint dan Next production build (73 static pages) PASS. Notice missing-key
+  lama juga dibersihkan setelah katalog berhasil dimuat ulang. Database tidak
+  dimutasi oleh koreksi client ini; authenticated browser refresh masih manual.
+
+### 2026-08-25 - TERMINAL PRICE OVERRIDE DEPLOYED TO STAGING
+
+- User mengonfirmasi dependency MADS Terminal UI, Pricelist preview, TEMPO,
+  migration `20260825120000`, closing postflight, dan behavior seluruhnya
+  PASS/INFO pada Supabase staging `yjxpddwrjdczuqyixqwi`.
+- Backoffice commit `e769fa2` berhasil dibangun dan dideploy ke project
+  `pointofsales-kgs-staging`; alias aktif:
+  `https://pointofsales-kgs-staging.vercel.app`.
+- PWA commit yang sama berhasil dibangun dan dideploy ke project
+  `kgs-pos-pwa-staging`; alias aktif:
+  `https://kgs-pos-pwa-staging.vercel.app`.
+- Smoke publik PASS: kedua root HTTP 200, manifest PWA HTTP 200, dan endpoint
+  pengaturan Terminal tanpa sesi HTTP 401 sebagaimana mestinya. Project/database
+  production tidak disentuh oleh deployment ini.
+- Manual gate tersisa: login staging, aktifkan override hanya pada satu
+  Terminal, verifikasi Terminal OFF tidak menampilkan kontrol, Terminal ON dapat
+  edit/reset harga dan Post, lalu cocokkan Invoice, stock/FIFO, event, journal,
+  dan exact retry.
+
 ### 2026-08-25 - POS TERMINAL PRICE OVERRIDE LOCAL READY
 
 - Point terakhir diimplementasikan sebagai policy per Terminal default OFF,

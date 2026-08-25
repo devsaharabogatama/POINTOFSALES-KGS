@@ -1,6 +1,6 @@
 # POS Terminal Price Override Plan
 
-Status: **DATABASE LIVE; POSTFLIGHT ULANG DAN AUTHENTICATED SMOKE PENDING**  
+Status: **STAGING DEPLOYED; AUTHENTICATED TRANSACTION SMOKE PENDING**
 Keputusan user: 25 Agustus 2026
 
 ## Tujuan
@@ -89,5 +89,6 @@ Migration `20260825120000`, postflight awal, dan behavior rollback-safe telah
 dikonfirmasi PASS oleh user.
 Pengaturan Terminal Backoffice dan cart PWA Online sudah local-ready. Urutan
 closing dan smoke ada di `docs/runbooks/POS_TERMINAL_PRICE_OVERRIDE_ROLLOUT.md`.
-Client belum dianggap live sebelum postflight ulang, deployment staging, dan
-authenticated smoke selesai.
+Closing postflight staging sudah PASS dan kedua client staging telah dideploy.
+Status operasional belum ditutup sebelum authenticated ON/OFF transaction,
+Offline denial, retry, dan reconciliation smoke selesai.

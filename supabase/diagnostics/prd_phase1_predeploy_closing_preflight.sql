@@ -25,7 +25,9 @@ WITH required_versions(version) AS (
         ('20260819160000'), -- additive Product-UOM import/export
         ('20260819170000'), -- negative Stock Session replenishment request
         ('20260821100000'), -- contextual Product-UOM template and job cancellation
-        ('20260821110000') -- Product-UOM partial validation restore
+        ('20260821110000'), -- Product-UOM partial validation restore
+        ('20260825130000'), -- Backoffice Goods Receipt channel
+        ('20260825131000') -- Backoffice Goods Receipt workspace fix
 ), expected_enforced_permissions(permission_key) AS (
     VALUES
         ('inventory.master_data'),('inventory.products'),
@@ -35,6 +37,7 @@ WITH required_versions(version) AS (
         ('inventory.minimum_stock'),('contacts.customers'),
         ('inventory.delivery_documents'),
         ('contacts.suppliers'),('purchase.supplier_orders'),
+        ('purchase.goods_receipts'),
         ('purchase.purchase_returns'),('sales.sales_documents'),
         ('sales.pricelists'),('sales.bundles'),('sales.sales_returns'),
         ('finance.expenses'),('finance.cash_deposits'),

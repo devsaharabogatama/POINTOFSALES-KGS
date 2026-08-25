@@ -11,7 +11,8 @@ WITH required_versions(version) AS (VALUES
   ('20260813050000'),('20260813060000'),('20260813070000'),
   ('20260813080000'),('20260813090000'),('20260813100000'),
   ('20260813110000'),('20260813120000'),('20260813130000'),
-  ('20260813140000'),('20260813150000')
+  ('20260813140000'),('20260813150000'),('20260825130000'),
+  ('20260825131000')
 ), expected_enforced(permission_key) AS (VALUES
   ('inventory.master_data'),('inventory.products'),
   ('inventory.stock_real'),('inventory.stock_movements'),
@@ -19,7 +20,8 @@ WITH required_versions(version) AS (VALUES
   ('inventory.stock_opnames'),('inventory.opening_stock'),
   ('inventory.minimum_stock'),('contacts.customers'),('contacts.suppliers'),
   ('inventory.delivery_documents'),
-  ('purchase.supplier_orders'),('purchase.purchase_returns'),
+  ('purchase.supplier_orders'),('purchase.goods_receipts'),
+  ('purchase.purchase_returns'),
   ('sales.sales_documents'),('sales.pricelists'),('sales.bundles'),
   ('sales.sales_returns'),('finance.expenses'),('finance.cash_deposits'),
   ('finance.deposit_variances'),('finance.customer_balances'),
