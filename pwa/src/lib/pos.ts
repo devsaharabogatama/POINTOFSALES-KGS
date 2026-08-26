@@ -1782,6 +1782,7 @@ export async function saveSaleDraft(input: {
   globalDiscount: number
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
   isTempo: boolean
+  transactionAt: string | null
   dueDate: string | null
   fulfillmentMode: 'PICKUP' | 'DELIVERY'
   deliveryRecipientName: string
@@ -1816,6 +1817,7 @@ export async function saveSaleDraft(input: {
     roundingDirection: input.roundingDirection,
     roundingIncrement: 100,
     isTempo: input.isTempo,
+    transactionAt: input.isTempo ? input.transactionAt : null,
     dueDate: input.dueDate,
     fulfillmentMode: input.fulfillmentMode,
     deliveryFeeAmount:

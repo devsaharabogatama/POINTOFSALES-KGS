@@ -684,3 +684,15 @@ keranjang dan checkout. Baris keranjang Katalog dibuat horizontal dan ringkas:
 nama Product, quantity/UOM, indikator perubahan harga/diskon bila ada, dan
 tombol **Edit**, dengan tiga Product terlihat sebelum scroll. Mode Compact tetap
 menampilkan 3–4 kartu keranjang per baris pada desktop.
+## Update 2026-08-26 — POS TEMPO Backdated Order/Delivery Local Ready
+
+- POS online kini mempunyai kontrak lokal untuk tanggal efektif order TEMPO
+  lampau dan rencana kirim lampau. Tanggal order wajib bukan masa depan, berada
+  pada Accounting Period `OPEN/REOPENED`, jatuh tempo tidak lebih awal, dan
+  rencana kirim tidak boleh sebelum order.
+- Waktu input/posting aktual tetap immutable pada `created_at/posted_at`;
+  Financial Event Sale memakai `transaction_date` efektif. Cash/Transfer,
+  Offline, Stock Movement, serta lifecycle konfirmasi pengiriman tidak berubah.
+- Rollout manual belum dijalankan ke database mana pun. Urutan preflight,
+  migration, postflight, behavioral test, dan smoke tersedia di
+  `docs/runbooks/POS_TEMPO_BACKDATED_ORDER_DELIVERY_ROLLOUT.md`.

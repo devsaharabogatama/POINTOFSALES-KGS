@@ -291,6 +291,18 @@ function friendlyError(code: string) {
       'Metode pembayaran ini belum dibuka pada fase POS sekarang.',
     TEMPO_SALE_CONTRACT_INVALID:
       'Penjualan tempo membutuhkan Customer reguler dan tanggal jatuh tempo.',
+    TEMPO_TRANSACTION_DATE_REQUIRED:
+      'Tanggal transaksi/order wajib diisi untuk penjualan tempo.',
+    TEMPO_TRANSACTION_DATE_INVALID:
+      'Format tanggal transaksi/order tidak valid.',
+    TEMPO_TRANSACTION_DATE_FUTURE:
+      'Tanggal transaksi/order tidak boleh melewati waktu sekarang.',
+    TEMPO_DUE_DATE_BEFORE_TRANSACTION:
+      'Tanggal jatuh tempo tidak boleh lebih awal dari tanggal transaksi/order.',
+    DELIVERY_DATE_BEFORE_TRANSACTION:
+      'Tanggal rencana kirim tidak boleh lebih awal dari tanggal transaksi/order.',
+    TEMPO_ACCOUNTING_PERIOD_NOT_OPEN:
+      'Periode akuntansi untuk tanggal transaksi tersebut tidak terbuka.',
     PRICELIST_NOT_ELIGIBLE:
       'Pricelist tidak berlaku untuk Customer atau Store ini. Pilih Pricelist lain.',
     INVALID_PRICELIST_SELECTION:
@@ -1752,6 +1764,7 @@ export default function App() {
       globalDiscount: Number(globalDiscount || 0),
       roundingDirection,
       isTempo,
+      transactionAt: isTempo ? transactionAt : null,
       dueDate: isTempo && dueDate ? new Date(dueDate).toISOString() : null,
       fulfillmentMode,
       deliveryRecipientName,
@@ -1921,6 +1934,7 @@ export default function App() {
         globalDiscount: Number(payload.globalDiscount ?? 0),
         roundingDirection: nextRoundingDirection,
         isTempo: nextIsTempo,
+        transactionAt: nextIsTempo ? item.transactionAt : null,
         dueDate: nextIsTempo && payload.dueDate
           ? String(payload.dueDate)
           : null,
@@ -4046,13 +4060,25 @@ export default function App() {
                     <label className="block text-xs font-semibold text-slate-400">
                       Tanggal transaksi / order
                       <input
+                        required
                         type="datetime-local"
                         value={localDateTimeInput(transactionAt)}
-                        readOnly
-                        className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300"
+                        max={localDateTimeInput(new Date().toISOString())}
+                        onChange={(event) => {
+                          if (!event.target.value) return
+                          const nextTransactionAt = new Date(event.target.value).toISOString()
+                          setTransactionAt(nextTransactionAt)
+                          if (!dueDateIsManual) {
+                            setDueDate(suggestedTempoDueDate(
+                              nextTransactionAt,
+                              activeCustomer?.creditTermDays ?? null,
+                            ))
+                          }
+                        }}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
                       />
                       <span className="mt-1 block text-[11px] font-normal text-slate-500">
-                        Dikunci server saat Draft pertama disimpan.
+                        Boleh tanggal lampau selama periode akuntansinya terbuka.
                       </span>
                     </label>
                     <label className="block text-xs font-semibold text-slate-400">
@@ -5109,6 +5135,7 @@ export default function App() {
                 <span>Rencana kirim (opsional)</span>
                 <input
                   type="datetime-local"
+                  min={isTempo ? localDateTimeInput(transactionAt) : undefined}
                   value={deliveryScheduledAt}
                   onChange={(event) => setDeliveryScheduledAt(event.target.value)}
                 />

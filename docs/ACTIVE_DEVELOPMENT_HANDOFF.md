@@ -6159,3 +6159,28 @@ Eksekusi hanya setelah backup dan maintenance window.
   kini hanya memiliki satu focus border dengan jarak ikon/placeholder konsisten;
   kategori memakai chip kecil yang wrap dan tidak lagi menampilkan scrollbar
   horizontal. Tidak ada handler atau business contract yang berubah.
+### 2026-08-26 — POS TEMPO BACKDATED ORDER/DELIVERY LOCAL READY
+
+- User membuka scope agar order TEMPO yang terlambat input dapat memakai tanggal
+  efektif lampau dan rencana kirim juga boleh lampau.
+- Migration lokal `20260826100000_pos_tempo_backdated_order_delivery.sql`
+  menambah metadata actor/waktu pemilihan tanggal, validator periode terbuka,
+  guard ulang pada atomic Post, dan mengarahkan `SALE_POSTED.event_date` ke
+  `sales_headers.transaction_date`. `created_at`, `posted_at`, Stock Movement,
+  dan status pengiriman tetap aktual/tidak otomatis.
+- PWA mengirim `transactionAt`, membuka field hanya pada TEMPO, memberi batas
+  masa depan, menurunkan due date otomatis dari tanggal baru, serta membatasi
+  rencana kirim agar tidak sebelum order.
+- SQL manual: preflight -> migration -> postflight -> behavioral sesuai
+  `docs/runbooks/POS_TEMPO_BACKDATED_ORDER_DELIVERY_ROLLOUT.md`. Tidak ada DB
+  atau deployment yang disentuh agent.
+- Evidence lokal: PWA lint PASS; TypeScript/Vite/PWA production build PASS
+  (19 precache entries); `git diff --check` PASS. Warning chunk >500 kB tetap
+  warning lama non-blocking. PostgreSQL runtime tetap manual gate user.
+- Next safe step: user menjalankan rollout SQL dan mengirim postflight sebelum
+  deploy PWA staging/production.
+- Postflight correction: check `posted_sale_financial_event_effective_date`
+  awalnya salah mencakup seluruh Sale historis `SERVER_CREATED`, sehingga 20
+  event lama yang memang memakai waktu posting dilaporkan `FAIL`. Check sekarang
+  hanya menguji Sale `CASHIER_SELECTED`; migration/runtime dan data historis
+  tidak diubah. User cukup menjalankan ulang postflight terbaru.

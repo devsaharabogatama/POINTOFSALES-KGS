@@ -980,3 +980,15 @@ Agent POS wajib:
 | 2026-07-20 | Tax Engine memakai Product Category default/Product override, Sales inclusive, snapshot, dan configurable calculation scope | APPROVED |
 | 2026-07-20 | Purchase three-way matching mendukung partial/many-to-many, configurable over-receipt approval, dan invoice over-receipt HOLD | APPROVED |
 | 2026-07-20 | Draft/Hold/Pending dapat dianalisis terpisah berdasarkan waiting party, user/counterparty, blocker, dan aging | APPROVED |
+## Addendum 2026-08-26 — Tanggal Efektif Order TEMPO
+
+- POS online mengizinkan kasir memilih tanggal transaksi/order lampau khusus
+  TEMPO. Server menolak masa depan, periode yang tidak `OPEN/REOPENED`, jatuh
+  tempo sebelum order, dan rencana kirim sebelum order.
+- `transaction_date` adalah tanggal efektif bisnis; `created_at`, `posted_at`,
+  Stock Movement, dan audit tetap menggunakan waktu kejadian aktual.
+- Financial Event Sale memakai tanggal efektif agar jurnal/AR masuk periode yang
+  dipilih. Rencana kirim bukan bukti barang telah dikirim dan tidak mengubah
+  lifecycle Surat Jalan secara otomatis.
+- Compatibility: client lama tanpa `transactionAt` tetap memakai waktu Draft
+  dari server; Cash/Transfer dan Offline tidak memperoleh kewenangan backdate.
