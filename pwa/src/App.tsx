@@ -444,6 +444,7 @@ export default function App() {
   const [paymentLegs, setPaymentLegs] = useState<PaymentLeg[]>([])
   const [isTempo, setIsTempo] = useState(false)
   const [transactionAt, setTransactionAt] = useState(() => new Date().toISOString())
+  const [transactionDateIsManual, setTransactionDateIsManual] = useState(false)
   const [dueDate, setDueDate] = useState('')
   const [dueDateIsManual, setDueDateIsManual] = useState(false)
   const [roundingDirection, setRoundingDirection] = useState<
@@ -1453,10 +1454,14 @@ export default function App() {
     if (!enabled) {
       setDueDate('')
       setDueDateIsManual(false)
+      setTransactionDateIsManual(false)
       return
     }
     const nextTransactionAt = draft?.transactionAt ?? new Date().toISOString()
     setTransactionAt(nextTransactionAt)
+    setTransactionDateIsManual(
+      draft?.transactionDateSource === 'CASHIER_SELECTED',
+    )
     setDueDate(suggestedTempoDueDate(
       nextTransactionAt,
       activeCustomer?.creditTermDays ?? null,
@@ -1765,6 +1770,8 @@ export default function App() {
       roundingDirection,
       isTempo,
       transactionAt: isTempo ? transactionAt : null,
+      transactionDateIntent:
+        isTempo && transactionDateIsManual ? 'CASHIER_SELECTED' : 'PRESERVE',
       dueDate: isTempo && dueDate ? new Date(dueDate).toISOString() : null,
       fulfillmentMode,
       deliveryRecipientName,
@@ -1901,7 +1908,8 @@ export default function App() {
         salesId: item.salesId,
         draftNo: item.draftNo,
         clientTransactionId: nextClientTransactionId,
-        transactionAt: item.transactionAt,
+      transactionAt: item.transactionAt,
+      transactionDateSource: item.transactionDateSource,
         masterVersion: item.masterVersion,
         grandTotalBeforeRounding: item.grandTotal,
         roundingAdjustment: 0,
@@ -1935,6 +1943,7 @@ export default function App() {
         roundingDirection: nextRoundingDirection,
         isTempo: nextIsTempo,
         transactionAt: nextIsTempo ? item.transactionAt : null,
+        transactionDateIntent: 'PRESERVE',
         dueDate: nextIsTempo && payload.dueDate
           ? String(payload.dueDate)
           : null,
@@ -1955,6 +1964,9 @@ export default function App() {
       setCart(nextCart)
       setDraft(repriced)
       setTransactionAt(repriced.transactionAt)
+      setTransactionDateIsManual(
+        repriced.transactionDateSource === 'CASHIER_SELECTED',
+      )
       setClientTransactionId(nextClientTransactionId)
       setCustomerId(nextCustomerId)
       setSelectedPricelistId(nextPricelistId)
@@ -2645,6 +2657,7 @@ export default function App() {
     setGlobalDiscount('')
     setIsTempo(false)
     setTransactionAt(new Date().toISOString())
+    setTransactionDateIsManual(false)
     setDueDate('')
     setDueDateIsManual(false)
     setRoundingDirection('NONE')
@@ -4068,6 +4081,7 @@ export default function App() {
                           if (!event.target.value) return
                           const nextTransactionAt = new Date(event.target.value).toISOString()
                           setTransactionAt(nextTransactionAt)
+                          setTransactionDateIsManual(true)
                           if (!dueDateIsManual) {
                             setDueDate(suggestedTempoDueDate(
                               nextTransactionAt,

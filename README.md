@@ -1,5 +1,14 @@
 # MADS — Management Distribution System
 
+Finance F1–F4B sekarang **local-ready**: kebijakan pembuatan Accounting Period per
+Company (`MANUAL`/`AUTOMATIC`), auto-create bulan berjalan dan berikutnya tanpa
+membuka periode terkunci, serta perbaikan resume Draft TEMPO dan perbandingan
+jatuh tempo berdasarkan tanggal bisnis Company; Customer Receipt, historical
+collection, AR aging/statement/export; serta policy posting `CONTROLLED` atau
+`AUTOMATIC`. F4B tidak mengubah policy live saat migration dan tidak memposting
+backlog secara diam-diam. Rollout terakhir mengikuti
+[runbook Finance F4B](docs/runbooks/FINANCE_AR_POSTING_POLICY_CLOSURE.md).
+
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
 Penerimaan Barang melalui Backoffice Gudang sekarang **local-ready**. Menu baru
@@ -696,3 +705,100 @@ menampilkan 3–4 kartu keranjang per baris pada desktop.
 - Rollout manual belum dijalankan ke database mana pun. Urutan preflight,
   migration, postflight, behavioral test, dan smoke tersedia di
   `docs/runbooks/POS_TEMPO_BACKDATED_ORDER_DELIVERY_ROLLOUT.md`.
+
+## Rencana 2026-08-26 — Analitik Potensi Produk per Customer
+
+- User menyetujui desain awal submodul opsional `Report > Potensi Produk`.
+  Fitur membaca Sale/Return final untuk menghitung actual, potential, gap,
+  achievement, dan tren tanpa membuat/mengubah transaksi, Stock, Pricelist,
+  Purchasing, Payment, atau Finance.
+- Model formula dikonfigurasi per Company dan versioned; saat aktivasi admin
+  memilih tanggal efektif serta `FORWARD_ONLY` atau historical backfill sejak
+  tanggal tersebut. Feature OFF tidak menjalankan job dan tidak mengganggu
+  runtime operasional.
+- Status masih **approved design / implementation not started**. Source of truth:
+  `docs/PRODUCT_POTENTIAL_ANALYTICS_SPEC.md`. Tidak ada schema, UI, database,
+  atau deployment yang dibuka oleh pencatatan ini.
+
+## Operasi lokal 2026-08-26 — Update COGS LSM, SMS, dan KMS
+
+- Paket operasi COGS-only dari `Price List Distributor 26082026.xlsx` sudah
+  local-ready dan belum dijalankan ke database mana pun oleh Codex.
+- Operasi dijalankan satu Company per run dengan PREVIEW sebagai default,
+  confirmation eksplisit untuk APPLY, SKU matching, PACK conversion, atomic
+  write, dan Product master audit.
+- Hanya `products.cogs` dan `purchase_price` Product-UOM aktif yang boleh
+  berubah. Retail, harga jual, Pricelist, UOM nonaktif, Stock/FIFO, transaksi,
+  Financial Event, dan Journal tetap tidak disentuh.
+- Runbook: `docs/runbooks/COMPANY_COGS_UPDATE_20260826.md`.
+
+## Status lokal terbaru - 2026-08-27 (Penerimaan Customer / AR)
+
+- Foundation database Customer Receipt sudah dikonfirmasi PASS oleh user:
+  Draft/Post/Cancel, alokasi parsial satu Customer ke banyak Invoice tempo,
+  audit immutable, permission ENFORCED, dan `SALE_PAYMENT` event tersedia.
+- Backoffice kini memiliki menu **Finance > Penerimaan Customer** untuk memilih
+  Customer, melihat invoice tempo terbuka, mengalokasikan pembayaran, menyimpan
+  atau melanjutkan Draft, Post, dan membatalkan Draft.
+- Runtime journal lanjutan `20260827110000` local-ready: debit Kas/Bank, kredit
+  Piutang Customer, dimensi Customer, source verification, exact replay, serta
+  prior-period adjustment. Rollout database runtime dan authenticated smoke
+  masih menunggu user; fitur belum dinyatakan aktif di deployment.
+- Evidence lokal Backoffice: targeted ESLint PASS dan production build PASS
+  (74 route, termasuk `/api/finance/customer-receipts`). Runbook:
+  `docs/runbooks/FINANCE_CUSTOMER_RECEIPT_AR_ROLLOUT.md`.
+
+F2 database kemudian dikonfirmasi seluruhnya PASS. F3 sekarang masuk preflight
+untuk membedakan pembayaran historis atas invoice yang sudah ada dari dana
+advance sebelum invoice tersedia. Advance hanya boleh memakai Customer Balance
+yang memang aktif dan tidak pernah otomatis menjadi revenue. Runbook:
+`docs/runbooks/FINANCE_HISTORICAL_COLLECTION_ADVANCE_ROLLOUT.md`.
+
+Preflight F3 kemudian dikonfirmasi aman: lima Company tetap mempunyai Customer
+Balance `DISABLED`, satu invoice tempo terbuka Rp133.500 menjadi scope smoke,
+dan tidak ada Customer Receipt existing. Migration `20260827120000` sekarang
+local-ready tanpa auto-enable policy: receipt historis dapat dialokasikan ke
+invoice, sedangkan advance murni hanya dapat diposting bila policy sudah
+`ACTIVE`, lalu mencatat debit Kas/Bank dan kredit Customer Balance Liability.
+
+F3 postflight selanjutnya dikonfirmasi seluruhnya PASS. Preflight F4A juga
+PASS: satu invoice tempo outstanding Rp133.500 siap menjadi fixture tanpa data
+dummy. Migration `20260827130000` dan Backoffice reporting kini local-ready
+untuk outstanding/aging as-of, Customer Statement, Excel export, serta guard
+tanggal bisnis pembayaran tidak lebih awal dari order. Database rollout,
+postflight, behavioral test, dan authenticated smoke masih manual; F4B posting
+policy/closing regression belum dimulai.
+
+Database yang sempat menjalankan build awal F4A wajib menerapkan forward-fix
+`20260827131000` sebelum behavioral test. Fix menyamakan bentuk baris Invoice
+dan Receipt pada Customer Statement; tidak mengubah transaksi atau saldo.
+
+Forward-fix, postflight, dan behavioral F4A kemudian dikonfirmasi sukses oleh
+user. F4B menjadi fase terakhir: preflight SELECT-only akan menilai mode
+CONTROLLED/AUTOMATIC, queue, exception, event/journal coverage, dan rekonsiliasi
+AR sebelum runtime policy dibuka.
+
+Preflight F4B kemudian dinilai aman: 31 event/jurnal canonical sudah tertutup,
+9 event `HOLD` menjadi backlog controlled queue, satu event `CANCELED` tetap
+dikecualikan, dan lima Company masih `CONTROLLED`. Migration `20260827140000`
+sekarang local-ready dengan queue `ALL_SUPPORTED`, policy Owner/Admin,
+deferred automatic posting, retryable exception, serta UI Backoffice. Migration
+tidak memposting backlog; postflight, behavioral test, controlled closure, dan
+authenticated smoke masih manual.
+
+Behavioral F4B dan migration policy kemudian berhasil, tetapi controlled live
+queue KGS memposting 8 dari 9 event. Satu Sale TEMPO Rp133.500 gagal karena
+runtime G6 lama menyamakan seluruh grand total dengan Payment aktual dan belum
+membuat leg `CUSTOMER_RECEIVABLE` untuk unpaid/partial TEMPO. Forward-fix
+`20260827141000` sekarang local-ready: ia memvalidasi Payment + piutang terhadap
+grand total + surcharge, membuat debit AR berdimensi Customer, serta membackfill
+interval mapping AR historis secara versioned/audited bila diperlukan. Ia
+mempertahankan Cash/split/Return dan tidak mengubah event saat instalasi. Preflight, migration,
+postflight, behavioral rollback, lalu controlled retry satu event masih manual;
+mode `AUTOMATIC` tetap dilarang sebelum seluruhnya bersih.
+
+User kemudian mengonfirmasi final controlled retry dan kedua postflight PASS:
+40 event POSTED mempunyai 40 jurnal POSTED, satu Sale TEMPO mempunyai debit AR,
+supported HOLD dan open exception nol, serta balance/duplicate/coverage bersih.
+Database closure F4B dinyatakan PASS; yang tersisa hanya authenticated smoke
+Cash/TEMPO/Receipt/report dan uji Automatic terbatas pada Company dummy.

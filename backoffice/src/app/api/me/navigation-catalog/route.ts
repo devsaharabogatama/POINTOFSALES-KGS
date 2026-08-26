@@ -46,6 +46,7 @@ export async function GET(request: Request) {
       pricelistPermissionResult,
       supplierInvoicePermissionResult,
       supplierPaymentPermissionResult,
+      customerReceiptPermissionResult,
     ] = await Promise.all([
       caller.client
         .from("profiles")
@@ -139,6 +140,11 @@ export async function GET(request: Request) {
         p_target_user_id: caller.user.id,
         p_permission_key: "finance.supplier_payments",
       }),
+      caller.client.rpc("resolve_user_permission", {
+        p_company_id: companyId,
+        p_target_user_id: caller.user.id,
+        p_permission_key: "finance.customer_receipts",
+      }),
     ]);
     if (profileResult.error) throw profileResult.error;
     if (membershipResult.error) throw membershipResult.error;
@@ -191,6 +197,9 @@ export async function GET(request: Request) {
           ),
           "supplier-invoices": permissionCapabilities(
             supplierInvoicePermissionResult,
+          ),
+          "customer-receipts": permissionCapabilities(
+            customerReceiptPermissionResult,
           ),
         },
       }),

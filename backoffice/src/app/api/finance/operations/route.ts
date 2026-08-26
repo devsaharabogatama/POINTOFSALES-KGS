@@ -196,7 +196,7 @@ export async function GET(request: Request) {
       .order("accounting_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(journalMonth ? 5000 : 200);
-    const [company, periods, journals, queueRuns, exceptions, accounts] =
+    const [company, periods, journals, queueRuns, exceptions, accounts, policy] =
       await Promise.all([
         caller.client
           .from("companies")
@@ -238,6 +238,7 @@ export async function GET(request: Request) {
           .eq("is_postable", true)
           .order("account_code")
           .limit(1000),
+        caller.client.rpc("get_finance_company_policy"),
       ]);
     for (const result of [
       company,
@@ -246,6 +247,7 @@ export async function GET(request: Request) {
       queueRuns,
       exceptions,
       accounts,
+      policy,
     ]) {
       if (result.error) throwDatabaseError(result.error);
     }
@@ -298,6 +300,7 @@ export async function GET(request: Request) {
       queueItems: queueItems.data ?? [],
       exceptions: exceptions.data ?? [],
       accounts: accounts.data ?? [],
+      policy: policy.data,
     });
   } catch (error) {
     return apiError(error);
@@ -324,6 +327,31 @@ export async function POST(request: Request) {
           9999,
         ),
         p_period_month: integerValue(body.month, "PERIOD_MONTH_INVALID", 1, 12),
+      });
+    } else if (action === "SAVE_PERIOD_POLICY") {
+      result = await caller.client.rpc("save_finance_company_policy", {
+        p_master_version: requiredVersion(body),
+        p_period_creation_mode: requiredText(body, "periodCreationMode", {
+          uppercase: true,
+          maxLength: 20,
+        }),
+      });
+    } else if (action === "SAVE_POSTING_POLICY") {
+      result = await caller.client.rpc("save_finance_posting_policy", {
+        p_master_version: requiredVersion(body),
+        p_posting_mode: requiredText(body, "postingMode", {
+          uppercase: true,
+          maxLength: 20,
+        }),
+      });
+    } else if (action === "PROCESS_AUTOMATIC") {
+      result = await caller.client.rpc("process_automatic_financial_events", {
+        p_limit: integerValue(
+          body.limit,
+          "AUTOMATIC_POSTING_LIMIT_INVALID",
+          1,
+          500,
+        ),
       });
     } else if (action === "LOCK_PERIOD") {
       result = await caller.client.rpc("lock_accounting_period", {

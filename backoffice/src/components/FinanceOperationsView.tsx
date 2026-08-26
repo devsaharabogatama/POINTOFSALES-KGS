@@ -152,6 +152,11 @@ type Workspace = {
   queueItems: QueueItem[];
   exceptions: ExceptionRow[];
   accounts: Account[];
+  policy: {
+    periodCreationMode: "MANUAL" | "AUTOMATIC";
+    postingMode: "CONTROLLED" | "AUTOMATIC";
+    masterVersion: number | string;
+  };
 };
 
 type ReportCode =
@@ -169,6 +174,7 @@ type DialogAction =
   | { type: "REOPEN"; period: Period }
   | { type: "CREATE_PERIOD" }
   | { type: "PREVIEW_QUEUE" }
+  | { type: "PROCESS_AUTOMATIC" }
   | { type: "APPROVE_QUEUE"; run: QueueRun }
   | { type: "PROCESS_QUEUE"; run: QueueRun };
 
@@ -180,6 +186,7 @@ type Props = {
   canReopenPeriod: boolean;
   canReverseJournal: boolean;
   canOperateQueue: boolean;
+  canManagePostingPolicy: boolean;
   notify: (message: string) => void;
 };
 
@@ -240,8 +247,16 @@ const friendlyErrors: Record<string, string> = {
   ACCOUNTING_PERIOD_ALREADY_EXISTS: "Periode bulan tersebut sudah tersedia.",
   ACTIVE_FINANCE_POSTING_QUEUE_ALREADY_EXISTS:
     "Masih ada antrean Finance aktif.",
+  ACTIVE_FINANCE_POSTING_QUEUE_EXISTS:
+    "Selesaikan antrean Finance aktif sebelum mengganti mode posting.",
+  FINANCE_POSTING_POLICY_ADMIN_REQUIRED:
+    "Hanya Owner atau Admin Company yang dapat mengganti kebijakan posting.",
+  FINANCE_AUTOMATIC_POSTING_DISABLED:
+    "Mode posting otomatis belum aktif untuk Company ini.",
+  CONTROLLED_QUEUE_DISABLED_IN_AUTOMATIC_MODE:
+    "Controlled queue tidak digunakan ketika mode posting otomatis aktif.",
   NO_SUPPORTED_HOLD_EVENTS:
-    "Tidak ada transaksi Stok Awal HOLD yang didukung untuk diproses.",
+    "Tidak ada transaksi HOLD canonical yang dapat diproses.",
   QUEUE_PREVIEW_STALE:
     "Isi antrean berubah. Buat preview baru setelah kondisi diperiksa.",
   FINANCE_POSTING_QUEUE_NOT_PREVIEWED:
@@ -506,9 +521,9 @@ export function FinanceOperationsView(props: Props) {
       </div>
 
       <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-        <b>Batas aman pilot:</b> antrean saat ini hanya boleh memproses Stok
-        Awal yang sudah didukung. Jurnal otomatis tidak dapat dibalik dari sini;
-        gunakan Return, Adjustment, atau dokumen koreksi sumbernya.
+        <b>Batas aman pilot:</b> controlled queue hanya mengambil event final
+        yang didukung canonical Finance. Mode otomatis tidak mengubah dokumen
+        sumber; kegagalan tetap HOLD dan masuk exception untuk diperbaiki.
       </div>
       {error && (
         <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
@@ -594,22 +609,35 @@ export function FinanceOperationsView(props: Props) {
       )}
       {tab === "periods" && (
         <PeriodPanel
+          session={props.session}
           periods={data?.periods ?? []}
+          policy={data?.policy ?? null}
           canCreate={props.canCreatePeriod}
           canLock={props.canLockPeriod}
           canReopen={props.canReopenPeriod}
           action={setDialog}
+          saved={async (message) => {
+            props.notify(message);
+            await load();
+          }}
         />
       )}
       {tab === "queue" && (
         <QueuePanel
+          session={props.session}
+          policy={data?.policy ?? null}
           runs={data?.queueRuns ?? []}
           items={queueItems}
           exceptions={data?.exceptions ?? []}
           expanded={expandedQueue}
           setExpanded={setExpandedQueue}
           canOperate={props.canOperateQueue}
+          canManagePolicy={props.canManagePostingPolicy}
           action={setDialog}
+          saved={async (message) => {
+            props.notify(message);
+            await load();
+          }}
         />
       )}
       {tab === "reports" && <ReportsPanel session={props.session} />}
@@ -1306,18 +1334,53 @@ function JournalPanel({
 }
 
 function PeriodPanel({
+  session,
   periods,
+  policy,
   canCreate,
   canLock,
   canReopen,
   action,
+  saved,
 }: {
+  session: Session;
   periods: Period[];
+  policy: Workspace["policy"] | null;
   canCreate: boolean;
   canLock: boolean;
   canReopen: boolean;
   action: (action: DialogAction) => void;
+  saved: (message: string) => Promise<void>;
 }) {
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [policyError, setPolicyError] = useState("");
+  async function changePeriodMode(mode: "MANUAL" | "AUTOMATIC") {
+    if (!policy || mode === policy.periodCreationMode) return;
+    setSavingPolicy(true);
+    setPolicyError("");
+    try {
+      const response = await fetch("/api/finance/operations", {
+        method: "POST",
+        headers: { ...authHeaders(session), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SAVE_PERIOD_POLICY",
+          masterVersion: Number(policy.masterVersion),
+          periodCreationMode: mode,
+        }),
+      });
+      const result = await readApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(friendly(result.error));
+      await saved(
+        mode === "AUTOMATIC"
+          ? "Periode otomatis aktif. Bulan berjalan dan bulan berikutnya dipastikan tersedia."
+          : "Pembuatan periode dikembalikan ke mode manual.",
+      );
+    } catch (caught) {
+      setPolicyError(caught instanceof Error ? caught.message : "Kebijakan periode gagal disimpan.");
+    } finally {
+      setSavingPolicy(false);
+    }
+  }
   return (
     <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-4 border-b border-slate-100 p-5">
@@ -1337,6 +1400,28 @@ function PeriodPanel({
           </button>
         )}
       </div>
+      {policy && (
+        <div className="border-b border-slate-100 bg-slate-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-900">Pembuatan periode</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Otomatis memastikan bulan berjalan dan bulan berikutnya tersedia. Periode yang sudah dikunci tidak pernah dibuka kembali otomatis.
+              </p>
+            </div>
+            <select
+              value={policy.periodCreationMode}
+              disabled={!canCreate || savingPolicy}
+              onChange={(event) => void changePeriodMode(event.target.value as "MANUAL" | "AUTOMATIC")}
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black disabled:opacity-60"
+            >
+              <option value="MANUAL">Manual</option>
+              <option value="AUTOMATIC">Otomatis</option>
+            </select>
+          </div>
+          {policyError && <p className="mt-3 text-sm font-bold text-rose-700">{policyError}</p>}
+        </div>
+      )}
       <div className="divide-y divide-slate-100">
         {periods.map((period) => (
           <div
@@ -1389,37 +1474,119 @@ function PeriodPanel({
 }
 
 function QueuePanel({
+  session,
+  policy,
   runs,
   items,
   exceptions,
   expanded,
   setExpanded,
   canOperate,
+  canManagePolicy,
   action,
+  saved,
 }: {
+  session: Session;
+  policy: Workspace["policy"] | null;
   runs: QueueRun[];
   items: Map<string, QueueItem[]>;
   exceptions: ExceptionRow[];
   expanded: string | null;
   setExpanded: (id: string | null) => void;
   canOperate: boolean;
+  canManagePolicy: boolean;
   action: (action: DialogAction) => void;
+  saved: (message: string) => Promise<void>;
 }) {
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [policyError, setPolicyError] = useState("");
   const active = runs.some((run) =>
     ["PREVIEWED", "APPROVED", "PROCESSING"].includes(run.status),
   );
+  async function changePostingMode(mode: "CONTROLLED" | "AUTOMATIC") {
+    if (!policy || mode === policy.postingMode) return;
+    setSavingPolicy(true);
+    setPolicyError("");
+    try {
+      const response = await fetch("/api/finance/operations", {
+        method: "POST",
+        headers: { ...authHeaders(session), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SAVE_POSTING_POLICY",
+          masterVersion: Number(policy.masterVersion),
+          postingMode: mode,
+        }),
+      });
+      const result = await readApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(friendly(result.error));
+      await saved(
+        mode === "AUTOMATIC"
+          ? "Posting otomatis aktif untuk event baru. Event HOLD lama dapat diproses dari tombol backlog."
+          : "Posting dikembalikan ke controlled queue.",
+      );
+    } catch (caught) {
+      setPolicyError(
+        caught instanceof Error
+          ? caught.message
+          : "Kebijakan posting gagal disimpan.",
+      );
+    } finally {
+      setSavingPolicy(false);
+    }
+  }
   return (
     <div className="space-y-5">
+      {policy && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="font-black">Kebijakan posting jurnal</h2>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+                Controlled memerlukan preview, persetujuan, lalu proses. Otomatis
+                memposting event final baru melalui dispatcher yang sama; error
+                tidak membatalkan transaksi dan tetap masuk exception.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                value={policy.postingMode}
+                disabled={!canManagePolicy || savingPolicy || active}
+                onChange={(event) =>
+                  void changePostingMode(
+                    event.target.value as "CONTROLLED" | "AUTOMATIC",
+                  )
+                }
+                className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black disabled:opacity-60"
+              >
+                <option value="CONTROLLED">Controlled</option>
+                <option value="AUTOMATIC">Otomatis</option>
+              </select>
+              {canOperate && policy.postingMode === "AUTOMATIC" && (
+                <button
+                  onClick={() => action({ type: "PROCESS_AUTOMATIC" })}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white"
+                >
+                  <Play className="h-4 w-4" />
+                  Proses backlog
+                </button>
+              )}
+            </div>
+          </div>
+          {policyError && (
+            <p className="mt-3 text-sm font-bold text-rose-700">{policyError}</p>
+          )}
+        </section>
+      )}
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-black">Controlled posting queue</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Scope database saat ini hanya `STOCK_OPENING`. Tidak memproses 25
-              event contract lain.
+              Memproses seluruh event final yang didukung canonical Finance
+              dengan snapshot preview dan audit approval.
             </p>
           </div>
-          {canOperate && !active && (
+          {canOperate && policy?.postingMode !== "AUTOMATIC" && !active && (
             <button
               onClick={() => action({ type: "PREVIEW_QUEUE" })}
               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-black text-white"
@@ -1868,9 +2035,11 @@ function ActionDialog({
             ? "Tambah accounting period"
             : action.type === "PREVIEW_QUEUE"
               ? "Buat preview posting queue?"
-              : action.type === "APPROVE_QUEUE"
-                ? "Setujui posting queue?"
-                : "Proses posting queue?";
+              : action.type === "PROCESS_AUTOMATIC"
+                ? "Proses backlog posting otomatis?"
+                : action.type === "APPROVE_QUEUE"
+                  ? "Setujui posting queue?"
+                  : "Proses posting queue?";
   async function submit() {
     setBusy(true);
     setError("");
@@ -1902,6 +2071,8 @@ function ActionDialog({
         Object.assign(body, { action: "CREATE_PERIOD", year, month });
       if (action.type === "PREVIEW_QUEUE")
         Object.assign(body, { action: "PREVIEW_QUEUE", limit });
+      if (action.type === "PROCESS_AUTOMATIC")
+        Object.assign(body, { action: "PROCESS_AUTOMATIC", limit });
       if (action.type === "APPROVE_QUEUE")
         Object.assign(body, {
           action: "APPROVE_QUEUE",
@@ -1935,9 +2106,11 @@ function ActionDialog({
                 ? "Accounting period berhasil dibuat."
                 : action.type === "PREVIEW_QUEUE"
                   ? "Preview posting queue berhasil dibuat."
-                  : action.type === "APPROVE_QUEUE"
-                    ? "Posting queue berhasil disetujui."
-                    : "Posting queue selesai diproses.";
+                  : action.type === "PROCESS_AUTOMATIC"
+                    ? "Backlog posting otomatis selesai diproses."
+                    : action.type === "APPROVE_QUEUE"
+                      ? "Posting queue berhasil disetujui."
+                      : "Posting queue selesai diproses.";
       await complete(message);
     } catch (caught) {
       setError(
@@ -2014,7 +2187,8 @@ function ActionDialog({
             </label>
           </div>
         )}
-        {action.type === "PREVIEW_QUEUE" && (
+        {(action.type === "PREVIEW_QUEUE" ||
+          action.type === "PROCESS_AUTOMATIC") && (
           <label className="mt-5 block text-sm font-black">
             Maksimal event
             <input
@@ -2026,7 +2200,9 @@ function ActionDialog({
               className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 font-normal"
             />
             <span className="mt-2 block text-xs font-normal text-slate-500">
-              Preview tidak memposting. Scope tetap hanya Stok Awal.
+              {action.type === "PREVIEW_QUEUE"
+                ? "Preview tidak memposting dan selalu dapat ditinjau dahulu."
+                : "Hanya event HOLD yang didukung akan dicoba. Kegagalan tetap retryable."}
             </span>
           </label>
         )}

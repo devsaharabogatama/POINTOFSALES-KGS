@@ -1693,6 +1693,34 @@ Auto-deploy Production dari branch kerja tidak boleh diaktifkan. Production haru
 - gunakan compensating reversal/adjustment setelah penyebab disetujui;
 - restore hanya jika runbook membuktikan tidak menghilangkan transaksi sah setelah snapshot.
 
+### Finance F4B posting-policy closure (27 Agustus 2026)
+
+Live preflight F4B diterima tanpa blocker: 31 event sudah terposting ke 31
+jurnal canonical, 9 event final masih `HOLD`, satu event `CANCELED`, lima
+Company `CONTROLLED`, serta tidak ada active queue/exception. Migration
+`20260827140000` local-ready dan sengaja tidak memposting backlog saat rollout.
+Ia membuka queue `ALL_SUPPORTED`, policy posting Owner/Admin yang versioned,
+deferred automatic final-event posting, retryable exception, dan Backoffice
+policy UI. Gate baru boleh ditutup setelah migration, postflight, behavioral,
+controlled closure 9 HOLD, postflight ulang tanpa HOLD/exception, dan
+authenticated Backoffice smoke semuanya PASS.
+
+Controlled closure pertama menghasilkan 8 event POSTED dan 1 Sale TEMPO gagal
+karena runtime belum mengakui `sales_headers.sisa_piutang` sebagai settlement
+leg `CUSTOMER_RECEIVABLE`. Source grand total/COGS valid dan queue tetap
+terisolasi per event. Forward-fix `20260827141000` local-ready dan wajib melalui
+preflight, migration, postflight, behavioral rollback, lalu queue retry satu
+event. Mapping `CUSTOMER_RECEIVABLE` historis hanya dibackfill bila kandidat
+account tunggal valid, sebagai versi fallback terdahulu dengan audit. F4B tetap
+terbuka dan mode `AUTOMATIC` tetap tidak boleh diaktifkan sampai
+HOLD serta posting exception nol dan AR journal coverage PASS.
+
+Final evidence kemudian dikonfirmasi: 40 event berpasangan dengan 40 jurnal,
+supported HOLD nol, open exception nol, satu Sale TEMPO mempunyai receivable
+journal coverage, dan seluruh balance/duplicate/coverage check PASS. F4B
+database closure lulus. Sisa gate hanya authenticated operational smoke dan
+Automatic-mode smoke terisolasi pada Company dummy sebelum pilot diperluas.
+
 ---
 
 ## 10. Urutan Kerja Pertama

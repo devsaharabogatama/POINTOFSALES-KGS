@@ -340,6 +340,7 @@ export type SaleDraft = {
   draftNo: string
   clientTransactionId: string
   transactionAt: string
+  transactionDateSource: 'SERVER_CREATED' | 'CASHIER_SELECTED'
   masterVersion: number
   grandTotalBeforeRounding: number
   roundingAdjustment: number
@@ -362,6 +363,7 @@ export type SaleDraftListItem = {
   createdByName: string
   createdAt: string
   transactionAt: string
+  transactionDateSource: 'SERVER_CREATED' | 'CASHIER_SELECTED'
   updatedAt: string
   masterVersion: number
   grandTotal: number
@@ -1783,6 +1785,7 @@ export async function saveSaleDraft(input: {
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
   isTempo: boolean
   transactionAt: string | null
+  transactionDateIntent: 'PRESERVE' | 'CASHIER_SELECTED'
   dueDate: string | null
   fulfillmentMode: 'PICKUP' | 'DELIVERY'
   deliveryRecipientName: string
@@ -1818,6 +1821,9 @@ export async function saveSaleDraft(input: {
     roundingIncrement: 100,
     isTempo: input.isTempo,
     transactionAt: input.isTempo ? input.transactionAt : null,
+    transactionDateIntent: input.isTempo
+      ? input.transactionDateIntent
+      : 'PRESERVE',
     dueDate: input.dueDate,
     fulfillmentMode: input.fulfillmentMode,
     deliveryFeeAmount:
@@ -1858,6 +1864,10 @@ export async function saveSaleDraft(input: {
     transactionAt: String(
       row.transactionAt ?? input.draft?.transactionAt ?? new Date().toISOString(),
     ),
+    transactionDateSource:
+      row.transactionDateSource === 'CASHIER_SELECTED'
+        ? 'CASHIER_SELECTED'
+        : input.draft?.transactionDateSource ?? 'SERVER_CREATED',
     masterVersion: numberValue(row.masterVersion),
     grandTotalBeforeRounding: numberValue(row.grandTotalBeforeRounding),
     roundingAdjustment: numberValue(row.roundingAdjustment),
@@ -1892,6 +1902,10 @@ export async function listSaleDrafts(
     createdByName: String(row.createdByName),
     createdAt: String(row.createdAt),
     transactionAt: String(row.transactionAt ?? row.createdAt),
+    transactionDateSource:
+      row.transactionDateSource === 'CASHIER_SELECTED'
+        ? 'CASHIER_SELECTED'
+        : 'SERVER_CREATED',
     updatedAt: String(row.updatedAt),
     masterVersion: numberValue(row.masterVersion),
     grandTotal: numberValue(row.grandTotal),

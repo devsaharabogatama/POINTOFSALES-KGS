@@ -1,5 +1,31 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-27 - FINANCE F1 PERIOD POLICY AND TEMPO RESUME LOCAL READY
+
+- Migration `20260827090000_finance_period_policy_tempo_resume_fix.sql`
+  menambah policy per Company (`MANUAL`/`AUTOMATIC`), immutable audit, dan
+  idempotent current/next-month period ensure. Periode `LOCKED` tidak pernah
+  direopen otomatis; posting masih `CONTROLLED`.
+- Wrapper Draft POS membedakan intent `PRESERVE` dari `CASHIER_SELECTED`.
+  Membuka/reprice Draft tidak lagi mengubah source tanggal transaksi. Due dan
+  delivery guard membandingkan tanggal bisnis dalam timezone Company.
+- Backoffice tab Periode menampilkan switch Manual/Otomatis melalui guarded RPC.
+- Evidence lokal: PWA production build PASS; Backoffice Next production build
+  PASS (73 routes); database tidak dimutasi.
+- Manual gate: jalankan empat SQL sesuai runbook lalu smoke Draft TEMPO
+  server-created, backdated, same-business-date due, dan locked-period denial.
+- Behavioral test memakai satu statement SELECT-only tanpa temporary relation;
+  ini kompatibel dengan SQL Editor yang melakukan commit antar-statement.
+- Next safe step setelah user mengonfirmasi F1: F2 Customer Receipt/AR allocation,
+  lalu F3 historical collection/advance dan F4 aging/export/posting policy.
+- User mengonfirmasi behavioral F1 `same_business_date_validation` PASS untuk
+  Company KMS pada business date `2026-08-01`. F2 dimulai dengan preflight
+  SELECT-only `finance_customer_receipt_ar_preflight.sql`; migration F2 belum
+  dibuat sebelum hasil account/source readiness ini dinilai. User kemudian
+  mengonfirmasi semua readiness PASS dengan satu historical receivable KMS
+  Rp133.500. Migration `20260827100000` dan postflight kini local-ready;
+  event `SALE_PAYMENT` sengaja tetap HOLD sampai posting runtime berikutnya.
+
 ### 2026-08-25 - POS CATALOG RESTORE AND COMPACT CART LOCAL READY
 
 - Atas koreksi user, mode Katalog dikembalikan ke baseline sebelum Compact
@@ -6184,3 +6210,216 @@ Eksekusi hanya setelah backup dan maintenance window.
   event lama yang memang memakai waktu posting dilaporkan `FAIL`. Check sekarang
   hanya menguji Sale `CASHIER_SELECTED`; migration/runtime dan data historis
   tidak diubah. User cukup menjalankan ulang postflight terbaru.
+
+### 2026-08-26 — PRODUCT POTENTIAL ANALYTICS DESIGN RECORDED
+
+- Atas instruksi user, desain future optional submodule `Report > Potensi
+  Produk` dicatat pada `docs/PRODUCT_POTENTIAL_ANALYTICS_SPEC.md`; implementasi
+  sengaja belum dilakukan.
+- Model memakai Sale/Return POSTED, immutable UOM snapshot, configurable
+  driver/yield/portion/target, version effective date, optional dated backfill,
+  async idempotent calculation run, dan report snapshot tenant-scoped.
+- Boundary disetujui: analytics read-only terhadap source operational, tidak
+  membuat/mengubah Sale, Return, Stock, Purchasing, Pricelist, Payment,
+  Financial Event, atau Journal; kegagalan worker tidak boleh memblokir POS.
+- Requirement index mendapat `RPT-001`, docs router dan root README sudah
+  menunjuk spec. Status tetap approved design / implementation not started.
+- Sebelum POT-1, sembilan keputusan terbuka pada section 12 wajib diselesaikan,
+  terutama arti yield 80%, daftar driver SKU, dan atribusi periode Return.
+
+### 2026-08-26 — COMPANY COGS-ONLY UPDATE LOCAL READY
+
+- User meminta update COGS dari `Price List Distributor 26082026.xlsx` untuk
+  Company `LSM`, `SMS`, dan `KMS`; eksekusi database tetap dilakukan manual
+  oleh user.
+- Workbook dibaca read-only: `Sheet1` mempunyai 45 baris SKU+COGS valid, tanpa
+  COGS invalid atau duplicate SKU. SHA-256 sumber
+  `c3d3385935a3b6270c22d43dc9aae2844bc35b837f50ad19e028f99617f33218`.
+- Operasi local-ready:
+  `supabase/operations/update_company_product_cogs_from_20260826_pricelist.sql`.
+  Default PREVIEW, satu Company per run, APPLY memakai confirmation
+  `UPDATE_COMPANY_COGS_20260826`, Product/PACK conflict memblokir, dan SKU yang
+  tidak ditemukan dilaporkan `SKIPPED`.
+- Contract write sengaja sempit: `products.cogs` menjadi harga base-UOM dari
+  COGS PACK dan `product_uoms.purchase_price` hanya untuk UOM aktif. Retail,
+  `sale_price`, Pricelist, UOM nonaktif, Stock, FIFO, transaksi, Financial
+  Event, dan Journal tidak disentuh; Product yang berubah diaudit.
+- SELECT-only verification tersedia pada
+  `supabase/diagnostics/company_product_cogs_20260826_postflight.sql`; runbook
+  pada `docs/runbooks/COMPANY_COGS_UPDATE_20260826.md`.
+- Evidence lokal: source workbook dan payload SQL sama persis untuk 45 SKU
+  (`MISMATCH_ROWS=0`, total COGS `890470`), duplicate 0; operation/postflight
+  quote serta parenthesis balance 0; targeted mutation scan hanya menemukan
+  Product, Product-UOM, dan Product audit; `git diff --check` PASS. Tidak ada
+  SQL yang dijalankan ke staging/production.
+- Next safe step: user menjalankan PREVIEW LSM lalu APPLY; ulangi SMS dan KMS;
+  setelah itu jalankan postflight dan kirim seluruh output PASS/FAIL/INFO.
+
+### 2026-08-27 — F2 CUSTOMER RECEIPT FOUNDATION PASS; UI + JOURNAL LOCAL READY
+
+- User mengonfirmasi seluruh F2 foundation postflight PASS: tiga relation,
+  empat RPC, browser write boundary, permission ENFORCED, allocation
+  reconciliation, dan event coverage bersih. Runtime inventory masih nol dan
+  tidak ada fixture transaksi yang dibuat.
+- Backoffice ditambah menu `Finance > Penerimaan Customer`, API server, dan UI
+  untuk satu Customer ke banyak invoice tempo, partial allocation, Draft resume,
+  Post, serta Cancel Draft. File utama:
+  `backoffice/src/components/CustomerReceiptView.tsx`,
+  `backoffice/src/app/api/finance/customer-receipts/route.ts`, navigation dan
+  page shell.
+- Migration forward-only `20260827110000_finance_customer_receipt_posting_runtime.sql`
+  menambah posting core `SALE_PAYMENT`, dispatcher route, dan wrapper Post
+  atomik. Journal: debit receipt-account snapshot, kredit AR snapshot, Customer
+  dimension, exact event identity, source/amount verification dan period rule.
+- Evidence lokal: targeted ESLint PASS; Backoffice production build PASS, 74
+  route. SQL tidak dijalankan agent ke database.
+- Manual gate menunggu user: posting preflight -> migration 110000 -> posting
+  postflight; lalu authenticated smoke memakai invoice tempo nyata Rp133.500.
+  Jangan membuat fixture palsu. Next safe step setelah PASS adalah F3 aging dan
+  AR statement/reporting.
+
+### 2026-08-27 — F2 POSTING PASS; F3 PREFLIGHT LOCAL READY
+
+- User mengonfirmasi migration `20260827110000` dan seluruh posting postflight
+  PASS. Inventory nol berarti belum ada receipt nyata; bukan pelanggaran.
+- F2 dinyatakan database PASS. Backoffice UI tetap local-ready dan authenticated
+  transaction smoke menunggu receipt nyata.
+- F3 dibuka hanya sebagai SELECT-only preflight:
+  `supabase/diagnostics/finance_historical_collection_advance_preflight.sql`.
+  Diagnostic membedakan receipt historis terhadap invoice existing dari advance
+  sebelum invoice ada, mengaudit Customer Balance policy/category/liability
+  account, ledger source gap, temporal integrity dan browser boundary.
+- Belum ada migration F3 atau perubahan data. Next safe step: user menjalankan
+  preflight F3 dan mengirim semua status; migration baru disusun dari state itu.
+
+### 2026-08-27 — F3 MIGRATION + BACKOFFICE LOCAL READY
+
+- User mengonfirmasi F3 preflight tanpa blocker: lima policy Customer Balance
+  `DISABLED`, nol Customer Receipt existing, satu invoice tempo terbuka sebesar
+  Rp133.500, temporal/allocation integrity dan browser boundary PASS.
+- Migration `20260827120000_finance_historical_collection_customer_advance.sql`
+  menambah received/unapplied snapshot dan dua disposition eksklusif. `NONE`
+  wajib seluruhnya dialokasikan ke invoice; `CUSTOMER_BALANCE` wajib murni
+  unallocated, policy `ACTIVE`, dan tidak boleh dicampur dalam satu dokumen.
+- Advance posting atomik membuat ledger Customer Balance, update cache Customer,
+  event source-linked, dan jurnal `Dr Cash/Bank; Cr Customer Balance Liability`.
+  Lima policy disabled tidak diaktifkan atau diubah migration.
+- API/UI Penerimaan Customer mendukung tanggal pembayaran aktual lampau,
+  allocation biasa, dan pilihan advance yang disabled saat policy Company tidak
+  aktif. Existing allocated-only RPC tetap kompatibel.
+- Evidence lokal: targeted ESLint PASS, TypeScript noEmit PASS, Backoffice
+  production build PASS (74 route), SQL parentheses seimbang dan diff check
+  bersih. Tidak ada DB/deployment mutation oleh agent.
+- Manual gate: jalankan migration 120000 lalu postflight F3. Setelah PASS,
+  authenticated smoke utama memakai invoice tempo Rp133.500; advance smoke
+  hanya dilakukan pada Company yang sengaja diaktifkan Customer Balance.
+
+### 2026-08-27 — F3 POSTFLIGHT PASS; F4A PREFLIGHT LOCAL READY
+
+- User mengonfirmasi seluruh F3 postflight PASS: schema/routine/source guard,
+  policy preservation, temporal integrity, ledger/cache reconciliation, browser
+  boundary dan event/journal coverage bersih. Runtime inventory masih nol.
+- F4 dipecah menjadi F4A reporting lalu F4B posting policy/regression. Preflight
+  F4A tersedia di `supabase/diagnostics/finance_ar_reporting_preflight.sql`.
+- Diagnostic menutup risiko penting: waktu input backorder boleh terlambat,
+  tetapi tanggal bisnis harus tetap `order <= payment <= actual input`.
+  Ia juga mengaudit negative outstanding, Customer allocation, timezone, report
+  RPC gap dan source inventory.
+- Belum ada migration/report UI baru pada F4A. Next safe step: user menjalankan
+  F4A preflight dan mengirim seluruh hasil sebelum runtime dibuat.
+
+### 2026-08-27 — F4A AR REPORTING LOCAL READY
+
+- User mengonfirmasi F4A preflight tanpa blocker: dependency F1/F2/F3,
+  timezone, allocation/customer integrity, future receipt, negative outstanding,
+  dan payment-before-order seluruhnya PASS. Terdapat satu invoice TEMPO terbuka
+  dengan outstanding Rp133.500 dan belum ada Customer Receipt POSTED.
+- Migration `20260827130000_finance_ar_reporting_runtime.sql` local-ready.
+  Tiga RPC read-only menyediakan AR aging as-of, Customer Statement dengan
+  opening/running/ending balance, serta explicit EXPORT dataset. Allocation
+  mendapat trigger yang menolak tanggal bisnis pembayaran sebelum order.
+- Backoffice menu Penerimaan Customer kini memuat filter as-of/rentang,
+  ringkasan outstanding/overdue, detail aging, statement per Customer, dan
+  download workbook Excel aging/statement sesuai capability EXPORT.
+- Evidence lokal: targeted ESLint PASS; TypeScript noEmit PASS; production
+  build PASS dengan 76 route; SQL delimiter/parentheses dan `git diff --check`
+  PASS. Tidak ada DB/deployment mutation oleh agent.
+- Manual gate: migration → postflight → behavioral test → authenticated smoke
+  laporan dan kedua download Excel. F4B posting policy dan closing regression
+  belum dimulai.
+- Behavioral test pertama gagal hanya pada fixture discovery karena memaksa
+  Super Admin memiliki `company_memberships`. Test dikoreksi agar memilih
+  linked Super Admin lintas Company terlebih dahulu, dengan fallback membership
+  Owner/Admin/Finance/Accounting yang benar-benar memiliki VIEW+EXPORT. Runtime
+  migration dan data tidak diubah oleh koreksi ini.
+- Behavioral run berikutnya menemukan defect runtime pada cabang Receipt
+  Customer Statement: `receipt_rows` kehilangan `store_id/store_name`, sehingga
+  UNION memiliki 8 versus 10 kolom. Fresh migration 130000 dikoreksi dan
+  forward-fix `20260827131000` disediakan untuk database yang sudah terpasang;
+  hanya definisi report function yang diganti, tanpa data write.
+- User kemudian mengonfirmasi forward-fix, postflight, dan behavioral F4A
+  seluruhnya sukses. F4A database dinyatakan PASS; authenticated browser smoke
+  report/export masih digabung pada smoke akhir.
+- Gate aktif berpindah ke F4B posting policy dan AR closure. Preflight
+  SELECT-only tersedia di
+  `supabase/diagnostics/finance_ar_posting_policy_closure_preflight.sql`;
+  migration belum dibuka sampai event/queue/exception/policy live dinilai.
+- F4B preflight pertama gagal sebelum menghasilkan output karena diagnostic
+  membandingkan enum `event_status` dengan literal `FAILED` yang tidak tersedia
+  pada enum live. CTE dikoreksi mengubah status ke TEXT; ini diagnostic-only dan
+  tidak memerlukan migration/data rollback.
+- User menjalankan ulang F4B preflight: 31 event/jurnal canonical tertutup,
+  9 event final masih `HOLD`, 1 event `CANCELED`, 5 Company `CONTROLLED`, tanpa
+  active queue, exception, duplicate, balance, coverage, atau AR blocker.
+- Migration `20260827140000_finance_posting_policy_closure.sql` local-ready.
+  Ia tidak memposting data saat rollout; queue umum diperluas menjadi
+  `ALL_SUPPORTED`, approval/process memakai capability efektif, zero-effect
+  tetap `CANCELED/SKIPPED`, policy posting hanya Owner/Admin/Super Admin,
+  dan mode otomatis memakai deferred trigger serta retryable exception.
+- Backoffice Finance Posting Queue sekarang memuat selector Controlled/Otomatis
+  dan guarded backlog processor. API hanya memanggil RPC; direct event/journal/
+  policy write tetap tertutup. Backoffice ESLint dan production build 76 route
+  PASS.
+- Manual gate berikutnya: migration 140000 -> postflight (BACKFILL 9 HOLD masih
+  expected) -> behavioral rollback test -> Backoffice controlled preview/
+  approve/process -> postflight ulang wajib `supported_hold_backfill_scope=PASS`
+  dan tanpa exception -> authenticated policy/queue/report smoke. Jangan aktifkan
+  otomatis sebelum controlled backlog bersih.
+
+### 2026-08-27 — F4B CONTROLLED QUEUE MENEMUKAN GAP TEMPO; FORWARD-FIX LOCAL READY
+
+- User mengonfirmasi behavioral F4B PASS dan menjalankan controlled queue KGS.
+  Hasil live: 8 dari 9 event POSTED; satu `SALE_POSTED` tanggal 1 Agustus 2026
+  gagal `FINANCIAL_EVENT_AMOUNT_SOURCE_MISMATCH`.
+- Diagnosis SELECT-only membuktikan grand total Rp133.500, FIFO/COGS Rp121.000,
+  dan net sales cocok. Payment aktual nol sedangkan Rp133.500 adalah piutang;
+  runtime G6 lama salah memaksa Payment penuh dan tidak membuat debit AR.
+- Ditambahkan preflight, forward migration
+  `20260827141000_finance_tempo_sale_posting_fix.sql`, postflight, behavioral
+  rollback test, dan runbook. Runtime baru memvalidasi Payment + receivable,
+  membuat satu debit `CUSTOMER_RECEIVABLE` dengan Customer dimension, balance,
+  source link, dan exact retry. Cash/split/Return dipertahankan.
+- Verifikasi lokal: delimiter transaksi/function seimbang dan `git diff --check`
+  PASS. SQL belum dijalankan agent ke database; live migration/postflight/test
+  masih manual.
+- Next safe step: preflight fix -> migration 141000 -> postflight (satu BACKFILL
+  expected) -> behavioral -> queue Controlled baru berisi satu event ->
+  postflight fix + F4B ulang. Jangan aktifkan AUTOMATIC sebelum HOLD dan open
+  exception nol.
+- Preflight pertama forward-fix menemukan satu mapping AR historis belum efektif.
+  File kemudian diperketat: status menjadi BACKFILL hanya bila account candidate
+  tunggal valid; migration membuat fallback interval historis baru dan audit,
+  tanpa memutasi mapping aktif yang lebih baru. User perlu menjalankan ulang
+  preflight terbaru sebelum migration.
+
+### 2026-08-27 — F4B + TEMPO DATABASE CLOSURE PASS
+
+- User menjalankan forward-fix, behavioral rollback, dan controlled retry satu
+  Sale TEMPO. Final postflight F4B serta TEMPO seluruhnya PASS/INFO.
+- Evidence live: 40 event POSTED, 40 jurnal POSTED, 1 TEMPO receivable coverage,
+  supported HOLD 0, open exception 0, duplicate 0, dan journal imbalance 0.
+- Database closure F4B dinyatakan PASS. Lima Company tetap `CONTROLLED`; belum
+  ada Company yang diubah ke `AUTOMATIC`.
+- Next safe step: authenticated smoke Cash, unpaid/partial TEMPO, Customer
+  Receipt, AR report/export, period guard, exact retry, lalu uji Automatic hanya
+  pada Company dummy. Jangan memakai Company operasional untuk smoke Automatic.

@@ -82,9 +82,10 @@ Deferred berarti tidak boleh diam-diam masuk schema/UI v1. Extensibility disiapk
 | FIN-001 | Event | Transaksi operasional final menghasilkan immutable/idempotent Financial Event; Draft tidak menjurnal. | `FINANCE_INTEGRATION_NOTES.md` | G6 |
 | FIN-002 | COA | COA tiga tingkat default, kode/nama dapat disesuaikan Finance; account function dan Transaction Category resolver dapat direkonsiliasi. | `FINANCE_CORE_ACCOUNTING_SPEC.md`, `TRANSACTION_CATEGORY_ACCOUNT_MAPPING_SPEC.md` | G6 |
 | FIN-003 | Journal | Posting double-entry balance, mempunyai source trace, version snapshot, reversal/adjustment, approval, dan period lock. | `FINANCE_CORE_ACCOUNTING_SPEC.md` | G6 |
-| FIN-004 | AR/AP | TEMPO, collection partial, pro forma, customer statement, Supplier invoice, payment, return, dan note tidak boleh mengubah histori posted. | Finance/Purchase/Sales specs | G6 |
+| FIN-004 | AR/AP | TEMPO, collection partial, pro forma, customer statement, Supplier invoice, payment, return, dan note tidak boleh mengubah histori posted. | `FINANCE_AR_PERIOD_COMPLETION_PLAN.md` dan Finance/Purchase/Sales specs | G6 |
 | FIN-005 | Tax | Pajak opsional per Company dan per module Sales/Purchase; resolver dapat dioverride Finance dengan audit. | `TAX_ENGINE_SPEC.md` | G6 |
 | FIN-006 | Reports | Trial Balance, GL, P&L, Balance Sheet, AR/AP aging, cash/deposit, stock valuation, pending/draft/hold, dan reconciliation. | `FINANCE_REPORTING_AND_CUTOFF_SPEC.md` | G6 |
+| RPT-001 | Product Potential | Submodul Report opsional per Company menghitung actual, potential, gap, achievement, dan tren Product per Customer dari Sale/Return final dengan model versioned serta backfill bertanggal eksplisit; tidak boleh membuat atau mengubah transaksi, Stock, Pricing, Payment, Purchasing, atau Finance. | `PRODUCT_POTENTIAL_ANALYTICS_SPEC.md` | Post-pilot optional analytics |
 
 ---
 

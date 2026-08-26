@@ -75,6 +75,7 @@ berada di [`../README.md`](../README.md).
 | Transaction Category, system key, COA resolver | `TRANSACTION_CATEGORY_ACCOUNT_MAPPING_SPEC.md` | Finance Core dan setiap source module yang membuat journal |
 | Bundle revenue, component allocation, margin | `BUNDLE_REVENUE_ALLOCATION_SPEC.md` | Product/Stock, POS, Pricelist, Tax, Debit/Credit Note |
 | Finance report, cut-off, pending analysis | `FINANCE_REPORTING_AND_CUTOFF_SPEC.md` | Finance Core dan source module status/history |
+| Analitik potensi Product per Customer | `PRODUCT_POTENTIAL_ANALYTICS_SPEC.md` | Optional Report-only analytics; membaca Sale/Return final tanpa operational side effect |
 | Dataset UAT Finance terkontrol | `runbooks/G6_PHASE7B_FINANCE_UAT_DATASET.md` | Product/Opening Stock/Adjustment dan controlled Finance queue harus sudah live |
 | G6 Phase 8 operational HOLD preflight | `runbooks/G6_PHASE8_OPERATIONAL_HOLD_CONTRACT_PREFLIGHT.md` | SELECT-only audit sembilan kontrak sebelum Sale/Purchase/Expense/Cash journal posting dibuka |
 | G6 Phase 8A Sale/Return posting preflight | `runbooks/G6_PHASE8A_SALE_RETURN_POSTING_PREFLIGHT.md` | Exact amount/account readiness sebelum dynamic Sale dan refund journal migration |
@@ -397,6 +398,14 @@ berada di [`../README.md`](../README.md).
 | Pedoman development | `DEVELOPMENT_TRACEABILITY_AND_FREE_TIER_NOTES.md` | README modul target ketika sudah dibuat |
 | Kebijakan override harga per Terminal POS | `POS_TERMINAL_PRICE_OVERRIDE_PLAN.md` | POS, Pricelist, Terminal policy, Sale snapshot, Return/Invoice, dan Finance |
 | Rollout override harga per Terminal POS | `runbooks/POS_TERMINAL_PRICE_OVERRIDE_ROLLOUT.md` | Preflight, migration, postflight, Online ON/OFF smoke, Offline denial, retry, dan forward-fix |
+| Update COGS Company 26 Agustus 2026 | `runbooks/COMPANY_COGS_UPDATE_20260826.md` | Operasi preview/apply COGS-only per Company LSM, SMS, KMS tanpa revaluasi Stock/FIFO atau perubahan harga jual |
+| Penyelesaian Finance AR dan periode | `FINANCE_AR_PERIOD_COMPLETION_PLAN.md` | Keputusan periode otomatis, tanggal bisnis TEMPO, Customer receipt/allocation, backorder setelah pembayaran, advance, aging, dan posting policy |
+| F3 Historical collection dan Customer advance | `runbooks/FINANCE_HISTORICAL_COLLECTION_ADVANCE_ROLLOUT.md` | Preflight pembayaran historis/backorder, dana belum teralokasi, kesiapan Customer Balance dan batas jurnal |
+| F4A AR reporting | `runbooks/FINANCE_AR_REPORTING_ROLLOUT.md` | Outstanding Invoice, aging, Customer statement, export Excel, dan temporal guard order/pembayaran |
+| F4B Posting policy dan AR closure | `runbooks/FINANCE_AR_POSTING_POLICY_CLOSURE.md` | Controlled/automatic posting policy, failure isolation, audit, dan regression penutupan Finance AR |
+| Forward-fix posting Sale TEMPO | `runbooks/FINANCE_TEMPO_SALE_POSTING_FORWARD_FIX.md` | Debit Customer Receivable untuk TEMPO unpaid/partial dan retry controlled queue |
+| Rollout Finance period policy dan TEMPO resume | `runbooks/FINANCE_PERIOD_POLICY_TEMPO_RESUME_ROLLOUT.md` | Preflight, migration, postflight, rollback behavioral, compatibility, dan smoke manual F1 |
+| F2 Customer Receipt dan AR allocation | `runbooks/FINANCE_CUSTOMER_RECEIPT_AR_ROLLOUT.md` | Preflight Customer/Invoice/nominal, account resolution, payment method, dan historical receivable sebelum runtime dibuka |
 | Playbook wajib agent/handoff berulang | `AI_AGENT_CONTINUATION_PLAYBOOK.md` | Index requirement, gate aktif, gap audit, dan spesifikasi modul target |
 | Arah POS menjadi ERP modular | `ERP_EVOLUTION_ARCHITECTURE_NOTES.md` | Pedoman development dan spesifikasi modul aktif |
 

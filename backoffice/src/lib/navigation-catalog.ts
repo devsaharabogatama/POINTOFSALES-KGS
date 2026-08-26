@@ -10,6 +10,7 @@ export type NavigationViewId =
   | 'cash-deposits'
   | 'deposit-variances'
   | 'customer-balances'
+  | 'customer-receipts'
   | 'supplier-invoices'
   | 'supplier-payments'
   | 'stock-real'
@@ -136,6 +137,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'cash-deposits', label: 'Setor Kas', description: 'Setoran kasir dan review setoran.', iconKey: 'banknote-arrow-up', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'deposit-variances', label: 'Selisih Setoran', description: 'Investigasi dan resolusi selisih.', iconKey: 'circle-alert', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'customer-balances', label: 'Saldo Customer', description: 'Ledger saldo dan koreksi terkontrol.', iconKey: 'wallet', roles: FINANCE_ROLES, requiredAnyFeature: ['customer_balance_enabled'], capabilities: ['VIEW'] },
+  { id: 'customer-receipts', label: 'Penerimaan Customer', description: 'Pelunasan dan alokasi pembayaran piutang Customer.', iconKey: 'banknote-arrow-up', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'supplier-invoices', label: 'Faktur Supplier', description: 'Matching penerimaan dan tagihan supplier.', iconKey: 'receipt', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'supplier-payments', label: 'Pembayaran Supplier', description: 'Validasi dan pencatatan pembayaran supplier.', iconKey: 'banknote', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'payment-methods', label: 'Metode Pembayaran', description: 'Metode bayar, assignment toko, dan fee.', iconKey: 'credit-card', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
@@ -153,7 +155,7 @@ const moduleDefinitions: ModuleDefinition[] = [
   { id: 'contacts', name: 'Kontak', description: 'Pelanggan, supplier, dan user Company.', iconKey: 'contact', color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
   { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
   { id: 'sales', name: 'Sales', description: 'Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
-  { id: 'finance', name: 'Finance', description: 'Kas, expense, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
+  { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },
 ]

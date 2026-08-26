@@ -79,6 +79,7 @@ import { GoodsReceiptView } from "@/components/GoodsReceiptView";
 import { PurchaseReturnApprovalView } from "@/components/PurchaseReturnApprovalView";
 import { SupplierInvoiceMatchingView } from "@/components/SupplierInvoiceMatchingView";
 import SupplierPaymentView from "@/components/SupplierPaymentView";
+import { CustomerReceiptView } from "@/components/CustomerReceiptView";
 import { FinanceOperationsView } from "@/components/FinanceOperationsView";
 import { useEscapeClose } from "@/lib/use-escape-close";
 import {
@@ -503,6 +504,9 @@ export default function Home() {
   const supplierPaymentNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "supplier-payments");
+  const customerReceiptNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "customer-receipts");
   const paymentMethodNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "payment-methods");
@@ -546,6 +550,9 @@ export default function Home() {
     ["COMPANY_OWNER", "COMPANY_ADMIN", "FINANCE", "ACCOUNTING"].includes(
       activeCompany?.roleCode ?? "",
     );
+  const financeNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "finance");
   const financeRole = activeCompany?.roleCode ?? "";
   const canCreateFinancePeriod =
     context?.isSuperAdmin || FINANCE_ROLES.includes(financeRole);
@@ -558,7 +565,10 @@ export default function Home() {
     context?.isSuperAdmin ||
     ["COMPANY_OWNER", "COMPANY_ADMIN", "FINANCE"].includes(financeRole);
   const canOperateFinanceQueue =
-    context?.isSuperAdmin || FINANCE_ROLES.includes(financeRole);
+    context?.isSuperAdmin ||
+    ["REVIEW", "APPROVE", "POST"].every((capability) =>
+      financeNavigation?.capabilities.includes(capability),
+    );
 
   const navigateTo = useCallback(
     (nextView: View) => {
@@ -1130,6 +1140,17 @@ export default function Home() {
             />
           )}
 
+          {activeView === "customer-receipts" && (
+            <CustomerReceiptView
+              key={activeCompanyId}
+              session={session}
+              canCreate={customerReceiptNavigation?.capabilities.includes("CREATE_DRAFT") ?? false}
+              canEdit={customerReceiptNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
+              canPost={customerReceiptNavigation?.capabilities.includes("POST") ?? false}
+              canExport={customerReceiptNavigation?.capabilities.includes("EXPORT") ?? false}
+            />
+          )}
+
           {activeView === "finance" && (
             <FinanceOperationsView
               key={activeCompanyId}
@@ -1140,6 +1161,7 @@ export default function Home() {
               canReopenPeriod={Boolean(canReopenFinancePeriod)}
               canReverseJournal={Boolean(canReverseFinanceJournal)}
               canOperateQueue={Boolean(canOperateFinanceQueue)}
+              canManagePostingPolicy={Boolean(canManage)}
               notify={setNotice}
             />
           )}
