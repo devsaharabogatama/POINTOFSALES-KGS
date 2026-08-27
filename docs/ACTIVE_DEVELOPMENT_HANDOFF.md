@@ -6448,3 +6448,6 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Revisi tampilan lanjutan menghilangkan nama Kasir dan Terminal dari Invoice
   Backoffice/PWA saja. Kedua field tetap berada di snapshot untuk audit; schema,
   struk POS, dan Surat Jalan tidak berubah.
+- Revisi berikutnya menghapus seluruh field/garis tanda tangan dari Invoice
+  Backoffice print/PDF. Stempel tetap muncul mandiri ketika diaktifkan; empat
+  tanda tangan Surat Jalan tidak diubah.

@@ -230,3 +230,7 @@ Payment, Financial Event, jurnal, atau tanggal Surat Jalan.
 Nama Kasir dan Terminal tetap disimpan dalam snapshot canonical sebagai bukti
 audit, tetapi tidak ditampilkan pada template Invoice Customer. Penghilangan
 ini tidak mengubah struk POS internal maupun data transaksi.
+
+Template Invoice tidak mempunyai field atau garis tanda tangan. Bila setting
+stempel aktif, cap tetap ditampilkan sebagai elemen mandiri tanpa label
+penandatangan. Empat field tanda tangan hanya dipertahankan pada Surat Jalan.
