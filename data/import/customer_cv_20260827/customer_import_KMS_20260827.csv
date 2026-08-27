@@ -1,0 +1,21 @@
+code,name,customer_category_name,parent_customer_name,default_pricelist_name,phone,email,address,customer_type,credit_limit,credit_term_days,notes,is_active
+A18,Dedi Supriadi (A18),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+A38,Sumarni (Tambun),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+A39,Ahamad Taqiuddin (Cikarang),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+B11,Dedi Supriadi (B11),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+B12,Dedi Supriadi (B12),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+C01,Abdul Hakam (Depok),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+C03,Rizal Azhari - Berkah bersama Ajib,KMS,,,,,DEPOK - JAWA BARAT,INDIVIDUAL,0,,,TRUE
+C09,Rizal Azhari Jagakarsa,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+C17,PT.KEBAB AJIEB PUSAT,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+C18,PT.MITRA USAHA AJIEB,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+D15,Hengky (Gudang),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+E07,Hengky (Gudang Pusat),KMS,,,,,,INDIVIDUAL,0,,,TRUE
+F01,Abdul Hakim Johar Baru,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+F09,Fitria,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+F10,Ade Rahmadani,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+G17,Mas Asmun Buaran Indah,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+G46,Windi Utami,KMS,,,,,,INDIVIDUAL,0,,,TRUE
+H08,Sahl Mart Bogor,KMS,,,,,BOGOR - JAWA BARAT,INDIVIDUAL,0,,,TRUE
+H12,Zarwati,KMS,,,,,BOGOR - JAWA BARAT,INDIVIDUAL,0,,,TRUE
+I11,Dedi Supriadi (I11),KMS,,,,,,INDIVIDUAL,0,,,TRUE

@@ -1,0 +1,17 @@
+code,name,customer_category_name,parent_customer_name,default_pricelist_name,phone,email,address,customer_type,credit_limit,credit_term_days,notes,is_active
+A11,Indra Martian Permana,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+A19,Hendrayana Cikarang Utara,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+A26,Windy Anggraeni,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+A27,Dian Wibowo,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+A32,Mohamad Maulana Akbar (Ujung Harapan),LSM,,,,,,INDIVIDUAL,0,,,TRUE
+A46,Nurul Hidayati,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C02,Muh Muridin,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C16,Maulana,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C22,Restu Satria Lintang Pratama,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C26,PT. SAJIAN KAWULA MUDA (Pancoran Mas),LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C27,PT. KBU FOOD RAYA (TEGAL PARANG),LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C28,PT. KBU FOOD RAYA (SIAGA),LSM,,,,,,INDIVIDUAL,0,,,TRUE
+C29,PT. KBU FOOD RAYA (BANGKA),LSM,,,,,,INDIVIDUAL,0,,,TRUE
+D13,Muh Muridin Jagakarsa,LSM,,,,,,INDIVIDUAL,0,,,TRUE
+J65,BAHARIAN FROZEN,LSM,,,,,TEGAL - JAWA TENGAH,INDIVIDUAL,0,,,TRUE
+L123,RINI MARZUKI,LSM,,,,,PALU - SULAWESI TENGAH,INDIVIDUAL,0,,,TRUE

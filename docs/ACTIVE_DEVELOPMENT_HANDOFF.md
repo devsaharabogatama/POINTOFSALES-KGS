@@ -6557,3 +6557,55 @@ Eksekusi hanya setelah backup dan maintenance window.
   evidence for the UI follow-up: PWA oxlint PASS, TypeScript/Vite production
   build PASS, and `git diff --check` PASS. Authenticated browser smoke remains
   manual.
+# Update 2026-08-27 — Customer CV Master Clean manual Company import prepared
+
+- User meminta import Customer dari workbook
+  `PENAMBAHAN CUST CV - MASTER CLEAN (1).xlsx` dijalankan sendiri melalui
+  Supabase dan dipisah per Company; tidak ada database yang dimutasi agent.
+- Read-only source/production audit:
+  - 125 baris memiliki Company valid: KMS 39, LSM 58, SMS 28;
+  - 80 pasangan `Company + customer_code` sudah ada dan wajib tetap untouched;
+  - 45 Customer belum ada: KMS 20, LSM 16, SMS 9;
+  - hanya 13 Customer baru memiliki Kabupaten dan Provinsi lengkap; alamat baru
+    dibentuk sebagai `KABUPATEN - PROVINSI`, sisanya `NULL`;
+  - C03/H08/H12 berpindah LSM→KMS dan H17 berpindah LSM→SMS. Keempat Customer
+    lama tidak memiliki transaksi, saldo, child Customer, atau Customer
+    Pricelist pada audit read-only sehingga layak diarsipkan setelah replacement
+    tersedia; tidak dilakukan hard delete.
+- File baru:
+  - `data/import/customer_cv_20260827/customer_import_KMS_20260827.csv`;
+  - `data/import/customer_cv_20260827/customer_import_LSM_20260827.csv`;
+  - `data/import/customer_cv_20260827/customer_import_SMS_20260827.csv`;
+  - `docs/runbooks/CUSTOMER_CV_MASTER_CLEAN_IMPORT_20260827.md`.
+- Kontrak import final:
+  - memakai Data Exchange `CUSTOMER`, `REFERENCE_BY_NAME`, dan `CREATE_ONLY`;
+  - hanya memuat 45 kode yang belum ada; existing target tidak disertakan;
+  - KMS/LSM/SMS masing-masing 20/16/9 baris;
+  - empat nama `Dedi Supriadi` KMS diberi suffix kode agar memenuhi uniqueness;
+  - arsip C03/H08/H12/H17 lama dilakukan manual setelah replacement tersedia.
+- Verification lokal:
+  - workbook dibaca read-only dan source rows dibandingkan dengan database;
+  - ketiga CSV berhasil diparse dengan 13 kolom canonical, source row
+    KMS/LSM/SMS = 20/16/9, tanpa invalid required field, duplicate code, atau
+    duplicate normalized name;
+  - `git diff --check` PASS;
+  - tidak ada migration/schema/runtime/frontend yang berubah.
+- Manual gate menunggu user:
+  1. aktifkan Company sesuai file;
+  2. import Customer memakai `Cocokkan berdasarkan nama` dan
+     `Hanya buat data baru`;
+  3. validasi wajib seluruhnya CREATE dan tanpa UPDATE/ERROR;
+  4. setelah target tersedia, arsipkan manual C03/H08/H12/H17 lama di LSM bila
+     pemeriksaan history saat itu tetap bersih.
+
+- Koreksi setelah manual KMS pertama:
+  - versi awal memakai beberapa statement dan `CREATE TEMP TABLE ... ON COMMIT
+    DROP`; Supabase SQL Editor menghilangkan temp relation sebelum blok konsumsi
+    sehingga menghasilkan `relation customer_cv_control does not exist`;
+  - statement gagal sebelum mutation dan tidak meninggalkan data parsial;
+  - percobaan single-statement berikutnya tetap berbenturan dengan constraint
+    nama unik karena empat kode memakai nama `Dedi Supriadi`; statement APPLY
+    rollback dan tidak meninggalkan mutation parsial;
+  - atas instruksi user, jalur direct SQL dihentikan dan ketiga operation SQL
+    dihapus. Deliverable final adalah tiga CSV guarded melalui preview Data
+    Exchange; database tetap tidak dimutasi agent.
