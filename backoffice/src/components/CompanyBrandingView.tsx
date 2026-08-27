@@ -12,6 +12,7 @@ type BrandingProfile = {
   showLogoOnDocuments: boolean
   showStampOnDocuments: boolean
   showBankAccountOnInvoice: boolean
+  invoiceDateDisplayMode: 'ORDER_DATE' | 'POSTED_DATE'
   logoObjectPath: string | null
   logoPublicUrl: string | null
   logoMimeType: string | null
@@ -48,6 +49,7 @@ function friendlyError(code?: string) {
     COMPANY_LOGO_UPLOAD_FAILED: 'Upload logo ke penyimpanan gagal.',
     COMPANY_BRANDING_OPERATION_FAILED: 'Operasi branding Company gagal.',
     COMPANY_BANK_ACCOUNT_REQUIRED: 'Lengkapi rekening perusahaan sebelum menampilkannya pada Invoice.',
+    INVOICE_DATE_DISPLAY_MODE_INVALID: 'Pilihan tanggal Invoice tidak valid.',
     MASTER_VERSION_CONFLICT: 'Logo berubah di sesi lain. Muat ulang sebelum mencoba kembali.',
     ACTIVE_COMPANY_NOT_FOUND: 'Pilih Company aktif terlebih dahulu.',
     ACTIVE_COMPANY_BRANDING_MISMATCH: 'Branding tidak cocok dengan Company aktif.',
@@ -164,6 +166,7 @@ export function CompanyBrandingView({
     showLogoOnDocuments?: boolean
     showStampOnDocuments?: boolean
     showBankAccountOnInvoice?: boolean
+    invoiceDateDisplayMode?: 'ORDER_DATE' | 'POSTED_DATE'
   }) {
     if (!branding || !canManage || saving) return
     setSaving(true)
@@ -177,6 +180,7 @@ export function CompanyBrandingView({
           showLogoOnDocuments: input.showLogoOnDocuments ?? branding.showLogoOnDocuments,
           showStampOnDocuments: input.showStampOnDocuments ?? branding.showStampOnDocuments,
           showBankAccountOnInvoice: input.showBankAccountOnInvoice ?? branding.showBankAccountOnInvoice,
+          invoiceDateDisplayMode: input.invoiceDateDisplayMode ?? branding.invoiceDateDisplayMode,
         }),
       })
       const payload = await response.json() as Payload
@@ -244,6 +248,15 @@ export function CompanyBrandingView({
           <button type="button" role="switch" aria-checked={branding?.showBankAccountOnInvoice ?? false} onClick={() => void saveDocumentVisibility({ showBankAccountOnInvoice: !(branding?.showBankAccountOnInvoice ?? false) })} disabled={!branding || !bankReady || !canManage || saving} className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-50 ${(branding?.showBankAccountOnInvoice ?? false) ? 'bg-violet-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${(branding?.showBankAccountOnInvoice ?? false) ? 'left-7' : 'left-1'}`}/><span className="sr-only">Atur rekening pada Invoice</span></button>
         </div>
 
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <label htmlFor="invoice-date-display-mode" className="text-sm font-black text-slate-900">Tanggal yang tampil pada Invoice</label>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Tanggal Order mengikuti tanggal bisnis yang dipilih untuk order/backorder. Tanggal Transaksi mengikuti hari saat transaksi benar-benar diposting. Keduanya dicetak tanpa jam.</p>
+          <select id="invoice-date-display-mode" value={branding?.invoiceDateDisplayMode ?? 'ORDER_DATE'} onChange={(event) => void saveDocumentVisibility({ invoiceDateDisplayMode: event.target.value as 'ORDER_DATE' | 'POSTED_DATE' })} disabled={!branding || !canManage || saving} className="mt-3 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 disabled:opacity-50">
+            <option value="ORDER_DATE">Tanggal Order</option>
+            <option value="POSTED_DATE">Tanggal Transaksi</option>
+          </select>
+        </div>
+
         {!canManage && <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />Logo hanya dapat diubah Owner atau Admin Company.</div>}
 
         {canManage && <div className="mt-6 flex flex-wrap justify-end gap-3">
@@ -262,6 +275,7 @@ export function CompanyBrandingView({
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Di dokumen</dt><dd className="font-bold text-slate-800">{(branding?.showLogoOnDocuments ?? true) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Stempel</dt><dd className="font-bold text-slate-800">{(branding?.showStampOnDocuments ?? false) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Rekening Invoice</dt><dd className="font-bold text-slate-800">{(branding?.showBankAccountOnInvoice ?? false) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Tanggal Invoice</dt><dd className="font-bold text-slate-800">{(branding?.invoiceDateDisplayMode ?? 'ORDER_DATE') === 'POSTED_DATE' ? 'Tanggal Transaksi' : 'Tanggal Order'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Format</dt><dd className="font-bold text-slate-800">{branding?.logoMimeType?.replace('image/', '').toUpperCase() ?? '—'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Ukuran</dt><dd className="font-bold text-slate-800">{formatBytes(branding?.logoSizeBytes ?? null)}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Versi logo</dt><dd className="font-bold text-slate-800">{branding?.logoVersion ?? 0}</dd></div>

@@ -86,6 +86,7 @@ export async function PATCH(request: Request) {
       showLogoOnDocuments?: unknown
       showStampOnDocuments?: unknown
       showBankAccountOnInvoice?: unknown
+      invoiceDateDisplayMode?: unknown
     }
     if (body.expectedMasterVersion !== null &&
         (!Number.isInteger(body.expectedMasterVersion) || Number(body.expectedMasterVersion) < 1)) {
@@ -93,7 +94,8 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.showLogoOnDocuments !== 'boolean' ||
         typeof body.showStampOnDocuments !== 'boolean' ||
-        typeof body.showBankAccountOnInvoice !== 'boolean') {
+        typeof body.showBankAccountOnInvoice !== 'boolean' ||
+        !['ORDER_DATE', 'POSTED_DATE'].includes(String(body.invoiceDateDisplayMode))) {
       throw new ApiRouteError('COMPANY_DOCUMENT_VISIBILITY_REQUIRED', 400)
     }
     const data = await saveCompanyDocumentVisibility({
@@ -103,6 +105,7 @@ export async function PATCH(request: Request) {
       showLogoOnDocuments: body.showLogoOnDocuments,
       showStampOnDocuments: body.showStampOnDocuments,
       showBankAccountOnInvoice: body.showBankAccountOnInvoice,
+      invoiceDateDisplayMode: body.invoiceDateDisplayMode as 'ORDER_DATE' | 'POSTED_DATE',
     })
     return Response.json({ companyId, data })
   } catch (error) {

@@ -11,6 +11,12 @@ backlog secara diam-diam. Rollout terakhir mengikuti
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
 
+Pengaturan tanggal Invoice per Company sekarang **local-ready**. Owner/Admin
+dapat memilih `Tanggal Order` untuk backorder atau `Tanggal Transaksi` untuk
+hari POST; print/PDF Backoffice dan POS hanya menampilkan tanggal tanpa jam.
+Policy disnapshot pada Invoice baru dan rollout manual mengikuti
+[runbook pengaturan tanggal Invoice](docs/runbooks/INVOICE_DATE_DISPLAY_POLICY_ROLLOUT.md).
+
 Penerimaan Barang melalui Backoffice Gudang sekarang **local-ready**. Menu baru
 `Purchase → Penerimaan Barang` memberi Owner/Admin/Warehouse Admin jalur Draft
 tanpa sesi Kasir, tetapi Post tetap memakai mesin canonical Goods Receipt yang

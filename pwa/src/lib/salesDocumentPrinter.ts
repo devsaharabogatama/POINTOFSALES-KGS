@@ -47,6 +47,25 @@ function dateTime(value: unknown) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('id-ID')
 }
 
+function invoiceDate(snapshot: JsonObject) {
+  const branding = objectValue(snapshot.branding)
+  const company = objectValue(snapshot.company)
+  const source = branding.invoiceDateDisplayMode === 'POSTED_DATE'
+    ? snapshot.postedAt : snapshot.transactionAt
+  const date = new Date(text(source, ''))
+  if (Number.isNaN(date.getTime())) return '-'
+  const options: Intl.DateTimeFormatOptions = {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: typeof company.timezone === 'string' ? company.timezone : undefined,
+  }
+  try {
+    return new Intl.DateTimeFormat('id-ID', options).format(date)
+  } catch {
+    delete options.timeZone
+    return new Intl.DateTimeFormat('id-ID', options).format(date)
+  }
+}
+
 function openPrintDocument(title: string, body: string) {
   const html = `<!doctype html><html lang="id"><head><meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -98,7 +117,7 @@ export function openSalesInvoicePrint(document: SalesInvoiceDocument) {
   const bank = branding.showBankAccountOnInvoice === true && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<div class="card bank"><strong>Rekening pembayaran</strong>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br/><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></div>` : ''
   openPrintDocument(`Invoice ${document.invoiceNo}`, `${documentHeader(snapshot, 'SALES INVOICE', document.invoiceNo)}
-    <div class="meta"><div class="card"><strong>Ditagihkan kepada</strong>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br/><span class="muted">${escapeHtml(customer.phone)}<br/>${escapeHtml(customer.address)}</span></div><div class="card"><strong>Informasi transaksi</strong>Tanggal: ${escapeHtml(dateTime(snapshot.postedAt))}<br/>Kasir: ${escapeHtml(objectValue(snapshot.cashier).name)}<br/>Terminal: ${escapeHtml(objectValue(snapshot.terminal).name)}</div></div>
+    <div class="meta"><div class="card"><strong>Ditagihkan kepada</strong>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br/><span class="muted">${escapeHtml(customer.phone)}<br/>${escapeHtml(customer.address)}</span></div><div class="card"><strong>Informasi transaksi</strong>Tanggal: ${escapeHtml(invoiceDate(snapshot))}</div></div>
     <table><thead><tr><th>No</th><th>Produk</th><th>Jumlah</th><th class="number">Harga</th><th class="number">Diskon</th><th class="number">Pajak</th><th class="number">Total</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="totals"><div class="row"><span>Subtotal</span><strong>${rupiah(totals.subtotal)}</strong></div><div class="row"><span>Diskon</span><strong>${rupiah(numberValue(totals.itemDiscount) + numberValue(totals.orderDiscount))}</strong></div>${showDeliveryFee ? `<div class="row"><span>Ongkir</span><strong>${rupiah(totals.deliveryFee)}</strong></div>` : ''}<div class="row"><span>Pembulatan</span><strong>${rupiah(totals.roundingAdjustment)}</strong></div><div class="row grand"><span>Total akhir</span><strong>${rupiah(totals.grandTotal)}</strong></div>${paymentRows}</div>
     ${bank}<footer>Dokumen ini dihasilkan dari transaksi POSTED. Nomor internal sistem tidak ditampilkan.</footer>`)

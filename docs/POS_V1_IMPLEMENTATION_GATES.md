@@ -1721,6 +1721,16 @@ journal coverage, dan seluruh balance/duplicate/coverage check PASS. F4B
 database closure lulus. Sisa gate hanya authenticated operational smoke dan
 Automatic-mode smoke terisolasi pada Company dummy sebelum pilot diperluas.
 
+### Invoice date display policy (27 Agustus 2026)
+
+Perubahan additive `20260827150000` menambahkan policy template Invoice per
+Company: tanggal order/backorder atau tanggal POST aktual. Default tetap
+`ORDER_DATE`; pilihan disnapshot ke Invoice baru dan seluruh renderer memakai
+tanggal lokal Company tanpa jam. Perubahan tidak menyentuh nilai transaksi,
+periode/jurnal, due date, Stock, Payment, atau Surat Jalan. Status local-ready:
+Backoffice lint/build serta PWA lint/build PASS; rollout SQL dan smoke dua mode
+masih manual.
+
 ---
 
 ## 10. Urutan Kerja Pertama

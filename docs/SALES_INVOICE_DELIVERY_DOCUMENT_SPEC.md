@@ -213,3 +213,20 @@ tetapi workspace operasional Backoffice dipisahkan:
   harga, Payment, Customer Balance, Invoice payload, Stock ledger, atau Finance;
 - pemisahan menu/authority tidak memindahkan tabel, membuat Stock Movement,
   atau mengubah histori/nomor dokumen existing.
+
+## 10. Revisi Approved 2026-08-27 — Pilihan Tanggal Invoice
+
+Template Invoice memiliki policy per Company `ORDER_DATE` atau `POSTED_DATE`.
+`ORDER_DATE` membaca tanggal bisnis/order yang dipilih Kasir dan mendukung
+backorder. `POSTED_DATE` membaca waktu transaksi final benar-benar diposting.
+Keduanya ditampilkan sebagai tanggal lokal Company tanpa jam.
+
+Policy wajib disnapshot ke Invoice pada POST agar reprint tidak berubah saat
+setting Company kemudian diganti. Snapshot lama tanpa field policy memakai
+fallback `ORDER_DATE` untuk compatibility. Policy ini hanya presentation
+Invoice; tidak mengubah tanggal bisnis Sale, periode Finance, due date, Stock,
+Payment, Financial Event, jurnal, atau tanggal Surat Jalan.
+
+Nama Kasir dan Terminal tetap disimpan dalam snapshot canonical sebagai bukti
+audit, tetapi tidak ditampilkan pada template Invoice Customer. Penghilangan
+ini tidak mengubah struk POS internal maupun data transaksi.

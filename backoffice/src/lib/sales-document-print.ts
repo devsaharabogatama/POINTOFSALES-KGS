@@ -29,6 +29,26 @@ function dateTime(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('id-ID')
 }
 
+function invoiceDate(snapshot: JsonMap) {
+  const branding = map(snapshot.branding)
+  const company = map(snapshot.company)
+  const source = branding.invoiceDateDisplayMode === 'POSTED_DATE'
+    ? snapshot.postedAt : snapshot.transactionAt
+  if (!source) return '-'
+  const parsed = new Date(String(source))
+  if (Number.isNaN(parsed.getTime())) return String(source)
+  const options: Intl.DateTimeFormatOptions = {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: typeof company.timezone === 'string' ? company.timezone : undefined,
+  }
+  try {
+    return new Intl.DateTimeFormat('id-ID', options).format(parsed)
+  } catch {
+    delete options.timeZone
+    return new Intl.DateTimeFormat('id-ID', options).format(parsed)
+  }
+}
+
 function safeFilePart(value: unknown, fallback: string) {
   const normalized = String(value ?? '')
     .normalize('NFKD')
@@ -184,7 +204,7 @@ export async function downloadSalesInvoicePdf(
   doc.setFontSize(9)
   doc.text(`Customer: ${String(customer.name ?? customerFileName ?? 'Pelanggan Umum')}`, 14, 38)
   doc.text(`Toko: ${String(store.name ?? '-')}`, 14, 44)
-  doc.text(`Tanggal: ${dateTime(snapshot.transactionAt)}`, 14, 50)
+  doc.text(`Tanggal: ${invoiceDate(snapshot)}`, 14, 50)
   const columns: PdfColumn[] = [
     { text: 'PRODUK', x: 16 }, { text: 'UOM', x: 94 },
     { text: 'QTY', x: 124, align: 'right' }, { text: 'HARGA', x: 159, align: 'right' },
@@ -351,7 +371,7 @@ export function printSalesInvoiceDocument(
   const paymentHtml = payments.map((payment) => `<div><span>${escapeHtml(payment.methodName)}</span><strong>${money(payment.amount)}</strong></div>`).join('')
   const bank = showBankAccount && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<section class="box" style="margin-top:18px;max-width:390px;background:#f5f3ff"><b>Rekening pembayaran</b>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></section>` : ''
-  openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${dateTime(snapshot.transactionAt)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}<br><span class="muted">Kasir: ${escapeHtml(map(snapshot.cashier).name)}</span></div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}<section class="signatures"><div class="signature">Warehouse${stamp}</div><div class="signature">Security</div><div class="signature">Driver</div><div class="signature">Customer</div></section>`)
+  openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(snapshot)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}<section class="signatures"><div class="signature">Warehouse${stamp}</div><div class="signature">Security</div><div class="signature">Driver</div><div class="signature">Customer</div></section>`)
 }
 
 export function printSalesDeliveryDocument(

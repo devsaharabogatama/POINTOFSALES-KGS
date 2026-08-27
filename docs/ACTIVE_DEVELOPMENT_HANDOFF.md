@@ -6423,3 +6423,28 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Next safe step: authenticated smoke Cash, unpaid/partial TEMPO, Customer
   Receipt, AR report/export, period guard, exact retry, lalu uji Automatic hanya
   pada Company dummy. Jangan memakai Company operasional untuk smoke Automatic.
+
+### 2026-08-27 — INVOICE DATE DISPLAY POLICY LOCAL-READY
+
+- User menyetujui pilihan tanggal Invoice per Company: `ORDER_DATE` untuk
+  tanggal bisnis/backorder dan `POSTED_DATE` untuk tanggal POST aktual. Output
+  hanya tanggal lokal Company tanpa jam; Surat Jalan tidak berubah.
+- Ditambahkan preflight, migration `20260827150000`, postflight, behavioral
+  rollback, dan runbook. Default `ORDER_DATE` menjaga compatibility; signature
+  RPC empat parameter tetap tersedia sebagai wrapper, sedangkan client baru
+  memakai signature lima parameter.
+- `private.build_sales_invoice_snapshot` menyimpan
+  `branding.invoiceDateDisplayMode` pada Invoice baru. Renderer Backoffice PDF,
+  Backoffice print, dan PWA print membaca snapshot; Invoice lama tanpa field
+  memakai fallback `ORDER_DATE` dan tidak ditulis ulang.
+- UI berada di `Platform -> Profil Perusahaan`; hanya Owner/Admin Company dapat
+  mengubahnya melalui guarded API/RPC dengan optimistic `master_version` dan
+  branding audit.
+- Evidence lokal: Backoffice ESLint PASS, Backoffice production build 76 route
+  PASS, PWA oxlint PASS, PWA TypeScript/Vite production build PASS.
+- Manual gate menunggu user: preflight -> migration -> postflight -> behavioral
+  -> postflight ulang -> smoke dua Invoice baru dengan order date lampau serta
+  reprint Invoice pertama. Database production/staging belum diubah oleh agent.
+- Revisi tampilan lanjutan menghilangkan nama Kasir dan Terminal dari Invoice
+  Backoffice/PWA saja. Kedua field tetap berada di snapshot untuk audit; schema,
+  struk POS, dan Surat Jalan tidak berubah.
