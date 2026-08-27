@@ -1731,6 +1731,24 @@ periode/jurnal, due date, Stock, Payment, atau Surat Jalan. Status local-ready:
 Backoffice lint/build serta PWA lint/build PASS; rollout SQL dan smoke dua mode
 masih manual.
 
+### Penyelarasan template Invoice A4 dan Surat Jalan (27 Agustus 2026)
+
+Perubahan additive `20260827151000` menyamakan Invoice A4 POS dengan template
+canonical Backoffice tanpa mengubah nota thermal. Surat Jalan memiliki policy
+per Company `WAREHOUSE` atau `STORE`; pilihan, logo, dan stempel disnapshot pada
+dokumen baru agar reprint stabil. Compatibility RPC lama tetap tersedia sebagai
+wrapper. Status local-ready; rollout SQL, behavioral test, dan authenticated
+smoke kedua template masih manual.
+
+### Kontak Delivery fleksibel (27 Agustus 2026)
+
+Perubahan additive `20260827152000` melonggarkan telepon dan alamat penerima
+menjadi opsional, tetapi nama penerima tetap wajib dan diverifikasi server pada
+online/offline finalization. Snapshot, Surat Jalan, dan renderer menerima nilai
+kosong secara canonical tanpa memutasi Customer. Tidak ada perubahan Stock,
+Payment, AR, Finance, lifecycle, atau permission. Status local-ready; rollout
+SQL dan authenticated name-only delivery smoke masih manual.
+
 ---
 
 ## 10. Urutan Kerja Pertama

@@ -433,6 +433,8 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 ## Rollout terbaru
 
 - [Pengaturan tanggal Invoice](runbooks/INVOICE_DATE_DISPLAY_POLICY_ROLLOUT.md)
+- [Penyelarasan template Invoice A4 dan Surat Jalan](runbooks/SALES_DOCUMENT_TEMPLATE_ALIGNMENT_ROLLOUT.md)
+- [Kontak opsional Surat Jalan](runbooks/SALES_DELIVERY_OPTIONAL_CONTACT_ROLLOUT.md)
 - [Tanggal transaksi dan jatuh tempo POS TEMPO](runbooks/POS_TEMPO_TRANSACTION_DATE_ROLLOUT.md)
 - [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

@@ -17,6 +17,19 @@ hari POST; print/PDF Backoffice dan POS hanya menampilkan tanggal tanpa jam.
 Policy disnapshot pada Invoice baru dan rollout manual mengikuti
 [runbook pengaturan tanggal Invoice](docs/runbooks/INVOICE_DATE_DISPLAY_POLICY_ROLLOUT.md).
 
+Penyelarasan dokumen penjualan sekarang **local-ready**. Invoice A4 POS memakai
+template canonical yang sama dengan Backoffice, sedangkan Surat Jalan dapat
+dipilih per Company sebagai template Gudang (`Warehouse, Security, Driver,
+Customer`) atau Toko (`Kasir, Ekspedisi, Customer`). Nota thermal tidak berubah;
+policy Surat Jalan disnapshot pada dokumen baru. Rollout manual mengikuti
+[runbook penyelarasan template](docs/runbooks/SALES_DOCUMENT_TEMPLATE_ALIGNMENT_ROLLOUT.md).
+
+Kontak Delivery fleksibel sekarang **local-ready**. Nama penerima tetap wajib,
+sedangkan telepon, alamat, jadwal, catatan, dan ongkir boleh kosong; data yang
+tersedia hanya disnapshot ke transaksi/Surat Jalan dan tidak memutasi Customer.
+Rollout manual mengikuti
+[runbook kontak opsional Surat Jalan](docs/runbooks/SALES_DELIVERY_OPTIONAL_CONTACT_ROLLOUT.md).
+
 Penerimaan Barang melalui Backoffice Gudang sekarang **local-ready**. Menu baru
 `Purchase → Penerimaan Barang` memberi Owner/Admin/Warehouse Admin jalur Draft
 tanpa sesi Kasir, tetapi Post tetap memakai mesin canonical Goods Receipt yang
@@ -101,13 +114,14 @@ individual Customer-first. Unduh satuan, print, lifecycle pengiriman, tenant,
 dan audit dokumen tidak berubah.
 
 Template print/PDF Invoice dan Surat Jalan tidak lagi merender nama Company.
-Logo tetap opsional, sedangkan tanda tangan kedua dokumen memakai empat pihak:
-Warehouse, Security, Driver, dan Customer.
+Logo tetap opsional. Invoice tidak mempunyai tanda tangan; Surat Jalan memakai
+template Gudang empat pihak atau template Toko tiga pihak sesuai snapshot.
 
 Pengaturan logo dokumen sekarang **local-ready** per Company. Owner/Admin dapat
 mengatur logo header dan stempel visual secara independen pada print/PDF Invoice
 dan Surat Jalan tanpa menghapus file logo atau menghilangkannya dari navigasi
-aplikasi. Stempel memakai logo sebagai cap biru-transparan di area Warehouse.
+aplikasi. Stempel tampil mandiri pada Invoice dan berada di kolom pertama Surat
+Jalan sesuai template yang dipilih.
 Company existing default menampilkan logo header dan menyembunyikan stempel.
 Rollout database dan smoke staging masih manual sesuai
 [runbook](docs/runbooks/COMPANY_DOCUMENT_LOGO_VISIBILITY_ROLLOUT.md).

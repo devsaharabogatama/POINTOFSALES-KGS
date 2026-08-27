@@ -4,8 +4,11 @@
 
 Owner atau Admin Company dapat mengaktifkan atau menonaktifkan logo header dan
 stempel visual secara independen pada template print dan PDF Invoice serta Surat
-Jalan. Stempel memakai file logo yang sama sebagai cap biru-transparan di area
-tanda tangan Warehouse. Pengaturan berlaku per Company, dicatat ke audit
+Jalan. Pada rollout awal stempel memakai file logo yang sama sebagai cap
+biru-transparan di area Warehouse. Perilaku terbaru disempurnakan oleh
+`SALES_DOCUMENT_TEMPLATE_ALIGNMENT_ROLLOUT.md`: Invoice menampilkan stempel
+mandiri dan Surat Jalan menempatkannya pada kolom pertama template yang dipilih.
+Pengaturan berlaku per Company, dicatat ke audit
 branding, dan tidak menghapus object logo. Logo pada navigasi aplikasi tetap
 tampil.
 

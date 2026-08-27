@@ -6451,3 +6451,47 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Revisi berikutnya menghapus seluruh field/garis tanda tangan dari Invoice
   Backoffice print/PDF. Stempel tetap muncul mandiri ketika diaktifkan; empat
   tanda tangan Surat Jalan tidak diubah.
+
+### 2026-08-27 — SALES DOCUMENT TEMPLATE ALIGNMENT LOCAL-READY
+
+- Keputusan terbaru user: Invoice A4 POS harus sama dengan Backoffice; nota
+  thermal tetap berbeda. Surat Jalan dapat memilih template Gudang
+  (`Warehouse, Security, Driver, Customer`) atau Toko
+  (`Kasir, Ekspedisi, Customer`) per Company.
+- Migration additive `20260827151000` menambah
+  `company_branding_profiles.delivery_signature_template`, guarded RPC enam
+  parameter, wrapper compatibility untuk signature lama, dan snapshot branding
+  lengkap pada dokumen baru. Default Company adalah `WAREHOUSE`.
+- Backoffice Profil Perusahaan memiliki selector template. Renderer Invoice A4
+  POS diselaraskan dengan Backoffice; Invoice tetap tanpa tanda tangan. Renderer
+  Surat Jalan POS/Backoffice membaca template snapshot dan menempatkan stempel
+  pada kolom pertama. Nota thermal tidak disentuh.
+- File utama: migration/preflight/postflight/behavior/runbook alignment,
+  `CompanyBrandingView.tsx`, branding API/server, serta kedua renderer dokumen.
+- Evidence lokal: Backoffice ESLint dan production build PASS (76 route); PWA
+  oxlint, TypeScript, dan Vite production build PASS. `git diff --check` PASS.
+- Database dan deployment belum diubah agent. Manual gate: preflight -> migration
+  151000 -> postflight -> behavioral -> postflight ulang -> authenticated smoke
+  Invoice A4 dan kedua template Surat Jalan.
+
+### 2026-08-27 — SALES DELIVERY OPTIONAL CONTACT LOCAL-READY
+
+- Keputusan user terbaru: saat `Perlu dikirim`, hanya nama penerima wajib.
+  Telepon, alamat, jadwal, catatan, dan ongkir boleh kosong; Customer master
+  tidak boleh dimutasi dan Kasir tidak mendapat authority tambahan.
+- Migration additive `20260827152000` melonggarkan nullability serta dua CHECK,
+  mengganti finalizer canonical dan fulfillment configurator, dan memusatkan
+  validasi nama pada private helper. Online/offline tetap fail-closed bila nama
+  kosong dan idempotency Sale/Invoice/SJ tidak berubah.
+- UI POS hanya memblokir nama kosong dan menandai telepon/alamat opsional.
+  Renderer POS/Backoffice serta Inventory SJ menampilkan snapshot seadanya tanpa
+  separator rusak.
+- Evidence lokal: Backoffice ESLint dan production build PASS (76 route); PWA
+  oxlint, TypeScript, dan Vite production build PASS. Behavioral SQL memakai
+  temporary table dan rollback tanpa fixture Company/User/transaksi.
+- Manual gate: preflight -> migration 152000 -> postflight -> rollback-safe
+  behavior -> postflight ulang -> smoke online/offline Delivery name-only dan
+  negative blank-name. Database/deployment belum disentuh agent.
+- First postflight attempt failed before checks because alias `constraint` is a
+  PostgreSQL keyword. Postflight was corrected to `catalog_constraint`; no
+  migration, schema, or data correction is required.

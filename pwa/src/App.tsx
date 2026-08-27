@@ -269,7 +269,7 @@ function friendlyError(code: string) {
     INVALID_CUSTOMER_EMAIL: 'Email Customer tidak valid atau terlalu panjang.',
     INVALID_CUSTOMER_ADDRESS: 'Alamat Customer maksimal 1.000 karakter.',
     DELIVERY_RECIPIENT_REQUIRED:
-      'Nama penerima, nomor telepon, dan alamat pengiriman wajib diisi.',
+      'Nama penerima wajib diisi untuk transaksi yang perlu dikirim.',
     INVALID_FULFILLMENT_MODE: 'Cara penerimaan barang tidak dikenali.',
     INVALID_DELIVERY_FEE_AMOUNT:
       'Ongkir harus berupa angka nol atau lebih besar.',
@@ -1748,9 +1748,7 @@ export default function App() {
     }
     if (
       fulfillmentMode === 'DELIVERY' &&
-      (!deliveryRecipientName.trim() ||
-        !deliveryRecipientPhone.trim() ||
-        !deliveryAddress.trim())
+      !deliveryRecipientName.trim()
     ) {
       throw new Error('DELIVERY_RECIPIENT_REQUIRED')
     }
@@ -2270,9 +2268,7 @@ export default function App() {
       }
       if (
         fulfillmentMode === 'DELIVERY' &&
-        (!deliveryRecipientName.trim() ||
-          !deliveryRecipientPhone.trim() ||
-          !deliveryAddress.trim())
+        !deliveryRecipientName.trim()
       ) throw new Error('DELIVERY_RECIPIENT_REQUIRED')
       if (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid) {
         throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
@@ -5127,7 +5123,7 @@ export default function App() {
                 />
               </label>
               <label>
-                <span>Nomor telepon</span>
+                <span>Nomor telepon (opsional)</span>
                 <input
                   value={deliveryRecipientPhone}
                   onChange={(event) => setDeliveryRecipientPhone(event.target.value)}
@@ -5136,7 +5132,7 @@ export default function App() {
                 />
               </label>
               <label className="is-wide">
-                <span>Alamat pengiriman</span>
+                <span>Alamat pengiriman (opsional)</span>
                 <textarea
                   value={deliveryAddress}
                   onChange={(event) => setDeliveryAddress(event.target.value)}

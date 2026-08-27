@@ -234,3 +234,32 @@ ini tidak mengubah struk POS internal maupun data transaksi.
 Template Invoice tidak mempunyai field atau garis tanda tangan. Bila setting
 stempel aktif, cap tetap ditampilkan sebagai elemen mandiri tanpa label
 penandatangan. Empat field tanda tangan hanya dipertahankan pada Surat Jalan.
+
+## 11. Revisi Approved 2026-08-27 — Penyelarasan Template Cetak
+
+Invoice A4 dari POS dan Backoffice memakai satu susunan canonical yang sama.
+Perbedaan channel tidak boleh mengubah identitas dokumen, tanggal pilihan,
+Customer, line, total, Payment, logo, stempel, atau rekening. Nota thermal POS
+tetap merupakan template operasional terpisah dan tidak ikut diseragamkan.
+
+Surat Jalan memiliki policy tanda tangan per Company:
+
+- `WAREHOUSE`: Warehouse, Security, Driver, Customer;
+- `STORE`: Kasir, Ekspedisi, Customer.
+
+Pilihan disnapshot ketika dokumen dibuat agar cetak ulang stabil. Stempel, bila
+aktif, berada pada kolom pertama sesuai template. Dokumen lama tidak ditulis
+ulang; kedua renderer memakai fallback `WAREHOUSE` bila snapshot belum memiliki
+policy.
+
+## 12. Revisi Approved 2026-08-27 — Kontak Delivery Fleksibel
+
+Transaksi `DELIVERY` hanya mewajibkan nama penerima. Nomor telepon, alamat,
+rencana kirim, catatan, dan ongkir bersifat opsional. Nilai yang tersedia
+disimpan sebagai snapshot Sale dan Surat Jalan; field kosong disimpan `NULL`
+dan dirender netral. Perubahan ini tidak mengubah master Customer dan tidak
+memberi Kasir akses edit Customer.
+
+Validasi nama tetap server-authoritative untuk online maupun offline. Surat
+Jalan name-only tetap dibuat atomically bersama Sale POSTED dan tidak mengubah
+Stock, Payment, AR, Finance, lifecycle, atau idempotency dokumen.

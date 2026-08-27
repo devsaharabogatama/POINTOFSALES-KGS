@@ -14,6 +14,10 @@ function escapeHtml(value: unknown) {
   })[character] ?? character)
 }
 
+function displayText(value: unknown) {
+  return String(value ?? '').trim() || '-'
+}
+
 function money(value: unknown) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })
     .format(Number(value) || 0)
@@ -47,6 +51,10 @@ function invoiceDate(snapshot: JsonMap) {
     delete options.timeZone
     return new Intl.DateTimeFormat('id-ID', options).format(parsed)
   }
+}
+
+function snapshotFlag(branding: JsonMap, key: string, fallback: boolean) {
+  return typeof branding[key] === 'boolean' ? branding[key] as boolean : fallback
 }
 
 function safeFilePart(value: unknown, fallback: string) {
@@ -105,7 +113,7 @@ async function drawPdfLogo(doc: PdfDocument, logoUrl: unknown, enabled: boolean)
 }
 
 async function drawPdfStamp(
-  doc: PdfDocument, logoUrl: unknown, enabled: boolean, y: number,
+  doc: PdfDocument, logoUrl: unknown, enabled: boolean, y: number, x = 36,
 ) {
   if (!enabled || !logoUrl) return
   try {
@@ -132,10 +140,10 @@ async function drawPdfStamp(
     const imageScale = Math.min(29 / image.width, 10 / image.height)
     doc.setDrawColor(29, 78, 216)
     doc.setLineWidth(0.55)
-    doc.ellipse(36, y + 13, 18, 10)
+    doc.ellipse(x, y + 13, 18, 10)
     doc.setLineWidth(0.25)
-    doc.ellipse(36, y + 13, 16.5, 8.5)
-    doc.addImage(dataUrl, 'PNG', 36 - image.width * imageScale / 2,
+    doc.ellipse(x, y + 13, 16.5, 8.5)
+    doc.addImage(dataUrl, 'PNG', x - image.width * imageScale / 2,
       y + 13 - image.height * imageScale / 2,
       image.width * imageScale, image.height * imageScale,
       undefined, 'FAST', -7)
@@ -144,16 +152,26 @@ async function drawPdfStamp(
   }
 }
 
-function drawPdfSignatures(doc: PdfDocument, requestedY: number) {
+function deliverySignatureLabels(snapshot: JsonMap, fallback: 'WAREHOUSE' | 'STORE') {
+  const branding = map(snapshot.branding)
+  const template = branding.deliverySignatureTemplate === 'STORE' ||
+    branding.deliverySignatureTemplate === 'WAREHOUSE'
+    ? branding.deliverySignatureTemplate : fallback
+  return template === 'STORE'
+    ? ['Kasir', 'Ekspedisi', 'Customer']
+    : ['Warehouse', 'Security', 'Driver', 'Customer']
+}
+
+function drawPdfSignatures(doc: PdfDocument, requestedY: number, labels: string[]) {
   let y = requestedY
   if (y > 250) {
     doc.addPage()
     y = 25
   }
-  const signatures = [
-    { label: 'Warehouse', x: 36 }, { label: 'Security', x: 82 },
-    { label: 'Driver', x: 128 }, { label: 'Customer', x: 174 },
-  ]
+  const width = 182 / labels.length
+  const signatures = labels.map((label, index) => ({
+    label, x: 14 + width * (index + 0.5),
+  }))
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   for (const signature of signatures) {
@@ -198,8 +216,11 @@ export async function downloadSalesInvoicePdf(
   const invoiceNo = document.invoiceNo ?? snapshot.invoiceNo ?? 'INV'
   const lines = rows(snapshot.lines)
   const payments = rows(snapshot.payments)
+  const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
+  const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
+  const effectiveShowBank = snapshotFlag(branding, 'showBankAccountOnInvoice', showBankAccount)
   drawPdfHeader(doc, 'INVOICE', invoiceNo)
-  await drawPdfLogo(doc, branding.logoPublicUrl, showLogo)
+  await drawPdfLogo(doc, branding.logoPublicUrl, effectiveShowLogo)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.text(`Customer: ${String(customer.name ?? customerFileName ?? 'Pelanggan Umum')}`, 14, 38)
@@ -240,7 +261,7 @@ export async function downloadSalesInvoicePdf(
     doc.text(pdfMoney(value), 194, y, { align: 'right' })
     y += 6
   }
-  if (showBankAccount && company.bankName && company.bankAccountNumber && company.bankAccountHolder) {
+  if (effectiveShowBank && company.bankName && company.bankAccountNumber && company.bankAccountHolder) {
     y = ensurePdfPage(doc, y + 5, () => undefined)
     doc.setFillColor(245, 243, 255)
     doc.roundedRect(14, y, 86, 22, 2, 2, 'F')
@@ -256,7 +277,7 @@ export async function downloadSalesInvoicePdf(
     doc.addPage()
     stampY = 20
   }
-  await drawPdfStamp(doc, branding.logoPublicUrl, showStamp, stampY)
+  await drawPdfStamp(doc, branding.logoPublicUrl, effectiveShowStamp, stampY)
   doc.save(documentFileName(customerFileName ?? customer.name, invoiceNo, 'INV'))
 }
 
@@ -274,14 +295,16 @@ async function buildSalesDeliveryPdf(
   const recipient = map(snapshot.recipient)
   const deliveryNo = document.deliveryNo ?? 'SJ'
   const lines = rows(document.lines)
+  const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
+  const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
   drawPdfHeader(doc, 'SURAT JALAN', deliveryNo)
-  await drawPdfLogo(doc, branding.logoPublicUrl, showLogo)
+  await drawPdfLogo(doc, branding.logoPublicUrl, effectiveShowLogo)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.text(`Customer: ${String(customerFileName ?? recipient.name ?? 'Pelanggan Umum')}`, 14, 38)
   doc.text(`Penerima: ${String(recipient.name ?? '-')}`, 14, 44)
-  doc.text(`Telepon: ${String(recipient.phone ?? '-')}`, 14, 50)
-  const address = doc.splitTextToSize(`Alamat: ${String(recipient.address ?? '-')}`, 180) as string[]
+  doc.text(`Telepon: ${displayText(recipient.phone)}`, 14, 50)
+  const address = doc.splitTextToSize(`Alamat: ${displayText(recipient.address)}`, 180) as string[]
   doc.text(address, 14, 56)
   doc.text(`Toko: ${String(store.name ?? '-')}`, 14, 56 + address.length * 4.5)
   const tableY = 67 + address.length * 4.5
@@ -304,8 +327,10 @@ async function buildSalesDeliveryPdf(
     doc.setDrawColor(226, 232, 240)
     doc.line(14, y - 3, 196, y - 3)
   }
-  const signatureY = drawPdfSignatures(doc, y + 15)
-  await drawPdfStamp(doc, branding.logoPublicUrl, showStamp, signatureY)
+  const signatureLabels = deliverySignatureLabels(snapshot, 'WAREHOUSE')
+  const signatureY = drawPdfSignatures(doc, y + 15, signatureLabels)
+  await drawPdfStamp(doc, branding.logoPublicUrl, effectiveShowStamp, signatureY,
+    14 + (182 / signatureLabels.length) * 0.5)
   return {
     doc,
     fileName: documentFileName(customerFileName ?? recipient.name, deliveryNo, 'SJ'),
@@ -362,18 +387,21 @@ export function printSalesInvoiceDocument(
   const invoiceNo = document.invoiceNo ?? snapshot.invoiceNo ?? 'Invoice'
   const lines = rows(snapshot.lines)
   const payments = rows(snapshot.payments)
+  const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
+  const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
+  const effectiveShowBank = snapshotFlag(branding, 'showBankAccountOnInvoice', showBankAccount)
   const deliveryFee = Number(totals.deliveryFee ?? 0)
   const deliveryFeeHtml = deliveryFee > 0 &&
     totals.deliveryFeeInvoiceDisplayMode !== 'HIDE_BREAKDOWN'
     ? `<div><span>Ongkir</span><strong>${money(deliveryFee)}</strong></div>`
     : ''
-  const logo = showLogo && branding.logoPublicUrl
+  const logo = effectiveShowLogo && branding.logoPublicUrl
     ? `<img class="logo" src="${escapeHtml(branding.logoPublicUrl)}" alt="Logo perusahaan">` : ''
-  const stamp = showStamp && branding.logoPublicUrl
+  const stamp = effectiveShowStamp && branding.logoPublicUrl
     ? `<span class="stamp"><img src="${escapeHtml(branding.logoPublicUrl)}" alt="Stempel perusahaan"></span>` : ''
   const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td><td class="num">${quantity(line.quantity)}</td><td class="num">${money(line.unitPrice)}</td><td class="num">${money(line.discount)}</td><td class="num">${money(line.lineTotal)}</td></tr>`).join('')
   const paymentHtml = payments.map((payment) => `<div><span>${escapeHtml(payment.methodName)}</span><strong>${money(payment.amount)}</strong></div>`).join('')
-  const bank = showBankAccount && company.bankName && company.bankAccountNumber && company.bankAccountHolder
+  const bank = effectiveShowBank && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<section class="box" style="margin-top:18px;max-width:390px;background:#f5f3ff"><b>Rekening pembayaran</b>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></section>` : ''
   openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(snapshot)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}${stamp ? `<section class="invoice-stamp">${stamp}</section>` : ''}`)
 }
@@ -387,10 +415,14 @@ export function printSalesDeliveryDocument(
   const recipient = map(snapshot.recipient)
   const deliveryNo = document.deliveryNo ?? 'Surat Jalan'
   const lines = rows(document.lines)
-  const logo = showLogo && branding.logoPublicUrl
+  const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
+  const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
+  const logo = effectiveShowLogo && branding.logoPublicUrl
     ? `<img class="logo" src="${escapeHtml(branding.logoPublicUrl)}" alt="Logo perusahaan">` : ''
-  const stamp = showStamp && branding.logoPublicUrl
+  const stamp = effectiveShowStamp && branding.logoPublicUrl
     ? `<span class="stamp"><img src="${escapeHtml(branding.logoPublicUrl)}" alt="Stempel perusahaan"></span>` : ''
   const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td><td class="num">${quantity(line.quantity)}</td></tr>`).join('')
-  openPrint(String(deliveryNo), `<header><div>${logo}<div>${escapeHtml(store.name)}</div></div><div class="right"><h1>SURAT JALAN</h1><b>${escapeHtml(deliveryNo)}</b><div>${dateTime(snapshot.scheduledAt)}</div></div></header><section class="identity"><div class="box"><b>Penerima</b>${escapeHtml(recipient.name)}<br>${escapeHtml(recipient.phone)}</div><div class="box"><b>Alamat pengiriman</b>${escapeHtml(recipient.address)}<br>${escapeHtml(snapshot.notes)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="signatures"><div class="signature">Warehouse${stamp}</div><div class="signature">Security</div><div class="signature">Driver</div><div class="signature">Customer</div></section>`)
+  const signatureHtml = deliverySignatureLabels(snapshot, 'WAREHOUSE')
+    .map((label, index) => `<div class="signature">${escapeHtml(label)}${index === 0 ? stamp : ''}</div>`).join('')
+  openPrint(String(deliveryNo), `<header><div>${logo}<div>${escapeHtml(store.name)}</div></div><div class="right"><h1>SURAT JALAN</h1><b>${escapeHtml(deliveryNo)}</b><div>${dateTime(snapshot.scheduledAt)}</div></div></header><section class="identity"><div class="box"><b>Penerima</b>${escapeHtml(recipient.name)}<br>${escapeHtml(displayText(recipient.phone))}</div><div class="box"><b>Alamat pengiriman</b>${escapeHtml(displayText(recipient.address))}<br>${escapeHtml(snapshot.notes)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="signatures" style="grid-template-columns:repeat(${deliverySignatureLabels(snapshot, 'WAREHOUSE').length},1fr)">${signatureHtml}</section>`)
 }

@@ -300,8 +300,8 @@ dan menelusuri bukti transaksi. Nama berkas PDF diawali nama pelanggan, misalnya
 `PT-MAJU-JAYA_INV-20260820-000012.pdf`. Perubahan master tidak mengubah invoice
 historis.
 
-Template Invoice tidak menampilkan nama perusahaan pada header dan menyediakan
-tanda tangan **Warehouse**, **Security**, **Driver**, serta **Customer**.
+Template Invoice tidak menampilkan nama perusahaan pada header dan tidak
+memiliki area tanda tangan. Stempel tetap dapat ditampilkan secara mandiri.
 
 Owner/Admin dapat membuka **Platform → Profil Perusahaan** untuk mengisi
 identitas, alamat, kontak, serta rekening Company. Rekening terdiri dari nama
@@ -441,9 +441,18 @@ ketika pengaturan diaktifkan. Berkas yang sudah dirujuk snapshot historis tetap
 dipertahankan.
 
 Sakelar **Tampilkan stempel pada dokumen** memakai file logo yang sama sebagai
-cap biru-transparan di area tanda tangan Warehouse. Logo header dan stempel
-dapat diaktifkan atau dimatikan secara terpisah. Stempel ini merupakan tampilan
-template dokumen, bukan tanda tangan digital tersertifikasi.
+cap biru-transparan. Pada Invoice, cap tampil mandiri tanpa area tanda tangan.
+Pada Surat Jalan, cap berada di kolom tanda tangan pertama. Logo header dan
+stempel dapat diaktifkan atau dimatikan secara terpisah. Stempel ini merupakan
+tampilan template dokumen, bukan tanda tangan digital tersertifikasi.
+
+Gunakan **Template tanda tangan Surat Jalan** sesuai asal proses pengiriman:
+
+- **Gudang**: Warehouse, Security, Driver, Customer;
+- **Toko**: Kasir, Ekspedisi, Customer.
+
+Pilihan berlaku untuk dokumen baru. Cetak ulang dokumen lama tetap mengikuti
+snapshot template yang tersimpan saat dokumen dibuat.
 
 ### 11.4 Pengaturan Modul
 
@@ -616,11 +625,15 @@ aktif dapat ditolak.
 4. Periksa pricelist dan ubah bila diizinkan.
 5. Periksa diskon, pajak, pembulatan, dan ongkir.
 6. Klik **Konfirmasi & Post**.
-7. Pilih metode pembayaran dan isi nilai diterima.
-8. Konfirmasi posting.
-9. Setelah sukses, keranjang kembali ke awal.
-10. Buka nota/invoice pada tab baru dan cetak.
-11. Jika dikirim, centang opsi pengiriman, periksa data pelanggan, lalu cetak Surat Jalan.
+7. Bila barang dikirim, aktifkan **Perlu dikirim** sebelum posting. Nama
+   penerima wajib; nomor telepon, alamat, rencana kirim, catatan, dan ongkir
+   boleh kosong. Data ini hanya menjadi snapshot transaksi dan tidak mengubah
+   master Customer.
+8. Pilih metode pembayaran dan isi nilai diterima.
+9. Konfirmasi posting.
+10. Setelah sukses, keranjang kembali ke awal.
+11. Buka nota/invoice pada tab baru dan cetak.
+12. Untuk transaksi Delivery, cetak Surat Jalan.
 
 Posting bersifat atomik dan idempoten. Stok/FIFO dan jurnal dihitung server, bukan dari nilai buatan client.
 
@@ -717,6 +730,7 @@ Invoice memakai snapshot saat posting sehingga perubahan master tidak mengubah h
 - Dapat dicetak dari POS setelah opsi pengiriman dipilih.
 - Dapat dicetak ulang dari **Inventory → Surat Jalan**.
 - Terpisah dari Invoice dan berfokus pada kuantitas/pengiriman.
+- Hanya nama penerima yang wajib; telepon dan alamat ditampilkan jika tersedia.
 - Konfirmasi pengiriman dilakukan dari detail Surat Jalan di Backoffice Inventory.
 
 ## 20. Jurnal dan laporan keuangan
