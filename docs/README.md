@@ -368,7 +368,7 @@ berada di [`../README.md`](../README.md).
 | BRD-1 Company branding preflight | `runbooks/BRD1_COMPANY_BRANDING_PREFLIGHT.md` | SELECT-only Company/role/Storage/bucket/policy/schema readiness sebelum migration logo |
 | BRD-1 Company branding foundation rollout | `runbooks/BRD1_COMPANY_BRANDING_FOUNDATION_ROLLOUT.md` | Migration, postflight, guarded branding RPC/bucket, audit/version, dan rollback-safe two-Company isolation behavior |
 | BRD-2 Company branding upload dan UI | `runbooks/BRD2_COMPANY_BRANDING_UPLOAD_UI.md` | Server-only upload, magic-byte/checksum/path validation, replace/remove cleanup, Company setting, dan authenticated multi-Company smoke |
-| Sales Invoice dan Surat Jalan canonical | `SALES_INVOICE_DELIVERY_DOCUMENT_SPEC.md` | Single-source Sale POSTED, immutable print snapshot, delivery-only document, human number, lifecycle, idempotency, offline/Return/Bundle, tenant dan no-double-effect contract |
+| Sales Invoice dan Surat Jalan canonical | `SALES_INVOICE_DELIVERY_DOCUMENT_SPEC.md` | Single-source Sale POSTED, immutable print snapshot, policy SJ per Company, human number, lifecycle Pickup/Delivery, idempotency, offline/Return/Bundle, tenant dan no-double-effect contract |
 | Revisi checkout Delivery dan ongkir | `SLD_DELIVERY_FEE_REVISION_PLAN.md` | Checkbox final checkout, Customer autofill, ongkir server-authoritative, Invoice display mode, Finance mapping, offline/Return, dan urutan SLD-R1—R4 |
 | SLD-1 Sales document preflight | `runbooks/SLD1_SALES_DOCUMENT_PREFLIGHT.md` | SELECT-only audit Sale/line/payment/receipt/Return/Offline/Bundle/branding dan interpretasi blocker sebelum SLD-2 |
 | SLD-2 Sales document foundation rollout | `runbooks/SLD2_SALES_DOCUMENT_FOUNDATION_ROLLOUT.md` | Immutable Invoice snapshot, delivery-only Surat Jalan, legacy cutover, deferred finalization, tenant/audit/logo retention, postflight dan regression tanpa double Stock/Finance effect |
@@ -435,6 +435,7 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - [Pengaturan tanggal Invoice](runbooks/INVOICE_DATE_DISPLAY_POLICY_ROLLOUT.md)
 - [Penyelarasan template Invoice A4 dan Surat Jalan](runbooks/SALES_DOCUMENT_TEMPLATE_ALIGNMENT_ROLLOUT.md)
 - [Kontak opsional Surat Jalan](runbooks/SALES_DELIVERY_OPTIONAL_CONTACT_ROLLOUT.md)
+- [Policy Surat Jalan otomatis per Company](runbooks/COMPANY_AUTOMATIC_DELIVERY_DOCUMENT_POLICY_ROLLOUT.md)
 - [Tanggal transaksi dan jatuh tempo POS TEMPO](runbooks/POS_TEMPO_TRANSACTION_DATE_ROLLOUT.md)
 - [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

@@ -6495,3 +6495,65 @@ Eksekusi hanya setelah backup dan maintenance window.
 - First postflight attempt failed before checks because alias `constraint` is a
   PostgreSQL keyword. Postflight was corrected to `catalog_constraint`; no
   migration, schema, or data correction is required.
+
+### 2026-08-27 — COMPANY AUTOMATIC DELIVERY DOCUMENT POLICY LOCAL-READY
+
+- Keputusan user terbaru diimplementasikan sebagai policy Company pada
+  `Platform -> Profil Perusahaan`: `DELIVERY_ONLY` default atau
+  `ALL_POSTED_SALES`. Policy hanya berlaku untuk Sale baru setelah aktif;
+  histori tidak dibackfill.
+- Migration `20260827153000_company_automatic_delivery_document_policy.sql`
+  menambah policy versioned/audited, snapshot `fulfillment_mode` pada Surat
+  Jalan, finalizer server-authoritative, dan lifecycle Pickup langsung
+  `READY -> DELIVERED`. Delivery tetap wajib `READY -> DISPATCHED -> DELIVERED`.
+- Pickup mengambil penerima/telepon/alamat dari snapshot Customer; hanya nama
+  yang diberi fallback aman. Master Customer, Stock, Payment, Financial Event,
+  Journal, Invoice, dan nota thermal tidak dimutasi oleh policy.
+- UI Inventory membedakan `Ambil di toko` versus `Pengiriman`; Pickup memakai
+  tombol **Sudah diserahkan**. RPC enam/lima/empat parameter lama tetap
+  kompatibel dan mempertahankan policy existing.
+- File SQL lengkap: preflight, migration, postflight, behavioral fixture-free,
+  serta runbook `COMPANY_AUTOMATIC_DELIVERY_DOCUMENT_POLICY_ROLLOUT.md`.
+- Evidence lokal: Backoffice ESLint PASS; Backoffice production build PASS
+  (76 route); SQL delimiter/parentheses balance PASS; `git diff --check` PASS.
+- Database/deployment tidak disentuh agent. Manual gate: preflight -> migration
+  153000 -> postflight -> behavioral -> postflight ulang -> smoke Pickup default,
+  Pickup all-Sale, direct handover, Delivery lifecycle, dan exact retry.
+- Koreksi diagnostic 27 Agustus: preflight dan postflight awal salah membaca
+  `companies.is_active`; schema canonical memakai `companies.status='ACTIVE'`.
+  Kedua file sudah diperbaiki. Migration/runtime tidak berubah dan belum perlu
+  dijalankan sebelum preflight terbaru menghasilkan output tanpa blocker.
+### 2026-08-27 — Automatic Surat Jalan postflight early-run compatibility correction
+
+- Corrected `supabase/tests/company_automatic_delivery_document_policy_postflight.sql` so newly introduced columns are inspected through `to_jsonb(record)` instead of referenced directly.
+- Before this correction, running the postflight before migration `20260827153000` was committed raised PostgreSQL `42703` for `sales_delivery_documents.fulfillment_mode` instead of reporting schema and migration checks as `FAIL`.
+- Migration/runtime behavior is unchanged. Safe order remains preflight, migration, behavioral test, then postflight.
+
+### 2026-08-27 — Automatic Surat Jalan migration parser correction
+
+- Simplified the `private.ensure_sales_documents` header-SJ synchronization by
+  resolving the target `sj_status` into `v_header_sj_status` before its
+  comparison and update.
+- This removes the inline `IS DISTINCT FROM CASE ... END` expression reported
+  by Supabase as an end-of-input parser failure. Business behavior is unchanged.
+- The failed attempt was inside the migration transaction and does not authorize
+  assuming the ledger/schema was applied; rerun the corrected migration from
+  the beginning, then verify through postflight.
+
+### 2026-08-27 — POS automatic delivery UI default LOCAL-READY
+
+- POS bootstrap now reads the active Company's guarded branding policy. When
+  `deliveryDocumentCreationPolicy=ALL_POSTED_SALES`, a new transaction defaults
+  **Perlu dikirim** to checked; `DELIVERY_ONLY` retains the previous unchecked
+  default.
+- Existing drafts retain their saved `fulfillmentMode`. Customer delivery data
+  is copied when available and missing optional values remain blank. Walk-In
+  recipient name remains blank so the existing required-name validation is not
+  silently bypassed.
+- The policy is retained in the offline operational scope for cold-start
+  consistency. This is a PWA/UI bootstrap change only; server posting, Stock,
+  Payment, Finance, and the migration chain are unchanged.
+- User reported the SQL rollout/checks safe before this UI follow-up. Local
+  evidence for the UI follow-up: PWA oxlint PASS, TypeScript/Vite production
+  build PASS, and `git diff --check` PASS. Authenticated browser smoke remains
+  manual.

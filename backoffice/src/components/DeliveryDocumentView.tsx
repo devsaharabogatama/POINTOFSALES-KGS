@@ -29,6 +29,7 @@ type DeliverySummary = {
   customerName: string
   storeName: string
   warehouseName: string
+  fulfillmentMode: 'PICKUP' | 'DELIVERY'
 }
 
 const MAX_BULK_DOCUMENTS = 50
@@ -38,7 +39,10 @@ const headers = (session: Session, json = false) => ({
 })
 const dateTime = (value?: string | null) => value
   ? new Date(value).toLocaleString('id-ID') : '-'
-function statusLabel(status?: string) {
+function statusLabel(status?: string, fulfillmentMode: 'PICKUP' | 'DELIVERY' = 'DELIVERY') {
+  if (fulfillmentMode === 'PICKUP') {
+    return ({ READY: 'Siap diserahkan', DELIVERED: 'Sudah diserahkan', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
+  }
   return ({ READY: 'Siap dikirim', DISPATCHED: 'Dalam perjalanan', DELIVERED: 'Terkirim', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
 }
 function statusClass(status?: string) {
@@ -293,10 +297,10 @@ export function DeliveryDocumentView({
       <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="w-14 p-4">Pilih</th><th className="p-4">Surat Jalan</th><th className="p-4">Penerima</th><th className="p-4">Toko / Gudang</th><th className="p-4">Status</th><th className="p-4"/></tr></thead>
       <tbody>{loading ? <tr><td colSpan={6} className="p-10 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin"/></td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-slate-500">Belum ada Surat Jalan yang sesuai.</td></tr> : filtered.map((row) => <tr key={row.deliveryDocumentId} className="border-t">
         <td className="p-4"><input type="checkbox" checked={marked.has(row.deliveryDocumentId)} onChange={() => toggleRow(row.deliveryDocumentId)} disabled={bulkDownloading || (!marked.has(row.deliveryDocumentId) && markedRows.length >= MAX_BULK_DOCUMENTS)} aria-label={`Pilih ${row.deliveryNo}`} className="h-5 w-5 accent-blue-600"/></td>
-        <td className="p-4"><strong>{row.deliveryNo}</strong><p className="text-xs text-slate-500">Invoice {row.invoiceNo} · {dateTime(row.scheduledAt ?? row.createdAt)}</p></td>
+        <td className="p-4"><strong>{row.deliveryNo}</strong><p className="text-xs text-slate-500">{row.fulfillmentMode === 'PICKUP' ? 'Ambil di toko' : 'Pengiriman'} · Invoice {row.invoiceNo} · {dateTime(row.scheduledAt ?? row.createdAt)}</p></td>
         <td className="p-4"><strong>{row.recipientName}</strong>{row.recipientPhone && <p className="text-xs text-slate-500">{row.recipientPhone}</p>}</td>
         <td className="p-4">{row.storeName}<p className="text-xs text-slate-500">{row.warehouseName}</p></td>
-        <td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
+        <td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusClass(row.status)}`}>{statusLabel(row.status, row.fulfillmentMode)}</span></td>
         <td className="p-4 text-right"><button onClick={() => void open(row)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></td>
       </tr>)}</tbody>
     </table></div></div>
@@ -316,7 +320,37 @@ function Detail({ summary, detail, canManage, close, print, download, act }: {
 }) {
   useEscapeClose(close)
   const lines = Array.isArray(detail?.lines) ? detail.lines as JsonMap[] : []
-  return <div className="fixed inset-0 z-[75] overflow-y-auto bg-slate-950/65 p-4"><article className="mx-auto my-5 max-w-4xl rounded-3xl bg-white p-6"><div className="flex justify-between"><div><p className="text-xs font-black uppercase text-blue-700">Surat Jalan</p><h2 className="mt-2 text-2xl font-black">{summary.deliveryNo}</h2><p className="text-sm text-slate-500">{summary.recipientName}{summary.deliveryAddress ? ` · ${summary.deliveryAddress}` : ''}</p></div><button onClick={close} className="rounded-xl bg-slate-100 p-2"><X className="h-5 w-5"/></button></div>{!detail ? <Loader2 className="mx-auto my-16 h-7 w-7 animate-spin"/> : <><div className="mt-5 overflow-x-auto rounded-2xl border"><table className="w-full min-w-[560px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Produk</th><th className="p-4">UOM</th><th className="p-4 text-right">Qty</th></tr></thead><tbody>{lines.map((line, index) => <tr key={index} className="border-t"><td className="p-4"><strong>{String(line.productName ?? '-')}</strong><p className="text-xs text-slate-500">{String(line.sku ?? '')}</p></td><td className="p-4">{String(line.uomName ?? '-')}</td><td className="p-4 text-right">{String(line.quantity ?? 0)}</td></tr>)}</tbody></table></div><div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={download} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 px-4 font-black text-blue-700"><Download className="h-4 w-4"/>Unduh PDF</button><button onClick={print} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 font-black"><FileText className="h-4 w-4"/>Print Surat Jalan</button>{canManage && summary.status === 'READY' && <><button onClick={() => act('CANCEL')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan</button><button onClick={() => act('DISPATCH')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white"><Send className="h-4 w-4"/>Kirim</button></>}{canManage && summary.status === 'DISPATCHED' && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Tandai Terkirim</button>}</div></>}</article></div>
+  return <div className="fixed inset-0 z-[75] overflow-y-auto bg-slate-950/65 p-4">
+    <article className="mx-auto my-5 max-w-4xl rounded-3xl bg-white p-6">
+      <div className="flex justify-between">
+        <div>
+          <p className="text-xs font-black uppercase text-blue-700">Surat Jalan · {summary.fulfillmentMode === 'PICKUP' ? 'Ambil di toko' : 'Pengiriman'}</p>
+          <h2 className="mt-2 text-2xl font-black">{summary.deliveryNo}</h2>
+          <p className="text-sm text-slate-500">{summary.recipientName}{summary.deliveryAddress ? ` · ${summary.deliveryAddress}` : ''}</p>
+        </div>
+        <button onClick={close} className="rounded-xl bg-slate-100 p-2"><X className="h-5 w-5"/></button>
+      </div>
+      {!detail ? <Loader2 className="mx-auto my-16 h-7 w-7 animate-spin"/> : <>
+        <div className="mt-5 overflow-x-auto rounded-2xl border">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Produk</th><th className="p-4">UOM</th><th className="p-4 text-right">Qty</th></tr></thead>
+            <tbody>{lines.map((line, index) => <tr key={index} className="border-t"><td className="p-4"><strong>{String(line.productName ?? '-')}</strong><p className="text-xs text-slate-500">{String(line.sku ?? '')}</p></td><td className="p-4">{String(line.uomName ?? '-')}</td><td className="p-4 text-right">{String(line.quantity ?? 0)}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button onClick={download} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 px-4 font-black text-blue-700"><Download className="h-4 w-4"/>Unduh PDF</button>
+          <button onClick={print} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 font-black"><FileText className="h-4 w-4"/>Print Surat Jalan</button>
+          {canManage && summary.status === 'READY' && <>
+            <button onClick={() => act('CANCEL')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan</button>
+            {summary.fulfillmentMode === 'PICKUP'
+              ? <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Sudah diserahkan</button>
+              : <button onClick={() => act('DISPATCH')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white"><Send className="h-4 w-4"/>Kirim</button>}
+          </>}
+          {canManage && summary.status === 'DISPATCHED' && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Tandai Terkirim</button>}
+        </div>
+      </>}
+    </article>
+  </div>
 }
 
 function ActionDialog({ session, summary, action, close, complete }: {
@@ -348,5 +382,9 @@ function ActionDialog({ session, summary, action, close, complete }: {
       setBusy(false)
     }
   }
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-7"><div className="flex justify-between"><h2 className="text-xl font-black">{action === 'DISPATCH' ? 'Kirim pesanan sekarang?' : action === 'DELIVER' ? 'Pesanan sudah diterima?' : 'Batalkan Surat Jalan?'}</h2><button onClick={close}><X className="h-5 w-5"/></button></div>{action === 'CANCEL' && <textarea rows={4} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border p-3"/>}{error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-rose-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border px-5 font-black">Kembali</button><button onClick={() => void submit()} disabled={busy || (action === 'CANCEL' && reason.trim().length < 3)} className="min-h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:bg-slate-300">{busy ? 'Memproses...' : 'Konfirmasi'}</button></div></section></div>
+  const title = action === 'DISPATCH' ? 'Kirim pesanan sekarang?'
+    : action === 'DELIVER' && summary.fulfillmentMode === 'PICKUP'
+      ? 'Barang sudah diserahkan?'
+      : action === 'DELIVER' ? 'Pesanan sudah diterima?' : 'Batalkan Surat Jalan?'
+  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-7"><div className="flex justify-between"><h2 className="text-xl font-black">{title}</h2><button onClick={close}><X className="h-5 w-5"/></button></div>{action === 'CANCEL' && <textarea rows={4} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border p-3"/>}{error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-rose-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border px-5 font-black">Kembali</button><button onClick={() => void submit()} disabled={busy || (action === 'CANCEL' && reason.trim().length < 3)} className="min-h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:bg-slate-300">{busy ? 'Memproses...' : 'Konfirmasi'}</button></div></section></div>
 }

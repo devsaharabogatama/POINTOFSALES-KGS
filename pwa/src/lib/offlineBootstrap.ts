@@ -25,6 +25,7 @@ export type OfflineOperationalScopeInput = {
     storeName: string
     hiddenFeatureKeys: string[]
   }
+  deliveryDocumentCreationPolicy: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
   warehouse: {
     id: string
     storeId: string | null
@@ -164,6 +165,7 @@ export async function retainOfflineOperationalScope(
     terminalCode: input.terminal.code,
     terminalName: input.terminal.name,
     hiddenFeatureKeys: input.terminal.hiddenFeatureKeys,
+    deliveryDocumentCreationPolicy: input.deliveryDocumentCreationPolicy,
     warehouseId: input.warehouse.id,
     warehouseName: input.warehouse.name,
     cashierId: input.cashierId,
@@ -232,6 +234,10 @@ export async function restoreOfflineColdStart(
           name: scope.warehouseName,
         },
       ],
+      deliveryDocumentCreationPolicy:
+        scope.deliveryDocumentCreationPolicy === 'ALL_POSTED_SALES'
+          ? 'ALL_POSTED_SALES'
+          : 'DELIVERY_ONLY',
       openSession: cashierSession,
     },
     catalog: catalogFromSnapshot(cache.snapshot),

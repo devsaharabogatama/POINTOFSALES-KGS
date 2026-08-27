@@ -172,6 +172,12 @@ Posting opname membuat Penyesuaian Stok kanonis.
 5. Konfirmasikan terkirim setelah penerima menerima barang.
 
 Perubahan status Surat Jalan tidak mengurangi stok untuk kedua kalinya.
+
+Owner/Admin dapat mengatur **Pembuatan Surat Jalan otomatis** di **Platform →
+Profil Perusahaan**. Pilihan **Hanya transaksi Perlu dikirim** mempertahankan
+alur biasa. Pilihan **Semua transaksi final** juga membuat Surat Jalan untuk
+pengambilan di toko. Surat Jalan Pickup diselesaikan dengan tombol **Sudah
+diserahkan** dan tidak melewati status Dalam perjalanan.
 Nama berkas PDF diawali nama pelanggan, misalnya
 `PT-MAJU-JAYA_SJ-20260820-000007.pdf`, agar mudah dikelompokkan.
 
@@ -634,6 +640,12 @@ aktif dapat ditolak.
 10. Setelah sukses, keranjang kembali ke awal.
 11. Buka nota/invoice pada tab baru dan cetak.
 12. Untuk transaksi Delivery, cetak Surat Jalan.
+
+Jika kebijakan **Buat Surat Jalan untuk semua transaksi** di Profil Perusahaan
+aktif, pilihan **Perlu dikirim** pada transaksi baru otomatis tercentang. Data
+penerima, telepon, dan alamat diambil dari Customer yang dipilih bila tersedia.
+Kasir tetap dapat mengubah pilihan serta data pengiriman sebelum menyimpan atau
+mem-posting transaksi; draft lama mempertahankan pilihannya.
 
 Posting bersifat atomik dan idempoten. Stok/FIFO dan jurnal dihitung server, bukan dari nilai buatan client.
 

@@ -15,6 +15,7 @@ export type BrandingProfile = {
   showBankAccountOnInvoice: boolean
   invoiceDateDisplayMode: 'ORDER_DATE' | 'POSTED_DATE'
   deliverySignatureTemplate: 'WAREHOUSE' | 'STORE'
+  deliveryDocumentCreationPolicy: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
   logoObjectPath: string | null
   logoPublicUrl: string | null
   logoMimeType: string | null
@@ -83,6 +84,7 @@ function rpcErrorCode(message: string): ApiRouteError {
     'COMPANY_BANK_ACCOUNT_REQUIRED',
     'INVOICE_DATE_DISPLAY_MODE_INVALID',
     'DELIVERY_SIGNATURE_TEMPLATE_INVALID',
+    'DELIVERY_DOCUMENT_CREATION_POLICY_INVALID',
   ]
   const code = codes.find((candidate) => message.includes(candidate))
   if (!code) return new ApiRouteError('COMPANY_BRANDING_OPERATION_FAILED', 500)
@@ -234,6 +236,7 @@ export async function saveCompanyDocumentVisibility(input: {
   showBankAccountOnInvoice: boolean
   invoiceDateDisplayMode: 'ORDER_DATE' | 'POSTED_DATE'
   deliverySignatureTemplate: 'WAREHOUSE' | 'STORE'
+  deliveryDocumentCreationPolicy: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
 }) {
   const saved = await input.caller.client.rpc(
     'save_company_document_visibility',
@@ -244,6 +247,7 @@ export async function saveCompanyDocumentVisibility(input: {
       p_show_bank_account_on_invoice: input.showBankAccountOnInvoice,
       p_invoice_date_display_mode: input.invoiceDateDisplayMode,
       p_delivery_signature_template: input.deliverySignatureTemplate,
+      p_delivery_document_creation_policy: input.deliveryDocumentCreationPolicy,
     },
   )
   if (saved.error) throw rpcErrorCode(saved.error.message)

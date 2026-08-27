@@ -822,3 +822,23 @@ User kemudian mengonfirmasi final controlled retry dan kedua postflight PASS:
 supported HOLD dan open exception nol, serta balance/duplicate/coverage bersih.
 Database closure F4B dinyatakan PASS; yang tersisa hanya authenticated smoke
 Cash/TEMPO/Receipt/report dan uji Automatic terbatas pada Company dummy.
+
+## Update 2026-08-27 — Policy Surat Jalan Otomatis Local Ready
+
+- Company dapat memilih di **Platform → Profil Perusahaan** apakah Surat Jalan
+  hanya dibuat untuk transaksi `DELIVERY` atau untuk seluruh Sale baru yang
+  `POSTED`. Default tetap `DELIVERY_ONLY`; histori tidak dibackfill.
+- Surat Jalan Pickup menyimpan intent immutable dan memakai alur **Siap
+  diserahkan → Sudah diserahkan**. Delivery tetap **Siap dikirim → Dalam
+  perjalanan → Terkirim**.
+- Migration additive `20260827153000` menjaga overload RPC lama, optimistic
+  version, tenant/role guard, exact one-document-per-Sale, serta no-double-effect
+  terhadap Stock, Payment, Financial Event, dan Journal.
+- Backoffice lint dan production build PASS (76 route). SQL rollout dan smoke
+  authenticated masih manual sesuai
+  `docs/runbooks/COMPANY_AUTOMATIC_DELIVERY_DOCUMENT_POLICY_ROLLOUT.md`.
+- User kemudian mengonfirmasi rangkaian SQL policy aman. POS kini membaca policy
+  Company melalui RPC branding: transaksi baru otomatis mencentang **Perlu
+  dikirim** saat mode `ALL_POSTED_SALES`, sementara draft existing tetap memakai
+  intent tersimpan. Nilai opsional Customer yang tidak tersedia dibiarkan
+  kosong. PWA lint dan production build PASS; smoke browser tetap manual.

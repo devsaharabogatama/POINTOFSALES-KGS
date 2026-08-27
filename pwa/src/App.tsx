@@ -528,6 +528,8 @@ export default function App() {
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
   const offlineBootstrapAttemptRef = useRef('')
   const pricePreviewRequestRef = useRef(0)
+  const deliveryPolicyContextRef = useRef('')
+  const automaticDeliveryCustomerRef = useRef('')
 
   useEffect(() => {
     window.localStorage.setItem('mads-pos-workspace-layout', workspaceLayout)
@@ -574,6 +576,38 @@ export default function App() {
   const activeCustomer = catalog.customers.find(
     (item) => item.id === customerId,
   )
+
+  useEffect(() => {
+    if (!companyId || !bootstrap) return
+    const policy = bootstrap.deliveryDocumentCreationPolicy ?? 'DELIVERY_ONLY'
+    const contextKey = `${companyId}:${policy}`
+    if (deliveryPolicyContextRef.current === contextKey) return
+    deliveryPolicyContextRef.current = contextKey
+    automaticDeliveryCustomerRef.current = ''
+    setFulfillmentMode(policy === 'ALL_POSTED_SALES' ? 'DELIVERY' : 'PICKUP')
+    setDeliveryRecipientName('')
+    setDeliveryRecipientPhone('')
+    setDeliveryAddress('')
+    setDeliveryScheduledAt('')
+    setDeliveryNotes('')
+    setDeliveryFeeAmount('0')
+    setDeliveryFeeInvoiceDisplayMode('SHOW_SEPARATE')
+    setDeliveryDetailsOpen(false)
+  }, [bootstrap, companyId])
+
+  useEffect(() => {
+    if (
+      bootstrap?.deliveryDocumentCreationPolicy !== 'ALL_POSTED_SALES' ||
+      fulfillmentMode !== 'DELIVERY' ||
+      !activeCustomer
+    ) return
+    const customerKey = `${companyId}:${activeCustomer.id}`
+    if (automaticDeliveryCustomerRef.current === customerKey) return
+    automaticDeliveryCustomerRef.current = customerKey
+    setDeliveryRecipientName(activeCustomer.isWalkIn ? '' : activeCustomer.name)
+    setDeliveryRecipientPhone(activeCustomer.phone)
+    setDeliveryAddress(activeCustomer.address)
+  }, [activeCustomer, bootstrap?.deliveryDocumentCreationPolicy, companyId, fulfillmentMode])
   const automaticPricelist = catalog.pricelists.find(
     (item) =>
       item.id === activeCustomer?.defaultPricelistId ||
@@ -889,6 +923,8 @@ export default function App() {
         warehouse: activeWarehouse,
         cashierSession,
         cashierId: session.user.id,
+        deliveryDocumentCreationPolicy:
+          bootstrap?.deliveryDocumentCreationPolicy ?? 'DELIVERY_ONLY',
         catalogVersion: cache.snapshot.catalogVersion,
       })
     },
@@ -896,6 +932,7 @@ export default function App() {
       activeCompany,
       activeTerminal,
       activeWarehouse,
+      bootstrap?.deliveryDocumentCreationPolicy,
       cashierSession,
       session,
     ],
@@ -2657,10 +2694,14 @@ export default function App() {
     setDueDate('')
     setDueDateIsManual(false)
     setRoundingDirection('NONE')
-    setFulfillmentMode('PICKUP')
-    setDeliveryRecipientName('')
-    setDeliveryRecipientPhone('')
-    setDeliveryAddress('')
+    const automaticDelivery =
+      bootstrap?.deliveryDocumentCreationPolicy === 'ALL_POSTED_SALES'
+    setFulfillmentMode(automaticDelivery ? 'DELIVERY' : 'PICKUP')
+    setDeliveryRecipientName(
+      automaticDelivery && walkIn && !walkIn.isWalkIn ? walkIn.name : '',
+    )
+    setDeliveryRecipientPhone(automaticDelivery ? walkIn?.phone ?? '' : '')
+    setDeliveryAddress(automaticDelivery ? walkIn?.address ?? '' : '')
     setDeliveryScheduledAt('')
     setDeliveryNotes('')
     setDeliveryFeeAmount('0')

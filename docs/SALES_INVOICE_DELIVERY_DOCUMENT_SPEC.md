@@ -263,3 +263,27 @@ memberi Kasir akses edit Customer.
 Validasi nama tetap server-authoritative untuk online maupun offline. Surat
 Jalan name-only tetap dibuat atomically bersama Sale POSTED dan tidak mengubah
 Stock, Payment, AR, Finance, lifecycle, atau idempotency dokumen.
+
+## 13. Revisi Approved 2026-08-27 — Policy Surat Jalan Otomatis
+
+Company dapat memilih policy pembuatan Surat Jalan:
+
+- `DELIVERY_ONLY` sebagai default kompatibel: hanya Sale dengan intent
+  `DELIVERY` yang membuat Surat Jalan;
+- `ALL_POSTED_SALES`: setiap Sale baru yang final membuat tepat satu Surat
+  Jalan, termasuk `PICKUP`.
+
+Policy dibaca server ketika Sale diposting dan tidak boleh ditentukan client.
+Perubahan setting tidak membackfill Sale historis. Retry tetap memakai dokumen
+yang sama dan tidak membuat nomor kedua. Untuk Pickup, identitas penerima
+diambil dari snapshot Customer yang sudah ada; telepon dan alamat boleh kosong
+dan master Customer tidak dimutasi.
+
+Lifecycle dibedakan menurut intent yang disnapshot pada Surat Jalan:
+
+- Delivery: `READY -> DISPATCHED -> DELIVERED`;
+- Pickup: `READY -> DELIVERED` melalui tindakan **Sudah diserahkan**;
+- Cancel hanya dari `READY`, wajib alasan, dan tidak membatalkan Sale.
+
+Pembuatan, cetak, handover, dispatch, delivered, dan cancel Surat Jalan tidak
+membuat Stock Movement, Payment, Financial Event, atau Journal tambahan.

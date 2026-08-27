@@ -14,6 +14,7 @@ type BrandingProfile = {
   showBankAccountOnInvoice: boolean
   invoiceDateDisplayMode: 'ORDER_DATE' | 'POSTED_DATE'
   deliverySignatureTemplate: 'WAREHOUSE' | 'STORE'
+  deliveryDocumentCreationPolicy: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
   logoObjectPath: string | null
   logoPublicUrl: string | null
   logoMimeType: string | null
@@ -52,6 +53,7 @@ function friendlyError(code?: string) {
     COMPANY_BANK_ACCOUNT_REQUIRED: 'Lengkapi rekening perusahaan sebelum menampilkannya pada Invoice.',
     INVOICE_DATE_DISPLAY_MODE_INVALID: 'Pilihan tanggal Invoice tidak valid.',
     DELIVERY_SIGNATURE_TEMPLATE_INVALID: 'Pilihan template Surat Jalan tidak valid.',
+    DELIVERY_DOCUMENT_CREATION_POLICY_INVALID: 'Pilihan pembuatan Surat Jalan tidak valid.',
     MASTER_VERSION_CONFLICT: 'Logo berubah di sesi lain. Muat ulang sebelum mencoba kembali.',
     ACTIVE_COMPANY_NOT_FOUND: 'Pilih Company aktif terlebih dahulu.',
     ACTIVE_COMPANY_BRANDING_MISMATCH: 'Branding tidak cocok dengan Company aktif.',
@@ -170,6 +172,7 @@ export function CompanyBrandingView({
     showBankAccountOnInvoice?: boolean
     invoiceDateDisplayMode?: 'ORDER_DATE' | 'POSTED_DATE'
     deliverySignatureTemplate?: 'WAREHOUSE' | 'STORE'
+    deliveryDocumentCreationPolicy?: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
   }) {
     if (!branding || !canManage || saving) return
     setSaving(true)
@@ -185,6 +188,7 @@ export function CompanyBrandingView({
           showBankAccountOnInvoice: input.showBankAccountOnInvoice ?? branding.showBankAccountOnInvoice,
           invoiceDateDisplayMode: input.invoiceDateDisplayMode ?? branding.invoiceDateDisplayMode,
           deliverySignatureTemplate: input.deliverySignatureTemplate ?? branding.deliverySignatureTemplate,
+          deliveryDocumentCreationPolicy: input.deliveryDocumentCreationPolicy ?? branding.deliveryDocumentCreationPolicy,
         }),
       })
       const payload = await response.json() as Payload
@@ -270,6 +274,15 @@ export function CompanyBrandingView({
           </select>
         </div>
 
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <label htmlFor="delivery-document-creation-policy" className="text-sm font-black text-slate-900">Pembuatan Surat Jalan otomatis</label>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Mode default hanya membuat Surat Jalan saat transaksi ditandai Perlu dikirim. Mode semua transaksi juga membuat Surat Jalan untuk pengambilan di toko, tanpa menambah pergerakan stok atau jurnal.</p>
+          <select id="delivery-document-creation-policy" value={branding?.deliveryDocumentCreationPolicy ?? 'DELIVERY_ONLY'} onChange={(event) => void saveDocumentVisibility({ deliveryDocumentCreationPolicy: event.target.value as 'DELIVERY_ONLY' | 'ALL_POSTED_SALES' })} disabled={!branding || !canManage || saving} className="mt-3 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 disabled:opacity-50">
+            <option value="DELIVERY_ONLY">Hanya transaksi Perlu dikirim</option>
+            <option value="ALL_POSTED_SALES">Semua transaksi final</option>
+          </select>
+        </div>
+
         {!canManage && <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />Logo hanya dapat diubah Owner atau Admin Company.</div>}
 
         {canManage && <div className="mt-6 flex flex-wrap justify-end gap-3">
@@ -290,6 +303,7 @@ export function CompanyBrandingView({
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Rekening Invoice</dt><dd className="font-bold text-slate-800">{(branding?.showBankAccountOnInvoice ?? false) ? 'Ditampilkan' : 'Disembunyikan'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Tanggal Invoice</dt><dd className="font-bold text-slate-800">{(branding?.invoiceDateDisplayMode ?? 'ORDER_DATE') === 'POSTED_DATE' ? 'Tanggal Transaksi' : 'Tanggal Order'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Template Surat Jalan</dt><dd className="font-bold text-slate-800">{(branding?.deliverySignatureTemplate ?? 'WAREHOUSE') === 'STORE' ? 'Toko' : 'Gudang'}</dd></div>
+          <div className="flex justify-between gap-4"><dt className="text-slate-500">Pembuatan Surat Jalan</dt><dd className="text-right font-bold text-slate-800">{(branding?.deliveryDocumentCreationPolicy ?? 'DELIVERY_ONLY') === 'ALL_POSTED_SALES' ? 'Semua transaksi' : 'Hanya pengiriman'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Format</dt><dd className="font-bold text-slate-800">{branding?.logoMimeType?.replace('image/', '').toUpperCase() ?? '—'}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Ukuran</dt><dd className="font-bold text-slate-800">{formatBytes(branding?.logoSizeBytes ?? null)}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-slate-500">Versi logo</dt><dd className="font-bold text-slate-800">{branding?.logoVersion ?? 0}</dd></div>

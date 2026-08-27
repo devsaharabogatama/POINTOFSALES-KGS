@@ -160,6 +160,7 @@ export interface OfflineOperationalScopeRecord {
   terminalCode: string;
   terminalName: string;
   hiddenFeatureKeys?: string[];
+  deliveryDocumentCreationPolicy?: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES';
   warehouseId: string;
   warehouseName: string;
   cashierId: string;

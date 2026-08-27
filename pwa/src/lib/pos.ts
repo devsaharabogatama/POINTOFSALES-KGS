@@ -505,6 +505,7 @@ export type BootstrapData = {
   terminals: TerminalOption[]
   warehouses: WarehouseOption[]
   openSession: CashierSession | null
+  deliveryDocumentCreationPolicy: 'DELIVERY_ONLY' | 'ALL_POSTED_SALES'
 }
 
 export type CatalogData = {
@@ -653,6 +654,7 @@ export async function loadBootstrap(
     terminalsResult,
     warehousesResult,
     sessionResult,
+    brandingResult,
   ] = await Promise.all([
     supabase
       .from('store_memberships')
@@ -686,6 +688,7 @@ export async function loadBootstrap(
       .eq('cashier_id', userId)
       .eq('status', 'OPEN')
       .maybeSingle(),
+    supabase.rpc('get_company_branding'),
   ])
   for (const result of [
     membershipsResult,
@@ -693,6 +696,7 @@ export async function loadBootstrap(
     terminalsResult,
     warehousesResult,
     sessionResult,
+    brandingResult,
   ]) {
     throwIfError(result.error)
   }
@@ -733,10 +737,15 @@ export async function loadBootstrap(
     name: row.name,
   }))
   const open = sessionResult.data
+  const branding = (brandingResult.data ?? {}) as Record<string, unknown>
 
   return {
     terminals,
     warehouses,
+    deliveryDocumentCreationPolicy:
+      branding.deliveryDocumentCreationPolicy === 'ALL_POSTED_SALES'
+        ? 'ALL_POSTED_SALES'
+        : 'DELIVERY_ONLY',
     openSession: open
       ? {
           id: open.id,

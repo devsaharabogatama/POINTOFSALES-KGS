@@ -1758,3 +1758,12 @@ SQL dan authenticated name-only delivery smoke masih manual.
 4. test harness tenant + RPC concurrency yang akan dipakai semua gate.
 
 Jangan mulai dari mempercantik halaman Produk atau menambah menu POS. Kedua UI tersebut baru aman disambungkan setelah contract G1–G3 stabil.
+### Policy Surat Jalan Otomatis per Company (27 Agustus 2026)
+
+Policy additive `20260827153000` mempertahankan default `DELIVERY_ONLY` dan
+membuka opt-in `ALL_POSTED_SALES` untuk membuat satu Surat Jalan immutable pada
+setiap Sale baru yang final. Pickup memakai lifecycle `READY -> DELIVERED`
+melalui tindakan **Sudah diserahkan**; Delivery tetap dispatch lalu delivered.
+Tidak ada backfill Sale historis dan tidak ada efek Stock, Payment, Financial
+Event, atau Journal tambahan. Status local-ready; rollout Supabase dan smoke
+authenticated masih manual.
