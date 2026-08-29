@@ -1854,6 +1854,13 @@ export default function App() {
     if (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid) {
       throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
     }
+    if (currentDraft) {
+      await acquireSaleDraftLock(
+        currentDraft.salesId,
+        cashierSession.id,
+        false,
+      )
+    }
     const saved = await saveSaleDraft({
       draft: currentDraft,
       clientTransactionId,
@@ -2604,17 +2611,23 @@ export default function App() {
             (item) => item.id === leg.paymentMethodId,
           )
           if (!method) throw new Error('ELIGIBLE_PAYMENT_METHOD_REQUIRED')
-          const amount =
-            paymentLegs.length === 1 && leg.amount.trim() === ''
-              ? pricedDraft.grandTotalAfterRounding
-              : Number(leg.amount || 0)
+          const rawAmount = Number(leg.amount || 0)
+          const automaticSinglePayment =
+            paymentLegs.length === 1 && !(rawAmount > 0)
+          const amount = automaticSinglePayment
+            ? pricedDraft.grandTotalAfterRounding
+            : rawAmount
           if (!(amount > 0)) throw new Error('PAYMENT_LEG_AMOUNT_REQUIRED')
           const supportsOverpayment = ['CASH', 'TRANSFER'].includes(
             method.methodType,
           )
+          const tenderWasFollowingAmount =
+            leg.tenderedAmount.trim() === '' || leg.tenderedAmount === leg.amount
           const tenderedAmount =
             supportsOverpayment
-              ? Number(leg.tenderedAmount || amount)
+              ? automaticSinglePayment && tenderWasFollowingAmount
+                ? amount
+                : Number(leg.tenderedAmount || amount)
               : amount
           if (tenderedAmount < amount) {
             throw new Error('PAYMENT_TENDER_INSUFFICIENT')

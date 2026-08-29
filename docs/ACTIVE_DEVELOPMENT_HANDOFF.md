@@ -7498,3 +7498,56 @@ Eksekusi hanya setelah backup dan maintenance window.
   Next safe step: hard refresh dan authenticated smoke Detail, Unduh PDF, serta
   Print Invoice. Jika HMR tidak mengambil patch, restart `npm run dev` Backoffice;
   bersihkan `.next` hanya setelah dev server dihentikan lalu jalankan build ulang.
+
+### 2026-08-29 — POS SINGLE-PAYMENT ZERO-STATE RACE FIX
+
+- POS dapat menampilkan `PAYMENT_LEG_AMOUNT_REQUIRED` walaupun hanya memakai
+  satu metode pembayaran otomatis. State nominal sempat menjadi string `"0"`
+  sebelum repricing Draft selesai; normalisasi lama hanya memulihkan string
+  kosong dan memperlakukan `"0"` sebagai input final.
+- Normalisasi Confirm sekarang memakai total final hasil repricing untuk satu
+  payment leg read-only yang masih kosong/nonpositif. Tender ikut diselaraskan
+  hanya bila sebelumnya memang mengikuti nominal payment leg.
+- Boundary tidak dilonggarkan untuk split payment: setiap leg tetap harus
+  positif, metode tetap unik, total leg wajib sama dengan grand total, dan
+  tender Cash/Transfer tetap tidak boleh kurang.
+- Evidence lokal: PWA `npm run lint` PASS; PWA `npm run build` PASS. Tidak ada
+  schema, migration, database, atau deployment yang diubah.
+- Manual smoke: transaksi non-TEMPO satu metode pembayaran tanpa menyentuh
+  field Bagian Tagihan; lalu split payment dengan satu leg kosong harus tetap
+  ditolak.
+
+### 2026-08-29 — POS RESUMED-DRAFT LOCK RENEWAL FIX
+
+- Konfirmasi Draft yang dilanjutkan dapat gagal dengan
+  `SALE_DRAFT_EDIT_LOCK_REQUIRED` saat lock lima menit milik sesi aktif kosong
+  atau heartbeat terlewat karena tab sleep/diam.
+- `persistDraft` sekarang melakukan guarded acquire/renew lock untuk Draft lama
+  tepat sebelum mutation. Lock kasir/sesi lain tetap ditolak oleh RPC server;
+  tidak ada takeover otomatis dan tidak ada pelemahan optimistic concurrency.
+- Perubahan berlaku untuk Simpan Draft dan rangkaian Confirm yang sama-sama
+  melewati `persistDraft`; Draft baru tetap mengikuti jalur creation lama.
+- Evidence lokal: PWA `npm run lint` PASS dan `npm run build` PASS. Tidak ada
+  schema, migration, database, atau deployment yang diubah.
+- Manual smoke: buka Draft lama dari sesi aktif, edit, tunggu/reload bila perlu,
+  lalu Confirm; lakukan juga negative test dengan Draft yang sedang dikunci
+  sesi lain dan pastikan tetap ditolak.
+
+### 2026-08-29 — CASH SESSION CLOSE ASYNC FINANCE FORWARD-FIX LOCAL-READY
+
+- Live PWA menolak Tutup Sesi dengan `PENDING_CASH_PAYMENT_VERIFICATION`.
+  Guard tersebut memaksa Finance standby memverifikasi tiap Cash payment dan
+  tidak berasal dari keputusan operasional user.
+- Forward migration `20260829130000` menghapus hanya dependency real-time itu.
+  Wrapper tetap memanggil private close chain ODR-5D/ODR-4C sehingga close
+  count, expected/difference, Demand, dan Stock Request sesi tetap berjalan.
+- Cash drawer movement `SALE_PAYMENT_INTENT`, pending verification, audit,
+  controlled posting, Event, Journal, serta histori tidak dihapus atau diubah.
+  Hasil close hanya ditambah metadata jumlah verification yang ditunda.
+- Ditambahkan SELECT-only preflight/postflight dan runbook
+  `CASH_SESSION_CLOSE_ASYNC_PAYMENT_VERIFICATION.md`. Tidak ada database atau
+  deployment dijalankan agent.
+- Manual gate: preflight -> migration 130000 -> postflight -> hard refresh PWA
+  -> transaksi Cash -> Tutup Sesi tanpa tindakan Finance -> cek expected/actual/
+  difference dan Stock Request -> cek payment tetap tersedia untuk review
+  Finance kemudian. Stop pada BLOCKER/FAIL/SQL error.

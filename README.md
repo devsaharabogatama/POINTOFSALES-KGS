@@ -28,6 +28,11 @@ dan exact retry. Verifikasi hanya membuat Event `HOLD`; jurnal tetap melalui
 controlled Posting Queue dan policy Company tidak diubah. Tahap ini tidak
 menambah migration. Rollout manual mengikuti
 [runbook ODR-6C.2](docs/runbooks/ODR6C2_FINANCE_PAYMENT_VERIFICATION_UI_CUTOVER.md).
+Forward-fix Tutup Sesi asynchronous-payment `20260829130000` juga **local-ready**:
+kasir tidak lagi menunggu Finance memverifikasi setiap pembayaran untuk menutup
+sesi. Cash drawer movement, actual count/difference, antrean verifikasi, audit,
+dan controlled Journal tetap dipertahankan. Rollout manual mengikuti
+[runbook Cash Session Close](docs/runbooks/CASH_SESSION_CLOSE_ASYNC_PAYMENT_VERIFICATION.md).
 Closing database gate ODR-6C.2 sudah dikonfirmasi seluruhnya PASS. ODR-6D E2E
 preflight kemudian membuktikan tiga blocker consumer legacy pada Return,
 AR/Statement, dan TEMPO Collection. Dua forward-fix sekarang **local-ready;
