@@ -6,9 +6,21 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     await requireActiveCompany(caller)
-    const { data, error } = await caller.client.rpc('get_purchase_supplier_orders')
-    if (error) throwDatabaseError(error)
-    return Response.json(data ?? {})
+    const [ordersResult, demandResult] = await Promise.all([
+      caller.client.rpc('get_purchase_supplier_orders'),
+      caller.client.rpc('get_purchase_procurement_demands'),
+    ])
+    if (ordersResult.error) throwDatabaseError(ordersResult.error)
+    if (demandResult.error) throwDatabaseError(demandResult.error)
+    const orders = (ordersResult.data ?? {}) as Record<string, unknown>
+    const demand = (demandResult.data ?? {}) as Record<string, unknown>
+    return Response.json({
+      ...orders,
+      procurementWorkspaceVersion: 1,
+      procurementDemands: demand.demands ?? [],
+      procurementDemandLines: demand.lines ?? [],
+      procurementAmendments: demand.amendments ?? [],
+    })
   } catch (error) { return apiError(error) }
 }
 

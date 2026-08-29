@@ -22,13 +22,43 @@ export async function GET(request: Request) {
     if (dateFrom && dateTo && dateFrom > dateTo) {
       throw new ApiRouteError('INVALID_DELIVERY_DATE_RANGE', 400)
     }
-    const { data, error } = await caller.client.rpc('get_inventory_delivery_documents', {
-      p_date_from: dateFrom,
-      p_date_to: dateTo,
+    const [documentResult, workspaceResult] = await Promise.all([
+      caller.client.rpc('get_inventory_delivery_documents', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+      }),
+      caller.client.rpc('get_inventory_delivery_dispatch_workspace', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+      }),
+    ])
+    if (documentResult.error) throw documentResult.error
+    if (workspaceResult.error) throw workspaceResult.error
+    const payload = documentResult.data as { data?: Array<Record<string, unknown>> } | null
+    const workspace = workspaceResult.data as {
+      deliveries?: Array<Record<string, unknown>>
+      lines?: Array<Record<string, unknown>>
+    } | null
+    const canonicalById = new Map(
+      (workspace?.deliveries ?? []).map((row) => [String(row.id), row]),
+    )
+    const rows = (payload?.data ?? []).map((row) => {
+      const canonical = canonicalById.get(String(row.deliveryDocumentId))
+      return canonical ? {
+        ...row,
+        reservationId: canonical.reservation_id,
+        reservationStatus: canonical.reservation_status,
+        dispatchVersion: canonical.dispatch_version,
+        totalReservedBaseQty: canonical.total_reserved_base_qty,
+        totalDispatchedBaseQty: canonical.reservation_dispatched_base_qty,
+      } : { ...row, reservationId: null }
     })
-    if (error) throw error
-    const payload = data as { data?: unknown[] } | null
-    return Response.json({ companyId, data: payload?.data ?? [] })
+    return Response.json({
+      companyId,
+      dispatchWorkspaceVersion: 1,
+      data: rows,
+      dispatchLines: workspace?.lines ?? [],
+    })
   } catch (error) {
     return apiError(error)
   }

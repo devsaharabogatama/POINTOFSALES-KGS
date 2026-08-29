@@ -1,1 +1,20 @@
 @import "tailwindcss";
+.pos-draft-scheduled,
+.pos-draft-active {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.pos-draft-scheduled {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.pos-draft-active {
+  background: #ecfdf5;
+  color: #047857;
+}

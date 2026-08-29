@@ -13,7 +13,14 @@ type DetailPayload = { invoice?: JsonMap; error?: string }
 function headers(session: Session, json = false) { return { Authorization: `Bearer ${session.access_token}`, ...(json ? { 'Content-Type': 'application/json' } : {}) } }
 function money(value: number) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value || 0) }
 function dateTime(value?: string | null) { return value ? new Date(value).toLocaleString('id-ID') : '-' }
-function friendly(code?: string) { return ({ SALES_DOCUMENT_NOT_FOUND: 'Invoice tidak ditemukan atau tidak dapat diakses.', SALES_INVOICE_NOT_FOUND: 'Invoice final belum tersedia.', CUSTOM_PERMISSION_DENIED: 'Anda tidak diizinkan mengakses Invoice.', FORBIDDEN: 'Anda tidak diizinkan mengakses Invoice.' } as Record<string, string>)[code ?? ''] ?? code ?? 'Operasi Invoice gagal.' }
+function friendly(code?: string) { return ({ SALES_DOCUMENT_NOT_FOUND: 'Invoice tidak ditemukan atau tidak dapat diakses.', SALES_INVOICE_NOT_FOUND: 'Invoice final belum tersedia.', CUSTOM_PERMISSION_DENIED: 'Anda tidak diizinkan mengakses Invoice.', FORBIDDEN: 'Anda tidak diizinkan mengakses Invoice.', INVALID_API_RESPONSE: 'Layanan Invoice mengembalikan respons yang tidak valid. Muat ulang aplikasi lalu coba lagi.' } as Record<string, string>)[code ?? ''] ?? code ?? 'Operasi Invoice gagal.' }
+async function readApiJson<T extends { error?: string }>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(friendly('INVALID_API_RESPONSE'))
+  }
+  return await response.json() as T
+}
 
 export function SalesDocumentView({ session, companyId, notify }: { session: Session; companyId: string; notify: (message: string) => void }) {
   const [documents, setDocuments] = useState<InvoiceSummary[]>([])
@@ -36,7 +43,7 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
           headers: headers(session), cache: 'no-store',
         }),
       ])
-      const result = await response.json() as { data?: InvoiceSummary[]; error?: string }
+      const result = await readApiJson<{ data?: InvoiceSummary[]; error?: string }>(response)
       if (!response.ok) throw new Error(friendly(result.error))
       setDocuments(result.data ?? [])
       if (brandingResponse.ok) {
@@ -62,8 +69,10 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
   async function openDetail(document: InvoiceSummary) {
     setSelected(document); setDetail(null); setDetailLoading(true); setError('')
     try {
-      const response = await fetch(`/api/sales/documents/${document.salesId}`, { headers: headers(session) })
-      const result = await response.json() as DetailPayload
+      const response = await fetch(`/api/sales/documents?salesId=${encodeURIComponent(document.salesId)}`, {
+        headers: headers(session), cache: 'no-store',
+      })
+      const result = await readApiJson<DetailPayload>(response)
       if (!response.ok) throw new Error(friendly(result.error))
       setDetail(result)
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Detail Invoice gagal dimuat.'); setSelected(null) }
@@ -76,8 +85,8 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
         detail.invoice, showLogoOnDocuments, showStampOnDocuments,
         showBankAccountOnInvoice,
       )
-      const response = await fetch(`/api/sales/documents/${selected.salesId}`, { method: 'POST', headers: headers(session, true), body: JSON.stringify({ documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
-      const result = await response.json() as { error?: string }
+      const response = await fetch('/api/sales/documents', { method: 'POST', headers: headers(session, true), body: JSON.stringify({ salesId: selected.salesId, documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
+      const result = await readApiJson<{ error?: string }>(response)
       if (!response.ok) throw new Error(friendly(result.error))
       notify('Invoice dibuka di tab baru.')
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Invoice gagal dicetak.') }
@@ -90,8 +99,8 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
         showStampOnDocuments,
         showBankAccountOnInvoice,
       )
-      const response = await fetch(`/api/sales/documents/${selected.salesId}`, { method: 'POST', headers: headers(session, true), body: JSON.stringify({ documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
-      const result = await response.json() as { error?: string }
+      const response = await fetch('/api/sales/documents', { method: 'POST', headers: headers(session, true), body: JSON.stringify({ salesId: selected.salesId, documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })
+      const result = await readApiJson<{ error?: string }>(response)
       if (!response.ok) throw new Error(friendly(result.error))
       notify('Invoice berhasil diunduh.')
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Invoice gagal diunduh.') }

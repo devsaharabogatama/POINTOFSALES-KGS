@@ -341,6 +341,9 @@ export type SaleDraft = {
   clientTransactionId: string
   transactionAt: string
   transactionDateSource: 'SERVER_CREATED' | 'CASHIER_SELECTED'
+  orderTimingMode: 'IMMEDIATE' | 'BACKORDER' | 'SCHEDULED'
+  plannedOrderDate: string | null
+  operationalStatus: 'ACTIVE' | 'SCHEDULED'
   masterVersion: number
   grandTotalBeforeRounding: number
   roundingAdjustment: number
@@ -364,6 +367,10 @@ export type SaleDraftListItem = {
   createdAt: string
   transactionAt: string
   transactionDateSource: 'SERVER_CREATED' | 'CASHIER_SELECTED'
+  orderTimingMode: 'IMMEDIATE' | 'BACKORDER' | 'SCHEDULED'
+  plannedOrderDate: string | null
+  operationalStatus: 'ACTIVE' | 'SCHEDULED'
+  canPost: boolean
   updatedAt: string
   masterVersion: number
   grandTotal: number
@@ -375,6 +382,52 @@ export type SaleDraftListItem = {
   lockHeartbeatAt: string | null
   lockExpired: boolean
   payloadSnapshot: DbRow
+}
+
+export type SalesOrderReservationLine = {
+  id: string
+  salesId: string
+  productSku: string
+  productName: string
+  warehouseName: string
+  requestedBaseQuantity: number
+  reservedBaseQuantity: number
+  releasedBaseQuantity: number
+  dispatchedBaseQuantity: number
+  availableBaseQuantitySnapshot: number
+  shortageBaseQuantity: number
+}
+
+export type SalesOrderListItem = {
+  salesId: string
+  orderNo: string
+  storeId: string
+  storeName: string
+  customerId: string
+  customerName: string
+  orderTimingMode: 'IMMEDIATE' | 'BACKORDER' | 'SCHEDULED'
+  plannedOrderDate: string | null
+  orderRuntimeStatus:
+    | 'CONFIRMED'
+    | 'RESERVED'
+    | 'PARTIALLY_DISPATCHED'
+    | 'DISPATCHED'
+    | 'DELIVERED'
+  grandTotal: number
+  masterVersion: number
+  reservationVersion: number
+  reservationId: string
+  reservationStatus: string
+  totalReservedBaseQuantity: number
+  totalReleasedBaseQuantity: number
+  totalDispatchedBaseQuantity: number
+  confirmedAt: string
+  updatedAt: string
+  lines: SalesOrderReservationLine[]
+}
+
+export type SalesOrderWorkspace = {
+  orders: SalesOrderListItem[]
 }
 
 export type ResolvedSaleLine = {
@@ -834,7 +887,7 @@ export async function loadCatalog(
     productUomsResult,
     uomsResult,
     categoriesResult,
-    stocksResult,
+    stockAvailabilityResult,
     customersResult,
     pricelistsResult,
     methodsResult,
@@ -864,11 +917,10 @@ export async function loadCatalog(
       .from('product_categories')
       .select('id,category_name')
       .eq('company_id', companyId),
-    supabase
-      .from('product_stocks')
-      .select('product_id,stock_qty')
-      .eq('company_id', companyId)
-      .eq('warehouse_id', warehouseId),
+    supabase.rpc('get_pos_stock_availability', {
+      p_store_id: storeId,
+      p_warehouse_id: warehouseId,
+    }),
     supabase.rpc('get_pos_customer_references'),
     supabase.rpc('get_pos_pricelist_references', { p_store_id: storeId }),
     supabase.rpc('get_pos_payment_method_references', { p_store_id: storeId }),
@@ -891,7 +943,7 @@ export async function loadCatalog(
     productUomsResult,
     uomsResult,
     categoriesResult,
-    stocksResult,
+    stockAvailabilityResult,
     customersResult,
     pricelistsResult,
     methodsResult,
@@ -909,11 +961,18 @@ export async function loadCatalog(
   const categoriesById = new Map(
     (categoriesResult.data ?? []).map((row) => [row.id, row.category_name]),
   )
-  const stockByProduct = new Map(
-    (stocksResult.data ?? []).map((row) => [
-      row.product_id,
-      numberValue(row.stock_qty),
-    ]),
+  const reservationAvailabilityPayload = (stockAvailabilityResult.data ?? {}) as DbRow
+  if (numberValue(reservationAvailabilityPayload.reservationReadModelVersion) !== 1) {
+    throw new Error('POS_STOCK_AVAILABILITY_CONTRACT_MISMATCH')
+  }
+  const availableByProduct = new Map(
+    (Array.isArray(reservationAvailabilityPayload.availability)
+      ? reservationAvailabilityPayload.availability as DbRow[]
+      : [])
+      .map((row) => [
+        String(row.stock_product_id ?? ''),
+        numberValue(row.available_to_sell_base_qty),
+      ]),
   )
   const products: ProductOption[] = []
   for (const row of productUomsResult.data ?? []) {
@@ -933,7 +992,8 @@ export async function loadCatalog(
       availableQuantity: product.is_bundle
         ? null
         : factor > 0
-          ? Math.floor((stockByProduct.get(product.id) ?? 0) / factor)
+          ? Math.floor((availableByProduct.get(product.id) ??
+              0) / factor)
           : 0,
       allowDecimal: Boolean(uom.allow_decimal),
       decimalPrecision: numberValue(uom.decimal_precision),
@@ -1877,6 +1937,17 @@ export async function saveSaleDraft(input: {
       row.transactionDateSource === 'CASHIER_SELECTED'
         ? 'CASHIER_SELECTED'
         : input.draft?.transactionDateSource ?? 'SERVER_CREATED',
+    orderTimingMode:
+      row.orderTimingMode === 'SCHEDULED'
+        ? 'SCHEDULED'
+        : row.orderTimingMode === 'BACKORDER'
+          ? 'BACKORDER'
+          : input.draft?.orderTimingMode ?? 'IMMEDIATE',
+    plannedOrderDate: row.plannedOrderDate
+      ? String(row.plannedOrderDate)
+      : input.draft?.plannedOrderDate ?? null,
+    operationalStatus:
+      row.operationalStatus === 'SCHEDULED' ? 'SCHEDULED' : 'ACTIVE',
     masterVersion: numberValue(row.masterVersion),
     grandTotalBeforeRounding: numberValue(row.grandTotalBeforeRounding),
     roundingAdjustment: numberValue(row.roundingAdjustment),
@@ -1915,6 +1986,18 @@ export async function listSaleDrafts(
       row.transactionDateSource === 'CASHIER_SELECTED'
         ? 'CASHIER_SELECTED'
         : 'SERVER_CREATED',
+    orderTimingMode:
+      row.orderTimingMode === 'SCHEDULED'
+        ? 'SCHEDULED'
+        : row.orderTimingMode === 'BACKORDER'
+          ? 'BACKORDER'
+          : 'IMMEDIATE',
+    plannedOrderDate: row.plannedOrderDate
+      ? String(row.plannedOrderDate)
+      : null,
+    operationalStatus:
+      row.operationalStatus === 'SCHEDULED' ? 'SCHEDULED' : 'ACTIVE',
+    canPost: row.canPost !== false,
     updatedAt: String(row.updatedAt),
     masterVersion: numberValue(row.masterVersion),
     grandTotal: numberValue(row.grandTotal),
@@ -1990,6 +2073,119 @@ export async function cancelSaleDraft(
     p_master_version: masterVersion,
     p_cashier_session_id: cashierSessionId,
     p_reason: reason,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function loadSalesOrders(
+  storeId: string,
+): Promise<SalesOrderWorkspace> {
+  const { data, error } = await supabase.rpc('get_pos_sales_orders', {
+    p_store_id: storeId,
+  })
+  throwIfError(error)
+  const payload = (data ?? {}) as DbRow
+  const rawLines = Array.isArray(payload.reservationLines)
+    ? (payload.reservationLines as DbRow[])
+    : []
+  const linesBySale = new Map<string, SalesOrderReservationLine[]>()
+  for (const row of rawLines) {
+    const salesId = String(row.sales_id ?? '')
+    const line: SalesOrderReservationLine = {
+      id: String(row.id ?? ''),
+      salesId,
+      productSku: String(row.product_sku ?? ''),
+      productName: String(row.product_name ?? ''),
+      warehouseName: String(row.warehouse_name ?? ''),
+      requestedBaseQuantity: numberValue(row.requested_base_qty),
+      reservedBaseQuantity: numberValue(row.reserved_base_qty),
+      releasedBaseQuantity: numberValue(row.released_base_qty),
+      dispatchedBaseQuantity: numberValue(row.dispatched_base_qty),
+      availableBaseQuantitySnapshot: numberValue(
+        row.available_base_qty_snapshot,
+      ),
+      shortageBaseQuantity: numberValue(row.shortage_base_qty),
+    }
+    linesBySale.set(salesId, [...(linesBySale.get(salesId) ?? []), line])
+  }
+  const rawOrders = Array.isArray(payload.orders)
+    ? (payload.orders as DbRow[])
+    : []
+  return {
+    orders: rawOrders.map((row) => {
+      const salesId = String(row.id ?? '')
+      const timing = String(row.order_timing_mode ?? 'IMMEDIATE')
+      const status = String(row.order_runtime_status ?? 'RESERVED')
+      return {
+        salesId,
+        orderNo: String(row.draft_no ?? ''),
+        storeId: String(row.store_id ?? ''),
+        storeName: String(row.store_name ?? ''),
+        customerId: String(row.customer_id ?? ''),
+        customerName: String(row.customer_name ?? ''),
+        orderTimingMode:
+          timing === 'SCHEDULED'
+            ? 'SCHEDULED'
+            : timing === 'BACKORDER'
+              ? 'BACKORDER'
+              : 'IMMEDIATE',
+        plannedOrderDate: row.planned_order_date
+          ? String(row.planned_order_date)
+          : null,
+        orderRuntimeStatus:
+          status === 'PARTIALLY_DISPATCHED'
+            ? 'PARTIALLY_DISPATCHED'
+            : status === 'DISPATCHED'
+              ? 'DISPATCHED'
+              : status === 'DELIVERED'
+                ? 'DELIVERED'
+                : status === 'CONFIRMED'
+                  ? 'CONFIRMED'
+                  : 'RESERVED',
+        grandTotal: numberValue(row.grand_total_after_rounding),
+        masterVersion: numberValue(row.master_version),
+        reservationVersion: numberValue(row.reservation_version),
+        reservationId: String(row.reservation_id ?? ''),
+        reservationStatus: String(row.reservation_status ?? ''),
+        totalReservedBaseQuantity: numberValue(row.total_reserved_base_qty),
+        totalReleasedBaseQuantity: numberValue(row.total_released_base_qty),
+        totalDispatchedBaseQuantity: numberValue(row.total_dispatched_base_qty),
+        confirmedAt: String(row.confirmed_at ?? ''),
+        updatedAt: String(row.updated_at ?? ''),
+        lines: linesBySale.get(salesId) ?? [],
+      }
+    }),
+  }
+}
+
+export async function confirmSalesOrder(
+  salesId: string,
+  masterVersion: number,
+  idempotencyKey: string,
+  negativeStockReason: string | null,
+) {
+  const { data, error } = await supabase.rpc('confirm_pos_sales_order', {
+    p_sales_id: salesId,
+    p_master_version: masterVersion,
+    p_idempotency_key: idempotencyKey,
+    p_negative_stock_reason: negativeStockReason?.trim() || null,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function cancelSalesOrder(
+  salesId: string,
+  masterVersion: number,
+  idempotencyKey: string,
+  reason: string,
+) {
+  const { data, error } = await supabase.rpc('cancel_pos_sales_order', {
+    p_sales_id: salesId,
+    p_master_version: masterVersion,
+    p_idempotency_key: idempotencyKey,
+    p_reason: reason.trim(),
   })
   throwIfError(error)
   return data as DbRow

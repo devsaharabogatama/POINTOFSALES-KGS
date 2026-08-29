@@ -57,19 +57,19 @@ import {
   acquireSaleDraftLock,
   cancelSaleDraft,
   closeCashierSession,
+  confirmSalesOrder,
   getCurrentSession,
   heartbeatSaleDraftLock,
   listSaleDrafts,
+  loadSalesOrders,
   loadBootstrap,
   loadCatalog,
   loadCompanies,
-  loadNegativeStockReadiness,
   loadReceipt,
   loadSalesDeliveryDocument,
   loadSalesInvoiceDocument,
   loadResolvedSaleLines,
   openCashierSession,
-  postSale,
   previewPosSalePrices,
   quickCreatePosCustomer,
   recordSalesDocumentPrint,
@@ -88,13 +88,17 @@ import {
   type SaleDraft,
   type SaleDraftListItem,
   type SaleReceipt,
+  type SalesOrderListItem,
   type SalesDeliveryDocument,
   type SalesInvoiceDocument,
 } from './lib/pos'
+import { SalesOrderPanel } from './SalesOrderPanel'
 import {
   openSalesDeliveryPrint,
   openSalesInvoicePrint,
 } from './lib/salesDocumentPrinter'
+
+const ODR_OFFLINE_ORDER_ENABLED = false
 
 const SalesReturnModal = lazy(() =>
   import('./SalesReturnModal').then((module) => ({
@@ -187,6 +191,12 @@ function localDateTimeInput(value: string) {
   return localTime.toISOString().slice(0, 16)
 }
 
+function isFutureLocalBusinessDate(value: string) {
+  if (!value) return false
+  return localDateTimeInput(value).slice(0, 10) >
+    localDateTimeInput(new Date().toISOString()).slice(0, 10)
+}
+
 function suggestedTempoDueDate(transactionAt: string, termDays: number | null) {
   if (termDays === null) return ''
   const date = new Date(transactionAt)
@@ -230,7 +240,11 @@ function scrollNumberInputContainer(input: HTMLInputElement, delta: number) {
 
 function errorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) {
-    return String(error.message)
+    const message = String(error.message)
+    if (message.includes('SALES_ORDER_PAYMENT_RESOLUTION_REQUIRED')) {
+      return 'Pembayaran order ini sudah tercatat dan harus ditolak atau diselesaikan oleh Finance sebelum order dapat dibatalkan.'
+    }
+    return message
   }
   return 'Terjadi kesalahan yang tidak dikenali.'
 }
@@ -296,7 +310,15 @@ function friendlyError(code: string) {
     TEMPO_TRANSACTION_DATE_INVALID:
       'Format tanggal transaksi/order tidak valid.',
     TEMPO_TRANSACTION_DATE_FUTURE:
-      'Tanggal transaksi/order tidak boleh melewati waktu sekarang.',
+      'Tanggal order mendatang harus disimpan sebagai order TEMPO terjadwal.',
+    SCHEDULED_ORDER_TEMPO_REQUIRED:
+      'Order mendatang hanya dapat disimpan sebagai transaksi TEMPO.',
+    SCHEDULED_ORDER_NOT_ACTIVE:
+      'Order ini masih terjadwal dan baru dapat diposting pada tanggal rencana.',
+    TEMPO_DUE_DATE_BEFORE_PLANNED_ORDER:
+      'Tanggal jatuh tempo tidak boleh lebih awal dari tanggal rencana order.',
+    DELIVERY_DATE_BEFORE_PLANNED_ORDER:
+      'Tanggal rencana kirim tidak boleh lebih awal dari tanggal rencana order.',
     TEMPO_DUE_DATE_BEFORE_TRANSACTION:
       'Tanggal jatuh tempo tidak boleh lebih awal dari tanggal transaksi/order.',
     DELIVERY_DATE_BEFORE_TRANSACTION:
@@ -422,6 +444,16 @@ function friendlyError(code: string) {
       'Server belum menyelesaikan transaksi dalam 25 detik. Status wajib diperiksa sebelum mencoba lagi.',
     OFFLINE_SYNC_STATUS_TIMEOUT:
       'Pemeriksaan status server melewati batas waktu. Coba periksa kembali saat koneksi stabil.',
+    OFFLINE_ORDER_RESERVATION_NOT_AVAILABLE:
+      'Checkout Offline sementara ditutup sampai sinkronisasi Order dan Reserved Out tersedia.',
+    NEGATIVE_STOCK_AUTHORIZATION_REQUIRED:
+      'Stok tidak cukup dan izin stok minus untuk Order ini belum lengkap.',
+    SALES_ORDER_FINAL:
+      'Order sudah dikonfirmasi atau final. Muat ulang daftar Order.',
+    SALES_ORDER_REQUIREMENT_MISSING:
+      'Snapshot kebutuhan stok Order belum tersedia. Simpan ulang Draft.',
+    SALES_ORDER_VIEW_FORBIDDEN:
+      'Akun ini tidak boleh melihat Order pada toko aktif.',
   }
   return labels[code] ?? code.replaceAll('_', ' ')
 }
@@ -461,6 +493,13 @@ export default function App() {
   const [draftNotes, setDraftNotes] = useState('')
   const [saleDrafts, setSaleDrafts] = useState<SaleDraftListItem[]>([])
   const [draftPanelOpen, setDraftPanelOpen] = useState(false)
+  const [salesOrders, setSalesOrders] = useState<SalesOrderListItem[]>([])
+  const [orderPanelOpen, setOrderPanelOpen] = useState(false)
+  const [confirmedOrder, setConfirmedOrder] = useState<{
+    orderNo: string
+    orderRuntimeStatus: string
+    plannedOrderDate: string | null
+  } | null>(null)
   const [clientTransactionId, setClientTransactionId] = useState<string>(() =>
     crypto.randomUUID(),
   )
@@ -881,6 +920,14 @@ export default function App() {
     [],
   )
 
+  const refreshSalesOrders = useCallback(
+    async (activeCashierSession: CashierSession) => {
+      const workspace = await loadSalesOrders(activeCashierSession.storeId)
+      setSalesOrders(workspace.orders)
+    },
+    [],
+  )
+
   const loadOfflineCacheState = useCallback(async (cashierSessionId: string) => {
     const {
       getOfflineAllowanceAvailability,
@@ -1067,6 +1114,7 @@ export default function App() {
     Promise.all([
       refreshCatalog(cashierSession),
       refreshSaleDrafts(cashierSession),
+      refreshSalesOrders(cashierSession),
     ])
       .catch((reason) => setError(friendlyError(errorMessage(reason))))
       .finally(() => setLoading(false))
@@ -1076,6 +1124,7 @@ export default function App() {
     isOnline,
     refreshCatalog,
     refreshSaleDrafts,
+    refreshSalesOrders,
   ])
 
   useEffect(() => {
@@ -1424,6 +1473,10 @@ export default function App() {
         setReceipt(null)
         setSalesDocuments(null)
       }
+      else if (confirmedOrder) {
+        setConfirmedOrder(null)
+        setSalesDocuments(null)
+      }
       else if (purchaseReturnOpen) setPurchaseReturnOpen(false)
       else if (goodsReceiptOpen) setGoodsReceiptOpen(false)
       else if (stockRequestOpen) setStockRequestOpen(false)
@@ -1431,6 +1484,7 @@ export default function App() {
       else if (expenseRequestOpen) setExpenseRequestOpen(false)
       else if (salesReturnOpen) setSalesReturnOpen(false)
       else if (draftPanelOpen) setDraftPanelOpen(false)
+      else if (orderPanelOpen) setOrderPanelOpen(false)
       else if (offlinePanelOpen) setOfflinePanelOpen(false)
       else if (quickCustomerOpen) setQuickCustomerOpen(false)
       else if (error) setError('')
@@ -1444,6 +1498,7 @@ export default function App() {
     closeSessionOpen,
     deliveryDetailsOpen,
     draftPanelOpen,
+    orderPanelOpen,
     editingCartProductUomId,
     error,
     cashDepositOpen,
@@ -1457,6 +1512,7 @@ export default function App() {
     productPickerOpen,
     quickCustomerOpen,
     receipt,
+    confirmedOrder,
     salesReturnOpen,
   ])
 
@@ -1467,6 +1523,11 @@ export default function App() {
 
   function closeReceipt() {
     setReceipt(null)
+    setSalesDocuments(null)
+  }
+
+  function closeConfirmedOrder() {
+    setConfirmedOrder(null)
     setSalesDocuments(null)
   }
 
@@ -1637,6 +1698,7 @@ export default function App() {
       )
       resetSale()
       setSaleDrafts([])
+      setSalesOrders([])
       setCloseSessionOpen(false)
       await refreshBootstrap(
         companyId,
@@ -1945,6 +2007,9 @@ export default function App() {
         clientTransactionId: nextClientTransactionId,
       transactionAt: item.transactionAt,
       transactionDateSource: item.transactionDateSource,
+        orderTimingMode: item.orderTimingMode,
+        plannedOrderDate: item.plannedOrderDate,
+        operationalStatus: item.operationalStatus,
         masterVersion: item.masterVersion,
         grandTotalBeforeRounding: item.grandTotal,
         roundingAdjustment: 0,
@@ -2273,6 +2338,10 @@ export default function App() {
 
   function handleQueueOfflineSale() {
     if (!cashierSession || cart.length === 0) return
+    if (!ODR_OFFLINE_ORDER_ENABLED) {
+      setError(friendlyError('OFFLINE_ORDER_RESERVATION_NOT_AVAILABLE'))
+      return
+    }
     openActionDialog({
       title: 'Simpan transaksi Offline?',
       description:
@@ -2596,38 +2665,13 @@ export default function App() {
         finalDraft = await persistDraft(pricedDraft, [], negativeStockReason)
       }
 
-      const postResult = await postSale(
+      const confirmation = await confirmSalesOrder(
         finalDraft.salesId,
         finalDraft.masterVersion,
         crypto.randomUUID(),
+        negativeStockReason || null,
       )
-      if (postResult.documentStatus === 'DRAFT') {
-        const nextDraft = {
-          ...finalDraft,
-          masterVersion: Number(postResult.masterVersion),
-        }
-        setDraft(nextDraft)
-        setShortages(
-          Array.isArray(postResult.shortages)
-            ? (postResult.shortages as Array<Record<string, unknown>>)
-            : [],
-        )
-        let shortageMessage =
-          'Stok minus tidak dapat diotorisasi untuk transaksi ini. Bundle dan transaksi Offline tetap tidak mendukung stok minus.'
-        try {
-          const readiness = await loadNegativeStockReadiness()
-          if (readiness.blockerCode) {
-            shortageMessage = friendlyError(readiness.blockerCode)
-          }
-        } catch {
-          // Preserve the canonical Draft result when readiness diagnostics
-          // cannot be refreshed; a diagnostic failure must never post a Sale.
-        }
-        setError(`${shortageMessage} Transaksi tetap Draft tanpa efek final.`)
-        return
-      }
-      const finalReceipt = await loadReceipt(companyId, finalDraft.salesId)
-      setReceipt(finalReceipt)
+      const orderNo = finalDraft.draftNo || String(confirmation.salesId ?? '')
       try {
         const [invoice, delivery] = await Promise.all([
           loadSalesInvoiceDocument(finalDraft.salesId),
@@ -2637,10 +2681,20 @@ export default function App() {
       } catch {
         setSalesDocuments(null)
       }
-      setNotice('Penjualan berhasil diposting oleh server.')
+      setConfirmedOrder({
+        orderNo,
+        orderRuntimeStatus: String(
+          confirmation.orderRuntimeStatus ?? 'RESERVED',
+        ),
+        plannedOrderDate: finalDraft.plannedOrderDate,
+      })
+      setNotice(
+        `${orderNo} dikonfirmasi. Stok dicadangkan dan menunggu proses gudang.`,
+      )
       resetSale()
       await refreshCatalog(cashierSession)
       await refreshSaleDrafts(cashierSession)
+      await refreshSalesOrders(cashierSession)
     } catch (reason) {
       const code = errorMessage(reason)
       if (
@@ -3622,6 +3676,16 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
+                      void refreshSalesOrders(cashierSession)
+                      setOrderPanelOpen(true)
+                    }}
+                    className="pos-draft-list-button"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Order <span>{salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED').length}</span>
+                  </button>
+                  <button
+                    onClick={() => {
                       void refreshSaleDrafts(cashierSession)
                       setDraftPanelOpen(true)
                     }}
@@ -4113,7 +4177,6 @@ export default function App() {
                         required
                         type="datetime-local"
                         value={localDateTimeInput(transactionAt)}
-                        max={localDateTimeInput(new Date().toISOString())}
                         onChange={(event) => {
                           if (!event.target.value) return
                           const nextTransactionAt = new Date(event.target.value).toISOString()
@@ -4129,7 +4192,8 @@ export default function App() {
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
                       />
                       <span className="mt-1 block text-[11px] font-normal text-slate-500">
-                        Boleh tanggal lampau selama periode akuntansinya terbuka.
+                        Tanggal lampau memerlukan periode terbuka. Tanggal mendatang
+                        disimpan sebagai order terjadwal dan belum memengaruhi Finance.
                       </span>
                     </label>
                     <label className="block text-xs font-semibold text-slate-400">
@@ -4556,11 +4620,14 @@ export default function App() {
                     onClick={handleSaveDraft}
                     className="rounded-xl border border-emerald-700 px-3 py-3 font-bold text-emerald-300 disabled:opacity-40"
                   >
-                    Simpan Draft
+                    {isTempo && isFutureLocalBusinessDate(transactionAt)
+                      ? 'Simpan Terjadwal'
+                      : 'Simpan Draft'}
                   </button>
                   <button
                     disabled={
                       busy ||
+                      !isOnline ||
                       cart.length === 0 ||
                       customerBalanceShortfall > 0
                       || (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid)
@@ -4571,10 +4638,8 @@ export default function App() {
                     {busy
                       ? 'Memproses...'
                       : isOnline
-                        ? 'Konfirmasi & Post'
-                        : offlinePreview
-                          ? 'Simpan Offline'
-                          : 'Periksa Offline'}
+                        ? 'Konfirmasi Order'
+                        : 'Offline belum didukung'}
                   </button>
                 </div>
               </div>
@@ -5010,6 +5075,22 @@ export default function App() {
         </Suspense>
       )}
 
+      {orderPanelOpen && cashierSession && (
+        <SalesOrderPanel
+          orders={salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED')}
+          loading={loading}
+          close={() => setOrderPanelOpen(false)}
+          refresh={async () => {
+            setLoading(true)
+            try {
+              await refreshSalesOrders(cashierSession)
+            } finally {
+              setLoading(false)
+            }
+          }}
+        />
+      )}
+
       {draftPanelOpen && cashierSession && (
         <div className="pos-draft-overlay fixed inset-0 z-50 bg-black/60 p-3 sm:p-6">
           <section className="pos-draft-panel ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl">
@@ -5066,6 +5147,15 @@ export default function App() {
                             {item.isStale && (
                               <span className="pos-draft-stale">Lebih dari 7 hari</span>
                             )}
+                            <span className={
+                              item.operationalStatus === 'SCHEDULED'
+                                ? 'pos-draft-scheduled'
+                                : 'pos-draft-active'
+                            }>
+                              {item.operationalStatus === 'SCHEDULED'
+                                ? `Terjadwal ${new Date(`${item.plannedOrderDate}T00:00:00`).toLocaleDateString('id-ID')}`
+                                : 'Order aktif'}
+                            </span>
                           </div>
                           <p className="mt-1 font-semibold text-slate-800">
                             {item.customerName}
@@ -5434,6 +5524,29 @@ export default function App() {
               >
                 Kembali ke kasir
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {confirmedOrder && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4">
+          <section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Order dikonfirmasi</p>
+                <h2 className="mt-1 text-2xl font-black">{confirmedOrder.orderNo}</h2>
+                <p className="mt-1 text-sm text-slate-500">Status {confirmedOrder.orderRuntimeStatus} · Stock menjadi Reserved Out dan belum mengurangi On Hand/FIFO.</p>
+              </div>
+              <button type="button" onClick={closeConfirmedOrder} className="pos-modal-close" aria-label="Tutup konfirmasi Order"><X className="h-5 w-5"/></button>
+            </div>
+            {confirmedOrder.plannedOrderDate && <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Order terjadwal:</strong> {new Date(`${confirmedOrder.plannedOrderDate}T00:00:00`).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</div>}
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Pembayaran non-TEMPO menunggu verifikasi Finance. Stock baru keluar ketika Surat Jalan diproses oleh Inventory.</div>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              {salesDocuments?.invoice && <button type="button" onClick={() => void handlePrintInvoice()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-800"><FileText className="h-5 w-5"/>Invoice A4</button>}
+              {salesDocuments?.delivery && <button type="button" onClick={() => void handlePrintDelivery()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-4 font-black text-sky-800"><Truck className="h-5 w-5"/>Surat Jalan</button>}
+              <button type="button" onClick={() => { closeConfirmedOrder(); setOrderPanelOpen(true) }} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 font-black"><ClipboardList className="h-5 w-5"/>Lihat Order</button>
+              <button type="button" onClick={closeConfirmedOrder} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 font-black text-slate-950"><CheckCircle2 className="h-5 w-5"/>Kembali ke kasir</button>
             </div>
           </section>
         </div>

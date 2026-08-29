@@ -49,6 +49,28 @@ Finance G6 Phase 8:
 - [`runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_RUNTIME_ROLLOUT.md`](runbooks/G6_PHASE8F_REMAINING_OPERATIONAL_RUNTIME_ROLLOUT.md)
 - [`runbooks/G6_PHASE8G_REMAINING_OPERATIONAL_QUEUE_ROLLOUT.md`](runbooks/G6_PHASE8G_REMAINING_OPERATIONAL_QUEUE_ROLLOUT.md)
 
+Order Reservation/Dispatch:
+
+- [`runbooks/ODR2_SALES_ORDER_RESERVATION_ROLLOUT.md`](runbooks/ODR2_SALES_ORDER_RESERVATION_ROLLOUT.md)
+- [`runbooks/ODR3_DELIVERY_DISPATCH_STOCK_PREFLIGHT.md`](runbooks/ODR3_DELIVERY_DISPATCH_STOCK_PREFLIGHT.md)
+- [`runbooks/ODR3A_DELIVERY_DISPATCH_FOUNDATION.md`](runbooks/ODR3A_DELIVERY_DISPATCH_FOUNDATION.md)
+- [`runbooks/ODR3B_CONFIRMED_ORDER_DOCUMENTS.md`](runbooks/ODR3B_CONFIRMED_ORDER_DOCUMENTS.md)
+- [`runbooks/ODR3C_ATOMIC_DELIVERY_DISPATCH.md`](runbooks/ODR3C_ATOMIC_DELIVERY_DISPATCH.md)
+- [`runbooks/ODR4_PROCUREMENT_DEMAND_PREFLIGHT.md`](runbooks/ODR4_PROCUREMENT_DEMAND_PREFLIGHT.md)
+- [`runbooks/ODR4A_PROCUREMENT_DEMAND_FOUNDATION.md`](runbooks/ODR4A_PROCUREMENT_DEMAND_FOUNDATION.md)
+- [`runbooks/ODR4B_SESSION_PROCUREMENT_DEMAND_RUNTIME.md`](runbooks/ODR4B_SESSION_PROCUREMENT_DEMAND_RUNTIME.md)
+- [`runbooks/ODR4C_SESSION_STOCK_REQUEST_PROJECTION.md`](runbooks/ODR4C_SESSION_STOCK_REQUEST_PROJECTION.md)
+- [`runbooks/ODR4D_DRAFT_PO_SYNC_PREFLIGHT.md`](runbooks/ODR4D_DRAFT_PO_SYNC_PREFLIGHT.md)
+- [`runbooks/ODR4D_AMENDMENT_FOUNDATION.md`](runbooks/ODR4D_AMENDMENT_FOUNDATION.md)
+- [`runbooks/ODR4D_MANAGED_REQUEST_RECONCILIATION.md`](runbooks/ODR4D_MANAGED_REQUEST_RECONCILIATION.md)
+- [`runbooks/ODR4E_SINGLE_DRAFT_PO_SYNC.md`](runbooks/ODR4E_SINGLE_DRAFT_PO_SYNC.md)
+- [`runbooks/ODR5_FINANCE_DISPATCH_PAYMENT_PREFLIGHT.md`](runbooks/ODR5_FINANCE_DISPATCH_PAYMENT_PREFLIGHT.md)
+- [`runbooks/ODR6C2_FINANCE_PAYMENT_VERIFICATION_UI_CUTOVER.md`](runbooks/ODR6C2_FINANCE_PAYMENT_VERIFICATION_UI_CUTOVER.md)
+- [`runbooks/ODR6D_E2E_CLOSURE_PREFLIGHT.md`](runbooks/ODR6D_E2E_CLOSURE_PREFLIGHT.md)
+- [`runbooks/ODR5A_FINANCE_SOURCE_FOUNDATION.md`](runbooks/ODR5A_FINANCE_SOURCE_FOUNDATION.md)
+- [`runbooks/ODR5B_FINANCE_MAPPING_RUNTIME_PREFLIGHT.md`](runbooks/ODR5B_FINANCE_MAPPING_RUNTIME_PREFLIGHT.md)
+- [`runbooks/ODR5B_REUSABLE_ACCOUNT_MAPPING_PREFLIGHT.md`](runbooks/ODR5B_REUSABLE_ACCOUNT_MAPPING_PREFLIGHT.md)
+
 Gunakan file ini sebagai entrypoint. Jangan membaca seluruh folder `docs` untuk setiap tugas.
 
 Ringkasan aplikasi, cara menjalankan, status modul, dan kebijakan living README
@@ -403,6 +425,17 @@ berada di [`../README.md`](../README.md).
 | F3 Historical collection dan Customer advance | `runbooks/FINANCE_HISTORICAL_COLLECTION_ADVANCE_ROLLOUT.md` | Preflight pembayaran historis/backorder, dana belum teralokasi, kesiapan Customer Balance dan batas jurnal |
 | F4A AR reporting | `runbooks/FINANCE_AR_REPORTING_ROLLOUT.md` | Outstanding Invoice, aging, Customer statement, export Excel, dan temporal guard order/pembayaran |
 | F4B Posting policy dan AR closure | `runbooks/FINANCE_AR_POSTING_POLICY_CLOSURE.md` | Controlled/automatic posting policy, failure isolation, audit, dan regression penutupan Finance AR |
+| ODR-5B Finance mapping foundation | `runbooks/ODR5B_FINANCE_MAPPING_FOUNDATION.md` | Customer Advance COA, exact Dispatch/Payment mapping, approved versioned posting definitions, zero Event/Journal effect, dan urutan rollout manual |
+| ODR-5C Dispatch Finance preflight | `runbooks/ODR5C_DISPATCH_FINANCE_RUNTIME_PREFLIGHT.md` | Audit exact Dispatch operation, commercial/FIFO source, periode, mapping, controlled boundary, dan zero historical runtime sebelum Event/Journal baru |
+| ODR-5C Dispatch Finance runtime | `runbooks/ODR5C_DISPATCH_FINANCE_RUNTIME.md` | Atomic Dispatch source/Event capture, proportional partial allocation, actual FIFO/provisional cost, controlled journal posting, exact retry, dan automatic-mode closure |
+| ODR-5D Payment verification preflight | `runbooks/ODR5D_PAYMENT_VERIFICATION_RUNTIME_PREFLIGHT.md` | SELECT-only audit payment intent, method/proof, total Order, exact mapping, Customer Advance, Clearing/AR, Cashier-session boundary, dan zero runtime sebelum settlement dibuka |
+| ODR-5D Payment verification runtime | `runbooks/ODR5D_PAYMENT_VERIFICATION_RUNTIME.md` | Atomic confirmed-Order payment capture, Cash drawer exactly-once, Finance maker-checker, HOLD Event dan controlled settlement posting; advance application/automatic tetap ditutup sampai ODR-5E |
+| ODR-5E Dispatch advance reconciliation | `runbooks/ODR5E_DISPATCH_ADVANCE_RECONCILIATION.md` | One-time atomic rebalance payment surcharge dan verified Customer Advance ke Dispatch source, menjaga residual Clearing/AR dan automatic closure sampai ODR-5F |
+| ODR-5F Finance runtime closure | `runbooks/ODR5F_FINANCE_RUNTIME_CLOSURE.md` | Parity controlled/automatic dispatcher, normalisasi no-effect event, urutan Advance sebelum Dispatch, dan explicit automatic-policy unlock tanpa mengubah Company existing |
+| ODR-6 UI/E2E cutover preflight | `runbooks/ODR6_UI_E2E_CUTOVER_PREFLIGHT.md` | SELECT-only audit canonical browser RPC, protected tables, active queue/exception, reservation/Dispatch/Finance reconciliation, legacy consumer cutover, Offline boundary, dan authenticated UAT scope |
+| ODR-6A POS Order cutover | `runbooks/ODR6A_POS_ORDER_CUTOVER.md` | PWA online memakai Confirm/Cancel/List Order canonical, memisahkan Order aktif/terjadwal dari Draft, menutup checkout Offline baru, menjaga pembatalan setelah Payment capture, dan mengalokasikan identitas Invoice final sebelum snapshot Invoice/SJ |
+| ODR-6B.1 Reservation Stock read model | `runbooks/ODR6B_RESERVATION_STOCK_READ_MODEL.md` | Mengaktifkan Reserved Out dan Available to Sell pada Stock Real dari Reservation canonical tanpa mengubah On Hand/FIFO/Movement |
+| ODR-6D Return/AR/Collection compatibility | `runbooks/ODR6D_CONSUMER_COMPATIBILITY_ROLLOUT.md` | Membatasi Return ke Dispatch aktual serta AR/Statement/Customer Receipt ke receivable TEMPO yang sudah Dispatch, dengan legacy POSTED dan Customer Advance tetap kompatibel |
 | Forward-fix posting Sale TEMPO | `runbooks/FINANCE_TEMPO_SALE_POSTING_FORWARD_FIX.md` | Debit Customer Receivable untuk TEMPO unpaid/partial dan retry controlled queue |
 | Rollout Finance period policy dan TEMPO resume | `runbooks/FINANCE_PERIOD_POLICY_TEMPO_RESUME_ROLLOUT.md` | Preflight, migration, postflight, rollback behavioral, compatibility, dan smoke manual F1 |
 | F2 Customer Receipt dan AR allocation | `runbooks/FINANCE_CUSTOMER_RECEIPT_AR_ROLLOUT.md` | Preflight Customer/Invoice/nominal, account resolution, payment method, dan historical receivable sebelum runtime dibuka |

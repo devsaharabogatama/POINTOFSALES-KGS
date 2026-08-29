@@ -1,5 +1,91 @@
 # MADS — Management Distribution System
 
+Arsitektur lanjutan Order Reservation/Dispatch telah **disetujui**. ODR-1,
+ODR-2A, dan ODR-2B atomic reservation runtime sudah dikonfirmasi PASS pada
+database user. Targetnya: konfirmasi POS
+membuat Sales Order serta `Reserved Out`, Stock/FIFO baru berkurang saat Surat
+Jalan di-Dispatch, shortage dihimpun per sesi untuk Purchasing, dan verifikasi
+pembayaran Finance dipisahkan dari event Dispatch. Rencana enam fase dan batas
+compatibility tersedia di
+[POS Order Reservation, Dispatch, Procurement, and Finance Plan](docs/POS_ORDER_RESERVATION_DISPATCH_FINANCE_PLAN.md).
+ODR-6B.2 Inventory Dispatch UI sekarang **local-ready**. Backoffice Surat Jalan
+memakai runtime canonical untuk partial/full Dispatch dan konfirmasi diterima;
+Dispatch menyelaraskan On Hand, FIFO, Movement, dan Reserved Out, sedangkan
+Received tidak memberi stock effect kedua. Dokumen legacy tetap kompatibel dan
+tidak ada migration baru pada tahap UI ini. Deploy serta authenticated smoke
+masih menunggu user sesuai
+[runbook ODR-6B.2](docs/runbooks/ODR6B2_INVENTORY_DISPATCH_UI_CUTOVER.md).
+ODR-6C.1 Purchasing Demand UI juga **local-ready**. Supplier Order sekarang
+menampilkan shortage Reservation per sesi serta amendment Draft/final PO, dan
+allocation Draft ikut mengurangi daftar permintaan yang masih dapat dibuatkan
+PO. Tahap client ini tidak membuat migration atau mengubah PO final. Rollout
+manual mengikuti
+[runbook ODR-6C.1](docs/runbooks/ODR6C1_PURCHASING_DEMAND_UI_CUTOVER.md).
+ODR-6C.2 Finance Payment Verification UI sekarang **local-ready**. Finance
+memperoleh composed workspace untuk melihat, memverifikasi, atau menolak
+payment intent dengan effective capability, maker-checker, optimistic version,
+dan exact retry. Verifikasi hanya membuat Event `HOLD`; jurnal tetap melalui
+controlled Posting Queue dan policy Company tidak diubah. Tahap ini tidak
+menambah migration. Rollout manual mengikuti
+[runbook ODR-6C.2](docs/runbooks/ODR6C2_FINANCE_PAYMENT_VERIFICATION_UI_CUTOVER.md).
+Closing database gate ODR-6C.2 sudah dikonfirmasi seluruhnya PASS. ODR-6D E2E
+preflight kemudian membuktikan tiga blocker consumer legacy pada Return,
+AR/Statement, dan TEMPO Collection. Dua forward-fix sekarang **local-ready;
+manual Supabase rollout pending**: Return dibatasi quantity Dispatch immutable,
+sedangkan AR dan Receipt hanya mengakui receivable yang sudah Dispatch dan
+pre-Dispatch payment tetap Customer Advance. Order ODR tidak diubah menjadi
+legacy POSTED. Ikuti
+[runbook compatibility ODR-6D](docs/runbooks/ODR6D_CONSUMER_COMPATIBILITY_ROLLOUT.md).
+Contract freeze, klasifikasi historical, failure code, dan manifest ODR-2 ada di
+[ODR-1 Live Contract Audit](docs/ODR1_LIVE_CONTRACT_AUDIT.md). Jalankan
+[runbook preflight ODR-1](docs/runbooks/ODR1_ORDER_RESERVATION_DISPATCH_PREFLIGHT.md)
+dan pastikan tidak ada `BLOCKER` sebelum ODR-2 dimulai.
+ODR-2B membentuk `Reserved Out` dengan optimistic version, exact retry,
+Product-Warehouse lock, serta validasi stok-minus terhadap saldo proyeksi.
+Confirm/Cancel belum mengubah On Hand, FIFO, Movement, dokumen final, atau
+Finance. Migration, behavioral, dan closing postflight ODR-2B sudah
+dikonfirmasi PASS oleh user. Preflight ODR-3 juga sudah PASS tanpa blocker.
+ODR-3A foundation sekarang local-ready untuk linkage Delivery–Reservation,
+partial Dispatch, dan immutable allocation evidence; migration ini belum
+mengubah Stock/FIFO/Movement/Finance atau dokumen historis. Ikuti
+[runbook ODR-2](docs/runbooks/ODR2_SALES_ORDER_RESERVATION_ROLLOUT.md).
+Rollout berikutnya mengikuti
+[runbook ODR-3A](docs/runbooks/ODR3A_DELIVERY_DISPATCH_FOUNDATION.md).
+ODR-3A telah dikonfirmasi user seluruhnya PASS. ODR-3B confirmed-order
+documents kini local-ready: Confirm membuat snapshot Invoice/SJ immutable dan
+RPC status lama tidak boleh menandai linked Delivery sebagai Dispatch tanpa
+runtime stok. Rollout mengikuti
+[runbook ODR-3B](docs/runbooks/ODR3B_CONFIRMED_ORDER_DOCUMENTS.md).
+ODR-3B juga telah dikonfirmasi user seluruhnya PASS. ODR-3C atomic Delivery
+Dispatch sudah database-live dan seluruh SQL gate PASS: partial/full Dispatch menyelaraskan Reservation,
+On Hand, FIFO, Movement, dan immutable allocation dalam satu transaksi;
+Delivered tidak memberi stock effect kedua dan Finance tetap ditunda ke ODR-5.
+Runbook dan evidence mengikuti
+[runbook ODR-3C](docs/runbooks/ODR3C_ATOMIC_DELIVERY_DISPATCH.md).
+Gate aktif berpindah ke ODR-4 preflight SELECT-only
+untuk demand Purchasing per sesi dan sinkronisasi Draft PO; belum ada schema
+atau runtime ODR-4 yang diaktifkan. Jalankan
+[runbook ODR-4](docs/runbooks/ODR4_PROCUREMENT_DEMAND_PREFLIGHT.md).
+Preflight ulang kemudian diterima tanpa blocker. ODR-4A additive demand
+foundation kini local-ready dan tetap zero-backfill; Stock Request, Draft/final
+PO, stok, serta Finance belum disentuh. Rollout manual mengikuti
+[runbook ODR-4A](docs/runbooks/ODR4A_PROCUREMENT_DEMAND_FOUNDATION.md).
+User kemudian mengonfirmasi seluruh gate ODR-4A PASS. ODR-4B session demand
+runtime kini local-ready: Confirm/Cancel merekonsiliasi demand secara atomik,
+session close membekukan identitas, dan Purchasing memperoleh composed read.
+Stock Request/PO sync tetap belum dibuka. Rollout mengikuti
+[runbook ODR-4B](docs/runbooks/ODR4B_SESSION_PROCUREMENT_DEMAND_RUNTIME.md).
+
+Order TEMPO terjadwal sekarang **local-ready**. Kasir dapat menyimpan order
+untuk tanggal mendatang; Draft otomatis tampil sebagai Order aktif ketika
+tanggal bisnis Company tercapai, tetapi tetap memerlukan Post manual. Sebelum
+Post tidak ada efek Stock, Payment, AR, Invoice, Surat Jalan, Financial Event,
+atau jurnal. Tanggal Finance memakai waktu Post aktual dan tanggal rencana tetap
+disimpan sebagai referensi order. Rollout manual mengikuti
+[runbook POS Scheduled TEMPO Order](docs/runbooks/POS_SCHEDULED_TEMPO_ORDER_ROLLOUT.md).
+Preflight, migration, postflight, dan behavior SQL telah dikonfirmasi PASS oleh
+user; PWA smoke terautentikasi dan deployment client masih menunggu.
+
 Finance F1–F4B sekarang **local-ready**: kebijakan pembuatan Accounting Period per
 Company (`MANUAL`/`AUTOMATIC`), auto-create bulan berjalan dan berikutnya tanpa
 membuka periode terkunci, serta perbaikan resume Draft TEMPO dan perbandingan
@@ -842,3 +928,172 @@ Cash/TEMPO/Receipt/report dan uji Automatic terbatas pada Company dummy.
   dikirim** saat mode `ALL_POSTED_SALES`, sementara draft existing tetap memakai
   intent tersimpan. Nilai opsional Customer yang tidak tersedia dibiarkan
   kosong. PWA lint dan production build PASS; smoke browser tetap manual.
+
+## Update 2026-08-28 — ODR-4C Stock Request Projection Local Ready
+
+- ODR-4B telah dikonfirmasi user seluruhnya `PASS`: demand mengikuti
+  konfirmasi/pembatalan Order dan dibekukan saat sesi ditutup tanpa memutasi
+  Stock Request, PO, Stock, atau Finance.
+- ODR-4C local-ready memproyeksikan shortage reservasi sesi yang sudah ditutup
+  menjadi satu Stock Request `SUBMITTED`, digabung per Product pada base UOM.
+- Stock Request manual dan sumber legacy stok minus dipertahankan. Request baru
+  memakai source `SALES_ORDER_RESERVATION`, tidak dapat dibatalkan manual, dan
+  mempunyai lineage ke demand/reservation asal.
+- Migration, postflight, behavioral test, serta manual smoke masih harus
+  dijalankan user sesuai
+  `docs/runbooks/ODR4C_SESSION_STOCK_REQUEST_PROJECTION.md`. Sinkronisasi Draft
+  PO dan amendment PO final belum dibuka pada fase ini.
+
+User kemudian mengonfirmasi migration, behavioral test, dan closing postflight
+ODR-4C seluruhnya PASS. Runtime inventory masih nol karena belum ada sesi ODR
+ber-shortage yang ditutup. ODR-4D dimulai sebagai preflight SELECT-only untuk
+memisahkan quantity Draft PO yang sepenuhnya allocation-backed dari quantity
+manual/campuran serta PO final. Belum ada runtime atau PO mutation baru.
+
+Preflight ODR-4D kemudian dikonfirmasi tanpa blocker: 18 baris Draft PO legacy
+seluruhnya allocation-backed, tetapi belum ada request/allocation ODR sehingga
+tidak ada data existing yang perlu dimutasi. Foundation amendment additive
+`20260828180000` local-ready dan zero-backfill; runtime Draft-PO sync tetap
+menunggu closing test foundation.
+
+User kemudian mengonfirmasi foundation amendment seluruhnya PASS dan tetap
+zero-backfill. Runtime rekonsiliasi managed Stock Request `20260828190000`
+local-ready: perubahan Order setelah sesi ditutup memperbarui request aktif dan
+membentuk notice, tetapi belum mengubah PO. Baris kebutuhan nol dinonaktifkan
+untuk menjaga lineage; reader Purchasing memfilter baris inactive.
+
+User kemudian mengonfirmasi rekonsiliasi managed request seluruhnya PASS.
+Sinkronisasi satu Draft PO `20260828200000` kini local-ready: hanya delta positif
+ke satu target yang sepenuhnya allocation-backed dan valid secara UOM yang dapat
+diubah atomik. PO final/ambigu/manual, Stock/FIFO/Movement, dan Finance tetap
+tidak dimutasi. SQL rollout serta smoke Company dummy masih manual.
+
+User kemudian mengonfirmasi migration, behavioral test, dan closing postflight
+ODR-4E seluruhnya PASS. ODR-4 database gate selesai; dua Draft PO dan 17 PO
+final existing tetap aman, tanpa open amendment. ODR-5 dimulai melalui preflight
+SELECT-only `odr_phase5_finance_dispatch_payment_preflight.sql`. Audit ini
+memetakan operasi Dispatch, payment intent, partial Dispatch, periode, akun,
+dan jurnal historis; belum ada schema, event, posting runtime, atau UI Finance
+ODR-5 yang diaktifkan.
+
+User kemudian mengonfirmasi preflight ODR-5 tanpa blocker. Seluruh source live
+ODR masih nol, queue aktif nol, accounting-period readiness bersih, dan histori
+40 jurnal/21 event Sale tidak disentuh. Foundation additive zero-backfill
+`20260828210000` kini local-ready: empat relation source/audit tertutup dari
+browser, event catalog `SALE_DISPATCHED`/`SALE_PAYMENT_VERIFIED`, serta fungsi
+akun `CUSTOMER_ADVANCE_LIABILITY`. Foundation belum membuat event, jurnal,
+mapping COA, posting runtime, atau UI; rollout SQL masih manual mengikuti
+`docs/runbooks/ODR5A_FINANCE_SOURCE_FOUNDATION.md`.
+
+User mengonfirmasi closing postflight ODR-5A seluruhnya PASS: empat relation
+RLS/browser-closed, empat trigger, dua event catalog, account function uang
+muka, migration ledger, dan zero-backfill bersih; 40 jurnal historis tetap
+utuh. ODR-5B dilanjutkan hanya sebagai preflight SELECT-only
+`odr_phase5b_finance_mapping_runtime_preflight.sql` untuk memetakan akun per
+Company, collision kategori, approved rule, dispatcher, dan controlled queue.
+Belum ada event, jurnal, mapping, posting runtime, atau automatic posting baru.
+
+Initial ODR-5B output tidak memiliki blocker: lima Company membutuhkan akun
+Customer Advance dan kode default `2190` bebas collision. Empat Company tidak
+memiliki system-owned COA/fallback untuk COGS, Inventory, Sales Revenue, serta
+sebagian ROUNDING_GAIN. Sebelum membuat akun baru, audit reusable-rule
+SELECT-only ditambahkan untuk mencari tepat satu account ID valid yang sudah
+dipakai ACTIVE transaction rule. Ini mencegah duplikasi akun ekonomi; migration
+mapping tetap belum dibuat sampai output audit ditinjau.
+
+Audit reusable pertama terlalu ketat karena mendahulukan jumlah akun berlabel
+system function secara global dan menghasilkan 16 ambiguity. Jurnal historis
+tetap valid; resolver existing memakai exact event/category rule. Preflight
+dikoreksi agar memilih rule `SALE_POSTED`/`SALE_PAYMENT`, lalu fallback, baru
+satu system account. Tidak ada database mutation dari koreksi diagnostic ini.
+
+Output reusable terkoreksi kemudian dikonfirmasi aman: seluruh mapping inti dan
+conditional `PASS`; satu-satunya scope tersisa adalah provision akun
+`2190 - Uang Muka Customer` pada lima Company. Foundation ODR-5B
+`20260828220000` kini local-ready untuk membuat akun advance tersebut, dua
+Transaction Category ODR, 17 exact mapping dan dua approved versioned Posting
+Rule Set per Company. Migration tetap zero-runtime-effect: tidak membuat Event,
+Journal, Stock, FIFO, Payment, atau memproses queue. Rollout manual mengikuti
+`docs/runbooks/ODR5B_FINANCE_MAPPING_FOUNDATION.md`; automatic posting dan UI
+ODR-6 tetap belum dibuka.
+
+User kemudian mengonfirmasi behavioral dan closing postflight ODR-5B seluruhnya
+PASS: lima akun Customer Advance, sepuluh category/rule set, 85 exact mapping,
+zero Event/Journal effect, dan 40 jurnal historis tetap utuh. Gate aktif pindah
+ke preflight SELECT-only ODR-5C
+`odr_phase5c_dispatch_finance_runtime_preflight.sql`. Audit ini memeriksa exact
+operation Dispatch, Invoice/SJ, allocation/Movement, actual FIFO cost, periode,
+mapping dan controlled boundary sebelum source capture/Event runtime dibuat.
+
+User kemudian mengonfirmasi preflight ODR-5C tanpa blocker. Migration
+`20260828230000` kini local-ready: pengurangan Reservation/On Hand/FIFO/Movement
+dan capture source Finance berada dalam satu transaksi; satu operation key
+menghasilkan satu event `SALE_DISPATCHED` `HOLD`. Partial Dispatch memakai
+alokasi komersial proporsional dan Dispatch final menutup residual; controlled
+queue dapat membuat jurnal balance. Automatic posting, Payment verification
+ODR-5D, serta UI ODR-6 tetap belum aktif. Rollout Supabase dan smoke masih
+manual menurut `docs/runbooks/ODR5C_DISPATCH_FINANCE_RUNTIME.md`.
+
+Closing postflight ODR-5C kemudian dikonfirmasi seluruhnya PASS dengan runtime
+ODR masih nol dan 40 jurnal historis tetap utuh. Gate berikutnya adalah
+preflight SELECT-only ODR-5D
+`odr_phase5d_payment_verification_runtime_preflight.sql`: audit payment intent,
+Payment Method/proof, total Order, exact mapping/rule, Customer Advance sebelum
+Dispatch, Clearing/Piutang sesudah Dispatch, serta Cashier-session boundary.
+Belum ada perubahan runtime, Event, Journal, automatic posting, atau UI pada
+langkah ini.
+
+Preflight ODR-5D kemudian dikonfirmasi tanpa blocker. Runtime payment
+verification `20260828240000` kini local-ready beserta behavioral rollback,
+postflight SELECT-only, dan runbook. Confirmed Order menangkap payment intent
+immutable; Cash dicatat tepat sekali pada drawer; Finance verify/reject memakai
+maker-checker; verified payment membuat satu HOLD Event yang diposting lewat
+controlled queue. Payment internal-liability, automatic posting, dan aplikasi
+pre-dispatch advance saat Dispatch tetap ditutup sampai gate berikutnya.
+
+Closing ODR-5D kemudian dikonfirmasi seluruhnya PASS dengan runtime tetap nol.
+ODR-5E `20260828250000` local-ready: Dispatch source yang baru dibuat akan
+direbalance tepat sekali menggunakan surcharge immutable dan verified
+pre-dispatch Customer Advance; residual tetap masuk Clearing/Piutang. Stock,
+FIFO, Event, effect, dan audit berada dalam transaksi yang sama. Automatic
+posting masih ditutup sampai ODR-5F closing reconciliation.
+
+Closing ODR-5E kemudian dikonfirmasi seluruhnya PASS; tidak ada source, event,
+jurnal, atau queue ODR parsial. ODR-5F `20260828260000` sekarang local-ready
+untuk menyamakan hasil controlled/automatic dispatcher dan menormalkan event
+tanpa efek. Seluruh Company existing tetap `CONTROLLED`; migration ini hanya
+membuka switch policy yang harus dipilih eksplisit setelah behavioral dan
+postflight PASS. UI/E2E ODR-6 belum aktif.
+
+Closing ODR-5F kemudian dikonfirmasi seluruhnya PASS: Finance migration chain,
+dispatcher parity, source/event/jurnal, exception, dan Advance ordering bersih;
+semua lima Company tetap `CONTROLLED`. ODR-6 dimulai dengan preflight
+SELECT-only untuk memeriksa canonical browser RPC dan memetakan cutover POS,
+Inventory, Purchasing, Finance, serta Offline boundary sebelum frontend diubah.
+
+Preflight ODR-6 telah dikonfirmasi tanpa blocker. ODR-6A POS Order cutover kini
+local-ready: checkout online memakai Confirm Order canonical, daftar Order
+aktif/terjadwal terpisah dari Draft, checkout Offline baru fail-closed, dan
+cancel Order dilindungi migration `20260828270000` ketika Payment masih
+`PENDING`/`VERIFIED`. Rollout Supabase dan authenticated PWA smoke masih manual;
+Inventory/Purchasing/Finance UI belum dicutover pada tahap ini.
+
+Authenticated smoke pertama menemukan snapshot Invoice/SJ Order terkonfirmasi
+masih membawa nomor sementara `DRAFT-*`. Root cause adalah jalur ODR Confirm
+melewati final-post legacy yang dahulu mengalokasikan nomor `INV-*`.
+Forward-fix `20260828280000` sekarang local-ready: Reservation tetap dibuat
+lebih dahulu, nomor Invoice final dialokasikan tepat sekali sebelum snapshot,
+dan hanya snapshot `ORDER_CONFIRM` yang terdampak diperbaiki dengan audit.
+Stock, FIFO, Payment, Event, Journal, dan status operasional Order tidak diubah.
+
+Stock Real sebelumnya masih menampilkan placeholder `Reserved: Belum aktif`
+meskipun Reservation backend sudah terbentuk. ODR-6B.1 Step 1 sekarang
+local-ready melalui migration `20260829090000`: RPC Stock Real menghitung
+Reserved Out dari Reservation `OPEN/PARTIALLY_DISPATCHED` dan Available sebagai
+On Hand dikurangi Reserved. Backoffice menampilkan nilai tersebut secara nyata.
+PWA juga tidak lagi memakai `product_stocks.stock_qty` sebagai ketersediaan;
+RPC sesi-kasir menghitung Available dari seluruh Reservation aktif pada Gudang
+yang sama melalui forward-fix `20260829100000`. Forward-fix dipisahkan karena
+ledger `20260829090000` sudah pernah diterapkan tanpa RPC POS. Tahap ini belum
+live sampai forward-fix, deploy kedua client, dan authenticated smoke selesai;
+tidak ada mutation Stock/FIFO/Movement/Finance.

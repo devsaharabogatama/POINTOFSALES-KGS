@@ -9,6 +9,8 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  AlertTriangle,
+  Boxes,
   FilePlus2,
   Download,
   Loader2,
@@ -71,6 +73,50 @@ type PurchaseUom = {
   uom_id: string;
   purchase_price: number | string | null;
 };
+type ProcurementDemand = {
+  id: string;
+  store_id: string;
+  store_name: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  cashier_session_id: string;
+  session_code: string;
+  status: string;
+  total_demand_base_qty: number | string;
+  total_released_base_qty: number | string;
+  stock_request_document_id: string | null;
+  master_version: number;
+  session_closed_at: string | null;
+  updated_at: string;
+};
+type ProcurementDemandLine = {
+  id: string;
+  demand_id: string;
+  sales_id: string;
+  stock_product_id: string;
+  product_sku: string;
+  product_name: string;
+  demand_base_qty: number | string;
+  released_base_qty: number | string;
+  open_demand_base_qty: number | string;
+  stock_request_line_id: string | null;
+  status: string;
+};
+type ProcurementAmendment = {
+  id: string;
+  demand_id: string;
+  stock_request_document_id: string;
+  stock_request_line_id: string;
+  product_id: string;
+  reason: string;
+  status: string;
+  desired_base_qty: number | string;
+  draft_allocated_base_qty: number | string;
+  final_allocated_base_qty: number | string;
+  delta_base_qty: number | string;
+  resolution_supplier_order_id: string | null;
+  updated_at: string;
+};
 type Payload = {
   requests?: RequestDoc[];
   requestLines?: RequestLine[];
@@ -82,6 +128,10 @@ type Payload = {
   stores?: Store[];
   productSuppliers?: Relation[];
   purchaseUoms?: PurchaseUom[];
+  procurementWorkspaceVersion?: number;
+  procurementDemands?: ProcurementDemand[];
+  procurementDemandLines?: ProcurementDemandLine[];
+  procurementAmendments?: ProcurementAmendment[];
   error?: string;
 };
 type FormLine = {
@@ -124,8 +174,25 @@ function friendly(code?: string) {
       "Salah satu Supplier Order tidak ditemukan atau bukan milik perusahaan aktif.",
     SUPPLIER_ORDER_EXPORT_RESULT_INVALID:
       "Hasil export tidak lengkap. Muat ulang lalu coba kembali.",
+    PROCUREMENT_WORKSPACE_CONTRACT_MISMATCH:
+      "Runtime Demand Purchasing belum lengkap. Hentikan operasi dan selesaikan rollout ODR-4.",
   };
   return map[code ?? ""] ?? code ?? "Operasi Supplier Order gagal.";
+}
+const quantity = (value: number | string) =>
+  new Intl.NumberFormat("id-ID", { maximumFractionDigits: 6 }).format(
+    Number(value) || 0,
+  );
+function amendmentLabel(reason: string) {
+  return ({
+    UNALLOCATED: "Belum dialokasikan ke Draft PO",
+    DRAFT_SYNC_PENDING: "Menunggu sinkronisasi Draft PO",
+    AMBIGUOUS_DRAFT_TARGET: "Lebih dari satu Draft PO kandidat",
+    MIXED_MANUAL_DRAFT_LINE: "Baris Draft PO bercampur input manual",
+    FINAL_PO_IMMUTABLE: "PO final tidak boleh diubah; buat order selisih",
+    QUANTITY_DECREASE_REQUIRES_REVIEW: "Penurunan quantity perlu review",
+    DRAFT_UOM_CONVERSION_REQUIRES_REVIEW: "Konversi UOM Draft perlu review",
+  } as Record<string, string>)[reason] ?? reason;
 }
 
 export function SupplierOrderView({
@@ -158,6 +225,9 @@ export function SupplierOrderView({
     });
     const body = (await response.json()) as Payload;
     if (!response.ok) throw new Error(friendly(body.error));
+    if (body.procurementWorkspaceVersion !== 1) {
+      throw new Error(friendly("PROCUREMENT_WORKSPACE_CONTRACT_MISMATCH"));
+    }
     setPayload(body);
   }, [session]);
   const refresh = useCallback(async () => {
@@ -235,7 +305,7 @@ export function SupplierOrderView({
     const activeOrderIds = new Set(
       (payload.orders ?? [])
         .filter((order) =>
-          ["CONFIRMED", "PARTIALLY_RECEIVED", "RECEIVED"].includes(
+          ["DRAFT", "CONFIRMED", "PARTIALLY_RECEIVED", "RECEIVED"].includes(
             order.status,
           ),
         )
@@ -279,6 +349,25 @@ export function SupplierOrderView({
     const ids = new Set(remainingLines.map((line) => line.document_id));
     return (payload.requests ?? []).filter((request) => ids.has(request.id));
   }, [payload.requests, remainingLines]);
+  const requestNumbers = useMemo(
+    () => new Map((payload.requests ?? []).map((row) => [row.id, row.request_no])),
+    [payload.requests],
+  );
+  const requestLineProducts = useMemo(
+    () => new Map((payload.requestLines ?? []).map((row) => [
+      row.id,
+      { name: row.product_name_snapshot, uom: row.requested_uom_name_snapshot },
+    ])),
+    [payload.requestLines],
+  );
+  const activeDemands = useMemo(() => (payload.procurementDemands ?? []).filter(
+    (demand) => demand.status !== "CLOSED" ||
+      (payload.procurementDemandLines ?? []).some((line) =>
+        line.demand_id === demand.id && Number(line.open_demand_base_qty) > 0),
+  ), [payload.procurementDemandLines, payload.procurementDemands]);
+  const openAmendments = useMemo(() =>
+    (payload.procurementAmendments ?? []).filter((row) => row.status === "OPEN"),
+  [payload.procurementAmendments]);
   async function exportOrders() {
     if (selectedOrderIds.size<1) return
     setExporting(true); setError('')
@@ -365,6 +454,101 @@ export function SupplierOrderView({
           {error}
         </div>
       )}
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-violet-600">
+              Demand reservation per sesi
+            </p>
+            <h2 className="mt-1 text-xl font-black">Kebutuhan Purchasing canonical</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Kekurangan berasal dari Reservation Sales Order. Draft PO boleh disinkronkan;
+              PO final tidak pernah diubah otomatis.
+            </p>
+          </div>
+          <div className="flex gap-2 text-xs font-black">
+            <span className="rounded-full bg-violet-50 px-3 py-2 text-violet-700">
+              {activeDemands.length} demand aktif
+            </span>
+            <span className={`rounded-full px-3 py-2 ${openAmendments.length
+              ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
+              {openAmendments.length} perlu review
+            </span>
+          </div>
+        </div>
+        {activeDemands.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-dashed p-5 text-sm text-slate-500">
+            Belum ada shortage Reservation aktif untuk Company ini.
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {activeDemands.map((demand) => {
+              const lines = (payload.procurementDemandLines ?? []).filter(
+                (line) => line.demand_id === demand.id &&
+                  Number(line.open_demand_base_qty) > 0,
+              );
+              const openQty = lines.reduce(
+                (total, line) => total + Number(line.open_demand_base_qty), 0,
+              );
+              return <article key={demand.id} className="rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+                <div className="flex items-start gap-3">
+                  <Boxes className="mt-0.5 h-5 w-5 shrink-0 text-violet-600"/>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-black">{demand.session_code}</p>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-violet-700">
+                        {demand.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {demand.store_name} · {demand.warehouse_name}
+                    </p>
+                    <p className="mt-2 text-sm font-black text-violet-800">
+                      Sisa kebutuhan {quantity(openQty)} base qty · {lines.length} Product
+                    </p>
+                    {demand.stock_request_document_id && <p className="mt-1 text-xs text-slate-500">
+                      Stock Request: {requestNumbers.get(demand.stock_request_document_id) ?? "Terhubung"}
+                    </p>}
+                    <div className="mt-3 space-y-1 text-xs text-slate-600">
+                      {lines.slice(0, 4).map((line) => <p key={line.id} className="flex justify-between gap-3">
+                        <span className="truncate">{line.product_sku} · {line.product_name}</span>
+                        <strong className="shrink-0">{quantity(line.open_demand_base_qty)} base</strong>
+                      </p>)}
+                      {lines.length > 4 && <p className="font-bold text-violet-700">+{lines.length - 4} Product lainnya</p>}
+                    </div>
+                  </div>
+                </div>
+              </article>;
+            })}
+          </div>
+        )}
+        {openAmendments.length > 0 && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2 text-amber-900">
+            <AlertTriangle className="h-5 w-5"/>
+            <h3 className="font-black">Selisih yang perlu tindakan Purchasing</h3>
+          </div>
+          <div className="mt-3 space-y-2">
+            {openAmendments.map((amendment) => {
+              const product = requestLineProducts.get(amendment.stock_request_line_id);
+              return <div key={amendment.id} className="rounded-xl border border-amber-200 bg-white p-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black">{product?.name ?? "Product terkait"}</p>
+                    <p className="mt-1 text-xs font-semibold text-amber-800">{amendmentLabel(amendment.reason)}</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-black ${Number(amendment.delta_base_qty) >= 0
+                    ? "bg-blue-50 text-blue-700" : "bg-rose-50 text-rose-700"}`}>
+                    Selisih {quantity(amendment.delta_base_qty)} base
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Dibutuhkan {quantity(amendment.desired_base_qty)} · Draft {quantity(amendment.draft_allocated_base_qty)} · Final {quantity(amendment.final_allocated_base_qty)}
+                </p>
+              </div>;
+            })}
+          </div>
+        </div>}
+      </section>
       <div className="grid gap-6 xl:grid-cols-2">
         <List title="Permintaan menunggu order">
           {visibleRequests.length === 0 ? (

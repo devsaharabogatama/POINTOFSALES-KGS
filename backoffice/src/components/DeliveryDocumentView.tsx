@@ -30,6 +30,24 @@ type DeliverySummary = {
   storeName: string
   warehouseName: string
   fulfillmentMode: 'PICKUP' | 'DELIVERY'
+  reservationId: string | null
+  reservationStatus?: string
+  dispatchVersion?: number
+  totalReservedBaseQty?: number | string
+  totalDispatchedBaseQty?: number | string
+}
+type DispatchLine = {
+  id: string
+  delivery_document_id: string
+  line_no: number
+  product_id: string
+  product_sku_snapshot: string
+  product_name_snapshot: string
+  sale_uom_id: string
+  sale_uom_name_snapshot: string
+  quantity_uom: number | string
+  quantity_base: number | string
+  remaining_quantity_uom: number | string
 }
 
 const MAX_BULK_DOCUMENTS = 50
@@ -41,13 +59,14 @@ const dateTime = (value?: string | null) => value
   ? new Date(value).toLocaleString('id-ID') : '-'
 function statusLabel(status?: string, fulfillmentMode: 'PICKUP' | 'DELIVERY' = 'DELIVERY') {
   if (fulfillmentMode === 'PICKUP') {
-    return ({ READY: 'Siap diserahkan', DELIVERED: 'Sudah diserahkan', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
+    return ({ READY: 'Siap disiapkan', PARTIALLY_DISPATCHED: 'Disiapkan sebagian', DISPATCHED: 'Siap diserahkan', DELIVERED: 'Sudah diserahkan', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
   }
-  return ({ READY: 'Siap dikirim', DISPATCHED: 'Dalam perjalanan', DELIVERED: 'Terkirim', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
+  return ({ READY: 'Siap dikirim', PARTIALLY_DISPATCHED: 'Dikirim sebagian', DISPATCHED: 'Dalam perjalanan', DELIVERED: 'Terkirim', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
 }
 function statusClass(status?: string) {
   if (status === 'DELIVERED') return 'bg-emerald-100 text-emerald-800'
   if (status === 'DISPATCHED') return 'bg-blue-100 text-blue-800'
+  if (status === 'PARTIALLY_DISPATCHED') return 'bg-violet-100 text-violet-800'
   if (status === 'CANCELED') return 'bg-rose-100 text-rose-800'
   return 'bg-amber-100 text-amber-800'
 }
@@ -61,6 +80,15 @@ function friendly(code?: string) {
     INVALID_DELIVERY_DATE_RANGE: 'Tanggal awal tidak boleh melewati tanggal akhir.',
     DELIVERY_DATE_FROM_INVALID: 'Tanggal awal tidak valid.',
     DELIVERY_DATE_TO_INVALID: 'Tanggal akhir tidak valid.',
+    SALES_DELIVERY_NOT_DISPATCHABLE: 'Surat Jalan tidak berada pada status yang dapat dikirim.',
+    SALES_ORDER_NOT_DISPATCHABLE: 'Order tidak berada pada status yang dapat dikirim.',
+    DELIVERY_WAREHOUSE_SCOPE_DENIED: 'Akun ini tidak memiliki kewenangan pada gudang pengiriman.',
+    DISPATCH_LINES_INVALID: 'Isi minimal satu jumlah pengiriman yang valid.',
+    DISPATCH_QUANTITY_EXCEEDS_REMAINING: 'Jumlah kirim melebihi sisa Reservation.',
+    IDEMPOTENCY_PAYLOAD_CONFLICT: 'Permintaan yang sama sudah dipakai dengan isi berbeda. Muat ulang.',
+    DELIVERY_RECEIVER_REQUIRED: 'Nama penerima wajib diisi.',
+    FULL_DISPATCH_REQUIRED: 'Seluruh barang harus selesai dikirim sebelum penerimaan dikonfirmasi.',
+    CANCEL_LINKED_ORDER_FROM_POS_REQUIRED: 'Order terkonfirmasi harus dibatalkan dari kanal Order agar Reservation ikut dilepas.',
   } as Record<string, string>)[code ?? ''] ?? code ?? 'Operasi Surat Jalan gagal.'
 }
 function saveBlob(blob: Blob, fileName: string) {
@@ -81,6 +109,7 @@ export function DeliveryDocumentView({
   notify: (message: string) => void
 }) {
   const [rows, setRows] = useState<DeliverySummary[]>([])
+  const [dispatchLines, setDispatchLines] = useState<DispatchLine[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -116,9 +145,18 @@ export function DeliveryDocumentView({
           headers: headers(session), cache: 'no-store',
         }),
       ])
-      const result = await response.json() as { data?: DeliverySummary[]; error?: string }
+      const result = await response.json() as {
+        data?: DeliverySummary[]
+        dispatchLines?: DispatchLine[]
+        dispatchWorkspaceVersion?: number
+        error?: string
+      }
       if (!response.ok) throw new Error(friendly(result.error))
+      if (result.dispatchWorkspaceVersion !== 1) {
+        throw new Error('DISPATCH_WORKSPACE_CONTRACT_MISMATCH')
+      }
       setRows(result.data ?? [])
+      setDispatchLines(result.dispatchLines ?? [])
       setMarkedIds([])
       if (brandingResponse.ok) {
         const branding = await brandingResponse.json() as {
@@ -283,7 +321,7 @@ export function DeliveryDocumentView({
     </header>
     <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(260px,1fr)_auto_auto_auto_auto] lg:items-end">
       <label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari SJ, Invoice, penerima, toko, atau gudang" className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3"/></label>
-      <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 px-3"><option value="ALL">Semua status</option><option value="READY">Siap dikirim</option><option value="DISPATCHED">Dalam perjalanan</option><option value="DELIVERED">Terkirim</option><option value="CANCELED">Dibatalkan</option></select>
+      <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 px-3"><option value="ALL">Semua status</option><option value="READY">Siap dikirim</option><option value="PARTIALLY_DISPATCHED">Dikirim sebagian</option><option value="DISPATCHED">Dalam perjalanan</option><option value="DELIVERED">Terkirim</option><option value="CANCELED">Dibatalkan</option></select>
       <label className="text-xs font-black text-slate-600">Tanggal awal<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
       <label className="text-xs font-black text-slate-600">Tanggal akhir<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
       <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }} disabled={!dateFrom && !dateTo} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700 disabled:text-slate-300"><CalendarRange className="h-4 w-4"/>Semua tanggal</button>
@@ -304,14 +342,15 @@ export function DeliveryDocumentView({
         <td className="p-4 text-right"><button onClick={() => void open(row)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></td>
       </tr>)}</tbody>
     </table></div></div>
-    {selected && <Detail summary={selected} detail={detail} canManage={canManage} close={() => { setSelected(null); setDetail(null) }} print={() => void print()} download={() => void download()} act={setAction}/>}
-    {selected && detail && action && <ActionDialog session={session} summary={selected} action={action} close={() => setAction(null)} complete={complete}/>}
+    {selected && <Detail summary={selected} detail={detail} dispatchLines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} canManage={canManage} close={() => { setSelected(null); setDetail(null) }} print={() => void print()} download={() => void download()} act={setAction}/>}
+    {selected && detail && action && <ActionDialog session={session} summary={selected} lines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} action={action} close={() => setAction(null)} complete={complete}/>}
   </section>
 }
 
-function Detail({ summary, detail, canManage, close, print, download, act }: {
+function Detail({ summary, detail, dispatchLines, canManage, close, print, download, act }: {
   summary: DeliverySummary
   detail: JsonMap | null
+  dispatchLines: DispatchLine[]
   canManage: boolean
   close: () => void
   print: () => void
@@ -331,6 +370,11 @@ function Detail({ summary, detail, canManage, close, print, download, act }: {
         <button onClick={close} className="rounded-xl bg-slate-100 p-2"><X className="h-5 w-5"/></button>
       </div>
       {!detail ? <Loader2 className="mx-auto my-16 h-7 w-7 animate-spin"/> : <>
+        {summary.reservationId && <div className="mt-5 grid gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm sm:grid-cols-3">
+          <div><p className="text-xs font-bold uppercase text-amber-700">Reserved</p><p className="mt-1 font-black">{String(summary.totalReservedBaseQty ?? 0)} base qty</p></div>
+          <div><p className="text-xs font-bold uppercase text-amber-700">Sudah dispatch</p><p className="mt-1 font-black">{String(summary.totalDispatchedBaseQty ?? 0)} base qty</p></div>
+          <div><p className="text-xs font-bold uppercase text-amber-700">Baris tersisa</p><p className="mt-1 font-black">{dispatchLines.filter((line) => Number(line.remaining_quantity_uom) > 0).length}</p></div>
+        </div>}
         <div className="mt-5 overflow-x-auto rounded-2xl border">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Produk</th><th className="p-4">UOM</th><th className="p-4 text-right">Qty</th></tr></thead>
@@ -340,38 +384,71 @@ function Detail({ summary, detail, canManage, close, print, download, act }: {
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button onClick={download} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 px-4 font-black text-blue-700"><Download className="h-4 w-4"/>Unduh PDF</button>
           <button onClick={print} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 font-black"><FileText className="h-4 w-4"/>Print Surat Jalan</button>
-          {canManage && summary.status === 'READY' && <>
+          {canManage && summary.status === 'READY' && !summary.reservationId && <>
             <button onClick={() => act('CANCEL')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan</button>
             {summary.fulfillmentMode === 'PICKUP'
               ? <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Sudah diserahkan</button>
               : <button onClick={() => act('DISPATCH')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white"><Send className="h-4 w-4"/>Kirim</button>}
           </>}
-          {canManage && summary.status === 'DISPATCHED' && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Tandai Terkirim</button>}
+          {canManage && summary.reservationId && ['READY', 'PARTIALLY_DISPATCHED'].includes(summary.status) && <button onClick={() => act('DISPATCH')} disabled={!dispatchLines.some((line) => Number(line.remaining_quantity_uom) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Send className="h-4 w-4"/>{summary.fulfillmentMode === 'PICKUP' ? 'Keluarkan barang' : summary.status === 'PARTIALLY_DISPATCHED' ? 'Lanjut kirim' : 'Kirim barang'}</button>}
+          {canManage && summary.status === 'DISPATCHED' && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>{summary.fulfillmentMode === 'PICKUP' ? 'Sudah diserahkan' : 'Tandai diterima'}</button>}
         </div>
       </>}
     </article>
   </div>
 }
 
-function ActionDialog({ session, summary, action, close, complete }: {
+function ActionDialog({ session, summary, lines, action, close, complete }: {
   session: Session
   summary: DeliverySummary
+  lines: DispatchLine[]
   action: 'DISPATCH' | 'DELIVER' | 'CANCEL'
   close: () => void
   complete: () => Promise<void>
 }) {
   useEscapeClose(close)
   const [reason, setReason] = useState('')
+  const [recipientName, setRecipientName] = useState(summary.recipientName ?? '')
+  const [idempotencyKey] = useState(() => crypto.randomUUID())
+  const [quantities, setQuantities] = useState<Record<string, string>>(() =>
+    Object.fromEntries(lines.map((line) => [
+      line.id, String(line.remaining_quantity_uom),
+    ])),
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const activeLines = lines.filter((line) => Number(line.remaining_quantity_uom) > 0)
+  const dispatchInvalid = action === 'DISPATCH' && Boolean(summary.reservationId) && (
+    !activeLines.some((line) => Number(quantities[line.id]) > 0) ||
+    activeLines.some((line) => {
+      const quantity = Number(quantities[line.id])
+      return !Number.isFinite(quantity) || quantity < 0 ||
+        quantity > Number(line.remaining_quantity_uom) + 0.000001
+    })
+  )
   async function submit() {
     setBusy(true)
     setError('')
     try {
       const response = await fetch(`/api/inventory/delivery-documents/${summary.salesId}`, {
         method: 'PATCH', headers: headers(session, true),
-        body: JSON.stringify({ action, deliveryDocumentId: summary.deliveryDocumentId,
-          masterVersion: summary.masterVersion, ...(action === 'CANCEL' ? { reason } : {}) }),
+        body: JSON.stringify({
+          action,
+          deliveryDocumentId: summary.deliveryDocumentId,
+          masterVersion: summary.masterVersion,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+          ...(action === 'DISPATCH' ? {
+            idempotencyKey,
+            lines: activeLines
+              .map((line) => ({
+                deliveryLineId: line.id,
+                quantityUom: Number(quantities[line.id]),
+              }))
+              .filter((line) => line.quantityUom > 0),
+          } : {}),
+          ...(action === 'DELIVER' && summary.reservationId
+            ? { recipientName: recipientName.trim() } : {}),
+        }),
       })
       const result = await response.json() as { error?: string }
       if (!response.ok) throw new Error(friendly(result.error))
@@ -386,5 +463,9 @@ function ActionDialog({ session, summary, action, close, complete }: {
     : action === 'DELIVER' && summary.fulfillmentMode === 'PICKUP'
       ? 'Barang sudah diserahkan?'
       : action === 'DELIVER' ? 'Pesanan sudah diterima?' : 'Batalkan Surat Jalan?'
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-7"><div className="flex justify-between"><h2 className="text-xl font-black">{title}</h2><button onClick={close}><X className="h-5 w-5"/></button></div>{action === 'CANCEL' && <textarea rows={4} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border p-3"/>}{error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-rose-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border px-5 font-black">Kembali</button><button onClick={() => void submit()} disabled={busy || (action === 'CANCEL' && reason.trim().length < 3)} className="min-h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:bg-slate-300">{busy ? 'Memproses...' : 'Konfirmasi'}</button></div></section></div>
+  return <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/70 p-4"><section className="mx-auto my-6 w-full max-w-3xl rounded-3xl bg-white p-7"><div className="flex justify-between gap-4"><div><h2 className="text-xl font-black">{title}</h2><p className="mt-1 text-sm text-slate-500">{summary.deliveryNo} · versi {summary.masterVersion}</p></div><button onClick={close}><X className="h-5 w-5"/></button></div>
+    {action === 'DISPATCH' && summary.reservationId && <div className="mt-5 space-y-3"><p className="text-sm font-bold text-slate-700">Isi jumlah yang dikirim sekarang. Isi 0 untuk Product yang belum ikut dikirim.</p>{activeLines.map((line) => <label key={line.id} className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-[1fr_180px] sm:items-center"><span><strong>{line.product_name_snapshot}</strong><span className="mt-1 block text-xs text-slate-500">{line.product_sku_snapshot} · sisa {String(line.remaining_quantity_uom)} {line.sale_uom_name_snapshot}</span></span><input type="number" min="0" max={Number(line.remaining_quantity_uom)} step="any" value={quantities[line.id] ?? ''} onChange={(event) => setQuantities((current) => ({ ...current, [line.id]: event.target.value }))} className="min-h-11 rounded-xl border border-slate-300 px-3 text-right font-black"/></label>)}</div>}
+    {action === 'DELIVER' && summary.reservationId && <label className="mt-5 block text-sm font-bold">Nama penerima<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} maxLength={200} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3"/></label>}
+    <label className="mt-5 block text-sm font-bold">{action === 'CANCEL' ? 'Alasan pembatalan' : 'Catatan (opsional)'}<textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} className="mt-2 w-full rounded-xl border border-slate-300 p-3"/></label>
+    {error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-rose-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border px-5 font-black">Kembali</button><button onClick={() => void submit()} disabled={busy || dispatchInvalid || (action === 'CANCEL' && reason.trim().length < 3) || (action === 'DELIVER' && Boolean(summary.reservationId) && !recipientName.trim())} className="min-h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:bg-slate-300">{busy ? 'Memproses...' : 'Konfirmasi'}</button></div></section></div>
 }

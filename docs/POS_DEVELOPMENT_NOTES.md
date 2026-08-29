@@ -992,3 +992,15 @@ Agent POS wajib:
   lifecycle Surat Jalan secara otomatis.
 - Compatibility: client lama tanpa `transactionAt` tetap memakai waktu Draft
   dari server; Cash/Transfer dan Offline tidak memperoleh kewenangan backdate.
+# Scheduled TEMPO Order (2026-08-27)
+
+- Order bertanggal mendatang disimpan sebagai Draft TEMPO `SCHEDULED`.
+- Status aktif diturunkan saat read dari `planned_order_date` dan tanggal bisnis
+  Company; tidak ada cron, auto-Post, atau mutasi final otomatis.
+- Sebelum Post, order tidak menghasilkan Stock Movement, Payment, AR, Invoice,
+  Surat Jalan, Financial Event, atau Journal.
+- Server menolak Post sebelum tanggal rencana. Pada Post manual, Finance memakai
+  timestamp aktual dan tanggal rencana tetap tersimpan sebagai referensi order.
+- Due date dan tanggal kirim harus sama atau sesudah tanggal rencana.
+- Draft dapat dilanjutkan oleh sesi kasir baru hanya pada Store yang sama melalui
+  lock, repricing, optimistic version, dan audit canonical.

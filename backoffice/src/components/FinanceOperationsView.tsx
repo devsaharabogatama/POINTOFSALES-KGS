@@ -20,10 +20,12 @@ import {
   RotateCcw,
   Search,
   ShieldAlert,
+  BadgeCheck,
   Unlock,
   X,
 } from "lucide-react";
 import { useEscapeClose } from "@/lib/use-escape-close";
+import { SalesPaymentVerificationPanel } from "@/components/SalesPaymentVerificationPanel";
 
 type Period = {
   id: string;
@@ -167,7 +169,14 @@ type ReportCode =
   | "RECONCILIATION_SUMMARY";
 
 type ReportData = Record<string, unknown>;
-type Tab = "overview" | "ledger" | "journals" | "periods" | "queue" | "reports";
+type Tab =
+  | "overview"
+  | "ledger"
+  | "journals"
+  | "periods"
+  | "payments"
+  | "queue"
+  | "reports";
 type DialogAction =
   | { type: "REVERSE"; journal: Journal }
   | { type: "LOCK"; period: Period }
@@ -565,6 +574,7 @@ export function FinanceOperationsView(props: Props) {
             ["ledger", "Buku Besar", Landmark],
             ["journals", "Journal Entries", BookOpen],
             ["periods", "Periode", CalendarRange],
+            ["payments", "Verifikasi Bayar", BadgeCheck],
             ["queue", "Posting Queue", FileClock],
             ["reports", "Laporan", BarChart3],
           ] as [Tab, string, typeof Landmark][]
@@ -620,6 +630,14 @@ export function FinanceOperationsView(props: Props) {
             props.notify(message);
             await load();
           }}
+        />
+      )}
+      {tab === "payments" && (
+        <SalesPaymentVerificationPanel
+          session={props.session}
+          companyId={props.companyId}
+          notify={props.notify}
+          openQueue={() => setTab("queue")}
         />
       )}
       {tab === "queue" && (

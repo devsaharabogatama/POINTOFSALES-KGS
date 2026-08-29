@@ -41,10 +41,12 @@ type Warehouse = {
 }
 
 type Balance = {
-  id: string
+  id: string | null
   product_id: string
   warehouse_id: string
   stock_qty: number | string
+  reserved_out_base_qty: number | string
+  available_to_sell_base_qty: number | string
   updated_at: string
   fifo_value: number | string
   minimum_stock_base_qty: number | string | null
@@ -54,6 +56,7 @@ type Balance = {
 }
 
 type OverviewPayload = {
+  reservationReadModelVersion?: number
   balances?: Balance[]
   warehouses?: Warehouse[]
   error?: string
@@ -118,8 +121,14 @@ export function StockRealView({
           'Gagal memuat Stock Real.',
       )
     }
+    const stockPayload = payloads[1] as OverviewPayload
+    if (stockPayload.reservationReadModelVersion !== 1) {
+      throw new Error(
+        'Read model Reserved Out belum tersedia. Jalankan migration ODR-6B.1 terlebih dahulu.',
+      )
+    }
     setProducts((payloads[0] as { data?: Product[] }).data ?? [])
-    setOverview(payloads[1] as OverviewPayload)
+    setOverview(stockPayload)
   }, [session])
 
   const refresh = useCallback(async () => {
@@ -136,7 +145,7 @@ export function StockRealView({
 
   useEffect(() => {
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tenant data follows active Company
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load owns the initial async state update
     load()
       .catch((caught) => {
         if (!cancelled) {
@@ -166,6 +175,8 @@ export function StockRealView({
       const product = productById.get(balance.product_id)
       const warehouse = warehouseById.get(balance.warehouse_id)
       const onHand = Number(balance.stock_qty) || 0
+      const reserved = Number(balance.reserved_out_base_qty) || 0
+      const available = Number(balance.available_to_sell_base_qty) || 0
       const minimum =
         balance.minimum_stock_base_qty === null ||
         balance.minimum_stock_base_qty === undefined
@@ -180,6 +191,8 @@ export function StockRealView({
         product,
         warehouse,
         onHand,
+        reserved,
+        available,
         minimum,
         isLow,
         valuation: Number(balance.fifo_value) || 0,
@@ -319,8 +332,20 @@ export function StockRealView({
                       <p className="mt-1 text-xs text-slate-400">{row.warehouse?.location ?? row.warehouse?.warehouse_type ?? '-'}</p>
                     </td>
                     <td className="px-5 py-4 font-black text-slate-900">{qty(row.onHand)} {uom}</td>
-                    <td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">Belum aktif</span></td>
-                    <td className="px-5 py-4 font-black text-slate-900">{qty(row.onHand)} {uom}</td>
+                    <td className="px-5 py-4">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                        row.reserved > 0
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {qty(row.reserved)} {uom}
+                      </span>
+                    </td>
+                    <td className={`px-5 py-4 font-black ${
+                      row.available < 0 ? 'text-rose-700' : 'text-slate-900'
+                    }`}>
+                      {qty(row.available)} {uom}
+                    </td>
                     <td className="px-5 py-4">
                       {row.minimum === null
                         ? <span className="text-slate-400">Belum diatur</span>
@@ -351,9 +376,10 @@ export function StockRealView({
         </div>
       </div>
       <p className="mt-4 text-xs leading-5 text-slate-500">
-        Reserved belum diaktifkan sampai kontrak order/reservation G4 tersedia.
-        Karena itu Available saat ini sama dengan On Hand. Detail ledger akan
-        tersedia pada langkah roadmap berikutnya: Stock Movement / Kartu Stok.
+        Reserved Out berasal dari Sales Order berstatus Open atau Partial
+        Dispatch. Available dihitung server-side sebagai On Hand dikurangi
+        Reserved Out. Konfirmasi Order tidak mengurangi On Hand; pengurangan
+        Stock dan FIFO baru terjadi ketika Surat Jalan di-dispatch.
       </p>
     </>
   )
