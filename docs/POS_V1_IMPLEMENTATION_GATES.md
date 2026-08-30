@@ -1979,3 +1979,25 @@ tetap operasional dan final effect mengikuti Dispatch. Preflight
 tersebut memakai source Dispatch immutable. Jangan menyelesaikannya dengan
 menandai Order ODR sebagai legacy POSTED karena itu berisiko menggandakan
 Stock, Payment, Event, atau Journal.
+
+Authenticated UAT kemudian menemukan pembatalan Order dari POS belum diproyeksikan
+secara utuh pada workspace Invoice Backoffice. Forward-fix
+`20260830110000_sales_order_cancellation_invoice_sync.sql` sekarang `LOCAL READY;
+MANUAL SUPABASE ROLLOUT PENDING`: POS dan Backoffice memakai komposisi cancel
+canonical yang sama, Reservation/SJ/demand dilepas, Invoice immutable tetap
+tersimpan tetapi berstatus `DIBATALKAN`, dan pending Cash pada sesi terbuka
+direversal tepat satu kali. Payment terverifikasi, Cash pada sesi tertutup, dan
+Order yang telah Dispatch tetap fail-closed karena membutuhkan workflow refund
+atau reversal tersendiri. Gate ini belum `COMPLETE` sebelum preflight, migration,
+postflight, deployment client, dan authenticated smoke dalam runbook seluruhnya
+PASS.
+
+Smoke pembatalan berikutnya menemukan Cash Order dari sesi sumber yang telah
+ditutup masih tertahan oleh guard `SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION`,
+padahal review Finance memang asynchronous dan Kasir sudah membuka sesi baru.
+Forward-fix `20260830120000` sekarang `LOCAL READY; MANUAL SUPABASE ROLLOUT
+PENDING`: reversal Cash exact-once masuk ke sesi aktif aktor pada Store yang
+sama, sedangkan sesi sumber `CLOSED` tetap immutable. Tanpa sesi aktif yang
+sesuai, payment `VERIFIED`, atau setelah Dispatch, cancellation tetap
+fail-closed. Gate belum selesai sebelum preflight, migration, postflight,
+deployment, dan authenticated smoke PASS.

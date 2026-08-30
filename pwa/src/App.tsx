@@ -241,9 +241,6 @@ function scrollNumberInputContainer(input: HTMLInputElement, delta: number) {
 function errorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String(error.message)
-    if (message.includes('SALES_ORDER_PAYMENT_RESOLUTION_REQUIRED')) {
-      return 'Pembayaran order ini sudah tercatat dan harus ditolak atau diselesaikan oleh Finance sebelum order dapat dibatalkan.'
-    }
     return message
   }
   return 'Terjadi kesalahan yang tidak dikenali.'
@@ -450,8 +447,18 @@ function friendlyError(code: string) {
       'Stok tidak cukup dan izin stok minus untuk Order ini belum lengkap.',
     SALES_ORDER_FINAL:
       'Order sudah dikonfirmasi atau final. Muat ulang daftar Order.',
+    SALES_ORDER_VERIFIED_PAYMENT_REVERSAL_REQUIRED:
+      'Pembayaran sudah diverifikasi. Finance wajib menyelesaikan reversal sebelum Order dapat dibatalkan.',
+    SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION:
+      'Buka sesi kas pada toko Order ini untuk mencatat pengembalian Cash, lalu coba lagi.',
+    SALES_ORDER_CASH_REFUND_REQUIRES_CURRENT_OPEN_SESSION:
+      'Buka sesi kas pada toko Order ini untuk mencatat pengembalian Cash, lalu coba lagi.',
+    SALES_ORDER_DISPATCH_STARTED:
+      'Barang sudah mulai dikirim. Gunakan proses Return atau koreksi pemenuhan.',
     SALES_ORDER_REQUIREMENT_MISSING:
       'Snapshot kebutuhan stok Order belum tersedia. Simpan ulang Draft.',
+    CONFIRMED_SALES_ORDER_IMMUTABLE:
+      'Order sudah dikonfirmasi dan stoknya telah dicadangkan. Lanjutkan dari daftar Order, bukan dari Draft.',
     SALES_ORDER_VIEW_FORBIDDEN:
       'Akun ini tidak boleh melihat Order pada toko aktif.',
   }
@@ -5091,6 +5098,7 @@ export default function App() {
       {orderPanelOpen && cashierSession && (
         <SalesOrderPanel
           orders={salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED')}
+          customers={catalog.customers}
           loading={loading}
           close={() => setOrderPanelOpen(false)}
           refresh={async () => {

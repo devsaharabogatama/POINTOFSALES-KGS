@@ -190,6 +190,7 @@ export type PurchaseReturnDraft = {
 
 export type CustomerOption = {
   id: string
+  code?: string
   name: string
   phone: string
   address: string
@@ -1067,6 +1068,7 @@ export async function loadCatalog(
 
   const customerRows = (customersResult.data ?? []) as Array<{
     id: string
+    code: string | null
     name: string
     phone: string | null
     address: string | null
@@ -1083,6 +1085,7 @@ export async function loadCatalog(
     ),
     customers: customerRows.map((row) => ({
       id: row.id,
+      code: row.code ?? '',
       name: row.name,
       phone: row.phone ?? '',
       address: row.address ?? '',

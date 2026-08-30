@@ -478,3 +478,5 @@ Fitur baru hanya dapat disebut selesai jika:
 | 2026-08-28 | Confirmed PO immutable; perubahan memakai delta/amendment | APPROVED |
 | 2026-08-28 | Dispatch mencatat ekonomi Sale/Inventory; Finance verification mencatat settlement Payment | APPROVED |
 | 2026-08-28 | Implementasi dibagi enam fase dan belum dimulai saat dokumen ini dibuat | APPROVED |
+| 2026-08-30 | Cancel sebelum Dispatch berlaku lintas POS/Backoffice; Invoice immutable ditandai DIBATALKAN, Reservation/SJ/demand tersinkron, payment verified tetap membutuhkan reversal | APPROVED |
+| 2026-08-30 | Cancel pending Cash setelah sesi sumber ditutup memakai reversal exact-once pada sesi aktif aktor di Store yang sama; closing sumber tidak ditulis ulang | APPROVED |

@@ -1,5 +1,63 @@
 # Active Development Handoff — KGS POS
 
+### 2026-08-30 — POS ACTIVE ORDER LOCAL SEARCH READY
+
+- Modal `Reserved Out -> Order aktif` sekarang mempunyai search field tetap di
+  atas daftar dan memfilter Order aktif serta terjadwal berdasarkan nomor Order,
+  nama Customer, atau kode Customer.
+- Perubahan murni client-side. Kode Customer memakai payload
+  `get_pos_customer_references` yang memang sudah tersedia; tidak ada migration,
+  RPC, mutation, Reservation, Stock, Payment, Finance, atau lifecycle yang
+  diubah. Field `CustomerOption.code` opsional agar offline cache lama tetap
+  kompatibel.
+- Empty query mempertahankan seluruh daftar dan urutan existing; hasil kosong
+  menampilkan pesan eksplisit. Evidence lokal: PWA oxlint PASS dan production
+  TypeScript/Vite build PASS.
+- Manual gate: restart/deploy PWA, hard refresh, lalu cari dengan ketiga jenis
+  kata kunci dan pastikan expand/cancel/refresh Order tetap sama.
+
+### 2026-08-30 — CLOSED-SOURCE-SESSION CASH ORDER CANCEL FORWARD-FIX LOCAL-READY
+
+- Authenticated smoke migration `20260830110000` menemukan cancel Cash Order
+  masih ditolak ketika sesi sumber sudah `CLOSED`, meskipun Kasir mempunyai sesi
+  aktif baru. Penyebabnya helper reversal hanya menerima sesi sumber `OPEN`.
+- Forward migration `20260830120000` memilih sesi sumber bila masih `OPEN`; jika
+  sudah tutup, ia memakai satu sesi `OPEN` milik aktor pada Store yang sama.
+  Reversal drawer tetap exact-once, payment audit append-only, dan seluruh
+  cancellation composition Reservation/SJ/demand/Invoice tetap sama.
+- Sesi sumber `CLOSED` tidak di-update. Tanpa sesi aktif Store yang sama,
+  payment `VERIFIED`, atau setelah Dispatch, operasi tetap fail-closed.
+- PWA menampilkan pesan operasional, bukan kode mentah. Backoffice menampilkan
+  aksi cancel ketika aktor mempunyai sesi aktif Store yang sesuai.
+- Files baru: preflight/migration/postflight bertema
+  `sales_order_closed_session_cash_cancel`; runbook, gate, README, API/UI error
+  mapping, dan handoff diperbarui.
+- Manual gate: preflight 120000 -> migration 120000 -> postflight -> deploy/hard
+  refresh -> Cash Order pada sesi lama CLOSED + sesi baru OPEN Store sama ->
+  cancel -> cek reversal sesi baru, closing lama, Reservation/SJ/Invoice/demand,
+  retry, dan negative test tanpa sesi aktif. Database/deployment tidak dijalankan
+  agent.
+
+### 2026-08-30 — CONFIRMED ORDER LEAK INTO DRAFT RESUME FORWARD-FIX LOCAL-READY
+
+- Root cause terverifikasi: `list_pos_sale_drafts` legacy hanya memeriksa
+  `document_status='DRAFT'`, sedangkan ODR confirmed/reserved sengaja tetap
+  memakai document status tersebut sampai Dispatch. Order reserved lalu dibuka
+  editor Draft dan repricing mencoba menghapus requirement yang sudah memiliki
+  FK reservation line.
+- Forward migration `20260830100000` membatasi daftar editable Draft pada
+  `DRAFT_INPUT/SCHEDULED` dengan `confirmed_at IS NULL` dan menambah save guard
+  sebelum repricing. FK, requirement, Reservation, stock, Invoice, payment, dan
+  Finance tidak diubah atau dibackfill.
+- PWA menampilkan pesan stabil `CONFIRMED_SALES_ORDER_IMMUTABLE` untuk tab lama,
+  bukan pesan FK mentah.
+- Evidence lokal: PWA oxlint PASS, TypeScript/Vite production build PASS, SQL
+  delimiter dan parentheses seimbang, scoped `git diff --check` tanpa error
+  (hanya warning line-ending existing).
+- Manual gate menunggu user: preflight -> migration 100000 -> postflight ->
+  deploy/restart PWA -> hard refresh -> smoke Draft biasa dan Order reserved.
+  Jangan menjalankan delete requirement/reservation atau melonggarkan FK.
+
 ### 2026-08-29 - ODR-6D E2E CLOSURE PREFLIGHT LOCAL READY
 
 - User mengonfirmasi closing postflight ODR-6C.2 seluruhnya PASS. Runtime
@@ -7551,3 +7609,34 @@ Eksekusi hanya setelah backup dan maintenance window.
   -> transaksi Cash -> Tutup Sesi tanpa tindakan Finance -> cek expected/actual/
   difference dan Stock Request -> cek payment tetap tersedia untuk review
   Finance kemudian. Stop pada BLOCKER/FAIL/SQL error.
+
+### 2026-08-30 — SALES ORDER CANCELLATION / INVOICE SYNC LOCAL-READY
+
+- Defect: cancel Order dari POS sudah melepaskan Reservation dan membatalkan SJ,
+  tetapi Invoice Backoffice tetap terlihat aktif karena read model hanya membaca
+  immutable snapshot tanpa lifecycle Order. Backoffice juga belum mempunyai
+  tindakan cancel.
+- Forward migration `20260830110000` membuat POS dan Backoffice memanggil
+  cancellation composition yang sama. Pending non-Cash dibatalkan; pending Cash
+  pada sesi OPEN mendapat satu reversal drawer idempotent. Payment VERIFIED,
+  Cash dari sesi tertutup, dan Dispatch yang sudah dimulai tetap fail-closed.
+- `get_sales_documents`, detail, dan export kini membawa status/alasan/aktor/
+  waktu cancel. Snapshot Invoice tidak ditulis ulang atau dihapus. Backoffice
+  menambah filter status, modal alasan cancel, dan watermark `DIBATALKAN` pada
+  PDF/print.
+- Files: diagnostic/migration/postflight bertema
+  `sales_order_cancellation_invoice_sync`, API collection Sales Document,
+  `SalesDocumentView`, renderer print, PWA friendly errors, spec/runbook/router,
+  implementation gate, root README, dan handoff ini.
+- Evidence lokal: Backoffice ESLint PASS; Next.js production build PASS; PWA
+  oxlint PASS; Vite/TypeScript production build PASS; `git diff --check` PASS
+  setelah whitespace fix. PostgreSQL live tidak tersedia/dijalankan agent.
+- Manual gate: preflight -> migration 110000 -> postflight -> deploy/restart
+  Backoffice dan PWA -> hard refresh -> authenticated smoke Cash cancel dari
+  kedua channel, Reservation/SJ/Invoice/drawer, exact retry, Dispatch denial,
+  verified-payment denial, dan closed-session Cash denial.
+- Compatibility: final/legacy Invoice tetap aktif; print audit tetap memakai
+  endpoint yang sama; tidak ada deletion/backfill Stock/FIFO/Event/Journal.
+- Next safe step: user menjalankan gate dan mengirim seluruh output. Jangan
+  deploy Production atau mengubah verified payment history sebelum postflight
+  dan smoke bersih.

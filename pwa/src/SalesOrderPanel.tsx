@@ -5,10 +5,12 @@ import {
   ChevronDown,
   PackageCheck,
   RefreshCw,
+  Search,
   X,
 } from 'lucide-react'
 import {
   cancelSalesOrder,
+  type CustomerOption,
   type SalesOrderListItem,
 } from './lib/pos'
 
@@ -51,17 +53,25 @@ function friendly(value: unknown) {
     CANCEL_REASON_REQUIRED: 'Alasan pembatalan wajib diisi.',
     SALES_ORDER_CANCEL_FORBIDDEN: 'Akun ini tidak berwenang membatalkan Order.',
     CUSTOM_PERMISSION_DENIED: 'Akun ini tidak memiliki izin Order.',
+    SALES_ORDER_VERIFIED_PAYMENT_REVERSAL_REQUIRED:
+      'Pembayaran sudah diverifikasi. Finance harus melakukan reversal sebelum Order dibatalkan.',
+    SALES_ORDER_CASH_REFUND_REQUIRES_CURRENT_OPEN_SESSION:
+      'Buka sesi kas pada toko Order ini untuk mencatat pengembalian Cash, lalu coba batalkan lagi.',
+    SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION:
+      'Buka sesi kas pada toko Order ini untuk mencatat pengembalian Cash, lalu coba batalkan lagi.',
   }
   return Object.entries(known).find(([code]) => message.includes(code))?.[1] ?? message
 }
 
 export function SalesOrderPanel({
   orders,
+  customers,
   loading,
   close,
   refresh,
 }: {
   orders: SalesOrderListItem[]
+  customers: CustomerOption[]
   loading: boolean
   close: () => void
   refresh: () => Promise<void>
@@ -71,13 +81,27 @@ export function SalesOrderPanel({
   const [cancelReason, setCancelReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const customerCodeById = useMemo(
+    () => new Map(customers.map((customer) => [customer.id, customer.code ?? ''])),
+    [customers],
+  )
+  const filteredOrders = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase('id-ID')
+    if (!keyword) return orders
+    return orders.filter((order) => [
+      order.orderNo,
+      order.customerName,
+      customerCodeById.get(order.customerId) ?? '',
+    ].some((value) => value.toLocaleLowerCase('id-ID').includes(keyword)))
+  }, [customerCodeById, orders, query])
   const scheduled = useMemo(
-    () => orders.filter((order) => order.orderTimingMode === 'SCHEDULED'),
-    [orders],
+    () => filteredOrders.filter((order) => order.orderTimingMode === 'SCHEDULED'),
+    [filteredOrders],
   )
   const active = useMemo(
-    () => orders.filter((order) => order.orderTimingMode !== 'SCHEDULED'),
-    [orders],
+    () => filteredOrders.filter((order) => order.orderTimingMode !== 'SCHEDULED'),
+    [filteredOrders],
   )
 
   async function cancel() {
@@ -139,12 +163,18 @@ export function SalesOrderPanel({
         <button type="button" onClick={close} className="rounded-xl bg-slate-100 p-2 text-slate-700" aria-label="Tutup daftar Order"><X className="h-5 w-5"/></button>
       </header>
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-        <span className="text-sm font-bold text-slate-600">{orders.length} Order</span>
+        <span className="text-sm font-bold text-slate-600">{query.trim() ? `${filteredOrders.length} dari ${orders.length}` : orders.length} Order</span>
         <button type="button" onClick={() => void refresh()} disabled={loading || busy} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button>
       </div>
+      <div className="border-b border-slate-100 px-5 py-4">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"/>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nomor Order, nama Customer, atau kode Customer..." className="min-h-12 w-full rounded-xl border border-slate-300 bg-white py-3 pl-12 pr-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"/>
+        </label>
+      </div>
       {error && <p className="mx-5 mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-      <div className="flex-1 space-y-7 overflow-y-auto p-5">{group('Order aktif', 'Siap diproses gudang atau sedang dikirim.', active)}{group('Order terjadwal', 'Stok sudah dicadangkan untuk tanggal rencana.', scheduled)}</div>
+      <div className="flex-1 space-y-7 overflow-y-auto p-5">{filteredOrders.length === 0 && query.trim() ? <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-semibold text-slate-500">Order tidak ditemukan.</p> : <>{group('Order aktif', 'Siap diproses gudang atau sedang dikirim.', active)}{group('Order terjadwal', 'Stok sudah dicadangkan untuk tanggal rencana.', scheduled)}</>}</div>
     </section>
-    {cancelTarget && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950"><h3 className="text-xl font-black">Batalkan {cancelTarget.orderNo}?</h3><p className="mt-1 text-sm text-slate-500">Reserved Out yang belum dikirim akan dilepas. Histori pembatalan tetap tersimpan.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} rows={4} maxLength={500} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border border-slate-300 p-3"/>{error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setCancelTarget(null)} disabled={busy} className="min-h-11 rounded-xl border px-5 font-bold">Kembali</button><button type="button" onClick={() => void cancel()} disabled={busy || cancelReason.trim().length < 3} className="min-h-11 rounded-xl bg-rose-600 px-5 font-black text-white disabled:opacity-40">{busy ? 'Memproses...' : 'Batalkan Order'}</button></div></section></div>}
+    {cancelTarget && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950"><h3 className="text-xl font-black">Batalkan {cancelTarget.orderNo}?</h3><p className="mt-1 text-sm text-slate-500">Reserved Out yang belum dikirim akan dilepas. Jika pembayaran Cash berasal dari sesi lama yang sudah tutup, pengembaliannya dicatat pada sesi aktif toko ini. Histori tetap tersimpan.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} rows={4} maxLength={500} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border border-slate-300 p-3"/>{error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setCancelTarget(null)} disabled={busy} className="min-h-11 rounded-xl border px-5 font-bold">Kembali</button><button type="button" onClick={() => void cancel()} disabled={busy || cancelReason.trim().length < 3} className="min-h-11 rounded-xl bg-rose-600 px-5 font-black text-white disabled:opacity-40">{busy ? 'Memproses...' : 'Batalkan Order'}</button></div></section></div>}
   </div>
 }

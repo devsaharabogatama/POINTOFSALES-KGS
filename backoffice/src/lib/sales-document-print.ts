@@ -74,6 +74,22 @@ function documentFileName(customerName: unknown, documentNo: unknown, type: 'INV
 
 type PdfDocument = import('jspdf').jsPDF
 
+function invoiceCanceled(document: JsonMap) {
+  return String(document.invoiceStatus ?? document.orderRuntimeStatus ?? '') === 'CANCELED'
+}
+
+function drawCanceledPdfWatermark(doc: PdfDocument, canceled: boolean) {
+  if (!canceled) return
+  for (let page = 1; page <= doc.getNumberOfPages(); page += 1) {
+    doc.setPage(page)
+    doc.setTextColor(220, 38, 38)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(34)
+    doc.text('DIBATALKAN', 105, 145, { align: 'center', angle: 35 })
+  }
+  doc.setTextColor(23, 32, 51)
+}
+
 function pdfMoney(value: unknown) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 })
     .format(Number(value) || 0)
@@ -278,6 +294,7 @@ export async function downloadSalesInvoicePdf(
     stampY = 20
   }
   await drawPdfStamp(doc, branding.logoPublicUrl, effectiveShowStamp, stampY)
+  drawCanceledPdfWatermark(doc, invoiceCanceled(document))
   doc.save(documentFileName(customerFileName ?? customer.name, invoiceNo, 'INV'))
 }
 
@@ -363,7 +380,7 @@ export async function downloadSalesDeliveryPdf(
 
 function openPrint(title: string, body: string) {
   const html = `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
-    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#172033;margin:0}header{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #172033;padding-bottom:14px}h1{font-size:23px;margin:0 0 5px}.muted{color:#64748b}.right{text-align:right}.identity{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}.box{border:1px solid #dbe2ea;border-radius:8px;padding:12px}.box b{display:block;margin-bottom:5px}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{padding:8px;border-bottom:1px solid #dbe2ea;text-align:left}th{background:#f1f5f9;font-size:10px;text-transform:uppercase}.num{text-align:right}.totals{margin:18px 0 0 auto;width:310px}.totals div{display:flex;justify-content:space-between;padding:5px}.grand{font-size:15px;font-weight:700;border-top:2px solid #172033}.signatures{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:55px;text-align:center}.signature{position:relative;min-height:75px}.signature:after{content:'';display:block;border-top:1px solid #172033;margin:55px 8px 0}.invoice-stamp{position:relative;min-height:75px;margin-top:24px}.stamp{position:absolute;left:50%;top:18px;width:82px;height:46px;transform:translateX(-50%) rotate(-7deg);border:3px double #1d4ed8;border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:.58}.stamp img{max-width:66px;max-height:32px;filter:grayscale(1) sepia(1) saturate(7) hue-rotate(180deg)}img.logo{display:block;max-height:60px;max-width:150px;margin-bottom:8px}@media print{button{display:none}}
+    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#172033;margin:0}header{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #172033;padding-bottom:14px}h1{font-size:23px;margin:0 0 5px}.muted{color:#64748b}.right{text-align:right}.identity{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}.box{border:1px solid #dbe2ea;border-radius:8px;padding:12px}.box b{display:block;margin-bottom:5px}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{padding:8px;border-bottom:1px solid #dbe2ea;text-align:left}th{background:#f1f5f9;font-size:10px;text-transform:uppercase}.num{text-align:right}.totals{margin:18px 0 0 auto;width:310px}.totals div{display:flex;justify-content:space-between;padding:5px}.grand{font-size:15px;font-weight:700;border-top:2px solid #172033}.signatures{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:55px;text-align:center}.signature{position:relative;min-height:75px}.signature:after{content:'';display:block;border-top:1px solid #172033;margin:55px 8px 0}.invoice-stamp{position:relative;min-height:75px;margin-top:24px}.stamp{position:absolute;left:50%;top:18px;width:82px;height:46px;transform:translateX(-50%) rotate(-7deg);border:3px double #1d4ed8;border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:.58}.stamp img{max-width:66px;max-height:32px;filter:grayscale(1) sepia(1) saturate(7) hue-rotate(180deg)}img.logo{display:block;max-height:60px;max-width:150px;margin-bottom:8px}.void-watermark{position:fixed;z-index:20;left:50%;top:43%;transform:translate(-50%,-50%) rotate(-28deg);font-size:64px;font-weight:900;color:rgba(220,38,38,.32);border:7px solid rgba(220,38,38,.28);padding:10px 22px}.void-note{margin:14px 0;border:1px solid #fecaca;background:#fff1f2;color:#9f1239;border-radius:8px;padding:10px}@media print{button{display:none}}
   </style></head><body>${body}<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),250)})</script></body></html>`
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
   const printWindow = window.open(url, '_blank')
@@ -403,7 +420,9 @@ export function printSalesInvoiceDocument(
   const paymentHtml = payments.map((payment) => `<div><span>${escapeHtml(payment.methodName)}</span><strong>${money(payment.amount)}</strong></div>`).join('')
   const bank = effectiveShowBank && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<section class="box" style="margin-top:18px;max-width:390px;background:#f5f3ff"><b>Rekening pembayaran</b>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></section>` : ''
-  openPrint(String(invoiceNo), `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(snapshot)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}${stamp ? `<section class="invoice-stamp">${stamp}</section>` : ''}`)
+  const cancelEvidence = invoiceCanceled(document)
+    ? `<div class="void-watermark">DIBATALKAN</div><section class="void-note"><b>Order dibatalkan</b><br>${escapeHtml(document.cancelReason ?? 'Tanpa keterangan')} · ${escapeHtml(document.canceledByName ?? 'Pengguna')} · ${escapeHtml(document.canceledAt ?? '')}</section>` : ''
+  openPrint(String(invoiceNo), `${cancelEvidence}<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(snapshot)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}${stamp ? `<section class="invoice-stamp">${stamp}</section>` : ''}`)
 }
 
 export function printSalesDeliveryDocument(

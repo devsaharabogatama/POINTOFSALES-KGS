@@ -3,6 +3,7 @@ import { requireDataExchangeAction } from '@/lib/data-exchange-server'
 
 const columns = [
   ['invoiceNo', 'Nomor Invoice'],
+  ['invoiceStatus', 'Status Invoice'],
   ['postedAt', 'Waktu Posting'],
   ['customerName', 'Pelanggan'],
   ['storeName', 'Toko'],
@@ -10,6 +11,9 @@ const columns = [
   ['fulfillmentMode', 'Pemenuhan'],
   ['grandTotal', 'Total Akhir'],
   ['deliveryFee', 'Ongkir'],
+  ['canceledAt', 'Waktu Pembatalan'],
+  ['cancelReason', 'Alasan Pembatalan'],
+  ['canceledByName', 'Dibatalkan Oleh'],
   ['snapshotProvenance', 'Sumber Snapshot'],
 ] as const
 

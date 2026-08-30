@@ -1,10 +1,23 @@
 import { ApiRouteError, apiError, requireActiveCompany, requireCaller } from '@/lib/server-auth'
-import { enumValue, readJsonObject, uuidValue } from '@/lib/master-data'
+import {
+  enumValue,
+  readJsonObject,
+  requiredText,
+  requiredVersion,
+  uuidValue,
+} from '@/lib/master-data'
 
 function rpcFailure(message: string): never {
   const known = [
     'SALES_DOCUMENT_NOT_FOUND', 'SALES_INVOICE_NOT_FOUND',
     'INVALID_SALES_DOCUMENT_TYPE',
+    'SALES_ORDER_NOT_FOUND', 'SALES_ORDER_FINAL',
+    'SALES_ORDER_DISPATCH_STARTED', 'SALES_ORDER_CANCEL_FORBIDDEN',
+    'SALES_ORDER_VERIFIED_PAYMENT_REVERSAL_REQUIRED',
+    'SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION',
+    'SALES_ORDER_CASH_REFUND_REQUIRES_CURRENT_OPEN_SESSION',
+    'MASTER_VERSION_CONFLICT', 'CUSTOM_PERMISSION_DENIED',
+    'CANCEL_REASON_REQUIRED', 'IDEMPOTENCY_PAYLOAD_CONFLICT',
   ]
   const code = known.find((candidate) => message.includes(candidate))
   throw new ApiRouteError(code ?? 'SALES_DOCUMENT_OPERATION_FAILED', 400)
@@ -37,7 +50,20 @@ export async function POST(request: Request) {
     const caller = await requireCaller(request)
     await requireActiveCompany(caller)
     const body = await readJsonObject(request)
-    uuidValue(String(body.salesId ?? ''))
+    const salesId = uuidValue(String(body.salesId ?? ''))
+    if (String(body.action ?? '').toUpperCase() === 'CANCEL') {
+      const { data, error } = await caller.client.rpc(
+        'cancel_sales_order_from_backoffice', {
+          p_sales_id: salesId,
+          p_master_version: requiredVersion(body),
+          p_idempotency_key: uuidValue(String(body.idempotencyKey ?? ''),
+            'IDEMPOTENCY_KEY_REQUIRED'),
+          p_reason: requiredText(body, 'reason', { maxLength: 500 }),
+        },
+      )
+      if (error) rpcFailure(error.message)
+      return Response.json({ data })
+    }
     const documentType = enumValue(body.documentType,
       ['SALES_INVOICE'] as const, 'INVALID_SALES_DOCUMENT_TYPE')
     const documentId = uuidValue(String(body.documentId ?? ''))

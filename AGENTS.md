@@ -36,3 +36,39 @@ File `backoffice/AGENTS.md` tetap berlaku sebagai instruksi tambahan untuk peker
   test user.
 - Jika context/limit hampir habis, hentikan pada boundary aman dan tulis handoff
   yang dapat dijalankan agent berikutnya tanpa menebak keputusan bisnis.
+
+## Mandatory Impact-First Change Protocol
+
+Setiap perubahan, termasuk bug fix, wajib mengikuti aturan berikut:
+
+1. Jangan langsung mengubah kode berdasarkan error terakhir.
+2. Audit call chain dan migration aktif yang benar-benar digunakan runtime.
+3. Sebelum implementasi, tuliskan impact map:
+   - modul dan consumer terdampak;
+   - tabel/RPC/UI yang berubah;
+   - stock, reservation, FIFO, payment, cashier session, Finance, audit;
+   - compatibility data lama;
+   - concurrency, idempotency, retry, dan rollback.
+4. Bedakan:
+   - direct impact;
+   - downstream impact;
+   - risiko regression;
+   - kondisi yang belum dapat dibuktikan.
+5. Perubahan berisiko tinggi tidak boleh dikerjakan sebelum desain dampaknya jelas.
+6. Jangan menggunakan PASS dengan zero runtime rows sebagai bukti behavioral.
+7. Setiap migration wajib memiliki:
+   - preflight read-only;
+   - migration guard;
+   - postflight read-only;
+   - behavioral test representatif;
+   - rollback/forward-fix note;
+   - authenticated end-to-end smoke.
+8. Test matrix wajib mencakup status sebelum dan sesudah perubahan, termasuk
+   open/closed session, pending/verified payment, partial/full dispatch,
+   POS/Backoffice, multi-Company, retry, dan stale version.
+9. Jika test menemukan error, hentikan patching berlapis. Audit ulang root cause
+   dan seluruh downstream consumer.
+10. Jangan menyatakan fitur selesai atau aman hanya karena lint/build/postflight
+    PASS. Status harus dibedakan menjadi:
+    LOCAL READY, DATABASE LIVE, CLIENT DEPLOYED, SMOKE PASS, dan UAT PASS.
+11. Jangan mengubah production atau menjalankan deployment tanpa instruksi user.

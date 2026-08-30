@@ -1,5 +1,15 @@
 # MADS — Management Distribution System
 
+> 2026-08-30: forward-fix pembatalan Cash Order dari sesi sumber yang sudah
+> ditutup sekarang local-ready. Reversal exact-once masuk ke sesi aktif Kasir
+> pada Store yang sama tanpa menulis ulang closing lama. Rollout database,
+> deployment, dan authenticated smoke masih manual; lihat
+> `docs/runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`.
+
+> 2026-08-30: forward-fix ODR Draft-resume local-ready memisahkan Draft input
+> dari Order confirmed/reserved. Rollout database dan authenticated smoke masih
+> manual; lihat `docs/runbooks/ODR_CONFIRMED_ORDER_DRAFT_RESUME_GUARD.md`.
+
 Arsitektur lanjutan Order Reservation/Dispatch telah **disetujui**. ODR-1,
 ODR-2A, dan ODR-2B atomic reservation runtime sudah dikonfirmasi PASS pada
 database user. Targetnya: konfirmasi POS
@@ -1102,3 +1112,14 @@ yang sama melalui forward-fix `20260829100000`. Forward-fix dipisahkan karena
 ledger `20260829090000` sudah pernah diterapkan tanpa RPC POS. Tahap ini belum
 live sampai forward-fix, deploy kedua client, dan authenticated smoke selesai;
 tidak ada mutation Stock/FIFO/Movement/Finance.
+
+Pembatalan Sales Order lintas POS dan Backoffice sekarang **LOCAL READY** lewat
+forward migration `20260830110000`. Kedua channel memakai composition canonical
+yang melepaskan Reservation, membatalkan Surat Jalan linked, dan menyegarkan
+demand Purchasing. Payment intent `PENDING` ikut dibatalkan; Cash pada sesi
+terbuka mendapat reversal drawer idempotent. Payment `VERIFIED`, Cash dari sesi
+tertutup, dan Order yang sudah Dispatch tetap fail-closed. Invoice snapshot
+tidak dihapus: list/detail/export menampilkan status `Dibatalkan`, sedangkan
+print/PDF memakai watermark. Rollout Supabase, deploy client, dan authenticated
+smoke masih manual menurut
+`docs/runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`.

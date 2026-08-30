@@ -287,3 +287,21 @@ Lifecycle dibedakan menurut intent yang disnapshot pada Surat Jalan:
 
 Pembuatan, cetak, handover, dispatch, delivered, dan cancel Surat Jalan tidak
 membuat Stock Movement, Payment, Financial Event, atau Journal tambahan.
+
+## 14. Revisi Approved 2026-08-30 — Pembatalan Order sebelum Dispatch
+
+Pada runtime ODR, Invoice/SJ immutable dibuat ketika Order dikonfirmasi agar
+identitas dokumen dan reservation dapat diproses sebelum Dispatch. Bila Order
+dibatalkan sebelum Dispatch, snapshot Invoice tidak dihapus atau ditulis ulang:
+status pembatalan diproyeksikan dari lifecycle Order dan setiap print/PDF wajib
+ditandai `DIBATALKAN`. Surat Jalan linked menjadi `CANCELED`, Reservation
+dilepas, dan demand Purchasing dihitung ulang secara atomik.
+
+Payment intent `PENDING` ikut dibatalkan. Cash wajib memiliki satu reversal
+drawer idempotent. Bila sesi sumber masih `OPEN`, reversal masuk ke sesi sumber;
+bila sudah `CLOSED`, reversal masuk ke sesi aktif aktor pada Store yang sama dan
+closing sumber tetap immutable. Tanpa sesi aktif Store yang sama, payment
+`VERIFIED`, atau Order yang sudah mulai Dispatch, pembatalan tetap ditolak dan
+memerlukan reversal/refund/Return canonical. Backoffice dan POS memanggil
+composition cancellation server yang sama dan tidak boleh membuat status lokal
+yang berbeda.
