@@ -1,5 +1,18 @@
 # Gate Implementasi dan Rollout POS v1
 
+## Hotfix aktif — ODR Dispatch runtime schema (2026-09-01)
+
+Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Exact Dispatch SJ live direproduksi dan diselesaikan dalam transaksi
+  rollback setelah `digest` diarahkan ke schema `extensions` dan referensi
+  `stock_sku/stock_name` dipindahkan ke lookup Product canonical.
+- Forward-fix `20260901100000` hanya mengganti private stock core; tidak ada
+  business-data backfill atau perubahan business flow.
+- Gate belum ditutup sampai seluruh urutan pada
+  `docs/runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md` PASS, Backoffice
+  dideploy, hard refresh dilakukan, dan SJ yang sama berhasil dikirim.
+
 **Status:** APPROVED delivery guardrail  
 **Tanggal:** 2026-07-20  
 **Pilot awal:** satu Company, satu Store, satu POS Terminal  
@@ -1950,6 +1963,22 @@ workspace dan menghitung sisa request terhadap allocation Draft serta final,
 tanpa membuka direct table access atau mengubah PO final. Rollout mengikuti
 `docs/runbooks/ODR6C1_PURCHASING_DEMAND_UI_CUTOVER.md`.
 
+Authenticated reopening PO kemudian menemukan alias-scope defect pada RPC
+`get_purchase_procurement_demands`: aggregate luar mereferensikan
+`product.name` milik subquery. Forward-fix read-only `20260831100000` sekarang
+`LOCAL READY; MANUAL SUPABASE ROLLOUT PENDING`; ordering memakai
+`row_data.product_name`, response contract dan seluruh data PO/Stock/Finance
+tetap tidak berubah. Migration, postflight, behavioral rollback, postflight
+ulang, lalu authenticated reopen PO wajib PASS sebelum smoke ODR-6C.1 ditutup.
+
+Tambahan read-only detail penerimaan Supplier Order sekarang `LOCAL READY;
+MANUAL ROLLOUT PENDING` melalui `20260831110000`. Riwayat PO menampilkan
+ordered/received/remaining per line berdasarkan total Goods Receipt `POSTED`
+dalam base quantity dan immutable conversion snapshot. Tidak ada schema data
+atau operational mutation baru. Contract version, postflight, behavioral
+rollback, role/tenant smoke, partial/multiple receipt, serta regression export
+dan konfirmasi Draft wajib PASS sebelum status live.
+
 Closing postflight ODR-6C.1 kemudian dikonfirmasi user seluruhnya `PASS`:
 Demand aktif, line shortage, Draft PO, allocation, amendment, dan seluruh
 reconciliation tetap konsisten. Gate aktif berpindah ke ODR-6C.2 Finance
@@ -1963,10 +1992,11 @@ policy Company. Rollout mengikuti
 ODR-6D closure preflight kemudian membuktikan tiga blocker consumer legacy:
 Sales Return, AR Aging/Statement, dan TEMPO Customer Receipt belum memahami
 final effect per Dispatch. Forward-fix `20260829110000` dan `20260829120000`
-sekarang `LOCAL READY; MANUAL SUPABASE ROLLOUT PENDING`. Gate berikutnya adalah
-kedua migration berurutan, combined postflight, behavior read-only, rerun
-closure preflight, lalu authenticated UAT Return dan AR/Collection. Status belum
-`COMPLETE` sampai seluruh gate live tersebut PASS.
+kemudian dijalankan dan combined postflight/closure preflight dilaporkan PASS:
+consumer Return/AR/Collection sudah ODR-aware dan migration chain berjumlah 19.
+Status belum `COMPLETE` karena authenticated UAT Return, AR/Collection,
+two-Company, role denial, retry, dan hard refresh belum ditutup sebagai satu
+matrix evidence.
 
 Closing postflight ODR-6C.2 kemudian dikonfirmasi user seluruhnya `PASS`:
 browser write boundary, maker-checker, Cash drawer, audit, Event/Journal,
@@ -2001,3 +2031,35 @@ sama, sedangkan sesi sumber `CLOSED` tetap immutable. Tanpa sesi aktif yang
 sesuai, payment `VERIFIED`, atau setelah Dispatch, cancellation tetap
 fail-closed. Gate belum selesai sebelum preflight, migration, postflight,
 deployment, dan authenticated smoke PASS.
+## Negative Stock FIFO/Finance Cost Settlement — NSC-1..3
+
+Status: `RUNTIME INSTALLED; AUTHENTICATED OPERATIONAL SMOKE PENDING`.
+
+- Dispatch tetap mencatat provisional COGS; tidak ada perubahan POS/UI.
+- Goods Receipt menyelesaikan estimated-versus-provisional ke Inventory/COGS,
+  termasuk receipt nilai nol yang sebelumnya berakhir `NO_FINANCIAL_EFFECT`.
+- Supplier Invoice merevaluasi FIFO batch dan membagi price variance ke
+  Inventory/COGS secara atomik; nonrecoverable tax mempertahankan akun existing.
+- Automatic posting tetap OFF dan jurnal historis POSTED immutable.
+- Foundation dan runtime postflight telah dikonfirmasi PASS. Cost source/batch
+  plan baru masih nol dengan 49 negative allocation terbuka, sehingga bukti
+  struktur belum menjadi bukti E2E biaya operasional.
+- Gate wajib mengikuti runbook
+  `docs/runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`.
+
+## Platform Operational Health Dashboard — Super Admin v1
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Scope v1 hanya Platform Super Admin dan mencakup seluruh Company.
+- Runtime baru hanya satu RPC agregasi read-only dengan refresh manual,
+  statement timeout, response tanpa PII, serta guard Super Admin pada database
+  dan API.
+- Tidak ada trigger, auto-refresh, auto-fix, direct browser table read,
+  business-data backfill, atau dependency dari POS/Backoffice mutation.
+- Jika RPC belum live atau timeout, hanya halaman Health yang gagal; alur POS,
+  Stock, Purchasing, Payment, dan Finance tidak bergantung pada dashboard.
+- Dashboard tenant untuk Owner/Admin dicatat sebagai tahap berikutnya dan belum
+  dibuka pada gate ini.
+- Gate rollout mengikuti
+  `docs/runbooks/PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md`.

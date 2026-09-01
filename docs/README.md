@@ -3,6 +3,10 @@
 Panduan penggunaan untuk operator dan pengguna akhir tersedia di
 [`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md) (Manual Pengguna MADS).
 
+Checklist UAT lintas role/modul, edge case, stop condition, serta daftar risiko
+data/operasional tersedia di
+[`USER_UAT_EDGE_CASE_RISK_REGISTER.md`](USER_UAT_EDGE_CASE_RISK_REGISTER.md).
+
 Paket pengumpulan data dan urutan cutover go-live tersedia di
 [`templates/go-live-cutover/README.md`](templates/go-live-cutover/README.md).
 Paket tersebut membedakan template yang sudah dapat di-import, form setup
@@ -51,6 +55,11 @@ Finance G6 Phase 8:
 
 Order Reservation/Dispatch:
 
+- [`runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md`](runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md)
+  — detail read-only ordered/received/remaining per baris Supplier Order.
+- [`runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`](runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md)
+  — kontrak dan rollout koreksi COGS/Inventory stok minus, replenishment,
+  Supplier Invoice variance, revaluasi FIFO, dan rekonsiliasi Finance.
 - [`runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`](runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md)
   — termasuk forward-fix Cash cancellation setelah sesi sumber ditutup
   (`20260830120000`).
@@ -476,4 +485,6 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - [Policy Surat Jalan otomatis per Company](runbooks/COMPANY_AUTOMATIC_DELIVERY_DOCUMENT_POLICY_ROLLOUT.md)
 - [Tanggal transaksi dan jatuh tempo POS TEMPO](runbooks/POS_TEMPO_TRANSACTION_DATE_ROLLOUT.md)
 - [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
+- [Platform Health Operasional Super Admin](runbooks/PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md)
+- [Forward-fix runtime ODR Dispatch](runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

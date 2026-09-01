@@ -6,6 +6,11 @@ Local client verification **PASS**. Runtime Demand, managed Stock Request,
 Draft PO sync, dan amendment sudah database-live dari ODR-4A–4E. Tahap ini
 tidak menambah migration dan belum dianggap live sebelum authenticated smoke.
 
+Authenticated use kemudian menemukan defect pada composed Demand read:
+aggregate luar mengurutkan `product.name`, padahal alias `product` hanya tersedia
+di subquery. Forward-fix `20260831100000` menggantinya dengan
+`row_data.product_name` tanpa mengubah payload, data, atau flow PO.
+
 ## Perubahan
 
 - `Purchase -> Supplier Order` membaca dua composed RPC canonical secara
@@ -22,6 +27,18 @@ tidak menambah migration dan belum dianggap live sebelum authenticated smoke.
   Confirmed/received PO tetap immutable; selisih tampil sebagai amendment.
 - Membuka layar ini tidak membuat atau mengubah Request, PO, Stock, maupun
   Finance.
+
+## Forward-fix read RPC
+
+Sebelum mengulang rollout UI:
+
+1. Jalankan migration
+   [`20260831100000_odr_purchasing_demand_read_alias_forward_fix.sql`](../../supabase/migrations/20260831100000_odr_purchasing_demand_read_alias_forward_fix.sql).
+2. Jalankan SELECT-only
+   [`odr_purchasing_demand_read_alias_forward_fix_postflight.sql`](../../supabase/tests/odr_purchasing_demand_read_alias_forward_fix_postflight.sql).
+3. Jalankan rollback-safe
+   [`odr_purchasing_demand_read_alias_forward_fix_behavior.sql`](../../supabase/tests/odr_purchasing_demand_read_alias_forward_fix_behavior.sql).
+4. Jalankan postflight sekali lagi. Seluruh baris selain `INFO` wajib `PASS`.
 
 ## Rollout
 
@@ -61,6 +78,8 @@ tidak menambah migration dan belum dianggap live sebelum authenticated smoke.
 
 ## Rollback
 
-Redeploy build Backoffice sebelum cutover. Database tidak memerlukan rollback
-karena tahap ini hanya mengubah composed read dan perhitungan client terhadap
-allocation yang sudah canonical.
+Forward-fix hanya mengganti definisi read RPC. Jika perlu repair, gunakan lagi
+ordering `row_data.product_name`; jangan mengembalikan referensi alias
+`product.name` pada aggregate luar. Tidak ada data yang perlu di-backfill atau
+dihapus. Build Backoffice dapat di-rollback terpisah karena response RPC tidak
+berubah.

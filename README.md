@@ -1,5 +1,33 @@
 # MADS — Management Distribution System
 
+> 2026-09-01: ODR Dispatch runtime schema forward-fix **local-ready**.
+> Error generik Dispatch dilacak ke pemanggilan `digest` dari schema yang salah
+> dan referensi kolom requirement legacy. Forward-fix `20260901100000`
+> menggunakan `extensions.digest` serta Product canonical tanpa mengubah alur
+> bisnis atau data historis. Exact SJ berhasil dalam transaksi rollback; lint
+> dan production build Backoffice PASS. Produksi belum dimutasi oleh agent.
+> Rollout dan authenticated smoke masih manual; lihat
+> `docs/runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md`.
+
+> 2026-09-01: Platform Health Operasional Super Admin **local-ready**.
+> Dashboard global hanya membaca agregat status lintas Company melalui RPC
+> guarded, refresh manual, timeout terbatas, tanpa trigger, auto-fix, atau
+> perubahan transaksi. Database rollout, deploy Backoffice, dan authenticated
+> Super Admin/regular-user smoke masih manual; lihat
+> `docs/runbooks/PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md`.
+
+> 2026-08-31: detail penerimaan pada riwayat Supplier Order local-ready.
+> Read model `20260831110000` menampilkan ordered, total receipt `POSTED`, dan
+> remaining per barang tanpa mengubah PO, Goods Receipt, Stock, AP, atau
+> Finance. Rollout database, deploy Backoffice, dan authenticated smoke masih
+> manual; lihat `docs/runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md`.
+
+> 2026-08-31: forward-fix read-only Purchasing Demand `20260831100000`
+> local-ready. Alias Product pada aggregate composed PO diperbaiki tanpa
+> mengubah Demand, Request, PO, Stock, atau Finance. Migration, postflight,
+> behavioral rollback, dan authenticated smoke masih harus dijalankan manual;
+> lihat `docs/runbooks/ODR6C1_PURCHASING_DEMAND_UI_CUTOVER.md`.
+
 > 2026-08-30: forward-fix pembatalan Cash Order dari sesi sumber yang sudah
 > ditutup sekarang local-ready. Reversal exact-once masuk ke sesi aktif Kasir
 > pada Store yang sama tanpa menulis ulang closing lama. Rollout database,
@@ -43,13 +71,13 @@ kasir tidak lagi menunggu Finance memverifikasi setiap pembayaran untuk menutup
 sesi. Cash drawer movement, actual count/difference, antrean verifikasi, audit,
 dan controlled Journal tetap dipertahankan. Rollout manual mengikuti
 [runbook Cash Session Close](docs/runbooks/CASH_SESSION_CLOSE_ASYNC_PAYMENT_VERIFICATION.md).
-Closing database gate ODR-6C.2 sudah dikonfirmasi seluruhnya PASS. ODR-6D E2E
-preflight kemudian membuktikan tiga blocker consumer legacy pada Return,
-AR/Statement, dan TEMPO Collection. Dua forward-fix sekarang **local-ready;
-manual Supabase rollout pending**: Return dibatasi quantity Dispatch immutable,
-sedangkan AR dan Receipt hanya mengakui receivable yang sudah Dispatch dan
-pre-Dispatch payment tetap Customer Advance. Order ODR tidak diubah menjadi
-legacy POSTED. Ikuti
+Closing database gate ODR-6C.2 sudah dikonfirmasi seluruhnya PASS. ODR-6D
+menemukan lalu menutup tiga consumer legacy pada Return, AR/Statement, dan
+TEMPO Collection. Combined postflight dan closure preflight kemudian dilaporkan
+PASS: Return dibatasi quantity Dispatch immutable, AR/Receipt hanya mengakui
+receivable yang sudah Dispatch, dan pre-Dispatch payment tetap Customer
+Advance. Order ODR tidak diubah menjadi legacy POSTED. Full authenticated UAT
+lintas role/two-Company/retry tetap pending. Ikuti
 [runbook compatibility ODR-6D](docs/runbooks/ODR6D_CONSUMER_COMPATIBILITY_ROLLOUT.md).
 Contract freeze, klasifikasi historical, failure code, dan manifest ODR-2 ada di
 [ODR-1 Live Contract Audit](docs/ODR1_LIVE_CONTRACT_AUDIT.md). Jalankan
@@ -111,6 +139,8 @@ backlog secara diam-diam. Rollout terakhir mengikuti
 [runbook Finance F4B](docs/runbooks/FINANCE_AR_POSTING_POLICY_CLOSURE.md).
 
 Panduan penggunaan lengkap: [Manual Pengguna MADS](docs/MANUAL_PENGGUNA_KGS_POS.md).
+Checklist UAT, edge case, stop condition, dan risk register:
+[Matriks UAT User MADS](docs/USER_UAT_EDGE_CASE_RISK_REGISTER.md).
 
 Pengaturan tanggal Invoice per Company sekarang **local-ready**. Owner/Admin
 dapat memilih `Tanggal Order` untuk backorder atau `Tanggal Transaksi` untuk
@@ -1122,4 +1152,21 @@ tertutup, dan Order yang sudah Dispatch tetap fail-closed. Invoice snapshot
 tidak dihapus: list/detail/export menampilkan status `Dibatalkan`, sedangkan
 print/PDF memakai watermark. Rollout Supabase, deploy client, dan authenticated
 smoke masih manual menurut
-`docs/runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`.
+  `docs/runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`.
+
+# Negative-stock FIFO cost settlement (2026-08-31)
+
+Kontrak koreksi biaya stok minus dan Supplier Invoice sudah dikunci; diagnostic
+NSC-0 live telah ditinjau tanpa blocker dan tanpa variance historis nonnol.
+NSC-1..3 menyediakan foundation cost source, Goods Receipt provisional-cost
+settlement (termasuk receipt nilai nol), Supplier Invoice FIFO revaluation,
+serta split Inventory/COGS bersama behavioral rollback dan postflight. Lihat
+[`docs/runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`](docs/runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md).
+
+Rollout manual NSC-1..3 kemudian dikonfirmasi user: foundation dan runtime
+postflight seluruhnya `PASS`, termasuk private boundary dan zero-value negative
+receipt contract. Runtime live masih memiliki 49 negative allocation terbuka,
+sedangkan cost source/batch plan baru masih nol. Status saat ini **runtime
+installed / authenticated operational smoke pending**; belum boleh dianggap
+closure FIFO–GL sampai ada Dispatch minus → Goods Receipt → Supplier Invoice
+variance yang benar-benar diproses melalui controlled queue.

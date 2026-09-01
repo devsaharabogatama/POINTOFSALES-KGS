@@ -1,11 +1,14 @@
 # Manual Pengguna MADS
 
-Versi dokumen: 21 Agustus 2026
+Versi dokumen: 1 September 2026
 Sasaran pembaca: pemilik perusahaan, administrator, manajer toko, staf gudang, kasir, Finance, dan Accounting.
 
 Manual ini menjelaskan penggunaan Backoffice dan PWA MADS berdasarkan fitur yang tersedia saat ini. Menu dan tindakan yang terlihat dapat berbeda karena akses ditentukan oleh perusahaan aktif, peran, pengaturan modul, penugasan toko, serta pembatasan khusus pengguna.
 
-> Catatan penting: status **Draft**, **Diajukan**, atau **Menunggu Persetujuan** belum menimbulkan dampak final terhadap stok, kas, utang, saldo pelanggan, atau jurnal. Dampak final hanya terjadi melalui tindakan seperti **Post**, **Validasi**, **Cairkan**, atau **Setujui**, sesuai alur masing-masing dokumen.
+> Catatan penting: status **Draft**, **Diajukan**, atau **Menunggu Persetujuan** belum menimbulkan dampak final terhadap stok, kas, utang, saldo pelanggan, atau jurnal. Khusus penjualan, **Konfirmasi Order** membuat `Reserved Out`, tetapi belum mengurangi `On Hand`, FIFO, atau membuat jurnal penjualan. Stok dan FIFO baru berkurang saat Surat Jalan di-**Dispatch**. Dampak keuangan mengikuti event dan antrean posting Finance.
+
+Checklist UAT, skenario negatif, edge case, serta daftar area yang masih rawan
+tersedia pada [Matriks UAT dan Risk Register](USER_UAT_EDGE_CASE_RISK_REGISTER.md).
 
 ## Daftar Isi
 
@@ -34,6 +37,7 @@ Manual ini menjelaskan penggunaan Backoffice dan PWA MADS berdasarkan fitur yang
 23. [Pemecahan masalah](#23-pemecahan-masalah)
 24. [Praktik operasional yang disarankan](#24-praktik-operasional-yang-disarankan)
 25. [Glosarium](#25-glosarium)
+26. [Checklist sebelum mulai operasional](#26-checklist-sebelum-mulai-operasional)
 
 ---
 
@@ -127,7 +131,12 @@ Urutan persiapan yang disarankan:
 
 ### 6.1 Stock Real
 
-Menampilkan saldo aktual per produk dan gudang, termasuk ringkasan FIFO dan nilai persediaan yang diolah server. Gunakan filter produk/gudang. Jika saldo berbeda dari kondisi fisik, gunakan Penyesuaian Stok atau Stock Opname; jangan mengubah saldo langsung.
+Menampilkan saldo aktual per produk dan gudang, termasuk `On Hand`, `Reserved
+Out`, `Available to Sell`, ringkasan FIFO, dan nilai persediaan yang diolah
+server. `Available to Sell` adalah `On Hand` dikurangi reservasi aktif dan dapat
+negatif hanya pada alur stok minus yang memang diizinkan. Gunakan filter
+produk/gudang. Jika saldo berbeda dari kondisi fisik, gunakan Penyesuaian Stok
+atau Stock Opname; jangan mengubah saldo langsung.
 
 ### 6.2 Kartu Stok
 
@@ -168,10 +177,16 @@ Posting opname membuat Penyesuaian Stok kanonis.
    Tanggal awal dan akhir bersifat inklusif serta mengikuti timezone Company.
    Kosongkan keduanya atau pilih **Semua tanggal** untuk melihat seluruh periode.
 3. Buka detail, lalu pilih **Cetak** atau **Unduh PDF**.
-4. Ubah status menjadi dikirim ketika barang berangkat.
-5. Konfirmasikan terkirim setelah penerima menerima barang.
+4. Untuk dokumen yang terhubung dengan Order baru, masukkan kuantitas yang
+   benar-benar diberangkatkan lalu pilih **Dispatch**. Dispatch dapat parsial.
+5. Periksa bahwa `On Hand`, FIFO, Movement, `Reserved Out`, dan jumlah tersisa
+   berubah sesuai kuantitas Dispatch.
+6. Pilih **Konfirmasi diterima** setelah penerima menerima barang. Tindakan ini
+   tidak mengurangi stok untuk kedua kalinya.
 
-Perubahan status Surat Jalan tidak mengurangi stok untuk kedua kalinya.
+Dokumen historis yang dibuat sebelum cutover tetap memakai lifecycle legacy.
+Jangan memaksa dokumen lama melalui tombol Dispatch Order baru bila aplikasi
+menandainya sebagai dokumen historis.
 
 Owner/Admin dapat mengatur **Pembuatan Surat Jalan otomatis** di **Platform →
 Profil Perusahaan**. Pilihan **Hanya transaksi Perlu dikirim** mempertahankan
@@ -269,6 +284,15 @@ berubah.
 
 Baris yang sudah masuk Supplier Order tidak lagi ditampilkan sebagai kebutuhan terbuka. Baris lain tetap dapat dipesan ke supplier berbeda.
 
+Pada riwayat Supplier Order, buka detail untuk melihat jumlah **Dipesan**,
+**Sudah diterima**, dan **Sisa** per barang. Jumlah diterima hanya berasal dari
+Goods Receipt berstatus `POSTED`; Draft penerimaan tidak mengurangi sisa.
+
+Kebutuhan yang berasal dari shortage Order penjualan dikelompokkan per sesi.
+Sistem hanya boleh menyelaraskan satu Draft PO yang sepenuhnya dikelola sistem.
+PO yang sudah dikonfirmasi atau diterima tidak diubah otomatis; perubahan
+kebutuhan tampil sebagai amendment/notifikasi untuk ditindaklanjuti petugas.
+
 ### 8.2 Penerimaan Barang
 
 Penerimaan dapat dilakukan melalui dua channel yang menghasilkan efek server
@@ -343,7 +367,8 @@ Di POS, pricelist pelanggan menjadi pilihan awal, tetapi kasir dapat memilih alt
 3. Tambahkan komponen dan kuantitas dasar.
 4. Simpan.
 
-Bundle tidak mempunyai stok fisik sendiri. Penjualannya mengurangi stok dan FIFO komponen.
+Bundle tidak mempunyai stok fisik sendiri. Komponen direservasi saat Order
+dikonfirmasi dan stok/FIFO komponennya berkurang saat Dispatch.
 
 ### 9.4 Approval Return
 
@@ -413,13 +438,46 @@ Hubungkan kategori transaksi dan fungsi akun ke COA perusahaan. Akun hasil impor
 
 Nomor tampilan seperti `JUR/...` digunakan di UI; UUID internal tetap disimpan server-side.
 
+### 10.11 Verifikasi pembayaran penjualan
+
+Pembayaran Order dan posting jurnal diproses terpisah dari pekerjaan kasir.
+Kasir tidak perlu menunggu Finance secara real time untuk menutup sesi.
+
+1. Finance membuka antrean verifikasi pembayaran.
+2. Periksa Order, Customer, metode, nominal, bukti, serta status Dispatch.
+3. Verifikasi atau tolak sesuai kewenangan maker-checker.
+4. Pembayaran terverifikasi membentuk event `HOLD` pada Company berpolicy
+   `CONTROLLED`.
+5. Finance membuat preview, menyetujui, lalu memproses antrean posting.
+
+Pembayaran sebelum Dispatch dapat menjadi Uang Muka Customer. Pembayaran
+setelah Dispatch menyelesaikan Clearing atau Piutang sesuai jenis Order. Jangan
+mengedit tabel pembayaran, event, atau jurnal secara langsung.
+
 ## 11. Modul Platform
 
 ### 11.1 Perusahaan
 
 Kelola identitas perusahaan. Perubahan hanya berlaku pada perusahaan terpilih.
 
-### 11.2 Point of Sales
+### 11.2 Health Operasional (Super Admin)
+
+Menu **Platform → Health Operasional** merangkum kondisi seluruh Company untuk
+keperluan tracing. Menu ini hanya tampil bagi Platform Super Admin.
+
+- Status **Sehat** berarti tidak ada indikasi yang melewati threshold.
+- Status **Perlu perhatian** berarti terdapat pekerjaan lama, event `HOLD`,
+  Reservation/Delivery tertunda, atau biaya stok minus yang belum selesai.
+- Status **Kritis** berarti terdapat exception posting Finance atau submission
+  Offline yang membutuhkan penanganan.
+- Klik kartu Company untuk memfilter daftar indikasi dan membaca tindakan yang
+  disarankan.
+- Dashboard tidak memperbaiki data otomatis. Gunakan workflow modul resmi dan
+  jangan melakukan update langsung pada tabel transaksi.
+- Data hanya dimuat saat halaman dibuka atau tombol **Muat ulang manual**
+  ditekan. Kegagalan dashboard tidak menghentikan POS atau menu operasional.
+
+### 11.3 Point of Sales
 
 Menu ini tersedia untuk Super Admin serta Owner/Admin Company aktif.
 
@@ -435,7 +493,7 @@ Terminal dengan sesi terbuka tidak dapat diubah. Terminal yang sudah memiliki
 riwayat sesi tidak dapat dipindahkan ke Toko lain. Toko juga tidak dapat
 dinonaktifkan selama masih mempunyai sesi, Terminal aktif, atau Gudang aktif.
 
-### 11.3 Profil Perusahaan dan Logo
+### 11.4 Profil Perusahaan dan Logo
 
 Unggah, ganti, atau hapus logo. Logo tetap tampil di samping nama perusahaan
 sebagai identitas aplikasi.
@@ -460,7 +518,7 @@ Gunakan **Template tanda tangan Surat Jalan** sesuai asal proses pengiriman:
 Pilihan berlaku untuk dokumen baru. Cetak ulang dokumen lama tetap mengikuti
 snapshot template yang tersimpan saat dokumen dibuat.
 
-### 11.4 Pengaturan Modul
+### 11.5 Pengaturan Modul
 
 Aktifkan/nonaktifkan fitur per perusahaan. Menonaktifkan modul menutup operasi baru, tetapi tidak menghapus histori.
 
@@ -595,11 +653,24 @@ konfirmasi akhir.
 
 ### Draft
 
-Gunakan saat transaksi belum siap dibayar. Draft tidak mengurangi stok dan belum membentuk jurnal. Kunci edit mencegah Draft ditimpa kasir lain.
+Gunakan saat transaksi belum siap dikonfirmasi. Draft tidak membuat reservasi,
+tidak mengurangi stok, dan belum membentuk jurnal. Kunci edit mencegah Draft
+ditimpa kasir lain. Setelah **Konfirmasi Order**, transaksi berpindah ke panel
+**Order aktif/terjadwal** dan tidak boleh dibuka kembali sebagai Draft.
+
+Jika Order aktif salah quantity atau terduplikasi dan belum Dispatch, gunakan
+**Batalkan Order** lalu buat Order baru. Pembatalan melepaskan reservasi,
+membatalkan Surat Jalan terkait, dan membuat Invoice tetap terlihat dengan
+status/watermark **Dibatalkan**. Order yang sudah mulai Dispatch atau mempunyai
+pembayaran terverifikasi memerlukan alur retur/refund/reversal dan tidak boleh
+dibatalkan biasa.
 
 ### Split payment
 
-Tambahkan beberapa pembayaran, pilih metode, lalu isi **Uang diterima** per metode. Jumlah dasar harus memenuhi total. Kembalian dan kredit saldo mengikuti kebijakan.
+Tambahkan beberapa pembayaran, pilih metode, lalu isi **Uang diterima** per
+metode. Setiap bagian pembayaran harus lebih besar dari nol, metode tidak boleh
+duplikat, dan jumlah dasar harus memenuhi total. Kembalian dan kredit saldo
+mengikuti kebijakan.
 
 ### Penjualan TEMPO
 
@@ -629,17 +700,23 @@ aktif dapat ditolak.
 2. Pilih produk/Bundle dan kuantitas.
 3. Pilih pelanggan atau Pelanggan Umum.
 4. Periksa pricelist dan ubah bila diizinkan.
-5. Periksa diskon, pajak, pembulatan, dan ongkir.
-6. Klik **Konfirmasi & Post**.
-7. Bila barang dikirim, aktifkan **Perlu dikirim** sebelum posting. Nama
+5. Pilih transaksi langsung, TEMPO, atau tanggal Order terjadwal sesuai
+   kebutuhan dan kewenangan.
+6. Bila barang dikirim, aktifkan **Perlu dikirim** sebelum konfirmasi. Nama
    penerima wajib; nomor telepon, alamat, rencana kirim, catatan, dan ongkir
    boleh kosong. Data ini hanya menjadi snapshot transaksi dan tidak mengubah
    master Customer.
+7. Periksa diskon, pajak, pembulatan, ongkir, tanggal, dan total.
 8. Pilih metode pembayaran dan isi nilai diterima.
-9. Konfirmasi posting.
+9. Klik **Konfirmasi Order**. Sistem menghitung ulang harga dan membuat
+   reservasi; `On Hand`, FIFO, dan jurnal penjualan belum berubah.
 10. Setelah sukses, keranjang kembali ke awal.
 11. Buka nota/invoice pada tab baru dan cetak.
 12. Untuk transaksi Delivery, cetak Surat Jalan.
+13. Gudang melakukan Dispatch parsial atau penuh. Pada tahap inilah `On Hand`,
+    FIFO, Movement, dan event komersial Dispatch berubah.
+14. Gudang mengonfirmasi diterima tanpa efek stok kedua.
+15. Finance meninjau pembayaran dan memproses controlled posting queue.
 
 Jika kebijakan **Buat Surat Jalan untuk semua transaksi** di Profil Perusahaan
 aktif, pilihan **Perlu dikirim** pada transaksi baru otomatis tercentang. Data
@@ -647,7 +724,9 @@ penerima, telepon, dan alamat diambil dari Customer yang dipilih bila tersedia.
 Kasir tetap dapat mengubah pilihan serta data pengiriman sebelum menyimpan atau
 mem-posting transaksi; draft lama mempertahankan pilihannya.
 
-Posting bersifat atomik dan idempoten. Stok/FIFO dan jurnal dihitung server, bukan dari nilai buatan client.
+Konfirmasi, Dispatch, dan posting Finance masing-masing bersifat atomik serta
+idempoten. Harga, reservasi, stok/FIFO, payment, event, dan jurnal dihitung
+server, bukan dari nilai buatan client.
 
 ### Ongkir
 
@@ -657,7 +736,14 @@ Posting bersifat atomik dan idempoten. Stok/FIFO dan jurnal dihitung server, buk
 
 ### Izin stok minus
 
-Hanya tersedia jika entitlement, kebijakan perusahaan, izin produk/gudang, otorisasi, dan biaya provisional lengkap. Allowance Offline aktif tetap dilindungi. Pengadaan berikutnya merekonsiliasi alokasi negatif.
+Hanya tersedia jika entitlement, kebijakan perusahaan, gudang, otorisasi user,
+dan biaya provisional lengkap. Stok minus tetap membentuk reservasi dan
+negative allocation yang dapat ditelusuri; bukan stok gratis tanpa biaya.
+Goods Receipt berikutnya menutup shortage tertua, sedangkan Supplier Invoice
+membagi selisih biaya aktual ke Inventory dan HPP. Pada Company `CONTROLLED`,
+Finance tetap harus memproses event koreksi melalui antrean. Jangan menilai
+rekonsiliasi selesai hanya karena barang sudah diterima; periksa juga FIFO,
+Inventory GL, COGS, dan event/jurnal biaya.
 
 ## 15. Retur penjualan dan pembelian
 
@@ -671,7 +757,9 @@ Hanya tersedia jika entitlement, kebijakan perusahaan, izin produk/gudang, otori
 6. Simpan Draft.
 7. Manager/Admin melakukan Post.
 
-Posting mengembalikan FIFO sumber yang sesuai dan membuat event refund tepat satu kali.
+Untuk Order baru, kuantitas yang dapat diretur dibatasi oleh kuantitas yang
+benar-benar sudah Dispatch, bukan jumlah Order awal. Posting mengembalikan FIFO
+sumber yang sesuai dan membuat event refund tepat satu kali.
 
 ### Retur pembelian
 
@@ -707,7 +795,11 @@ Sistem membuat exception, Finance meneliti dan membuat resolusi, lalu Owner/Admi
 
 ## 18. Mode offline dan sinkronisasi
 
-Offline memerlukan fitur perusahaan, kebijakan terminal, sesi siap, katalog yang sudah diunduh saat online, allowance stok, dan metode pembayaran Offline yang sah.
+Pembuatan Order final ODR baru saat Offline masih **fail-closed** sampai replay
+reservasi mempunyai parity penuh. Panel Offline tetap dipakai untuk membaca
+status, memulihkan antrean historis yang sudah ada, serta melakukan
+rekonsiliasi. Jangan menjanjikan checkout Offline baru sebagai fitur operasional
+sebelum UAT khusus menyatakan jalur tersebut dibuka.
 
 ### Sebelum terputus
 
@@ -718,7 +810,9 @@ Offline memerlukan fitur perusahaan, kebijakan terminal, sesi siap, katalog yang
 
 ### Saat offline
 
-Transaksi disimpan ke antrean lokal menggunakan snapshot yang telah diizinkan.
+Jangan membuat transaksi final baru. Jika perangkat mempunyai antrean historis
+yang dibuat oleh versi lama, jangan menghapus data situs; tunggu koneksi untuk
+status check dan rekonsiliasi.
 
 ### Saat tersambung kembali
 
@@ -735,7 +829,9 @@ Setelah transaksi sukses, nota dibuka pada tab baru agar langsung dapat dicetak.
 
 ### Invoice
 
-Invoice memakai snapshot saat posting sehingga perubahan master tidak mengubah histori.
+Invoice final dialokasikan saat Order dikonfirmasi dan memakai snapshot sehingga
+perubahan master tidak mengubah histori. Pembatalan Order tidak menghapus
+Invoice; dokumen tampil sebagai **Dibatalkan** agar nomor dan audit tetap utuh.
 
 ### Surat Jalan
 
@@ -743,7 +839,8 @@ Invoice memakai snapshot saat posting sehingga perubahan master tidak mengubah h
 - Dapat dicetak ulang dari **Inventory → Surat Jalan**.
 - Terpisah dari Invoice dan berfokus pada kuantitas/pengiriman.
 - Hanya nama penerima yang wajib; telepon dan alamat ditampilkan jika tersedia.
-- Konfirmasi pengiriman dilakukan dari detail Surat Jalan di Backoffice Inventory.
+- Dispatch parsial/penuh dan konfirmasi diterima dilakukan dari detail Surat
+  Jalan di Backoffice Inventory.
 
 ## 20. Jurnal dan laporan keuangan
 
@@ -761,7 +858,10 @@ Buka Neraca Saldo, Laba Rugi, Neraca, Pending Analysis, atau Rekonsiliasi. Gunak
 
 ### Rekonsiliasi
 
-Pastikan nilai FIFO sama dengan Inventory GL, utang supplier sama dengan AP GL, saldo pelanggan sama dengan ledger/GL, jurnal seimbang, serta tidak ada HOLD/exception terbuka.
+Pastikan nilai FIFO bersih sama dengan Inventory GL, utang supplier sama dengan
+AP GL, saldo pelanggan sama dengan ledger/GL, jurnal seimbang, serta tidak ada
+HOLD/exception terbuka. Untuk stok minus, nilai FIFO bersih juga memperhitungkan
+negative allocation provisional dan settlement biaya penerimaan.
 
 ## 21. Periode akuntansi
 
@@ -801,6 +901,24 @@ Pastikan deployment terbaru, masuk ulang jika token lama dicabut, periksa Auth r
 
 Jangan mengulang checkout. Pulihkan koneksi, jalankan status check, lalu retry dari panel Offline.
 
+### `PENDING_CASH_PAYMENT_VERIFICATION`
+
+Verifikasi Finance bersifat asynchronous dan tidak seharusnya menghalangi
+Tutup Sesi. Jika pesan ini masih memblokir, catat nomor sesi dan versi deployment
+karena client/database mungkin belum memakai forward-fix terbaru.
+
+### Order tidak dapat dibatalkan
+
+Periksa apakah barang sudah Dispatch, pembayaran sudah terverifikasi, atau
+tidak ada sesi kasir aktif pada toko yang sama untuk reversal Cash. Jangan
+menghapus Invoice, Reservation, Payment, atau Movement secara manual.
+
+### Reserved Out atau Available tidak sesuai
+
+Muat ulang Stock Real dan POS, lalu cocokkan Order aktif, gudang penjualan,
+jumlah Dispatch, dan status pembatalan. Hentikan transaksi bila POS dan
+Backoffice menunjukkan angka berbeda.
+
 ### Konflik versi
 
 Muat ulang dokumen, tinjau data terbaru, lalu ulangi. Jangan mengubah master version secara manual.
@@ -836,11 +954,32 @@ Hentikan operasi dan laporkan segera. Jangan memperbaiki langsung melalui databa
 | Idempoten | Pengulangan permintaan tidak membuat efek ganda. |
 | Master Version | Versi untuk mencegah konflik perubahan. |
 | Movement | Catatan perubahan kuantitas stok. |
+| On Hand | Kuantitas fisik yang sudah benar-benar masuk/keluar stok. |
 | Post | Finalisasi dokumen dan efek transaksinya. |
 | PWA | Aplikasi POS web dengan dukungan Offline terbatas. |
 | Rekonsiliasi | Pencocokan subledger dengan GL. |
+| Reserved Out | Kuantitas yang dicadangkan untuk Order terkonfirmasi tetapi belum Dispatch. |
 | Snapshot | Salinan nilai transaksi yang tidak berubah bersama master. |
 | Tenant | Perusahaan yang datanya terisolasi. |
+
+## 26. Checklist sebelum mulai operasional
+
+Sebelum memakai data sungguhan, lakukan minimal satu siklus pada Company uji:
+
+1. login dan perpindahan Company dengan dua role berbeda;
+2. Order tunai dan TEMPO, termasuk Invoice serta Surat Jalan;
+3. cek `On Hand`, `Reserved Out`, dan `Available to Sell` setelah Confirm;
+4. Dispatch parsial, Dispatch final, lalu konfirmasi diterima;
+5. pembatalan sebelum Dispatch dan penolakan pembatalan setelah Dispatch;
+6. payment review, controlled queue, dan jurnal balance;
+7. Supplier Order, Goods Receipt parsial/final, dan sisa penerimaan;
+8. satu transaksi stok minus sampai Goods Receipt, Supplier Invoice, dan
+   rekonsiliasi biaya selesai;
+9. Return hanya terhadap quantity yang sudah Dispatch;
+10. hard refresh dan retry untuk memastikan tidak ada efek ganda.
+
+Gunakan [Matriks UAT dan Risk Register](USER_UAT_EDGE_CASE_RISK_REGISTER.md)
+untuk langkah, hasil yang diharapkan, bukti, serta kriteria berhenti.
 
 ---
 

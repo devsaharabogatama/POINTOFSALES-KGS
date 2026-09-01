@@ -1,5 +1,120 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-01 — ODR DISPATCH RUNTIME SCHEMA FORWARD-FIX LOCAL-READY
+
+- Keluhan: modal Inventory Dispatch untuk `SJ/2026/08/000031` menampilkan
+  `SALES_DELIVERY_OPERATION_FAILED` saat mengirim EGEP 7 dan KMP 4.
+- Reproduksi terhadap database sumber di dalam rollback menemukan dua defect
+  berurutan pada `private.dispatch_sales_delivery_stock_core_odr3c`: `digest`
+  tidak menunjuk `extensions.digest`, serta runtime membaca kolom requirement
+  legacy `stock_sku/stock_name` yang tidak ada.
+- Migration `20260901100000` mempertahankan signature/kontrak runtime, tetapi
+  mengualifikasi digest dan mengambil SKU/nama dari Product canonical melalui
+  `stock_product_id`. Tidak ada business-data backfill.
+- Exact Dispatch dengan definisi patched berhasil sampai hasil sukses di dalam
+  rollback. Migration penuh juga diuji dengan COMMIT diganti ROLLBACK dan exit
+  0; database produksi tidak diubah oleh agent.
+- API Backoffice mempertahankan domain error yang dikenal dan UI memberi pesan
+  operasional. Lint dan production build Backoffice PASS.
+- Manual gate: jalankan preflight, migration, behavioral rollback, postflight,
+  deploy/restart Backoffice, hard refresh, lalu retry SJ dan closing
+  reconciliation. Stop pada SQL error, `BLOCKER`, atau `FAIL`. Runbook:
+  `docs/runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md`.
+
+### 2026-09-01 — PLATFORM HEALTH OPERASIONAL SUPER ADMIN LOCAL-READY
+
+- Ditambahkan dashboard global **Platform → Health Operasional** yang hanya
+  terlihat untuk Super Admin. Dashboard merangkum Company sehat/warning/kritis,
+  metrik operasional, dan indikasi tracing tanpa memuat PII atau tindakan
+  perbaikan data.
+- Migration `20260901090000` hanya membuat RPC read-only
+  `get_platform_operational_health()`. Guard Super Admin ditegakkan di database
+  dan endpoint API; `anon` tidak memperoleh execute. RPC memakai refresh manual,
+  `search_path` terkunci, dan statement timeout 8 detik.
+- Tidak ada trigger, polling, auto-fix, backfill, perubahan policy, atau mutation
+  POS/Reservation/Stock/FIFO/Purchasing/Payment/Finance. Kegagalan halaman tidak
+  menjadi dependency menu atau transaksi lain.
+- File baru: preflight SELECT-only, migration, behavioral rollback, postflight
+  SELECT-only, API route, komponen UI, serta runbook
+  `PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md`. Navigation Platform dan
+  Manual Pengguna diperbarui.
+- Evidence lokal: Backoffice ESLint PASS; Next.js/TypeScript production build
+  PASS dan route `/api/platform/operational-health` terdaftar; static audit tidak
+  menemukan trigger atau grant mutation. PostgreSQL parser/live execution belum
+  tersedia pada environment agent karena local Supabase tidak berjalan.
+- Status tetap `LOCAL READY`: database, deployment, Super Admin smoke, regular
+  user denial, dan query-duration evidence masih manual. Urutan aman adalah
+  preflight → migration → postflight → behavioral rollback → postflight ulang →
+  deploy target yang dipilih user → authenticated smoke.
+- Dashboard Company Owner/Admin adalah next-development note saja dan tidak
+  diimplementasikan. Jangan menambah auto-fix atau menjalankan production deploy
+  tanpa instruksi user.
+
+### 2026-09-01 — MANUAL USER, UAT MATRIX, DAN RISK REGISTER DIPERBARUI
+
+- `docs/MANUAL_PENGGUNA_KGS_POS.md` diselaraskan dengan runtime ODR: Draft tidak
+  mempunyai final effect; Confirm membuat Reserved Out; Dispatch mengurangi On
+  Hand/FIFO/Movement; Received tidak memberi stock effect kedua; Finance
+  verification dan controlled queue terpisah dari pekerjaan kasir.
+- Manual juga menambahkan lifecycle cancel/Invoice watermark, batas Return
+  terhadap quantity Dispatch, procurement demand/Draft-PO amendment, Stock
+  Real On Hand/Reserved/Available, payment verification asynchronous, serta
+  batas Offline Order baru yang tetap fail-closed.
+- Dokumen baru `docs/USER_UAT_EDGE_CASE_RISK_REGISTER.md` memuat P0 smoke,
+  matriks akses/master/pricing/Order/Dispatch/NSC/Purchase/Payment/AR/dokumen/
+  Finance, edge case, stop condition, evidence template, dan go/no-go.
+- Risk register menyatakan secara eksplisit bahwa NSC runtime sudah terpasang
+  tetapi E2E belum dilakukan, 49 negative allocation masih terbuka, full
+  authenticated ODR matrix belum mempunyai closure terpadu, deployment dapat
+  drift, automatic posting belum boleh diasumsikan aktif, dan checkout Offline
+  Order baru masih fail-closed.
+- Perubahan ini hanya dokumentasi. Tidak ada schema, data, RPC, client runtime,
+  deployment, atau policy Company yang diubah.
+- Next safe step: jalankan P0-01 sampai P0-14 pada Company dummy dan deployment
+  target. Jika stok minus akan dipakai, NSC-01 sampai NSC-08 wajib PASS sebelum
+  pilot diperluas.
+
+### 2026-08-31 — SUPPLIER ORDER RECEIPT PROGRESS LOCAL-READY
+
+- Riwayat Supplier Order sekarang dapat diexpand per PO dan menampilkan SKU,
+  Product, UOM order, ordered, received, remaining, progress, jumlah receipt
+  final, serta indikator over-receipt bila ada.
+- Migration read-only `20260831110000` memperkaya `orderLines` dari
+  `get_purchase_supplier_orders()`. Received memakai jumlah
+  `goods_receipt_lines.received_base_qty` hanya dari dokumen `POSTED`, sama
+  dengan source status PO existing; Draft/Canceled tidak dihitung.
+- Tidak ada tabel/kolom/backfill baru dan tidak ada mutation PO, Goods Receipt,
+  Stock, AP, atau Finance. Response diberi
+  `supplierOrderReceiptProgressVersion=1`; UI fail-closed bila migration belum
+  aktif agar tidak menampilkan nol palsu.
+- Evidence lokal: scoped dan full Backoffice ESLint PASS; Next.js production
+  build + TypeScript PASS (77 static pages); SQL delimiter/contract/static
+  no-operational-mutation checks PASS; `git diff --check` tanpa error selain
+  warning line-ending existing. Visual authenticated smoke belum dijalankan
+  karena browser lokal tidak tersedia pada sesi agent.
+- Manual gate: preflight -> migration -> postflight -> behavioral rollback ->
+  postflight ulang -> deploy/hard refresh -> smoke Draft/partial/received,
+  multi-receipt, export, role denial, dan two-Company. Database/deployment belum
+  dijalankan agent.
+
+### 2026-08-31 — PURCHASING DEMAND READ ALIAS FORWARD-FIX LOCAL-READY
+
+- Root cause halaman `Purchase -> Supplier Order` gagal dibuka sudah
+  terverifikasi pada `get_purchase_procurement_demands()`: aggregate luar
+  memakai `product.name`, sedangkan alias `product` hanya hidup di subquery
+  `row_data`.
+- Forward migration `20260831100000` mempertahankan response, permission,
+  tenant scope, dan seluruh join existing; ordering line saja diperbaiki menjadi
+  `row_data.product_name`. Tidak ada backfill/mutation Demand, Request, PO,
+  Stock, Reservation, atau Finance.
+- Ditambahkan postflight SELECT-only dan behavioral rollback yang benar-benar
+  memanggil RPC sebagai aktor dengan effective `purchase.supplier_orders VIEW`;
+  test memvalidasi array Demand/line/amendment dan Product projection.
+- Manual gate: migration -> postflight -> behavioral -> postflight ulang ->
+  hard refresh -> buka PO dan cocokkan Demand Product. Database belum dijalankan
+  oleh agent. Rollback dilakukan sebagai forward repair definisi read RPC,
+  bukan mengubah data.
+
 ### 2026-08-30 — POS ACTIVE ORDER LOCAL SEARCH READY
 
 - Modal `Reserved Out -> Order aktif` sekarang mempunyai search field tetap di
@@ -7640,3 +7755,58 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Next safe step: user menjalankan gate dan mengirim seluruh output. Jangan
   deploy Production atau mengubah verified payment history sebelum postflight
   dan smoke bersih.
+
+### 2026-08-31 — NEGATIVE STOCK FIFO/FINANCE COST SETTLEMENT NSC-0 LOCAL-READY
+
+- Audit read-only menemukan runtime replenishment sudah menutup shortage pada
+  layer FIFO, tetapi `negative_stock_replenishment_allocations.cost_variance_total`
+  belum menjadi sumber jurnal. Supplier Invoice juga masih membebankan seluruh
+  price variance ke `PURCHASE_PRICE_VARIANCE` dan belum merevaluasi quantity
+  batch yang masih tersisa.
+- Keputusan user dikunci di
+  `docs/runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`: Dispatch tetap
+  provisional, Goods Receipt menyelesaikan selisih provisional-versus-estimasi,
+  Supplier Invoice membagi variance ke Inventory/HPP, dan jurnal `POSTED` hanya
+  dikoreksi dengan adjustment append-only.
+- Ditambahkan preflight SELECT-only
+  `supabase/diagnostics/negative_stock_fifo_finance_cost_settlement_preflight.sql`.
+  Diagnostic mengklasifikasikan queue, dependency, open negative cost,
+  replenishment `HOLD/POSTED`, invoice `HOLD/POSTED`, mapping tiga fungsi akun,
+  dan schema foundation.
+- Belum ada schema/runtime/database yang diubah. Next safe step: user
+  menjalankan NSC-0 preflight dan mengirim seluruh output. Stop pada `BLOCKER`.
+  `BACKFILL` harus ditangani adjustment event pada NSC-1/NSC-2; jangan menulis
+  ulang jurnal historis atau `product_batches.cogs_unit` secara terpisah.
+### 2026-08-31 — NEGATIVE STOCK FIFO/FINANCE NSC-1..3 LOCAL-READY
+
+- User menjalankan NSC-0 pada live DB: queue aktif 0, dependency dan mapping
+  awal PASS, historical replenishment variance 0, historical Supplier Invoice
+  price variance 0. Open negative allocation 49 / shortage 1.279 base qty
+  masih provisional dan belum direplenish.
+- Ditambahkan migration `20260831120000` (private cost source dan Invoice-to-
+  batch allocation foundation) serta `20260831130000` (Goods Receipt cost
+  settlement, zero-value receipt accounting wrapper, Supplier Invoice FIFO
+  revaluation, dan Inventory/COGS journal split).
+- Existing jurnal `POSTED` tidak ditulis ulang. Migration runtime fail-closed
+  bila menemukan historical `POSTED` variance nonnol atau queue aktif.
+- Supplier Invoice nonrecoverable tax mempertahankan akun PPV existing; hanya
+  purchase price variance yang dibagi ke Inventory dan COGS berdasarkan batch
+  remaining/sold. Revaluation batch dan jurnal berada dalam transaksi posting
+  yang sama.
+- Evidence lokal: schema/column/FK cross-check terhadap migration canonical,
+  delimiter/parenthesis scan bersih, dan `git diff --check` bersih selain
+  warning line-ending. PostgreSQL parser/live execution belum dilakukan agent.
+- Behavioral pertama gagal hanya pada result transport karena temporary table
+  `ON COMMIT DROP` hilang di boundary SQL Editor. Test diperbaiki tanpa temp
+  table; seluruh mutation tetap berada dalam `BEGIN`/`ROLLBACK`.
+- Manual gate: rerun preflight terbaru (menambah SI `COGS` mapping), migration
+  120000, foundation postflight, migration 130000, behavioral rollback,
+  runtime postflight, lalu authenticated negative Dispatch → partial/final GR
+  → queue → Invoice price variance → queue reconciliation. Stop pada SQL error,
+  `BLOCKER`, `BACKFILL`, atau `FAIL`.
+- User kemudian mengonfirmasi foundation dan runtime postflight seluruhnya
+  `PASS`: 10 routine, 5 trigger, private execution boundary, zero-value receipt
+  wrapper, dan seluruh structural reconciliation bersih. Runtime source/plan
+  masih nol dengan 49 negative allocation terbuka, sehingga next safe step
+  adalah authenticated operational smoke; jangan menandai NSC closure sebelum
+  source, batch revaluation, queue Journal, serta FIFO–GL hasil smoke cocok.

@@ -1,4 +1,5 @@
 export type NavigationViewId =
+  | 'platform-health'
   | 'data-exchange'
   | 'masters'
   | 'products'
@@ -37,6 +38,7 @@ export type NavigationViewId =
   | 'module-settings'
 
 export type NavigationIconKey =
+  | 'activity'
   | 'arrow-right-left'
   | 'badge-percent'
   | 'banknote'
@@ -112,6 +114,7 @@ export const OWNER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN']
 export const DATA_EXCHANGE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN', 'FINANCE', 'ACCOUNTING']
 
 const itemDefinitions: ItemDefinition[] = [
+  { id: 'platform-health', label: 'Health Operasional', description: 'Diagnosis read-only seluruh Company untuk Super Admin.', iconKey: 'activity', superOnly: true, capabilities: ['VIEW'] },
   { id: 'data-exchange', label: 'Data Exchange', description: 'Export dan import global sesuai akses Anda.', iconKey: 'file-spreadsheet', roles: DATA_EXCHANGE_ROLES, capabilities: ['VIEW'] },
   { id: 'masters', label: 'Master Inventory', description: 'Kategori produk, UOM, gudang, toko, dan terminal.', iconKey: 'truck', roles: INVENTORY_ROLES, capabilities: ['VIEW'] },
   { id: 'products', label: 'Produk & UOM', description: 'Produk, satuan dasar, konversi, dan harga per UOM.', iconKey: 'boxes', roles: INVENTORY_ROLES, capabilities: ['VIEW'] },
@@ -156,7 +159,7 @@ const moduleDefinitions: ModuleDefinition[] = [
   { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
   { id: 'sales', name: 'Sales', description: 'Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
   { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
-  { id: 'platform', name: 'Platform', description: 'Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['companies', 'platform-pos', 'company-branding', 'module-settings'] },
+  { id: 'platform', name: 'Platform', description: 'Health operasional, Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['platform-health', 'companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },
 ]
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  Activity,
   ArrowLeft,
   ArrowRightLeft,
   BadgePercent,
@@ -57,6 +58,7 @@ import { TaxMasterView } from "@/components/TaxMasterView";
 import { ModuleSettingsView } from "@/components/ModuleSettingsView";
 import { CompanyBrandingView } from "@/components/CompanyBrandingView";
 import { PlatformPosSetupView } from "@/components/PlatformPosSetupView";
+import { PlatformOperationalHealthView } from "@/components/PlatformOperationalHealthView";
 import { StaffAccessDetailModal } from "@/components/StaffAccessDetailModal";
 import { DataExchangeView } from "@/components/DataExchangeView";
 import { MinimumStockView } from "@/components/MinimumStockView";
@@ -133,6 +135,7 @@ type NavigationItem = {
 };
 
 const iconByKey: Record<NavigationIconKey, typeof Boxes> = {
+  activity: Activity,
   "arrow-right-left": ArrowRightLeft,
   "badge-percent": BadgePercent,
   banknote: Banknote,
@@ -1171,6 +1174,10 @@ export default function Home() {
               companies={context.companies}
               openCreate={() => setShowTenant(true)}
             />
+          )}
+
+          {activeView === "platform-health" && context.isSuperAdmin && (
+            <PlatformOperationalHealthView session={session} />
           )}
 
           {activeView === "platform-pos" && (

@@ -1,6 +1,6 @@
 # ODR-6D Consumer Compatibility Rollout
 
-Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT PENDING`.
+Status: `DATABASE CLOSURE PASS; AUTHENTICATED UAT PENDING`.
 
 ## Tujuan
 
@@ -23,7 +23,8 @@ Jalankan utuh dan berhenti pada SQL error atau `FAIL`:
 4. [`odr_phase6d_consumer_compatibility_behavior.sql`](../../supabase/tests/odr_phase6d_consumer_compatibility_behavior.sql)
 5. [`odr_phase6d_e2e_closure_preflight.sql`](../../supabase/diagnostics/odr_phase6d_e2e_closure_preflight.sql)
 
-Kedua migration transactional dan fail-closed. Patch core lama hanya diterapkan
+Kedua migration transactional dan fail-closed. Live combined postflight,
+behavior, dan closure preflight telah dilaporkan PASS. Patch core lama hanya diterapkan
 jika definisi aktif cocok dengan kontrak yang diaudit; mismatch membatalkan
 seluruh transaction.
 

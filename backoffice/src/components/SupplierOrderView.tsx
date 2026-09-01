@@ -11,6 +11,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   AlertTriangle,
   Boxes,
+  ChevronDown,
   FilePlus2,
   Download,
   Loader2,
@@ -52,7 +53,26 @@ type OrderDoc = {
   estimated_total: number | string;
   master_version: number;
 };
-type OrderLine = { id: string; document_id: string };
+type OrderLine = {
+  id: string;
+  document_id: string;
+  line_no: number;
+  product_id: string;
+  ordered_qty: number | string;
+  factor_to_base_snapshot: number | string;
+  ordered_base_qty: number | string;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  ordered_uom_name_snapshot: string;
+  received_base_qty: number | string;
+  remaining_base_qty: number | string;
+  received_ordered_qty: number | string;
+  remaining_ordered_qty: number | string;
+  over_received_base_qty: number | string;
+  receipt_progress: "NOT_RECEIVED" | "PARTIAL" | "COMPLETE";
+  posted_receipt_count: number;
+  last_received_at: string | null;
+};
 type Allocation = {
   supplier_order_line_id: string;
   stock_request_line_id: string;
@@ -128,6 +148,7 @@ type Payload = {
   stores?: Store[];
   productSuppliers?: Relation[];
   purchaseUoms?: PurchaseUom[];
+  supplierOrderReceiptProgressVersion?: number;
   procurementWorkspaceVersion?: number;
   procurementDemands?: ProcurementDemand[];
   procurementDemandLines?: ProcurementDemandLine[];
@@ -176,6 +197,8 @@ function friendly(code?: string) {
       "Hasil export tidak lengkap. Muat ulang lalu coba kembali.",
     PROCUREMENT_WORKSPACE_CONTRACT_MISMATCH:
       "Runtime Demand Purchasing belum lengkap. Hentikan operasi dan selesaikan rollout ODR-4.",
+    SUPPLIER_ORDER_RECEIPT_PROGRESS_CONTRACT_MISMATCH:
+      "Runtime detail penerimaan Supplier Order belum lengkap. Jalankan migration read model lalu muat ulang.",
   };
   return map[code ?? ""] ?? code ?? "Operasi Supplier Order gagal.";
 }
@@ -193,6 +216,13 @@ function amendmentLabel(reason: string) {
     QUANTITY_DECREASE_REQUIRES_REVIEW: "Penurunan quantity perlu review",
     DRAFT_UOM_CONVERSION_REQUIRES_REVIEW: "Konversi UOM Draft perlu review",
   } as Record<string, string>)[reason] ?? reason;
+}
+function receiptProgressLabel(value: OrderLine["receipt_progress"]) {
+  return ({
+    NOT_RECEIVED: "Belum diterima",
+    PARTIAL: "Diterima sebagian",
+    COMPLETE: "Selesai diterima",
+  } as const)[value];
 }
 
 export function SupplierOrderView({
@@ -218,6 +248,7 @@ export function SupplierOrderView({
     [exportStatus, setExportStatus] = useState('ALL'),
     [exportSupplier, setExportSupplier] = useState(''),
     [exportStore, setExportStore] = useState(''),
+    [expandedOrderId, setExpandedOrderId] = useState<string | null>(null),
     [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const load = useCallback(async () => {
     const response = await fetch("/api/purchase/supplier-orders", {
@@ -227,6 +258,9 @@ export function SupplierOrderView({
     if (!response.ok) throw new Error(friendly(body.error));
     if (body.procurementWorkspaceVersion !== 1) {
       throw new Error(friendly("PROCUREMENT_WORKSPACE_CONTRACT_MISMATCH"));
+    }
+    if (body.supplierOrderReceiptProgressVersion !== 1) {
+      throw new Error(friendly("SUPPLIER_ORDER_RECEIPT_PROGRESS_CONTRACT_MISMATCH"));
     }
     setPayload(body);
   }, [session]);
@@ -301,6 +335,15 @@ export function SupplierOrderView({
   ), [exportStatus, exportStore, exportSupplier, payload.orders]);
   const allFilteredSelected = filteredOrders.length > 0 &&
     filteredOrders.every((order) => selectedOrderIds.has(order.id));
+  const orderLinesByOrder = useMemo(() => {
+    const grouped = new Map<string, OrderLine[]>();
+    for (const line of payload.orderLines ?? []) {
+      const rows = grouped.get(line.document_id) ?? [];
+      rows.push(line);
+      grouped.set(line.document_id, rows);
+    }
+    return grouped;
+  }, [payload.orderLines]);
   const remainingLines = useMemo(() => {
     const activeOrderIds = new Set(
       (payload.orders ?? [])
@@ -608,8 +651,13 @@ export function SupplierOrderView({
           {filteredOrders.length === 0 ? (
             <Empty text="Tidak ada Supplier Order yang sesuai filter." />
           ) : (
-            filteredOrders.map((order) => (
-              <article
+            filteredOrders.map((order) => {
+              const detailLines = orderLinesByOrder.get(order.id) ?? [];
+              const expanded = expandedOrderId === order.id;
+              const completedLines = detailLines.filter(
+                (line) => line.receipt_progress === "COMPLETE",
+              ).length;
+              return <article
                 key={order.id}
                 className="rounded-2xl border bg-white p-5 shadow-sm"
               >
@@ -627,18 +675,78 @@ export function SupplierOrderView({
                     {order.status}
                   </span>
                 </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() => setExpandedOrderId(expanded ? null : order.id)}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700"
+                  >
+                    <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    {expanded ? "Tutup detail" : "Lihat detail barang"}
+                  </button>
                 {canPost && order.status === "DRAFT" && (
                   <button
                     onClick={() => void confirmExisting(order)}
                     disabled={loading}
-                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-600 px-4 py-2.5 text-sm font-black text-emerald-700"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-600 px-4 text-sm font-black text-emerald-700"
                   >
                     <Send className="h-4 w-4" />
                     Konfirmasi Draft
                   </button>
                 )}
-              </article>
-            ))
+                </div>
+                {expanded && <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600">
+                    <span>{detailLines.length} barang dalam PO</span>
+                    <span>{completedLines}/{detailLines.length} selesai diterima</span>
+                  </div>
+                  {detailLines.length === 0 ? <p className="p-5 text-sm text-slate-500">
+                    Detail barang tidak ditemukan. Muat ulang setelah runtime read model diterapkan.
+                  </p> : <div className="divide-y divide-slate-100">
+                    {detailLines.map((line) => {
+                      const progressClass = line.receipt_progress === "COMPLETE"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : line.receipt_progress === "PARTIAL"
+                          ? "bg-amber-50 text-amber-800"
+                          : "bg-slate-100 text-slate-600";
+                      return <div key={line.id} className="p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-black text-slate-900">{line.product_name_snapshot}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {line.product_sku_snapshot} · {line.ordered_uom_name_snapshot}
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${progressClass}`}>
+                            {receiptProgressLabel(line.receipt_progress)}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                          <div className="rounded-lg bg-slate-50 p-2">
+                            <dt className="text-[11px] font-bold uppercase text-slate-500">Dipesan</dt>
+                            <dd className="mt-1 font-black">{quantity(line.ordered_qty)}</dd>
+                          </div>
+                          <div className="rounded-lg bg-emerald-50 p-2 text-emerald-800">
+                            <dt className="text-[11px] font-bold uppercase">Diterima</dt>
+                            <dd className="mt-1 font-black">{quantity(line.received_ordered_qty)}</dd>
+                          </div>
+                          <div className="rounded-lg bg-amber-50 p-2 text-amber-900">
+                            <dt className="text-[11px] font-bold uppercase">Belum</dt>
+                            <dd className="mt-1 font-black">{quantity(line.remaining_ordered_qty)}</dd>
+                          </div>
+                        </dl>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Satuan {line.ordered_uom_name_snapshot}
+                          {line.posted_receipt_count > 0 && ` · ${line.posted_receipt_count} penerimaan final`}
+                          {Number(line.over_received_base_qty) > 0 && ` · Lebih terima ${quantity(line.over_received_base_qty)} base`}
+                        </p>
+                      </div>;
+                    })}
+                  </div>}
+                </div>}
+              </article>;
+            })
           )}
         </List>
       </div>
