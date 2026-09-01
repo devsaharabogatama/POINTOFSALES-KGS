@@ -1,5 +1,30 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-01 — INVENTORY SJ ODR DOWNLOAD/PRINT COMPATIBILITY LOCAL-READY
+
+- Reproduksi read-only pada Admin Gudang LSM dan SJ ODR `000042/000043`
+  menghasilkan `SALES_DOCUMENT_NOT_FOUND` dari
+  `private.acp5e_get_sales_delivery_document_core`; bukan denial permission
+  Inventory. Sale ODR masih `DRAFT/RESERVED` secara sengaja, sedangkan Delivery
+  immutable sudah `READY`.
+- Migration `20260901110000` mengganti hanya dua wrapper Inventory: detail
+  membaca snapshot/line Delivery tenant-scoped, dan print menulis audit PRINT
+  append-only. Keduanya tetap membutuhkan effective capability
+  `inventory.delivery_documents VIEW`.
+- API mengenali error legacy `SALES_DOCUMENT_NOT_FOUND`; tidak ada perubahan
+  status Order/SJ, Reservation, Stock, FIFO, Payment, Finance, atau snapshot.
+- File baru: preflight SELECT-only, migration, behavioral rollback data-adaptive,
+  postflight SELECT-only, dan runbook
+  `INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md`.
+- Evidence lokal: execution path UI → API → RPC → snapshot/audit ditelusuri;
+  scoped ESLint Backoffice PASS; `git diff --check` PASS. PostgreSQL migration
+  belum dijalankan agent. CLI sudah dikembalikan ke
+  project staging `yjxpddwrjdczuqyixqwi` setelah diagnosis production read-only.
+- Manual gate: preflight → migration 110000 → behavioral rollback → postflight
+  → deploy/restart Backoffice → hard refresh → Admin Gudang detail, unduh satu,
+  print satu, dan bulk download campuran SJ lama/ODR. Stop pada SQL error,
+  `BLOCKER`, atau `FAIL`.
+
 ### 2026-09-01 — ODR DISPATCH RUNTIME SCHEMA FORWARD-FIX LOCAL-READY
 
 - Keluhan: modal Inventory Dispatch untuk `SJ/2026/08/000031` menampilkan

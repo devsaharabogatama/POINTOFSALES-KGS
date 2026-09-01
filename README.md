@@ -1,5 +1,11 @@
 # MADS — Management Distribution System
 
+> 2026-09-01: kompatibilitas detail dan unduh/print Surat Jalan ODR untuk Admin
+> Gudang **local-ready**. Forward migration `20260901110000` memakai snapshot
+> Delivery immutable di bawah `inventory.delivery_documents VIEW`; rollout
+> database dan authenticated smoke masih manual. Lihat
+> `docs/runbooks/INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md`.
+
 > 2026-09-01: ODR Dispatch runtime schema forward-fix **local-ready**.
 > Error generik Dispatch dilacak ke pemanggilan `digest` dari schema yang salah
 > dan referensi kolom requirement legacy. Forward-fix `20260901100000`

@@ -55,6 +55,8 @@ Finance G6 Phase 8:
 
 Order Reservation/Dispatch:
 
+- [`runbooks/INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md`](runbooks/INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md)
+  — detail serta audit unduh/print Surat Jalan ODR untuk Admin Gudang.
 - [`runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md`](runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md)
   — detail read-only ordered/received/remaining per baris Supplier Order.
 - [`runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`](runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md)

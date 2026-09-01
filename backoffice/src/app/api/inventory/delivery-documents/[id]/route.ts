@@ -4,7 +4,8 @@ import { enumValue, optionalText, readJsonObject, requiredText, requiredVersion,
 type RouteContext = { params: Promise<{ id: string }> }
 
 function rpcFailure(message: string): never {
-  const known = ['SALES_DELIVERY_NOT_FOUND', 'MASTER_VERSION_CONFLICT',
+  const known = ['SALES_DELIVERY_NOT_FOUND', 'SALES_DOCUMENT_NOT_FOUND',
+    'MASTER_VERSION_CONFLICT',
     'INVALID_SALES_DELIVERY_TRANSITION', 'CANCEL_REASON_REQUIRED',
     'CUSTOM_PERMISSION_DENIED', 'USE_CANONICAL_DISPATCH_RUNTIME',
     'SALES_DELIVERY_NOT_DISPATCHABLE', 'SALES_ORDER_NOT_DISPATCHABLE',
