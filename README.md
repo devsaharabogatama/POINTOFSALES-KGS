@@ -1,5 +1,13 @@
 # MADS — Management Distribution System
 
+> 2026-09-03: header PWA POS dua baris **local-ready**. Baris utama sekarang
+> memuat identitas, Company, pilihan Katalog/Compact, serta utilitas berbentuk
+> ikon di sisi kanan. Menu operasional tetap berlabel pada baris kedua yang
+> ringkas dan dapat digulir horizontal pada layar sempit. Seluruh feature flag,
+> permission, handler, dan alur transaksi existing dipertahankan; tidak ada
+> migration atau perubahan database. Deploy dan authenticated visual smoke
+> masih manual.
+
 > 2026-09-03: forward-fix lifecycle serah barang Surat Jalan Pickup
 > **local-ready**. ODR Phase 3A tanpa sengaja mewajibkan marker Dispatch pada
 > seluruh dokumen `DELIVERED`, sehingga Pickup legacy `READY -> DELIVERED`

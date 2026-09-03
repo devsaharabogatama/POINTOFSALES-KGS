@@ -40,11 +40,98 @@ button {
 
 .pos-topbar {
   min-height: 64px;
-  padding: 10px 16px !important;
+  padding: 8px 16px !important;
   color: #17202a;
   border-color: #d8dee6 !important;
   background: #ffffff !important;
   box-shadow: 0 2px 8px rgb(31 41 55 / 7%);
+}
+
+.pos-header-primary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.pos-header-utilities {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pos-header-icon-action {
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  color: #536171;
+  border: 1px solid #cbd3dc;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.pos-header-icon-action:hover {
+  color: #007f77;
+  border-color: #00a99d;
+  background: #f0fffd;
+}
+
+.pos-header-icon-action:focus-visible {
+  outline: 3px solid rgb(0 169 157 / 22%);
+  outline-offset: 2px;
+}
+
+.pos-header-icon-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.pos-header-icon-action.is-online,
+.pos-header-icon-action.is-connected {
+  color: #007f77;
+  border-color: #99ddd7;
+  background: #edfffc;
+}
+
+.pos-header-icon-action.is-offline {
+  color: #be123c;
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.pos-header-icon-action.pos-close-session-trigger {
+  color: #b4232f !important;
+  border-color: #f3b7bd !important;
+  background: #fff7f7 !important;
+}
+
+.pos-header-operations {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  overflow-x: auto;
+  border-top: 1px solid #edf0f3;
+  scrollbar-width: thin;
+}
+
+.pos-header-operations:empty {
+  display: none;
+}
+
+.pos-header-operations .pos-top-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px !important;
+  white-space: nowrap;
 }
 
 .pos-brand {
@@ -74,11 +161,6 @@ button {
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pos-network-status {
-  min-height: 40px;
-  font-weight: 700;
 }
 
 .pos-top-action {
@@ -3772,10 +3854,6 @@ button {
 }
 
 @media (max-width: 930px) {
-  .pos-action-label {
-    display: none;
-  }
-
   .pos-header-layout-switcher button span {
     display: none;
   }
@@ -3790,9 +3868,32 @@ button {
     position: static;
   }
 
+  .pos-header-primary {
+    flex-wrap: wrap;
+  }
+
+  .pos-brand {
+    flex: 1 1 220px;
+  }
+
+  .pos-header-utilities {
+    margin-left: 0;
+  }
+
   .pos-company-select {
     width: 100%;
     order: 5;
+  }
+
+  .pos-single-company-name {
+    width: 100%;
+    max-width: none;
+    order: 5;
+  }
+
+  .pos-header-operations {
+    margin-right: -16px;
+    padding-right: 16px;
   }
 
   .pos-catalog,

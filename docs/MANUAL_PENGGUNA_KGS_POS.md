@@ -650,6 +650,20 @@ Satu kasir tidak boleh mempunyai dua sesi terbuka yang tumpang tindih.
 
 ### Area utama
 
+Header POS dibagi menjadi dua baris agar area kerja tetap luas:
+
+- baris pertama memuat identitas sesi, Company aktif, pilihan tampilan
+  **Katalog/Compact**, lalu ikon status koneksi, menu Offline, printer,
+  **Tutup Sesi**, dan **Keluar** di sisi kanan;
+- baris kedua memuat tombol operasional seperti Return, Expense, Minta Stok,
+  Terima Barang, Retur Supplier, Opname, dan Setor Kas. Tombol yang tidak
+  diaktifkan pada pengaturan Terminal tidak ditampilkan;
+- arahkan pointer ke ikon untuk membaca keterangannya. Warna hijau pada ikon
+  koneksi/printer menandakan kondisi aktif atau terhubung, sedangkan warna
+  merah pada koneksi menandakan POS sedang offline;
+- pada layar sempit, geser baris menu operasional ke samping untuk membuka
+  tombol lain. Area ini sengaja tidak menambah tinggi halaman transaksi.
+
 Saat sesi aktif tersedia dua pilihan tampilan pada switcher di header POS:
 
 - **Katalog** adalah tampilan kartu Product sebelumnya dan tetap menjadi

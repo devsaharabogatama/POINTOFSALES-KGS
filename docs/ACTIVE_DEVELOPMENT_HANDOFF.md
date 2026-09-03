@@ -1,5 +1,27 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-03 — PWA POS TWO-ROW HEADER LOCAL-READY
+
+- Header POS diringkas menjadi dua baris tanpa mengubah fungsi. Baris pertama
+  memuat identitas sesi, Company, switcher Katalog/Compact, lalu utilitas ikon
+  di kanan: status koneksi, Offline, printer, Tutup Sesi, dan Keluar.
+- Baris kedua mempertahankan menu operasional berlabel: Return, Expense, Minta
+  Stok, Terima Barang, Retur Supplier, Opname, dan Setor Kas. Visibilitas
+  feature/Terminal, permission, kondisi sesi, disabled-online, serta seluruh
+  event handler existing tetap sama.
+- Layout desktop memakai satu baris operasi yang ringkas; layar sempit memakai
+  horizontal scroll agar menu tidak menambah tinggi workspace. Setiap utilitas
+  ikon memiliki tooltip dan `aria-label`.
+- File berubah: `pwa/src/App.tsx`, `pwa/src/App.css`, manual pengguna, handoff,
+  dan root README. Tidak ada migration, database write, deploy, atau perubahan
+  kontrak operasional.
+- Evidence lokal: `npm.cmd run lint` PASS; `npm.cmd run build` PASS (hanya
+  warning bundle-size existing). Pemeriksaan browser otomatis belum tersedia
+  karena koneksi browser lokal gagal dibuka.
+- Manual gate: hard refresh PWA, periksa header pada laptop dan viewport sempit,
+  hover setiap ikon, lalu hidup/matikan fitur Terminal untuk memastikan hanya
+  tombol terkait yang muncul tanpa menggeser atau menduplikasi kontrol lain.
+
 ### 2026-09-03 — INVENTORY PICKUP HANDOVER LIFECYCLE FIX LOCAL-READY
 
 - Authenticated Backoffice smoke menemukan Pickup legacy berstatus READY gagal

@@ -3303,8 +3303,8 @@ export default function App() {
       }`}
     >
       <header className="pos-topbar sticky top-0 z-30 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
-        <div className="flex w-full flex-wrap items-center gap-3">
-          <div className="pos-brand mr-auto">
+        <div className="pos-header-primary">
+          <div className="pos-brand">
             <h1 className="text-xl font-black">MADS POS</h1>
             <p className="text-xs text-slate-400">
               {cashierSession
@@ -3331,20 +3331,6 @@ export default function App() {
               {activeCompany?.name}
             </span>
           )}
-          <div
-            className={`pos-network-status flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
-              isOnline
-                ? 'border-emerald-900 bg-emerald-950 text-emerald-300'
-                : 'border-rose-900 bg-rose-950 text-rose-300'
-            }`}
-          >
-            {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-            {isOnline
-              ? 'Online'
-              : offlineCache
-                ? 'Offline · cache tersedia'
-                : 'Offline belum siap'}
-          </div>
           {cashierSession && (
             <div
               className="pos-header-layout-switcher"
@@ -3372,6 +3358,83 @@ export default function App() {
               </button>
             </div>
           )}
+          <div className="pos-header-utilities">
+            <div
+              className={`pos-header-icon-action pos-network-status ${
+                isOnline ? 'is-online' : 'is-offline'
+              }`}
+              title={isOnline
+                ? 'POS terhubung ke server'
+                : offlineCache
+                  ? 'POS offline; cache tersedia'
+                  : 'POS offline; cache belum siap'}
+              aria-label={isOnline
+                ? 'Status koneksi: Online'
+                : offlineCache
+                  ? 'Status koneksi: Offline, cache tersedia'
+                  : 'Status koneksi: Offline, cache belum siap'}
+              role="status"
+            >
+              {isOnline
+                ? <Wifi className="h-5 w-5" />
+                : <WifiOff className="h-5 w-5" />}
+            </div>
+            {cashierSession && terminalFeatureVisible('OFFLINE') && (
+              <button
+                type="button"
+                onClick={() => setOfflinePanelOpen(true)}
+                className="pos-header-icon-action pos-offline-menu-trigger"
+                title="Buka status dan transaksi Offline"
+                aria-label="Buka status dan transaksi Offline"
+              >
+                <span className="pos-offline-menu-icon">
+                  <Database className="h-5 w-5" />
+                  <span
+                    className={`pos-offline-menu-dot ${
+                      offlineCache ? 'is-cached' : 'is-blocked'
+                    }`}
+                  />
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                setIsPrinterConnected(await printer.connect())
+              }}
+              className={`pos-header-icon-action ${
+                isPrinterConnected ? 'is-connected' : ''
+              }`}
+              title={isPrinterConnected ? 'Printer terhubung' : 'Hubungkan printer'}
+              aria-label={isPrinterConnected ? 'Printer terhubung' : 'Hubungkan printer'}
+            >
+              <Printer className="h-5 w-5" />
+            </button>
+            {cashierSession && (
+              <button
+                type="button"
+                onClick={handleCloseSession}
+                disabled={busy}
+                className="pos-header-icon-action pos-close-session-trigger"
+                title="Tutup sesi kasir"
+                aria-label="Tutup sesi kasir"
+              >
+                <Clock3 className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={busy}
+              className="pos-header-icon-action"
+              title="Keluar dari MADS POS"
+              aria-label="Keluar dari MADS POS"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        <div className="pos-header-operations" aria-label="Menu operasional POS">
           {cashierSession && terminalFeatureVisible('SALES_RETURN') && (
             <button
               type="button"
@@ -3428,62 +3491,6 @@ export default function App() {
               <span className="pos-action-label">Setor Kas</span>
             </button>
           )}
-          {cashierSession && terminalFeatureVisible('OFFLINE') && (
-            <button
-              type="button"
-              onClick={() => setOfflinePanelOpen(true)}
-              className="pos-top-action pos-offline-menu-trigger rounded-xl border border-slate-700 bg-slate-900 p-2"
-              title="Lihat status Offline"
-              aria-label="Buka status Offline"
-            >
-              <span className="pos-offline-menu-icon">
-                <Database className="h-5 w-5" />
-                <span
-                  className={`pos-offline-menu-dot ${
-                    offlineCache ? 'is-cached' : 'is-blocked'
-                  }`}
-                />
-              </span>
-              <span className="pos-action-label">Offline</span>
-            </button>
-          )}
-          <button
-            onClick={async () => {
-              setIsPrinterConnected(await printer.connect())
-            }}
-            className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
-            title={isPrinterConnected ? 'Printer terhubung' : 'Hubungkan printer'}
-          >
-            <Printer
-              className={`h-5 w-5 ${
-                isPrinterConnected ? 'text-emerald-400' : 'text-slate-400'
-              }`}
-            />
-            <span className="pos-action-label">
-              {isPrinterConnected ? 'Printer siap' : 'Hubungkan printer'}
-            </span>
-          </button>
-          {cashierSession && (
-            <button
-              type="button"
-              onClick={handleCloseSession}
-              disabled={busy}
-              className="pos-top-action pos-close-session-trigger rounded-xl p-2"
-              title="Tutup sesi kasir"
-            >
-              <Clock3 className="h-5 w-5" />
-              <span className="pos-action-label">Tutup Sesi</span>
-            </button>
-          )}
-          <button
-            onClick={handleLogout}
-            disabled={busy}
-            className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
-            title="Keluar"
-          >
-            <LogOut className="h-5 w-5" />
-            <span className="pos-action-label">Keluar</span>
-          </button>
         </div>
       </header>
 
