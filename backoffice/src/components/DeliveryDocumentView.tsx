@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   Archive, Ban, CalendarRange, CheckCircle2, Download, Eye, FileText, Loader2,
-  RefreshCcw, Search, Send, X,
+  PackageCheck, RefreshCcw, Search, Send, X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
 import {
@@ -48,6 +48,13 @@ type DispatchLine = {
   quantity_uom: number | string
   quantity_base: number | string
   remaining_quantity_uom: number | string
+}
+type BulkStatusAction = 'DISPATCH' | 'DELIVER'
+type BulkStatusResult = {
+  deliveryDocumentId: string
+  deliveryNo: string
+  ok: boolean
+  message: string
 }
 
 const MAX_BULK_DOCUMENTS = 50
@@ -144,6 +151,10 @@ export function DeliveryDocumentView({
   const [markedIds, setMarkedIds] = useState<string[]>([])
   const [bulkDownloading, setBulkDownloading] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 })
+  const [bulkStatus, setBulkStatus] = useState<{
+    action: BulkStatusAction
+    rows: DeliverySummary[]
+  } | null>(null)
   const [showLogoOnDocuments, setShowLogoOnDocuments] = useState(true)
   const [showStampOnDocuments, setShowStampOnDocuments] = useState(false)
 
@@ -214,6 +225,10 @@ export function DeliveryDocumentView({
   const allFilteredMarked = selectableFiltered.length > 0 && selectableFiltered.every(
     (row) => marked.has(row.deliveryDocumentId),
   )
+  const bulkDispatchEligible = markedRows.length > 0 && markedRows.every((row) =>
+    row.fulfillmentMode === 'DELIVERY' && row.status === 'READY')
+  const bulkDeliverEligible = markedRows.length > 0 && markedRows.every((row) =>
+    row.fulfillmentMode === 'DELIVERY' && row.status === 'DISPATCHED')
 
   function toggleRow(id: string) {
     setMarkedIds((current) => current.includes(id)
@@ -337,6 +352,8 @@ export function DeliveryDocumentView({
     <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
       <div><p className="text-xs font-black uppercase tracking-[.2em] text-blue-700">Inventory</p><h1 className="mt-2 text-2xl font-black">Surat Jalan</h1><p className="mt-1 text-sm text-slate-500">Siapkan, cetak, dan pantau pengiriman tanpa membuka nilai Invoice.</p></div>
       <div className="flex flex-wrap gap-2">
+        {canManage && <button type="button" onClick={() => setBulkStatus({ action: 'DISPATCH', rows: markedRows })} disabled={!bulkDispatchEligible || bulkDownloading} title={bulkDispatchEligible ? 'Kirim seluruh sisa barang pada Surat Jalan terpilih' : 'Pilih hanya Surat Jalan Pengiriman berstatus Siap dikirim'} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><Send className="h-4 w-4"/>Kirim terpilih ({markedRows.length})</button>}
+        {canManage && <button type="button" onClick={() => setBulkStatus({ action: 'DELIVER', rows: markedRows })} disabled={!bulkDeliverEligible || bulkDownloading} title={bulkDeliverEligible ? 'Tandai Surat Jalan terpilih sebagai terkirim' : 'Pilih hanya Surat Jalan Pengiriman berstatus Dalam perjalanan'} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><PackageCheck className="h-4 w-4"/>Tandai terkirim ({markedRows.length})</button>}
         <button onClick={() => void bulkDownload()} disabled={!markedRows.length || bulkDownloading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Archive className="h-4 w-4"/>{bulkDownloading ? `Menyiapkan ${bulkProgress.done}/${bulkProgress.total}` : `Unduh PDF Terpilih (${markedRows.length})`}</button>
         <button onClick={() => void load()} disabled={loading || bulkDownloading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button>
       </div>
@@ -350,7 +367,7 @@ export function DeliveryDocumentView({
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm">
       <label className="inline-flex items-center gap-3 font-black text-blue-950"><input type="checkbox" checked={allFilteredMarked} onChange={toggleFiltered} disabled={!selectableFiltered.length || bulkDownloading} className="h-5 w-5 accent-blue-600"/>Pilih semua hasil filter{filtered.length > MAX_BULK_DOCUMENTS ? ` (maksimal ${MAX_BULK_DOCUMENTS})` : ''}</label>
-      <span className="font-semibold text-blue-800">{markedRows.length} dokumen dipilih</span>
+      <span className="font-semibold text-blue-800">{markedRows.length} dokumen dipilih{canManage && markedRows.length > 0 && !bulkDispatchEligible && !bulkDeliverEligible ? ' · untuk bulk status, pilih dokumen Pengiriman dengan satu status yang sama' : ''}</span>
     </div>
     {error && <p className="rounded-2xl bg-rose-50 p-4 font-semibold text-rose-700">{error}</p>}
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm">
@@ -366,7 +383,109 @@ export function DeliveryDocumentView({
     </table></div></div>
     {selected && <Detail summary={selected} detail={detail} dispatchLines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} canManage={canManage} close={() => { setSelected(null); setDetail(null) }} print={() => void print()} download={() => void download()} act={setAction}/>}
     {selected && detail && action && <ActionDialog session={session} summary={selected} lines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} action={action} close={() => setAction(null)} complete={complete}/>}
+    {bulkStatus && <BulkStatusDialog session={session} rows={bulkStatus.rows} dispatchLines={dispatchLines} action={bulkStatus.action} close={() => setBulkStatus(null)} refresh={load} notify={notify}/>}
   </section>
+}
+
+function BulkStatusDialog({ session, rows, dispatchLines, action, close, refresh, notify }: {
+  session: Session
+  rows: DeliverySummary[]
+  dispatchLines: DispatchLine[]
+  action: BulkStatusAction
+  close: () => void
+  refresh: () => Promise<void>
+  notify: (message: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState({ done: 0, total: rows.length })
+  const [results, setResults] = useState<BulkStatusResult[]>([])
+  const [idempotencyKeys] = useState(() => new Map(
+    rows.map((row) => [row.deliveryDocumentId, crypto.randomUUID()]),
+  ))
+  const completed = results.length === rows.length
+  const successCount = results.filter((result) => result.ok).length
+  useEscapeClose(() => { if (!busy) close() })
+
+  async function submit() {
+    if (busy || completed) return
+    setBusy(true)
+    const nextResults: BulkStatusResult[] = []
+    try {
+      for (const row of rows) {
+        try {
+          const remainingLines = dispatchLines.filter((line) =>
+            line.delivery_document_id === row.deliveryDocumentId &&
+            Number(line.remaining_quantity_uom) > 0)
+          if (action === 'DISPATCH' && row.reservationId && !remainingLines.length) {
+            throw new Error('Tidak ada sisa Reservation yang dapat dikirim.')
+          }
+          const response = await fetch(`/api/inventory/delivery-documents/${row.salesId}`, {
+            method: 'PATCH',
+            headers: headers(session, true),
+            body: JSON.stringify({
+              action,
+              deliveryDocumentId: row.deliveryDocumentId,
+              masterVersion: row.masterVersion,
+              ...(action === 'DISPATCH' && row.reservationId ? {
+                idempotencyKey: idempotencyKeys.get(row.deliveryDocumentId),
+                lines: remainingLines.map((line) => ({
+                  deliveryLineId: line.id,
+                  quantityUom: Number(line.remaining_quantity_uom),
+                })),
+              } : {}),
+              ...(action === 'DELIVER' && row.reservationId
+                ? { recipientName: row.recipientName.trim() } : {}),
+            }),
+          })
+          const result = await response.json() as { error?: string }
+          if (!response.ok) throw new Error(friendly(result.error))
+          nextResults.push({
+            deliveryDocumentId: row.deliveryDocumentId,
+            deliveryNo: row.deliveryNo,
+            ok: true,
+            message: action === 'DISPATCH' ? 'Dalam perjalanan' : 'Terkirim',
+          })
+        } catch (caught) {
+          nextResults.push({
+            deliveryDocumentId: row.deliveryDocumentId,
+            deliveryNo: row.deliveryNo,
+            ok: false,
+            message: caught instanceof Error ? caught.message : 'Operasi gagal.',
+          })
+        }
+        setResults([...nextResults])
+        setProgress({ done: nextResults.length, total: rows.length })
+      }
+      await refresh()
+      const succeeded = nextResults.filter((result) => result.ok).length
+      const failed = nextResults.length - succeeded
+      notify(`${succeeded} Surat Jalan berhasil diperbarui${failed ? `; ${failed} gagal.` : '.'}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const title = action === 'DISPATCH'
+    ? 'Kirim semua Surat Jalan terpilih?'
+    : 'Tandai semua sebagai terkirim?'
+  const description = action === 'DISPATCH'
+    ? 'Seluruh sisa quantity akan di-dispatch satu per satu melalui runtime Reservation, FIFO, Movement, dan Finance canonical. Pengiriman sebagian tetap dilakukan dari detail Surat Jalan.'
+    : 'Setiap Surat Jalan Dalam perjalanan akan ditandai Terkirim. Langkah ini tidak mengurangi stok untuk kedua kalinya.'
+
+  return <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/70 p-4">
+    <section className="mx-auto my-6 w-full max-w-3xl rounded-3xl bg-white p-7">
+      <div className="flex justify-between gap-4"><div><h2 className="text-xl font-black">{title}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p></div><button type="button" onClick={close} disabled={busy} className="h-10 rounded-xl bg-slate-100 p-2 disabled:opacity-40"><X className="h-5 w-5"/></button></div>
+      <div className="mt-5 max-h-80 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">
+        {rows.map((row) => {
+          const result = results.find((item) => item.deliveryDocumentId === row.deliveryDocumentId)
+          return <div key={row.deliveryDocumentId} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 p-3 text-sm"><div><strong>{row.deliveryNo}</strong><p className="mt-1 text-xs text-slate-500">{row.recipientName} · {row.warehouseName}</p></div>{result ? <span className={`max-w-xs text-right text-xs font-bold ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.ok ? 'Berhasil · ' : 'Gagal · '}{result.message}</span> : <span className="text-xs font-semibold text-slate-400">Menunggu</span>}</div>
+        })}
+      </div>
+      {busy && <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-800">Memproses {progress.done}/{progress.total}. Jangan tutup halaman.</p>}
+      {completed && <p className={`mt-4 rounded-xl p-3 text-sm font-bold ${successCount === rows.length ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>{successCount} berhasil, {rows.length - successCount} gagal. Dokumen yang gagal tidak diubah; periksa pesannya lalu proses dari detail.</p>}
+      <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={close} disabled={busy} className="min-h-11 rounded-xl border px-5 font-black disabled:opacity-40">{completed ? 'Tutup' : 'Kembali'}</button>{!completed && <button type="button" onClick={() => void submit()} disabled={busy || !rows.length} className={`min-h-11 rounded-xl px-5 font-black text-white disabled:bg-slate-300 ${action === 'DISPATCH' ? 'bg-sky-600' : 'bg-emerald-600'}`}>{busy ? `Memproses ${progress.done}/${progress.total}` : `Konfirmasi ${rows.length} dokumen`}</button>}</div>
+    </section>
+  </div>
 }
 
 function Detail({ summary, detail, dispatchLines, canManage, close, print, download, act }: {

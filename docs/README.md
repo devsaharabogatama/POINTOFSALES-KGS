@@ -55,6 +55,12 @@ Finance G6 Phase 8:
 
 Order Reservation/Dispatch:
 
+- [`runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`](runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md)
+  — bulk `READY -> DISPATCHED -> DELIVERED` atas checkbox Inventory dengan
+  runtime canonical per Surat Jalan dan tanpa direct table update.
+- [`runbooks/SALES_ORDER_REVISION_ROLLOUT.md`](runbooks/SALES_ORDER_REVISION_ROLLOUT.md)
+  — replacement Draft atomik untuk koreksi Order sebelum Dispatch, dengan
+  Invoice/SJ baru dan histori source tetap immutable.
 - [`runbooks/INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md`](runbooks/INVENTORY_DELIVERY_ODR_PRINT_COMPATIBILITY.md)
   — detail serta audit unduh/print Surat Jalan ODR untuk Admin Gudang.
 - [`runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md`](runbooks/PURCHASE_SUPPLIER_ORDER_RECEIPT_PROGRESS.md)
@@ -291,6 +297,7 @@ berada di [`../README.md`](../README.md).
 | G3 fase 10 Stock Opname preflight | `runbooks/G3_PHASE10_STOCK_OPNAME_PREFLIGHT.md` | Audit SELECT-only legacy Opname, overlap/supersede, Adjustment linkage, balance/FIFO, movement watermark, blind-count channel, privilege, dan gap canonical schema |
 | G3 fase 10 Stock Opname foundation | `runbooks/G3_PHASE10_STOCK_OPNAME_FOUNDATION_ROLLOUT.md` | Blind-safe count RPC, nonblocking movement reconciliation, recount attempts, per-line supersede, atomic canonical Adjustment posting, role/idempotency/audit, postflight dan behavior |
 | G3 fase 11 Stock Opname Backoffice | `runbooks/G3_PHASE11_STOCK_OPNAME_BACKOFFICE_API_UI.md` | Tenant-scoped report/review, attempt timeline, Adjustment proof, guarded recount/post/cancel, role boundary, Escape modal, dan batas POS blind count G4 |
+| POS Stock Opname online UI | `runbooks/POS_STOCK_OPNAME_ONLINE_UI_ROLLOUT.md` | Workspace blind-safe milik counter, review hitungan sendiri, partial submit eksplisit dengan status SKIPPED tanpa efek stok, create/start/count/recount/complete, terminal visibility, dan offline fail-closed |
 | G3 fase 12 Bundle foundation preflight | `runbooks/G3_PHASE12_BUNDLE_FOUNDATION_PREFLIGHT.md` | Audit SELECT-only composition legacy, nested/self component, canonical UOM, virtual-stock invariant, browser privilege, schema/RPC gap, dan boundary checkout G4 |
 | G3 fase 12 Bundle foundation rollout | `runbooks/G3_PHASE12_BUNDLE_FOUNDATION_ROLLOUT.md` | Atomic Bundle Product+composition, derived weight, immutable type, virtual-stock guard, audit/version, private expansion, reviewer availability, postflight dan behavior |
 | G3 fase 13 Bundle master API/UI | `runbooks/G3_PHASE13_BUNDLE_MASTER_API_UI.md` | Guarded create/edit, komponen Product/UOM user-facing, harga final, derived weight, availability per Gudang, dan smoke boundary tanpa checkout |
@@ -450,6 +457,7 @@ berada di [`../README.md`](../README.md).
 | ODR-6 UI/E2E cutover preflight | `runbooks/ODR6_UI_E2E_CUTOVER_PREFLIGHT.md` | SELECT-only audit canonical browser RPC, protected tables, active queue/exception, reservation/Dispatch/Finance reconciliation, legacy consumer cutover, Offline boundary, dan authenticated UAT scope |
 | ODR-6A POS Order cutover | `runbooks/ODR6A_POS_ORDER_CUTOVER.md` | PWA online memakai Confirm/Cancel/List Order canonical, memisahkan Order aktif/terjadwal dari Draft, menutup checkout Offline baru, menjaga pembatalan setelah Payment capture, dan mengalokasikan identitas Invoice final sebelum snapshot Invoice/SJ |
 | ODR-6B.1 Reservation Stock read model | `runbooks/ODR6B_RESERVATION_STOCK_READ_MODEL.md` | Mengaktifkan Reserved Out dan Available to Sell pada Stock Real dari Reservation canonical tanpa mengubah On Hand/FIFO/Movement |
+| Forward-fix serah barang Pickup | `runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md` | Memulihkan Pickup legacy READY ke DELIVERED tanpa Dispatch, sambil mempertahankan Dispatch wajib untuk Pickup ODR dan Delivery |
 | ODR-6D Return/AR/Collection compatibility | `runbooks/ODR6D_CONSUMER_COMPATIBILITY_ROLLOUT.md` | Membatasi Return ke Dispatch aktual serta AR/Statement/Customer Receipt ke receivable TEMPO yang sudah Dispatch, dengan legacy POSTED dan Customer Advance tetap kompatibel |
 | Cash Session Close async payment verification | `runbooks/CASH_SESSION_CLOSE_ASYNC_PAYMENT_VERIFICATION.md` | Menghapus ketergantungan verifikasi Finance real-time dari Tutup Sesi tanpa menghapus drawer movement, antrean Finance, audit, atau controlled Journal |
 | Forward-fix posting Sale TEMPO | `runbooks/FINANCE_TEMPO_SALE_POSTING_FORWARD_FIX.md` | Debit Customer Receivable untuk TEMPO unpaid/partial dan retry controlled queue |
@@ -489,4 +497,5 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - [Platform POS: Toko dan Terminal](runbooks/PLATFORM_POS_STORE_TERMINAL_MANAGEMENT_ROLLOUT.md)
 - [Platform Health Operasional Super Admin](runbooks/PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md)
 - [Forward-fix runtime ODR Dispatch](runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md)
+- [Forward-fix serah barang Pickup](runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)

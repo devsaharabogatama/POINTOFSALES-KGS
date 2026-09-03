@@ -26,6 +26,7 @@ type LineStatus =
   | 'PENDING'
   | 'COUNTED'
   | 'RECOUNT_REQUIRED'
+  | 'SKIPPED'
   | 'SUPERSEDED'
   | 'POSTED'
 type OpnameSession = {
@@ -340,6 +341,9 @@ export function StockOpnameView({
               const unresolved = lines.filter((line) =>
                 ['PENDING', 'RECOUNT_REQUIRED'].includes(line.line_status),
               ).length
+              const skipped = lines.filter(
+                (line) => line.line_status === 'SKIPPED',
+              ).length
               return (
                 <tr key={row.id}>
                   <td className="px-5 py-4">
@@ -364,8 +368,13 @@ export function StockOpnameView({
                   </td>
                   <td className="px-5 py-4">
                     <p className="font-bold text-slate-700">
-                      {counted}/{lines.length} selesai
+                      {counted} dihitung
                     </p>
+                    {skipped > 0 && (
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {skipped} dilewati tanpa perubahan stok
+                      </p>
+                    )}
                     {unresolved > 0 && (
                       <p className="mt-1 text-xs font-bold text-amber-600">
                         {unresolved} perlu tindakan
@@ -829,6 +838,8 @@ function LineStatusBadge({ status }: { status: LineStatus }) {
       ? 'bg-emerald-100 text-emerald-700'
       : status === 'RECOUNT_REQUIRED'
         ? 'bg-amber-100 text-amber-800'
+        : status === 'SKIPPED'
+          ? 'bg-slate-100 text-slate-600'
         : status === 'SUPERSEDED'
           ? 'bg-slate-200 text-slate-600'
           : 'bg-blue-100 text-blue-700'
@@ -855,6 +866,7 @@ function lineStatusLabel(status: LineStatus) {
     PENDING: 'Belum dihitung',
     COUNTED: 'Sudah dihitung',
     RECOUNT_REQUIRED: 'Wajib hitung ulang',
+    SKIPPED: 'Dilewati',
     SUPERSEDED: 'Digantikan hasil baru',
     POSTED: 'Sudah diposting',
   }

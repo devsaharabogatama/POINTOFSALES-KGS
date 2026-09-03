@@ -305,3 +305,40 @@ closing sumber tetap immutable. Tanpa sesi aktif Store yang sama, payment
 memerlukan reversal/refund/Return canonical. Backoffice dan POS memanggil
 composition cancellation server yang sama dan tidak boleh membuat status lokal
 yang berbeda.
+
+## 15. Revisi Approved 2026-09-03 — Bulk Status Surat Jalan
+
+Backoffice Inventory boleh memproses beberapa Surat Jalan yang dicentang dengan
+dua tindakan tambahan:
+
+- `READY -> DISPATCHED` melalui **Kirim terpilih**; setiap dokumen mengirim
+  seluruh sisa quantity melalui runtime Dispatch canonical;
+- `DISPATCHED -> DELIVERED` melalui **Tandai terkirim**; setiap dokumen memakai
+  runtime penerimaan canonical dan tidak memberi efek stok kedua.
+
+Satu operasi hanya boleh memuat dokumen `DELIVERY` dengan status awal yang sama.
+`PICKUP`, `PARTIALLY_DISPATCHED`, status campuran, dan dokumen yang berubah versi
+tidak boleh dipaksa melewati bulk. Partial Dispatch tetap dilakukan dari detail
+per dokumen agar jumlah aktual ditinjau operator.
+
+Bulk hanyalah orkestrasi UI atas endpoint satuan existing. Setiap Surat Jalan
+tetap divalidasi terhadap active Company, capability `MANAGE`, master version,
+Reservation, FIFO, Movement, dan Finance. Dokumen diproses berurutan untuk
+menghindari contention FIFO; kegagalan satu dokumen tidak membatalkan dokumen
+lain yang sudah sukses dan hasil per dokumen wajib ditampilkan.
+
+## 16. Forward-fix 2026-09-03 — Serah Barang Pickup
+
+Constraint lifecycle ODR Phase 3A sempat mengharuskan marker Dispatch pada
+semua dokumen berstatus `DELIVERED`. Aturan tersebut benar untuk Delivery dan
+Pickup ODR yang mempunyai Reservation, tetapi bertentangan dengan kontrak
+Pickup historis tanpa Reservation yang sah langsung `READY -> DELIVERED`.
+
+Migration `20260903130000` memperbaiki constraint secara sempit:
+
+- Pickup tanpa Reservation boleh selesai tanpa marker Dispatch dan tidak
+  membuat efek Stock, FIFO, Movement, Dispatch allocation, atau Finance;
+- Pickup dengan Reservation tetap wajib memakai Dispatch canonical sebelum
+  konfirmasi serah;
+- Delivery tetap wajib melewati Dispatch;
+- master version dan audit tindakan `DELIVER` tetap berlaku.

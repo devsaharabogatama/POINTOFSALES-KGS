@@ -1,5 +1,182 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-03 — INVENTORY PICKUP HANDOVER LIFECYCLE FIX LOCAL-READY
+
+- Authenticated Backoffice smoke menemukan Pickup legacy berstatus READY gagal
+  pada tindakan **Sudah diserahkan** dan API hanya menampilkan
+  `SALES_DELIVERY_OPERATION_FAILED`.
+- Root cause terkonfirmasi: constraint dari ODR Phase 3A mewajibkan
+  `dispatched_at/dispatched_by` pada seluruh delivery document `DELIVERED`,
+  padahal approved Pickup legacy tanpa Reservation sah langsung
+  `READY -> DELIVERED` dan runtime sengaja tidak menulis marker Dispatch.
+- Added SELECT-only preflight, additive forward migration `20260903130000`,
+  rollback-safe behavioral test, SELECT-only postflight, dan rollout runbook.
+  Perubahan hanya mengganti lifecycle constraint; tidak ada backfill dan tidak
+  mengubah Stock, FIFO, Movement, Dispatch allocation, Finance, atau UI.
+- Boundary dipertahankan: Pickup linked ODR masih wajib **Keluarkan barang**
+  sebelum **Sudah diserahkan**; Delivery tetap dispatch-first; optimistic
+  version dan audit DELIVER tetap aktif.
+- Evidence lokal: package/static contract check PASS dan `git diff --check`
+  PASS (hanya warning normal LF/CRLF). SQL belum dijalankan pada Supabase;
+  behavioral test sengaja dapat memakai Pickup READY existing dan seluruh
+  mutasinya dibungkus `ROLLBACK`.
+- Manual gate: jalankan urutan pada
+  `docs/runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md`, stop pada BLOCKER,
+  SQL error, atau FAIL. Setelah PASS, hard refresh lalu ulang serah satu Pickup
+  legacy dan pastikan tidak ada perubahan stock/finance.
+
+### 2026-09-03 — INVENTORY DELIVERY BULK STATUS UI LOCAL-READY
+
+- Inventory -> Surat Jalan menambah `Kirim terpilih` untuk pilihan Delivery
+  READY dan `Tandai terkirim` untuk pilihan Delivery DISPATCHED. Checkbox,
+  print/download satuan, ZIP, detail, partial Dispatch, dan Pickup existing
+  dipertahankan.
+- Bulk tidak menulis tabel langsung dan tidak menambah migration/RPC. Dokumen
+  diproses berurutan melalui endpoint satuan canonical; linked Dispatch tetap
+  menjalankan Reservation/FIFO/Movement/Finance, sedangkan Received tidak
+  memberi stock effect kedua. Legacy row tetap memakai compatibility path.
+- Pilihan campuran, Pickup, PARTIALLY_DISPATCHED, permission denial, stale
+  master version, dan row tanpa sisa Reservation fail-closed. UI menampilkan
+  sukses/gagal per nomor Surat Jalan; efek row sukses tidak diulang atau
+  dibatalkan karena row lain gagal.
+- Evidence lokal: scoped ESLint PASS; Next.js production build/TypeScript PASS
+  (77 pages/routes). Browser visual smoke tidak dapat dijalankan karena koneksi
+  browser automation environment gagal dibuka; database/deploy tidak dijalankan.
+- Next safe step: deploy/restart Backoffice target, hard refresh, lalu ikuti
+  `docs/runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`. Rerun closing postflight
+  ODR-6B.2 setelah smoke dan stop pada mismatch Reservation/Stock/FIFO/Movement,
+  queue aktif, atau Finance exception.
+
+### 2026-09-03 — SALES ORDER REVISION IDEMPOTENCY FORWARD-FIX LOCAL-READY
+
+- User telah memasang Revision foundation/runtime dan structural postflight
+  awal PASS. Authenticated UAT pada Draft replacement nyata gagal saat Confirm
+  dengan `IDEMPOTENCY_PAYLOAD_CONFLICT`; revision masih PENDING.
+- Root cause terkonfirmasi di composition `confirm_pos_sales_order`: satu public
+  operation UUID diteruskan sekaligus ke cancel source dan confirm replacement.
+  Demand audit satu sesi mengikat UUID ke `saleId`, sehingga dua Sales aggregate
+  berbeda benar-benar konflik. Error berada di runtime, bukan cara pakai user.
+- Forward migration `20260903120000` membuat helper private untuk child UUID
+  deterministik `CANCEL_SOURCE` dan `CONFIRM_REPLACEMENT`. Revision
+  `apply_idempotency_key` dan audit APPLY tetap memakai root UUID; operasi tetap
+  satu transaksi dan ordinary non-revision Confirm tidak berubah.
+- Added dedicated SELECT-only preflight/postflight, definition-only rollback
+  contract test, upgraded combined postflight/test, serta rollout note. Tidak
+  ada database/deploy/data operasional yang dijalankan agent.
+- Next safe step: jalankan preflight idempotency -> migration 120000 -> contract
+  test -> postflight idempotency. Stop pada BLOCKER/SQL error/FAIL. Jika bersih,
+  buka Draft revisi yang sama lalu Confirm; attempt sebelumnya rollback atomik,
+  jadi tidak perlu membuat revisi baru. Sesudah berhasil, rerun combined
+  revision postflight dan cek source canceled, replacement reserved, nomor
+  Invoice/SJ berbeda, demand/Payment tidak ganda.
+
+### 2026-09-03 — SALES ORDER REVISION LOCAL-READY
+
+- Approved flow dibekukan di `docs/SALES_ORDER_REVISION_SPEC.md`: hanya Order
+  `CONFIRMED/RESERVED`, zero Dispatch, dan tanpa payment `VERIFIED` yang boleh
+  direvisi. Revisi membuat Draft replacement; source tetap aktif sampai apply.
+- Migration additive `20260903100000` menambah lineage/audit zero-backfill.
+  Runtime `20260903110000` membuat Draft dari snapshot tanpa payment, menjaga
+  cancel source selama Draft revision pending, lalu mengomposisikan cancel
+  source + canonical confirm replacement secara atomik dan exact-retry.
+- PWA menambah tombol/modal **Revisi Order**, membuka Draft replacement melalui
+  editor Draft canonical, menghitung ulang harga, mempertahankan override price
+  saat resume, dan mewajibkan pemeriksaan ulang payment. Eligibility tombol
+  berasal dari server sehingga Dispatch, payment VERIFIED, dan revisi PENDING
+  tidak menghasilkan aksi palsu. Backoffice Invoice menampilkan linkage
+  source/replacement read-only.
+- Urutan row-lock pada start/apply/cancel diselaraskan agar cancel source tidak
+  dapat menyelinap saat revision dibuat dan cancel Draft tidak deadlock dengan
+  Confirm revision.
+- Evidence lokal: PWA oxlint PASS dan production build PASS; Backoffice ESLint
+  PASS dan production build PASS; `git diff --check` bersih selain warning EOL.
+  SQL belum dijalankan terhadap Supabase oleh agent.
+- Manual gate: preflight → foundation migration → runtime migration → contract
+  test → postflight → deploy staging client → authenticated smoke lengkap pada
+  `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`. Production tidak disentuh.
+- Compatibility: Confirm/Cancel non-revision tetap memanggil runtime canonical
+  sebelumnya; Draft revision tidak membuat Reservation, Invoice/SJ, Stock,
+  FIFO, Movement, payment request, Purchasing effect, atau Finance effect.
+
+### 2026-09-02 — STOCK OPNAME REVIEW ENCODING FIX LOCAL-READY
+
+- Review PWA menampilkan mojibake pada panah, pemisah SKU, dan bullet daftar
+  produk dilewati karena karakter Unicode tersimpan dengan encoding rusak.
+- `StockOpnameModal` sekarang memakai icon `ArrowLeft`, pemisah ASCII, dan
+  bullet berbasis elemen CSS sehingga tidak bergantung pada encoding source.
+- Evidence lokal: pencarian mojibake pada modal bersih, PWA oxlint PASS,
+  production build PASS, dan scoped `git diff --check` PASS. Database serta
+  kontrak Stock Opname tidak diubah.
+
+### 2026-09-02 — STOCK OPNAME PARTIAL REVIEW RUNTIME LOCAL-READY
+
+- User menetapkan flow operasional: counter dapat melihat dan mengoreksi
+  hitungannya sendiri pada sesi aktif; stok sistem/expected/variance/HPP dan
+  hasil sesi lain tetap blind.
+- Completion tidak wajib mencakup seluruh Product. Minimal satu line harus
+  `COUNTED`; line `PENDING`/`RECOUNT_REQUIRED` hanya dapat dilewati setelah
+  konfirmasi eksplisit dan menjadi `SKIPPED`. Nol wajib diinput eksplisit.
+- Migration additive `20260902120000` menambah owner-only review RPC, partial
+  complete RPC, status/constraint `SKIPPED`, dan posting compatibility. Posting
+  tetap membentuk Adjustment hanya dari `COUNTED`; `SKIPPED` tidak mengubah
+  Stock, FIFO, Movement, Adjustment, atau Finance. Partial completion juga
+  mempunyai exact-retry response agar retry jaringan tidak menggandakan audit
+  atau perubahan sesi.
+- PWA menambah review screen, daftar jumlah tersimpan, koreksi angka, checklist
+  partial submit, dan progress Dihitung/Belum/Dilewati. Backoffice menampilkan
+  `SKIPPED` terpisah dan bukan sebagai fisik nol.
+- Evidence lokal: PWA oxlint PASS dan production build PASS; Backoffice ESLint
+  PASS dan production build PASS. PostgreSQL migration/behavior/postflight
+  belum dijalankan agent.
+- Manual gate baru: partial-review preflight → migration `120000` → behavioral
+  rollback → partial-review postflight → ulang UI/ACP-4G postflight → deploy
+  staging clients → authenticated partial-count/Post smoke. Stop pada SQL
+  error, `BLOCKER`, atau `FAIL`; Production tidak disentuh.
+
+### 2026-09-02 — STOCK OPNAME NEGATIVE-STOCK FORWARD-FIX LOCAL-READY
+
+- Screenshot behavioral create membuktikan initial POS Opname rollout belum
+  UAT-ready: `stock_opname_details_quantity_nonnegative` menolak snapshot
+  `system_qty/system_qty_at_start` ketika Product Stock sah berada di bawah nol.
+- Root cause ada pada constraint G3 lama, bukan UI atau permission. Runtime
+  canonical memang menyalin signed On Hand untuk menjaga variance exact.
+- Forward migration `20260902110000` mengganti constraint menjadi physical-only:
+  jumlah fisik tetap wajib nonnegative, sedangkan system/expected snapshot boleh
+  signed. Tidak ada Stock, FIFO, Movement, Adjustment, atau Finance mutation.
+- Ditambahkan preflight, behavioral data-adaptive create/start/count dalam
+  `ROLLBACK`, postflight, dan ACP-4G postflight diperbarui agar signed snapshot
+  tidak dianggap data rusak.
+- Gate manual: compatibility preflight → migration 110000 → behavioral harus
+  `TEST PASSED` dan rollback → compatibility postflight seluruh PASS/INFO →
+  ulang UI/ACP postflight → baru authenticated staging smoke. Jangan menyebut
+  slice UAT-ready sebelum gate ini bersih.
+
+### 2026-09-02 — POS STOCK OPNAME ONLINE UI LOCAL-READY
+
+- User membuka scope UI Stock Opname PWA online; offline secara eksplisit tetap
+  ditunda. Audit membuktikan tujuh mutation/detail RPC canonical sudah live,
+  tetapi belum ada read contract untuk list/resume sesi setelah refresh.
+- Migration additive `20260902100000_pos_stock_opname_online_workspace.sql`
+  menambahkan `get_pos_stock_opname_workspace()` yang hanya mengembalikan sesi
+  milik actor, status/progress, dan referensi sempit. Payload tidak memuat
+  physical/system/expected/variance/difference/FIFO/HPP/nilai.
+- Migration juga menambahkan key terminal `STOCK_OPNAME`; Backoffice terminal
+  settings dan API allowlist ikut diperbarui.
+- PWA menambah lazy modal `StockOpnameModal`: create/edit Draft, scope all/
+  category/selected, start, blind count, movement-aware recount, complete,
+  cancel, search, dan resume. Input quantity memakai text+numeric keyboard agar
+  mouse wheel tidak mengubah angka. Offline button disabled dan tidak ada queue.
+- Evidence lokal: PWA oxlint PASS; PWA TypeScript/Vite production build PASS;
+  Backoffice ESLint PASS; Backoffice Next.js production build PASS; scoped
+  `git diff --check` tidak menemukan whitespace error. PostgreSQL live tidak
+  dijalankan agent.
+- Manual gate: preflight → migration → fixture-free contract test → POS
+  postflight → ACP-4G postflight → deploy staging kedua client → authenticated
+  POS/Backoffice smoke. Stop pada SQL error, `BLOCKER`, atau `FAIL`.
+- Compatibility: checkout/cart, canonical count mutation, Adjustment posting,
+  Stock/FIFO/Movement/Finance, dan direct-table boundary tidak diubah. Jangan
+  deploy Production atau membuka Offline Opname sebelum staging smoke bersih.
+
 ### 2026-09-01 — INVENTORY SJ ODR DOWNLOAD/PRINT COMPATIBILITY LOCAL-READY
 
 - Reproduksi read-only pada Admin Gudang LSM dan SJ ODR `000042/000043`

@@ -7,6 +7,16 @@ import { useEscapeClose } from '@/lib/use-escape-close'
 import { downloadSalesInvoicePdf, printSalesInvoiceDocument } from '@/lib/sales-document-print'
 
 type JsonMap = Record<string, unknown>
+type RevisionLink = {
+  status: 'PENDING' | 'APPLIED' | 'ABANDONED'
+  reason: string
+  sourceSalesId: string
+  sourceOrderNo: string
+  sourceInvoiceNo: string
+  replacementSalesId: string
+  replacementOrderNo: string
+  replacementInvoiceNo: string
+}
 type InvoiceSummary = {
   salesId: string; invoiceSnapshotId: string; invoiceNo: string
   snapshotProvenance: string; postedAt: string; total: number
@@ -15,6 +25,7 @@ type InvoiceSummary = {
   invoiceStatus: 'ACTIVE' | 'CANCELED'; orderRuntimeStatus: string
   masterVersion: number; canceledAt?: string | null
   cancelReason?: string | null; canceledByName?: string | null; canCancel?: boolean
+  revision?: RevisionLink | null
 }
 type DetailPayload = { invoice?: JsonMap; error?: string }
 
@@ -29,6 +40,7 @@ function friendly(code?: string) { return ({
   SALES_ORDER_VERIFIED_PAYMENT_REVERSAL_REQUIRED: 'Pembayaran sudah diverifikasi. Finance wajib menyelesaikan reversal sebelum Order dapat dibatalkan.',
   SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION: 'Kas sudah masuk ke sesi yang ditutup. Pembatalan memerlukan proses refund/reversal kas.',
   SALES_ORDER_CASH_REFUND_REQUIRES_CURRENT_OPEN_SESSION: 'Buka sesi kas pada toko Order ini untuk mencatat pengembalian Cash, lalu coba batalkan lagi.',
+  SALES_ORDER_REVISION_PENDING: 'Order memiliki Draft revisi aktif. Batalkan Draft revisi terlebih dahulu.',
   MASTER_VERSION_CONFLICT: 'Data Order sudah berubah. Muat ulang lalu coba kembali.',
   CUSTOM_PERMISSION_DENIED: 'Anda tidak diizinkan membatalkan Order ini.',
   FORBIDDEN: 'Anda tidak diizinkan mengakses Invoice.',
@@ -127,9 +139,12 @@ function InvoiceDetail({ summary, payload, loading, close, print, download, canc
   const invoice = payload?.invoice ?? {}; const snapshot = (invoice.snapshot ?? {}) as JsonMap
   const lines = Array.isArray(snapshot.lines) ? snapshot.lines as JsonMap[] : []
   const canceled = String(invoice.invoiceStatus ?? summary.invoiceStatus) === 'CANCELED'; const canCancel = Boolean(invoice.canCancel ?? summary.canCancel)
+  const revision = (invoice.revision ?? summary.revision ?? null) as RevisionLink | null
   return <div className="fixed inset-0 z-[75] overflow-y-auto bg-slate-950/65 p-4"><article className="relative mx-auto my-5 max-w-5xl rounded-3xl bg-white p-6 shadow-2xl">
     <div className="flex items-start justify-between gap-4"><div><p className={`text-xs font-black uppercase tracking-wider ${canceled ? 'text-rose-700' : 'text-emerald-700'}`}>{canceled ? 'Invoice Dibatalkan' : 'Invoice Final'}</p><h2 className="mt-2 text-2xl font-black">{summary.invoiceNo}</h2><p className="mt-1 text-sm text-slate-500">{summary.customerName} · {summary.storeName} · {dateTime(summary.postedAt)}</p></div><button onClick={close} className="rounded-xl bg-slate-100 p-2" aria-label="Tutup"><X className="h-5 w-5"/></button></div>
     {canceled && <div className="mt-5 flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800"><Ban className="mt-0.5 h-5 w-5 shrink-0"/><div><strong>Order dan Invoice ini telah dibatalkan.</strong><p className="mt-1 text-sm">{String(invoice.cancelReason ?? summary.cancelReason ?? 'Tanpa keterangan')} · {String(invoice.canceledByName ?? summary.canceledByName ?? 'Pengguna')} · {dateTime(String(invoice.canceledAt ?? summary.canceledAt ?? ''))}</p></div></div>}
+    {revision?.status === 'APPLIED' && <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-900"><strong>{revision.sourceSalesId === summary.salesId ? `Direvisi menjadi ${revision.replacementInvoiceNo}` : `Revisi dari ${revision.sourceInvoiceNo}`}</strong><p className="mt-1 text-sm">{revision.reason}</p></div>}
+    {revision?.status === 'PENDING' && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><strong>Draft revisi sedang disiapkan</strong><p className="mt-1 text-sm">Order asli tetap aktif sampai revisi dikonfirmasi. {revision.reason}</p></div>}
     {loading ? <div className="p-16 text-center"><Loader2 className="mx-auto h-7 w-7 animate-spin"/></div> : payload && <><div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Produk</th><th className="p-4">UOM</th><th className="p-4 text-right">Qty</th><th className="p-4 text-right">Harga</th><th className="p-4 text-right">Total</th></tr></thead><tbody>{lines.map((line, index) => <tr key={`${String(line.lineKey)}-${index}`} className="border-t"><td className="p-4"><strong>{String(line.productName ?? '-')}</strong><p className="text-xs text-slate-500">{String(line.sku ?? '')}</p></td><td className="p-4">{String(line.uomName ?? '-')}</td><td className="p-4 text-right">{String(line.quantity ?? 0)}</td><td className="p-4 text-right">{money(Number(line.unitPrice))}</td><td className="p-4 text-right font-black">{money(Number(line.lineTotal))}</td></tr>)}</tbody></table></div><div className="mt-6 flex flex-wrap justify-end gap-3">{canCancel && <button onClick={() => setCancelOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-300 px-5 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan Order</button>}<button onClick={download} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-200 px-5 font-black text-emerald-700"><Download className="h-4 w-4"/>Unduh PDF</button><button onClick={print} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white"><Printer className="h-4 w-4"/>Print Invoice</button></div></>}
     {cancelOpen && <div className="absolute inset-0 flex items-center justify-center rounded-3xl bg-slate-950/60 p-5"><section className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><div className="flex gap-3"><TriangleAlert className="h-6 w-6 shrink-0 text-rose-600"/><div><h3 className="text-lg font-black">Batalkan Order ini?</h3><p className="mt-1 text-sm text-slate-600">Reservasi dilepas, Surat Jalan dibatalkan, dan Invoice ditandai DIBATALKAN. Histori tidak dihapus.</p></div></div><label className="mt-5 block text-sm font-bold">Alasan pembatalan<textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={500} rows={4} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-rose-500" placeholder="Contoh: salah quantity / order ganda"/></label><div className="mt-5 flex justify-end gap-3"><button disabled={cancelBusy} onClick={() => setCancelOpen(false)} className="min-h-11 rounded-xl border border-slate-200 px-5 font-bold">Kembali</button><button disabled={cancelBusy || !cancelReason.trim()} onClick={() => cancel(cancelReason.trim())} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 font-black text-white disabled:opacity-50">{cancelBusy && <Loader2 className="h-4 w-4 animate-spin"/>}Konfirmasi batal</button></div></section></div>}
   </article></div>

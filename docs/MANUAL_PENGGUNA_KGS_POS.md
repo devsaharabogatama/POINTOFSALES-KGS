@@ -162,13 +162,35 @@ Gunakan untuk koreksi resmi, bukan untuk penjualan atau pembelian.
 
 ### 6.5 Stock Opname
 
-1. Buat sesi opname dan tentukan gudang.
-2. Mulai penghitungan.
-3. Petugas memasukkan hasil melalui tampilan blind count.
-4. Manajer meninjau selisih dan meminta hitung ulang bila perlu.
-5. Selesaikan lalu Post.
+Stock Opname dari POS hanya tersedia ketika perangkat online.
 
-Posting opname membuat Penyesuaian Stok kanonis.
+1. Buka tombol **Opname** pada header POS.
+2. Pilih **Buat Opname**, gudang, dan cakupan `Semua produk`, `Kategori`, atau
+   `Produk tertentu`.
+3. Simpan Draft. Draft milik petugas dapat dilanjutkan kembali setelah halaman
+   dimuat ulang.
+4. Pilih **Mulai hitung**, lalu masukkan jumlah fisik produk yang benar-benar
+   diperiksa dalam Base UOM. POS tidak menampilkan stok sistem, hasil sesi lain,
+   selisih, HPP, atau nilai rupiah. Angka yang Anda simpan pada sesi aktif tetap
+   terlihat dan dapat diperbarui untuk memperbaiki typo.
+   Produk dengan stok sistem minus tetap dapat dihitung. Masukkan jumlah fisik
+   yang benar-benar ada; jumlah fisik tidak boleh negatif.
+5. Bila Product berstatus **Perlu hitung ulang**, pilih **Mulai hitung ulang**
+   sebelum memasukkan angka baru. Status ini muncul ketika ada movement dalam
+   jendela penghitungan.
+6. Pilih **Review hasil**. Periksa kembali nama Product dan jumlah tersimpan.
+   Jumlah nol harus dimasukkan secara eksplisit bila barang memang kosong.
+7. Sesi boleh dikirim walau hanya sebagian Product dihitung. Centang konfirmasi
+   bila ada Product yang belum dihitung. Product tersebut berstatus
+   **Dilewati**, tidak dianggap nol, dan tidak mengubah stok. Product yang
+   dilewati dapat dimasukkan ke sesi Opname baru.
+8. Store Manager/Company Admin membuka **Inventory → Stock Opname** di
+   Backoffice untuk meninjau selisih, meminta recount, membatalkan, atau Post.
+9. Jika recount diminta, petugas pembuat membuka kembali sesi yang sama dari POS
+   dan menyelesaikan Product yang ditandai.
+
+Posting opname membuat Penyesuaian Stok kanonis hanya untuk Product berstatus
+**Sudah dihitung** yang memiliki selisih. Product **Dilewati** tetap tanpa efek.
 
 ### 6.6 Surat Jalan
 
@@ -193,6 +215,13 @@ Profil Perusahaan**. Pilihan **Hanya transaksi Perlu dikirim** mempertahankan
 alur biasa. Pilihan **Semua transaksi final** juga membuat Surat Jalan untuk
 pengambilan di toko. Surat Jalan Pickup diselesaikan dengan tombol **Sudah
 diserahkan** dan tidak melewati status Dalam perjalanan.
+
+Untuk Pickup lama yang ditandai **Siap disiapkan**, tombol **Sudah
+diserahkan** langsung menyelesaikan serah barang tanpa mengurangi stok lagi.
+Untuk Order baru yang menampilkan informasi `Reserved Out`, pilih **Keluarkan
+barang** dahulu agar stok dan Reservation diproses, lalu pilih **Sudah
+diserahkan**. Jangan mengubah status langsung melalui tabel database.
+
 Nama berkas PDF diawali nama pelanggan, misalnya
 `PT-MAJU-JAYA_SJ-20260820-000007.pdf`, agar mudah dikelompokkan.
 
@@ -200,6 +229,19 @@ Untuk mengunduh banyak dokumen, tandai Surat Jalan yang diperlukan lalu pilih
 **Unduh PDF Terpilih**. Sistem membuat satu ZIP dengan setiap Surat Jalan tetap
 sebagai PDF terpisah. Maksimal 50 dokumen per proses; kegagalan parsial dicatat
 dalam `GAGAL-DIUNDUH.txt` tanpa membatalkan PDF lain yang berhasil.
+
+Untuk memperbarui status beberapa Surat Jalan sekaligus:
+
+1. centang hanya dokumen **Pengiriman** dengan status yang sama;
+2. pilih **Kirim terpilih** untuk dokumen **Siap dikirim**. Seluruh sisa barang
+   pada setiap dokumen akan dikirim; gunakan detail satuan bila perlu partial;
+3. pilih **Tandai terkirim** untuk dokumen **Dalam perjalanan**;
+4. periksa hasil tiap dokumen. Dokumen gagal tidak diubah dan dapat diproses
+   kembali melalui detail setelah penyebabnya diperbaiki.
+
+Dokumen Pickup, Dikirim sebagian, atau pilihan dengan status campuran tidak
+dapat diproses secara bulk. Proses berjalan satu per satu agar Reservation,
+On Hand, FIFO, Movement, dan Finance setiap Surat Jalan tetap konsisten.
 
 Template cetak tidak menampilkan nama perusahaan pada header. Bagian tanda
 tangan terdiri dari **Warehouse**, **Security**, **Driver**, dan **Customer**.
@@ -658,12 +700,19 @@ tidak mengurangi stok, dan belum membentuk jurnal. Kunci edit mencegah Draft
 ditimpa kasir lain. Setelah **Konfirmasi Order**, transaksi berpindah ke panel
 **Order aktif/terjadwal** dan tidak boleh dibuka kembali sebagai Draft.
 
-Jika Order aktif salah quantity atau terduplikasi dan belum Dispatch, gunakan
-**Batalkan Order** lalu buat Order baru. Pembatalan melepaskan reservasi,
-membatalkan Surat Jalan terkait, dan membuat Invoice tetap terlihat dengan
-status/watermark **Dibatalkan**. Order yang sudah mulai Dispatch atau mempunyai
-pembayaran terverifikasi memerlukan alur retur/refund/reversal dan tidak boleh
-dibatalkan biasa.
+Jika Order aktif salah quantity, Product, Customer, Pricelist, pengiriman, atau
+pembayaran dan belum pernah Dispatch, buka **Order aktif** lalu pilih
+**Revisi Order**. Isi alasan revisi. Sistem membuat Draft pengganti dan
+menghitung ulang harga; periksa kembali seluruh data dan isi ulang cara bayar.
+Order lama serta Reserved Out tetap aktif sampai Draft revisi berhasil
+dikonfirmasi. Setelah konfirmasi berhasil, Order lama dibatalkan, Reserved Out
+dilepas, Invoice/Surat Jalan lama tetap tersimpan dengan status dibatalkan, dan
+replacement memperoleh nomor dokumen baru.
+
+Jika Draft revisi dibatalkan, Order lama tetap aktif. **Batalkan Order** masih
+digunakan jika pesanan memang tidak jadi dilanjutkan. Order yang sudah mulai
+Dispatch atau mempunyai pembayaran terverifikasi memerlukan alur
+retur/refund/reversal dan tidak boleh direvisi atau dibatalkan biasa.
 
 ### Split payment
 

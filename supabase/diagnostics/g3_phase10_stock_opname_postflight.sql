@@ -172,7 +172,7 @@ WITH expected_columns(table_name,column_name) AS (
     JOIN public.stock_opname_details d
       ON d.company_id = o.company_id AND d.opname_id = o.id
     WHERE o.status = 'POSTED'::public.opname_status
-      AND d.line_status NOT IN ('POSTED','SUPERSEDED')
+      AND d.line_status NOT IN ('POSTED','SKIPPED','SUPERSEDED')
 
     UNION ALL
 

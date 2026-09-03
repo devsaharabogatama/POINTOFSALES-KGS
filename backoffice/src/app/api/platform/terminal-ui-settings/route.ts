@@ -4,6 +4,7 @@ import { readJsonObject, requiredVersion, uuidValue } from '@/lib/master-data'
 const featureKeys = new Set([
   'SALES_RETURN', 'EXPENSE', 'STOCK_REQUEST', 'GOODS_RECEIPT',
   'PURCHASE_RETURN', 'CASH_DEPOSIT', 'OFFLINE',
+  'STOCK_OPNAME',
 ])
 
 function rpcFailure(message: string): never {

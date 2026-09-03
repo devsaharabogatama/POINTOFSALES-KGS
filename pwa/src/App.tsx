@@ -31,6 +31,7 @@ import {
   Search,
   ShoppingCart,
   ClipboardList,
+  ClipboardCheck,
   Trash2,
   Truck,
   UserRound,
@@ -78,6 +79,7 @@ import {
   setActiveCompany,
   signIn,
   signOut,
+  startSalesOrderRevision,
   type BootstrapData,
   type CashierSession,
   type CatalogData,
@@ -128,6 +130,10 @@ const GoodsReceiptModal = lazy(() =>
 
 const PurchaseReturnModal = lazy(() =>
   import('./PurchaseReturnModal').then((module) => ({ default: module.PurchaseReturnModal })),
+)
+
+const StockOpnameModal = lazy(() =>
+  import('./StockOpnameModal').then((module) => ({ default: module.StockOpnameModal })),
 )
 
 type CartItem = {
@@ -342,6 +348,14 @@ function friendlyError(code: string) {
     DRAFT_PRODUCT_UOM_NOT_AVAILABLE:
       'Salah satu produk atau satuan pada Draft sudah tidak tersedia.',
     DRAFT_HAS_NO_LINES: 'Draft tidak memiliki item yang dapat dilanjutkan.',
+    SALES_ORDER_REVISION_DRAFT_NOT_VISIBLE:
+      'Draft revisi berhasil dibuat tetapi tidak dapat dibuka pada sesi ini. Muat ulang daftar Draft.',
+    SALES_ORDER_REVISION_SOURCE_CHANGED:
+      'Order sumber sudah berubah. Muat ulang Order dan periksa status terbaru.',
+    SALES_ORDER_REVISION_DISPATCH_STARTED:
+      'Pengiriman sudah dimulai. Gunakan Return atau dokumen koreksi yang sesuai.',
+    SALES_ORDER_REVISION_VERIFIED_PAYMENT:
+      'Pembayaran sudah diverifikasi. Revisi wajib melalui reversal Finance.',
     PAYMENT_LEGS_REQUIRED: 'Tambahkan minimal satu metode pembayaran.',
     PAYMENT_LEG_AMOUNT_REQUIRED:
       'Jumlah pada setiap cara bayar harus lebih besar dari nol.',
@@ -564,6 +578,7 @@ export default function App() {
   const [stockRequestOpen, setStockRequestOpen] = useState(false)
   const [goodsReceiptOpen, setGoodsReceiptOpen] = useState(false)
   const [purchaseReturnOpen, setPurchaseReturnOpen] = useState(false)
+  const [stockOpnameOpen, setStockOpnameOpen] = useState(false)
   const [isPrinterConnected, setIsPrinterConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -1484,6 +1499,7 @@ export default function App() {
         setConfirmedOrder(null)
         setSalesDocuments(null)
       }
+      else if (stockOpnameOpen) setStockOpnameOpen(false)
       else if (purchaseReturnOpen) setPurchaseReturnOpen(false)
       else if (goodsReceiptOpen) setGoodsReceiptOpen(false)
       else if (stockRequestOpen) setStockRequestOpen(false)
@@ -1511,6 +1527,7 @@ export default function App() {
     cashDepositOpen,
     goodsReceiptOpen,
     purchaseReturnOpen,
+    stockOpnameOpen,
     stockRequestOpen,
     expenseRequestOpen,
     notice,
@@ -1905,7 +1922,7 @@ export default function App() {
   }
 
   async function handleContinueDraft(item: SaleDraftListItem) {
-    if (!cashierSession || !session) return
+    if (!cashierSession || !session) return false
     const lockedByOther =
       Boolean(item.lockOwnerId) &&
       (item.lockOwnerId !== session.user.id ||
@@ -1914,7 +1931,7 @@ export default function App() {
       setError(
         `Draft sedang diedit ${item.lockOwnerName ?? 'kasir lain'}.`,
       )
-      return
+      return false
     }
     if (lockedByOther && item.lockExpired) {
       openActionDialog({
@@ -1924,18 +1941,20 @@ export default function App() {
           'Pengambilalihan akan dicatat pada audit.',
         confirmLabel: 'Ambil alih Draft',
         tone: 'primary',
-        onConfirm: () => executeContinueDraft(item, true),
+        onConfirm: async () => {
+          await executeContinueDraft(item, true)
+        },
       })
-      return
+      return false
     }
-    await executeContinueDraft(item, false)
+    return executeContinueDraft(item, false)
   }
 
   async function executeContinueDraft(
     item: SaleDraftListItem,
     confirmTakeover: boolean,
   ) {
-    if (!cashierSession) return
+    if (!cashierSession) return false
     setBusy(true)
     setError('')
     try {
@@ -2052,6 +2071,10 @@ export default function App() {
                 lineDiscountInput: Number(line.lineDiscountInput ?? 0),
               }
             : {}),
+          ...(line.overrideUnitPrice !== null &&
+          line.overrideUnitPrice !== undefined
+            ? { overrideUnitPrice: Number(line.overrideUnitPrice) }
+            : {}),
         })),
         globalDiscount: Number(payload.globalDiscount ?? 0),
         roundingDirection: nextRoundingDirection,
@@ -2112,6 +2135,7 @@ export default function App() {
         `${item.draftNo} dibuka dan harga dihitung ulang. Konfirmasi pembayaran kembali sebelum Post.`,
       )
       await refreshSaleDrafts(cashierSession)
+      return true
     } catch (reason) {
       if (!draft || draft.salesId !== item.salesId) {
         await releaseSaleDraftLock(
@@ -2120,8 +2144,39 @@ export default function App() {
         ).catch(() => undefined)
       }
       setError(friendlyError(errorMessage(reason)))
+      return false
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleStartSalesOrderRevision(
+    order: SalesOrderListItem,
+    reason: string,
+  ) {
+    if (!cashierSession) return
+    const operationId = crypto.randomUUID()
+    const result = await startSalesOrderRevision(
+      order.salesId,
+      order.masterVersion,
+      cashierSession.id,
+      operationId,
+      reason,
+    )
+    const replacementSalesId = String(result.replacementSalesId ?? '')
+    const rows = await listSaleDrafts(cashierSession.storeId)
+    setSaleDrafts(rows)
+    const replacement = rows.find(
+      (item) => item.salesId === replacementSalesId,
+    )
+    if (!replacement) throw new Error('SALES_ORDER_REVISION_DRAFT_NOT_VISIBLE')
+    setOrderPanelOpen(false)
+    const opened = await handleContinueDraft(replacement)
+    if (opened) {
+      setNotice(
+        `Draft revisi ${replacement.draftNo} dibuat dari ${order.orderNo}. ` +
+          'Order lama tetap aktif sampai revisi berhasil dikonfirmasi.',
+      )
     }
   }
 
@@ -3354,6 +3409,11 @@ export default function App() {
           {cashierSession && terminalFeatureVisible('PURCHASE_RETURN') && (
             <button type="button" onClick={() => setPurchaseReturnOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buat draft retur barang ke Supplier' : 'Retur Pembelian memerlukan koneksi online'}>
               <PackageMinus className="h-5 w-5" /><span className="pos-action-label">Retur Supplier</span>
+            </button>
+          )}
+          {cashierSession && terminalFeatureVisible('STOCK_OPNAME') && (
+            <button type="button" onClick={() => setStockOpnameOpen(true)} disabled={!isOnline} className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2" title={isOnline ? 'Buka blind count Stock Opname' : 'Stock Opname memerlukan koneksi online'}>
+              <ClipboardCheck className="h-5 w-5" /><span className="pos-action-label">Opname</span>
             </button>
           )}
           {activeTerminal && terminalFeatureVisible('CASH_DEPOSIT') && (
@@ -5095,6 +5155,22 @@ export default function App() {
         </Suspense>
       )}
 
+      {stockOpnameOpen && cashierSession && activeCompany && terminalFeatureVisible('STOCK_OPNAME') && (
+        <Suspense fallback={<CenteredMessage text="Membuka Stock Opname..." />}>
+          <StockOpnameModal
+            companyId={activeCompany.id}
+            defaultWarehouseId={cashierSession.warehouseId}
+            isOnline={isOnline}
+            close={() => setStockOpnameOpen(false)}
+            completed={(message) => {
+              setStockOpnameOpen(false)
+              setNotice(message)
+              setError('')
+            }}
+          />
+        </Suspense>
+      )}
+
       {orderPanelOpen && cashierSession && (
         <SalesOrderPanel
           orders={salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED')}
@@ -5109,6 +5185,7 @@ export default function App() {
               setLoading(false)
             }
           }}
+          revise={handleStartSalesOrderRevision}
         />
       )}
 

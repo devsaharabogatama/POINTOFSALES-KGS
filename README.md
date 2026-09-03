@@ -1,5 +1,29 @@
 # MADS — Management Distribution System
 
+> 2026-09-03: forward-fix lifecycle serah barang Surat Jalan Pickup
+> **local-ready**. ODR Phase 3A tanpa sengaja mewajibkan marker Dispatch pada
+> seluruh dokumen `DELIVERED`, sehingga Pickup legacy `READY -> DELIVERED`
+> gagal walaupun flow tersebut approved. Migration `20260903130000` memulihkan
+> hanya jalur Pickup tanpa Reservation; Pickup ODR dan Delivery tetap wajib
+> Dispatch. Tidak ada backfill atau perubahan Stock/FIFO/Movement/Finance.
+> Rollout manual mengikuti
+> `docs/runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md`.
+
+> 2026-09-03: bulk status Inventory Surat Jalan **local-ready**. Checkbox existing
+> dapat menjalankan `Kirim terpilih` untuk Delivery READY dan `Tandai terkirim`
+> untuk Delivery DISPATCHED. Setiap dokumen tetap memakai runtime canonical
+> satuan secara berurutan; Pickup, partial, status campuran, dan stale version
+> fail-closed. Tidak ada migration/database change. Deploy dan authenticated
+> smoke masih manual sesuai
+> `docs/runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`.
+
+> 2026-09-03: Revisi Sales Order pre-dispatch **local-ready**. POS membuat Draft
+> replacement tanpa menyentuh Order/Reserved Out lama; saat Confirm, cancel
+> source dan confirm replacement berjalan atomik dengan nomor Invoice/SJ baru.
+> Order yang sudah Dispatch atau payment verified tetap ditolak. Database dan
+> deploy belum dilakukan agent; ikuti
+> `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`.
+
 > 2026-09-01: kompatibilitas detail dan unduh/print Surat Jalan ODR untuk Admin
 > Gudang **local-ready**. Forward migration `20260901110000` memakai snapshot
 > Delivery immutable di bawah `inventory.delivery_documents VIEW`; rollout
@@ -1159,6 +1183,40 @@ tidak dihapus: list/detail/export menampilkan status `Dibatalkan`, sedangkan
 print/PDF memakai watermark. Rollout Supabase, deploy client, dan authenticated
 smoke masih manual menurut
   `docs/runbooks/SALES_ORDER_CANCELLATION_INVOICE_SYNC.md`.
+
+# POS Stock Opname Online UI (2026-09-02)
+
+Blind count Stock Opname pada PWA **LOCAL-READY; SQL DAN STAGING SMOKE MASIH
+MANUAL**.
+Behavioral create pada stok minus menemukan constraint legacy yang menolak
+snapshot stok sistem negatif. Forward-fix `20260902110000` mempertahankan
+snapshot system/expected bertanda dan tetap melarang physical count negatif.
+UI lazy-loaded menyediakan daftar sesi milik petugas, create/edit Draft, start,
+count, movement-aware recount, review, partial complete, cancel, serta resume
+setelah refresh. Counter dapat melihat kembali hitungannya sendiri pada sesi
+yang sama untuk koreksi typo. Stok sistem, expected, variance, FIFO, HPP, nilai,
+dan hasil sesi lain tetap tersembunyi. Baris yang tidak dihitung menjadi
+`SKIPPED`, tidak dianggap nol, dan tidak masuk Adjustment.
+
+Migration additive `20260902100000` menambahkan workspace, `20260902110000`
+mendukung snapshot stok negatif, dan `20260902120000` menambah owner review
+serta partial completion eksplisit. Tidak ada backfill saldo dan hanya line
+`COUNTED` yang dapat masuk posting Adjustment. Status belum live sampai seluruh
+behavioral rollback, Supabase postflight, dan authenticated staging smoke pada
+[`docs/runbooks/POS_STOCK_OPNAME_ONLINE_UI_ROLLOUT.md`](docs/runbooks/POS_STOCK_OPNAME_ONLINE_UI_ROLLOUT.md)
+seluruhnya PASS.
+
+# Sales Order revision (2026-09-03)
+
+Revisi Order sebelum Dispatch telah terpasang pada database user dan structural
+postflight awal PASS. Authenticated UAT kemudian menemukan
+`IDEMPOTENCY_PAYLOAD_CONFLICT`: operation UUID yang sama dipakai oleh cancel
+source dan confirm replacement pada satu composition. Forward-fix
+`20260903120000` sekarang **LOCAL-READY / MANUAL SUPABASE ROLLOUT PENDING**.
+Fix hanya memberi dua child idempotency key deterministik; root Revision Apply,
+lineage, optimistic version, rollback atomik, Reservation, Invoice/SJ, Payment,
+Purchasing, dan Finance boundary tetap dipertahankan. Urutan manual ada di
+[`docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`](docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md).
 
 # Negative-stock FIFO cost settlement (2026-08-31)
 

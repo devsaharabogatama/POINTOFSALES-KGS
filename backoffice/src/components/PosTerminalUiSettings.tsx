@@ -23,6 +23,7 @@ const features = [
   ['SALES_RETURN', 'Retur Penjualan'], ['EXPENSE', 'Expense'],
   ['STOCK_REQUEST', 'Permintaan Stok'], ['GOODS_RECEIPT', 'Terima Barang'],
   ['PURCHASE_RETURN', 'Retur Supplier'], ['CASH_DEPOSIT', 'Setor Kas'],
+  ['STOCK_OPNAME', 'Stock Opname'],
   ['OFFLINE', 'Panel Offline'],
 ] as const
 

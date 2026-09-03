@@ -1,5 +1,17 @@
 # Gate Implementasi dan Rollout POS v1
 
+## Gate aktif — Revisi Sales Order pre-dispatch (2026-09-03)
+
+Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED STAGING SMOKE PENDING`.
+
+- Revisi hanya membuat Draft replacement; source tetap aktif sampai replacement
+  Confirm sukses atomik.
+- Partial/full Dispatch dan payment `VERIFIED` tetap fail-closed.
+- Migration zero-backfill, read/write table browser tertutup, history Invoice/SJ
+  immutable, dan Confirm biasa tetap memakai runtime canonical sebelumnya.
+- Exit gate mengikuti `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`; jangan
+  aktifkan bundle client sebelum dua migration dan postflight lulus.
+
 ## Hotfix aktif — ODR Dispatch runtime schema (2026-09-01)
 
 Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
@@ -1957,6 +1969,21 @@ Tahap client ini tidak menambah migration. Rollout wajib mengikuti
 postflight yang sudah memahami Financial Event Dispatch ODR-5C.
 
 Closing postflight ODR-6B.2 kemudian dikonfirmasi user seluruhnya `PASS`.
+Bulk status Inventory Surat Jalan kemudian ditambahkan secara client-only dan
+berstatus `LOCAL READY; AUTHENTICATED SMOKE PENDING`. Checkbox existing dapat
+memproses Delivery READY menjadi DISPATCHED atau Delivery DISPATCHED menjadi
+DELIVERED melalui endpoint canonical per dokumen. Tidak ada migration baru;
+partial Dispatch, Pickup, pilihan campuran, dan stale version tetap fail-closed.
+Rollout mengikuti `docs/runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`.
+
+Authenticated smoke kemudian menemukan Pickup legacy `READY -> DELIVERED`
+gagal karena constraint ODR Phase 3A menggeneralisasi syarat marker Dispatch ke
+seluruh dokumen delivered. Forward-fix `20260903130000` berstatus `LOCAL READY;
+MANUAL SUPABASE ROLLOUT PENDING`: hanya Pickup tanpa Reservation yang kembali
+boleh serah langsung tanpa stock/finance effect. Pickup linked dan seluruh
+Delivery tetap dispatch-first. Rollout mengikuti
+`docs/runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md`.
+
 Gate aktif berpindah ke ODR-6C.1 Purchasing Demand UI `LOCAL READY;
 AUTHENTICATED SMOKE PENDING`. Supplier Order memakai composed demand/amendment
 workspace dan menghitung sisa request terhadap allocation Draft serta final,
@@ -2046,6 +2073,27 @@ Status: `RUNTIME INSTALLED; AUTHENTICATED OPERATIONAL SMOKE PENDING`.
   struktur belum menjadi bukti E2E biaya operasional.
 - Gate wajib mengikuti runbook
   `docs/runbooks/NEGATIVE_STOCK_FIFO_FINANCE_COST_SETTLEMENT.md`.
+
+## POS Stock Opname Online UI
+
+Status: `PARTIAL REVIEW RUNTIME LOCAL-READY; MANUAL SQL AND AUTHENTICATED STAGING SMOKE PENDING`.
+
+- PWA membuka create/start/blind count/recount/complete/cancel melalui runtime
+  canonical G3/ACP-4G dan tidak mengubah Stock atau Finance mutation.
+- RPC workspace baru owner-scoped, Store/Gudang guarded, restriction-aware,
+  dan tidak mengembalikan quantity atau nilai yang melanggar blind count.
+- Menu dapat disembunyikan per Terminal. Offline Stock Opname tetap ditutup dan
+  tidak mempunyai queue atau fallback lokal.
+- Review, variance, Adjustment, dan Post tetap hanya melalui Backoffice.
+- Behavioral create setelah workspace rollout menemukan constraint Opname lama
+  menolak snapshot stok sistem negatif. Forward-fix `20260902110000` menjaga
+  system/expected snapshot bertanda dan hanya melarang physical count negatif.
+- Runtime additive `20260902120000` menampilkan kembali hitungan milik counter
+  pada sesi yang sama, memberi review sebelum submit, dan mengizinkan partial
+  completion eksplisit. Baris tak dihitung menjadi `SKIPPED`, tidak diasumsikan
+  nol, dan tidak masuk Adjustment/Stock/FIFO/Movement/Finance.
+- Gate rollout mengikuti
+  `docs/runbooks/POS_STOCK_OPNAME_ONLINE_UI_ROLLOUT.md`.
 
 ## Platform Operational Health Dashboard — Super Admin v1
 

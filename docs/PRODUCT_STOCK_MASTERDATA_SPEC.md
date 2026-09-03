@@ -1177,7 +1177,14 @@ Prinsip:
 - Stock Opname dapat dilakukan setiap hari atau sesuai kebijakan operasional company/store.
 - Kasir mengisi physical quantity melalui mode Stock Opname di POS.
 - POS menggunakan blind count: kasir tidak melihat system quantity, expected quantity, difference, atau nilai rupiah saat menghitung.
-- Kasir dapat mengedit hitungan selama sesi berstatus `DRAFT` atau `COUNTING`.
+- Kasir dapat melihat dan mengedit hasil hitungnya sendiri selama sesi berstatus
+  `COUNTING`; hasil sesi lain, stok sistem, expected, dan variance tetap
+  tersembunyi.
+- Kasir boleh menyelesaikan sesi secara parsial setelah minimal satu Product
+  dihitung. Baris yang belum dihitung atau masih `RECOUNT_REQUIRED` wajib
+  dikonfirmasi dan disimpan sebagai `SKIPPED`, bukan dianggap nol.
+- Kuantitas fisik nol harus dimasukkan secara eksplisit sebagai hasil hitung.
+  `SKIPPED` tidak menghasilkan Adjustment dan dapat dihitung pada sesi baru.
 - Setelah kasir menekan **Selesaikan Penghitungan**, sesi menjadi `COMPLETED` dan angka hitung terkunci.
 - Setiap line menyimpan `count_started_at`, `counted_at`, kasir penghitung, dan movement watermark.
 - Difference dihitung sistem, bukan diketik manual.
@@ -1266,6 +1273,11 @@ nilai selisih
 hasil hitung sesi sebelumnya
 ```
 
+Pengecualian blind-count yang aman: kasir pembuat sesi boleh melihat kembali
+angka yang ia simpan pada sesi aktif yang sama agar dapat memeriksa typo dan
+memperbaruinya sebelum submit. Angka tersebut bukan stok sistem atau hasil sesi
+lain.
+
 Perbandingan tersebut hanya tersedia di Backoffice untuk Store Manager dan role yang berhak melihat laporan, termasuk Finance.
 
 ### 9.2.3 Beberapa sesi dan supersede hasil lama
@@ -1296,6 +1308,7 @@ Status line minimum:
 PENDING
 COUNTED
 RECOUNT_REQUIRED
+SKIPPED
 SUPERSEDED
 POSTED
 ```

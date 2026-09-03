@@ -214,7 +214,7 @@ WITH required_versions(version) AS (
     CASE WHEN count(*)=0 THEN 'PASS' ELSE 'BLOCKER' END,
     jsonb_build_object('row_count',count(*))
   FROM public.stock_opname_details line
-  WHERE system_qty_at_start<0 OR physical_qty<0
+  WHERE physical_qty<0
     OR (line_status IN('COUNTED','RECOUNT_REQUIRED','POSTED') AND (
       counted_at IS NULL OR counter_id IS NULL
       OR expected_qty_at_count IS NULL OR variance_at_count IS NULL
@@ -262,7 +262,7 @@ WITH required_versions(version) AS (
   WHERE opname.status='POSTED'::public.opname_status AND (
     EXISTS(SELECT 1 FROM public.stock_opname_details line
       WHERE line.company_id=opname.company_id AND line.opname_id=opname.id
-        AND line.line_status NOT IN('POSTED','SUPERSEDED'))
+        AND line.line_status NOT IN('POSTED','SKIPPED','SUPERSEDED'))
     OR (opname.adjustment_document_id IS NOT NULL AND (
       adjustment.id IS NULL OR adjustment.status<>'POSTED')))
 

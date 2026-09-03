@@ -81,6 +81,74 @@ export type StockRequestLineInput = {
   notes: string | null
 }
 
+export type StockOpnameWarehouse = {
+  id: string
+  name: string
+  storeId: string | null
+}
+
+export type StockOpnameCategory = {
+  id: string
+  name: string
+}
+
+export type StockOpnameProduct = {
+  id: string
+  sku: string
+  name: string
+  categoryId: string | null
+  uomName: string
+  allowDecimal: boolean
+  decimalPrecision: number
+}
+
+export type StockOpnameSessionSummary = {
+  id: string
+  opnameNo: string
+  warehouseId: string
+  warehouseName: string
+  status: 'DRAFT' | 'COUNTING' | 'COMPLETED' | 'POSTED' | 'CANCELED'
+  scopeType: 'ALL' | 'CATEGORY' | 'SELECTED'
+  categoryId: string | null
+  notes: string | null
+  masterVersion: number
+  createdAt: string
+  updatedAt: string
+  lineCount: number
+  pendingCount: number
+  countedCount: number
+  recountRequiredCount: number
+  skippedCount: number
+}
+
+export type StockOpnameWorkspace = {
+  warehouses: StockOpnameWarehouse[]
+  categories: StockOpnameCategory[]
+  products: StockOpnameProduct[]
+  sessions: StockOpnameSessionSummary[]
+}
+
+export type StockOpnameBlindLine = {
+  detailId: string
+  productId: string
+  sku: string
+  productName: string
+  uomName: string
+  lineStatus: 'PENDING' | 'COUNTED' | 'RECOUNT_REQUIRED' | 'SKIPPED' | 'POSTED'
+  notes: string | null
+  enteredQuantity: number | null
+  canEdit: boolean
+}
+
+export type StockOpnameBlindSession = {
+  opnameId: string
+  opnameNo: string
+  warehouseId: string
+  status: 'DRAFT' | 'COUNTING' | 'COMPLETED' | 'POSTED' | 'CANCELED'
+  masterVersion: number
+  lines: StockOpnameBlindLine[]
+}
+
 export type GoodsReceiptUomOption = {
   uomId: string
   uomName: string
@@ -424,6 +492,9 @@ export type SalesOrderListItem = {
   totalDispatchedBaseQuantity: number
   confirmedAt: string
   updatedAt: string
+  canRevise: boolean
+  hasVerifiedPayment: boolean
+  hasPendingRevision: boolean
   lines: SalesOrderReservationLine[]
 }
 
@@ -1114,6 +1185,159 @@ export async function loadCatalog(
       customerBalanceTenderEnabled,
     customerBalanceTenderEnabled,
   }
+}
+
+export async function loadStockOpnameWorkspace(): Promise<StockOpnameWorkspace> {
+  const { data, error } = await supabase.rpc('get_pos_stock_opname_workspace')
+  throwIfError(error)
+  const payload = (data ?? {}) as DbRow
+  const rows = (value: unknown) => Array.isArray(value) ? value as DbRow[] : []
+  return {
+    warehouses: rows(payload.warehouses).map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? ''),
+      storeId: row.storeId ? String(row.storeId) : null,
+    })),
+    categories: rows(payload.categories).map((row) => ({
+      id: String(row.id), name: String(row.name ?? ''),
+    })),
+    products: rows(payload.products).map((row) => ({
+      id: String(row.id),
+      sku: String(row.sku ?? ''),
+      name: String(row.name ?? ''),
+      categoryId: row.categoryId ? String(row.categoryId) : null,
+      uomName: String(row.uomName ?? ''),
+      allowDecimal: Boolean(row.allowDecimal),
+      decimalPrecision: numberValue(row.decimalPrecision),
+    })),
+    sessions: rows(payload.sessions).map((row) => ({
+      id: String(row.id),
+      opnameNo: String(row.opname_no ?? ''),
+      warehouseId: String(row.warehouse_id ?? ''),
+      warehouseName: String(row.warehouse_name ?? ''),
+      status: String(row.status ?? 'DRAFT') as StockOpnameSessionSummary['status'],
+      scopeType: String(row.scope_type ?? 'ALL') as StockOpnameSessionSummary['scopeType'],
+      categoryId: row.category_id ? String(row.category_id) : null,
+      notes: row.notes ? String(row.notes) : null,
+      masterVersion: numberValue(row.master_version),
+      createdAt: String(row.created_at ?? ''),
+      updatedAt: String(row.updated_at ?? ''),
+      lineCount: numberValue(row.line_count),
+      pendingCount: numberValue(row.pending_count),
+      countedCount: numberValue(row.counted_count),
+      recountRequiredCount: numberValue(row.recount_required_count),
+      skippedCount: numberValue(row.skipped_count),
+    })),
+  }
+}
+
+export async function loadStockOpnameBlindSession(
+  opnameId: string,
+): Promise<StockOpnameBlindSession> {
+  const { data, error } = await supabase.rpc('get_pos_stock_opname_count_review', {
+    p_opname_id: opnameId,
+  })
+  throwIfError(error)
+  const payload = (data ?? {}) as DbRow
+  return {
+    opnameId: String(payload.opnameId ?? ''),
+    opnameNo: String(payload.opnameNo ?? ''),
+    warehouseId: String(payload.warehouseId ?? ''),
+    status: String(payload.status ?? 'DRAFT') as StockOpnameBlindSession['status'],
+    masterVersion: numberValue(payload.masterVersion),
+    lines: (Array.isArray(payload.lines) ? payload.lines as DbRow[] : []).map((row) => ({
+      detailId: String(row.detailId ?? ''),
+      productId: String(row.productId ?? ''),
+      sku: String(row.sku ?? ''),
+      productName: String(row.productName ?? ''),
+      uomName: String(row.uomName ?? ''),
+      lineStatus: String(row.lineStatus ?? 'PENDING') as StockOpnameBlindLine['lineStatus'],
+      notes: row.notes ? String(row.notes) : null,
+      enteredQuantity: row.enteredQuantity === null || row.enteredQuantity === undefined
+        ? null : numberValue(row.enteredQuantity),
+      canEdit: Boolean(row.canEdit),
+    })),
+  }
+}
+
+export async function saveStockOpnameSession(input: {
+  opnameId: string | null
+  masterVersion: number | null
+  warehouseId: string
+  scopeType: 'ALL' | 'CATEGORY' | 'SELECTED'
+  categoryId: string | null
+  productIds: string[]
+  notes: string
+}) {
+  const { data, error } = await supabase.rpc('save_stock_opname_session', {
+    p_opname_id: input.opnameId,
+    p_master_version: input.masterVersion,
+    p_warehouse_id: input.warehouseId,
+    p_scope_type: input.scopeType,
+    p_category_id: input.categoryId,
+    p_product_ids: input.productIds,
+    p_notes: input.notes.trim() || null,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function startStockOpname(opnameId: string, masterVersion: number) {
+  const { data, error } = await supabase.rpc('start_stock_opname', {
+    p_opname_id: opnameId, p_master_version: masterVersion,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function recordStockOpnameCount(input: {
+  opnameId: string
+  masterVersion: number
+  productId: string
+  physicalQuantity: number
+  notes: string
+}) {
+  const { data, error } = await supabase.rpc('record_stock_opname_count', {
+    p_opname_id: input.opnameId,
+    p_master_version: input.masterVersion,
+    p_product_id: input.productId,
+    p_physical_qty: input.physicalQuantity,
+    p_notes: input.notes.trim() || null,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function requestStockOpnameRecount(
+  opnameId: string, masterVersion: number, detailId: string,
+) {
+  const { data, error } = await supabase.rpc('request_stock_opname_recount', {
+    p_opname_id: opnameId,
+    p_master_version: masterVersion,
+    p_opname_detail_id: detailId,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function completeStockOpname(
+  opnameId: string, masterVersion: number, skipUnresolved: boolean,
+) {
+  const { data, error } = await supabase.rpc('complete_stock_opname_partial', {
+    p_opname_id: opnameId,
+    p_master_version: masterVersion,
+    p_skip_unresolved: skipUnresolved,
+  })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function cancelStockOpname(opnameId: string, masterVersion: number) {
+  const { data, error } = await supabase.rpc('cancel_stock_opname', {
+    p_opname_id: opnameId, p_master_version: masterVersion,
+  })
+  throwIfError(error)
+  return data as DbRow
 }
 
 export async function loadStockRequestWorkspace(
@@ -2084,11 +2308,22 @@ export async function cancelSaleDraft(
 export async function loadSalesOrders(
   storeId: string,
 ): Promise<SalesOrderWorkspace> {
-  const { data, error } = await supabase.rpc('get_pos_sales_orders', {
-    p_store_id: storeId,
-  })
-  throwIfError(error)
+  const [workspaceResult, eligibilityResult] = await Promise.all([
+    supabase.rpc('get_pos_sales_orders', { p_store_id: storeId }),
+    supabase.rpc('get_pos_sales_order_revision_eligibility', {
+      p_store_id: storeId,
+    }),
+  ])
+  throwIfError(workspaceResult.error)
+  throwIfError(eligibilityResult.error)
+  const data = workspaceResult.data
   const payload = (data ?? {}) as DbRow
+  const eligibilityBySale = new Map(
+    (Array.isArray(eligibilityResult.data)
+      ? (eligibilityResult.data as DbRow[])
+      : []
+    ).map((row) => [String(row.salesId ?? ''), row]),
+  )
   const rawLines = Array.isArray(payload.reservationLines)
     ? (payload.reservationLines as DbRow[])
     : []
@@ -2120,6 +2355,7 @@ export async function loadSalesOrders(
       const salesId = String(row.id ?? '')
       const timing = String(row.order_timing_mode ?? 'IMMEDIATE')
       const status = String(row.order_runtime_status ?? 'RESERVED')
+      const eligibility = eligibilityBySale.get(salesId)
       return {
         salesId,
         orderNo: String(row.draft_no ?? ''),
@@ -2156,6 +2392,9 @@ export async function loadSalesOrders(
         totalDispatchedBaseQuantity: numberValue(row.total_dispatched_base_qty),
         confirmedAt: String(row.confirmed_at ?? ''),
         updatedAt: String(row.updated_at ?? ''),
+        canRevise: eligibility?.canRevise === true,
+        hasVerifiedPayment: eligibility?.hasVerifiedPayment === true,
+        hasPendingRevision: eligibility?.hasPendingRevision === true,
         lines: linesBySale.get(salesId) ?? [],
       }
     }),
@@ -2190,6 +2429,27 @@ export async function cancelSalesOrder(
     p_idempotency_key: idempotencyKey,
     p_reason: reason.trim(),
   })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function startSalesOrderRevision(
+  sourceSalesId: string,
+  sourceMasterVersion: number,
+  cashierSessionId: string,
+  idempotencyKey: string,
+  reason: string,
+) {
+  const { data, error } = await supabase.rpc(
+    'start_pos_sales_order_revision',
+    {
+      p_source_sales_id: sourceSalesId,
+      p_source_master_version: sourceMasterVersion,
+      p_cashier_session_id: cashierSessionId,
+      p_idempotency_key: idempotencyKey,
+      p_reason: reason.trim(),
+    },
+  )
   throwIfError(error)
   return data as DbRow
 }

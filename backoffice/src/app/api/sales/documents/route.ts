@@ -16,6 +16,7 @@ function rpcFailure(message: string): never {
     'SALES_ORDER_VERIFIED_PAYMENT_REVERSAL_REQUIRED',
     'SALES_ORDER_CASH_REFUND_REQUIRES_OPEN_SESSION',
     'SALES_ORDER_CASH_REFUND_REQUIRES_CURRENT_OPEN_SESSION',
+    'SALES_ORDER_REVISION_PENDING',
     'MASTER_VERSION_CONFLICT', 'CUSTOM_PERMISSION_DENIED',
     'CANCEL_REASON_REQUIRED', 'IDEMPOTENCY_PAYLOAD_CONFLICT',
   ]
@@ -30,16 +31,39 @@ export async function GET(request: Request) {
     const salesIdParam = new URL(request.url).searchParams.get('salesId')
     if (salesIdParam) {
       const salesId = uuidValue(salesIdParam)
-      const invoiceRpc = await caller.client.rpc('get_sales_invoice_document', {
-        p_sales_id: salesId,
-      })
+      const [invoiceRpc, revisionRpc] = await Promise.all([
+        caller.client.rpc('get_sales_invoice_document', {
+          p_sales_id: salesId,
+        }),
+        caller.client.rpc('get_sales_order_revision_links'),
+      ])
       if (invoiceRpc.error) rpcFailure(invoiceRpc.error.message)
-      return Response.json({ companyId, invoice: invoiceRpc.data })
+      if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
+      const links = Array.isArray(revisionRpc.data)
+        ? revisionRpc.data as Array<Record<string, unknown>> : []
+      const revision = links.find((item) =>
+        item.sourceSalesId === salesId || item.replacementSalesId === salesId)
+      return Response.json({ companyId, invoice: {
+        ...(invoiceRpc.data as Record<string, unknown>),
+        revision: revision ?? null,
+      } })
     }
-    const { data, error } = await caller.client.rpc('get_sales_documents')
-    if (error) throw error
-    const payload = data as { data?: unknown[] } | null
-    return Response.json({ companyId, data: payload?.data ?? [] })
+    const [documentRpc, revisionRpc] = await Promise.all([
+      caller.client.rpc('get_sales_documents'),
+      caller.client.rpc('get_sales_order_revision_links'),
+    ])
+    if (documentRpc.error) throw documentRpc.error
+    if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
+    const payload = documentRpc.data as { data?: unknown[] } | null
+    const links = Array.isArray(revisionRpc.data)
+      ? revisionRpc.data as Array<Record<string, unknown>> : []
+    const rows = Array.isArray(payload?.data)
+      ? payload.data as Array<Record<string, unknown>> : []
+    return Response.json({ companyId, data: rows.map((row) => ({
+      ...row,
+      revision: links.find((item) =>
+        item.sourceSalesId === row.salesId || item.replacementSalesId === row.salesId) ?? null,
+    })) })
   } catch (error) {
     return apiError(error)
   }
