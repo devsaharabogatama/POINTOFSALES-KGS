@@ -26,7 +26,7 @@ type CatalogItem = {
   formats: Array<'CSV' | 'XLSX'>
   scopeKind: 'COMPANY' | 'STORE' | 'WAREHOUSE'
   exportOnly: boolean
-  filters: Array<'MONTH'>
+  filters: Array<'MONTH' | 'DATE_RANGE'>
 }
 
 type Props = {
@@ -59,6 +59,8 @@ const friendlyErrors: Record<string, string> = {
   ACTIVE_COMPANY_NOT_FOUND: 'Pilih Company aktif terlebih dahulu.',
   INVALID_SESSION: 'Sesi login berakhir. Silakan masuk kembali.',
   FINANCE_EXPORT_LIMIT_EXCEEDED: 'Data bulan ini terlalu besar untuk satu file export.',
+  SALES_DOCUMENT_EXPORT_DATE_RANGE_REQUIRED: 'Isi tanggal mulai dan tanggal akhir Invoice.',
+  SALES_DOCUMENT_EXPORT_DATE_RANGE_INVALID: 'Tanggal mulai tidak boleh melewati tanggal akhir.',
   CUSTOM_PERMISSION_DENIED: 'Akses export untuk data ini dibatasi oleh Company Admin.',
 }
 
@@ -69,6 +71,14 @@ function authHeaders(session: Session) {
 function currentMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function currentDateRange() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return { dateFrom: `${year}-${month}-01`, dateTo: `${year}-${month}-${day}` }
 }
 
 function friendly(value?: string) {
@@ -90,6 +100,8 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
   const [selectedType, setSelectedType] = useState('')
   const [selectedImportType, setSelectedImportType] = useState('')
   const [month, setMonth] = useState(currentMonth())
+  const [dateFrom, setDateFrom] = useState(() => currentDateRange().dateFrom)
+  const [dateTo, setDateTo] = useState(() => currentDateRange().dateTo)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
@@ -150,15 +162,19 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
     setError('')
     try {
       const query = new URLSearchParams({ type: selected.typeKey })
-      const path = selected.formats.includes('XLSX')
+      const path = selected.typeKey === 'SALES_DOCUMENTS'
+        ? (() => {
+            query.set('dateFrom', dateFrom)
+            query.set('dateTo', dateTo)
+            return `/api/sales/documents/export?${query}`
+          })()
+        : selected.formats.includes('XLSX')
         ? (() => {
             query.set('month', month)
             return `/api/finance/operations/export?${query}`
           })()
         : selected.typeKey === 'STOCK_REAL' || selected.typeKey === 'STOCK_MOVEMENTS'
           ? `/api/inventory/export?${query}`
-          : selected.typeKey === 'SALES_DOCUMENTS'
-            ? `/api/sales/documents/export?${query}`
           : selected.typeKey === 'PRICELISTS'
             ? `/api/sales/pricelists/export?${query}`
           : selected.typeKey === 'PAYMENT_METHODS'
@@ -324,10 +340,32 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
                     />
                   </label>
                 )}
+                {selected.filters.includes('DATE_RANGE') && (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm font-black text-slate-800">
+                      Tanggal mulai
+                      <input type="date" value={dateFrom} max={dateTo || undefined}
+                        onChange={(event) => setDateFrom(event.target.value)}
+                        className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-emerald-500" />
+                    </label>
+                    <label className="block text-sm font-black text-slate-800">
+                      Tanggal akhir
+                      <input type="date" value={dateTo} min={dateFrom || undefined}
+                        onChange={(event) => setDateTo(event.target.value)}
+                        className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-emerald-500" />
+                    </label>
+                    <p className="text-xs leading-5 text-slate-500 sm:col-span-2">
+                      Mengikuti tanggal yang tampil pada Invoice sesuai pengaturan Company.
+                    </p>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => void download()}
-                  disabled={downloading || (selected.filters.includes('MONTH') && !month)}
+                  disabled={downloading
+                    || (selected.filters.includes('MONTH') && !month)
+                    || (selected.filters.includes('DATE_RANGE')
+                      && (!dateFrom || !dateTo || dateFrom > dateTo))}
                   className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 disabled:bg-slate-300 disabled:shadow-none"
                 >
                   {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}

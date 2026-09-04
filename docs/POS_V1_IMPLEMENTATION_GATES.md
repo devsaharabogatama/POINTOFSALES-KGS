@@ -1,5 +1,18 @@
 # Gate Implementasi dan Rollout POS v1
 
+## Gate aktif — Sales Invoice date-range XLSX export (2026-09-04)
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Global Data Exchange menyediakan rentang tanggal khusus Invoice Penjualan.
+- Dasar tanggal mengikuti policy tanggal immutable pada snapshot Invoice.
+- Workbook memisahkan satu baris per Invoice, detail produk, dan metadata export.
+- Runtime baru hanya overload read-only dengan capability
+  `sales.sales_documents EXPORT`; RPC no-argument lama dipertahankan.
+- Tidak ada mutation Sale, Stock, Payment, Financial Event, atau Journal.
+- Gate rollout mengikuti
+  `docs/runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md`.
+
 ## Gate aktif — Revisi Sales Order pre-dispatch (2026-09-03)
 
 Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED STAGING SMOKE PENDING`.
@@ -1133,6 +1146,15 @@ satu regular multi-Company identity. Postflight SELECT-only berada di
 `supabase/diagnostics/prd_phase2_uat_identity_tenant_postflight.sql`; kredensial
 tidak boleh disimpan pada SQL, Markdown, log, atau repository.
 
+Revision Invoice activity read model berstatus LOCAL READY pada 2026-09-04.
+Backoffice menampilkan create/confirm/revision/cancel time dan actor, serta
+nomor Invoice lama/pengganti dengan navigasi dua arah. UUID tidak ditampilkan.
+Pembatalan biasa tetap tidak memiliki replacement link. Migration additive
+`20260904120000` hanya menambah VIEW-guarded read model dan tidak mengubah
+Order, Reservation, Stock, Payment, Financial Event, atau Journal. Manual
+database rollout dan authenticated smoke tetap mengikuti
+`runbooks/SALES_ORDER_REVISION_ROLLOUT.md` sebelum status COMPLETE.
+
 Company kedua kemudian user-provisioned dan gate dua Company PASS. Karena UI
 lama belum dapat menempelkan akun existing, PRD phase 3 menambahkan guarded
 Super-Admin-only exact-email assignment dengan role per Company, optional Store,
@@ -2111,3 +2133,17 @@ Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
   dibuka pada gate ini.
 - Gate rollout mengikuti
   `docs/runbooks/PLATFORM_OPERATIONAL_HEALTH_DASHBOARD_ROLLOUT.md`.
+
+## Sales Order Revision TEMPO business-date forward-fix
+
+Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Defect `TEMPO_TRANSACTION_DATE_FUTURE` berasal dari pembandingan jam mentah
+  pada Draft revisi, bukan dari lifecycle Revision atau periode Finance.
+- Migration `20260904110000` mengubah future guard menjadi perbandingan tanggal
+  bisnis dalam timezone Company. Tanggal mendatang tetap mengikuti jalur
+  `SCHEDULED`; due date, delivery date, dan accounting-period guard tidak
+  dilonggarkan.
+- Tidak ada backfill atau perubahan Stock, Reservation, Invoice/SJ, Payment,
+  Financial Event, maupun Journal. Rollout dan smoke mengikuti
+  `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`.

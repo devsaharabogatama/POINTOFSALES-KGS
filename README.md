@@ -1,5 +1,32 @@
 # MADS — Management Distribution System
 
+> 2026-09-04: modal detail Invoice revision activity diperpadat. Status kini
+> berupa badge, linkage lama/pengganti berupa nomor Invoice yang dapat diklik,
+> dan timeline dipindahkan ke drawer Riwayat yang tertutup secara default.
+> Perubahan hanya pada UI Backoffice dan tidak mengubah runtime transaksi.
+
+> 2026-09-04: timeline aktivitas dan tautan dua arah Invoice revisi berstatus
+> **local-ready**. Backoffice menampilkan waktu server/actor, nomor Invoice lama
+> dan pengganti yang dapat dibuka tanpa memperlihatkan UUID. Pembatalan biasa
+> tetap tidak memiliki tautan pengganti. Read model bersifat additive dan tidak
+> mengubah Order, Stock, Payment, atau Finance; database rollout dan authenticated
+> smoke masih manual sesuai `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`.
+
+> 2026-09-03: catatan Finance future module diperjelas. HR, Manufacture, dan
+> Logistik kelak mengirim immutable Financial Event ke canonical Finance, bukan
+> menulis Journal langsung. Manufacture mendukung BOM sebagai baseline dan
+> actual multi-output/grade/yield dengan cost allocation tersnapshot; COGS
+> berasal dari actual finished-goods batch. Status tetap **DEFERRED** dan tidak
+> ada perubahan runtime/database.
+
+> 2026-09-03: roadmap masa depan HR, Manufacture, dan Logistik telah diperinci
+> sebagai catatan arsitektur. HR mengacu pada kelompok fungsi Mekari Talenta,
+> Manufacture pada konsep Odoo, dan Logistik diprioritaskan dari Proof of
+> Delivery/tanda tangan digital lalu route planning. Ketiganya tetap
+> **DEFERRED**; tidak ada schema, UI, migration, entitlement, database write,
+> atau deployment yang dibuka. Lihat
+> `docs/ERP_EVOLUTION_ARCHITECTURE_NOTES.md`.
+
 > 2026-09-03: header PWA POS dua baris **local-ready**. Baris utama sekarang
 > memuat identitas, Company, pilihan Katalog/Compact, serta utilitas berbentuk
 > ikon di sisi kanan. Menu operasional tetap berlabel pada baris kedua yang
@@ -504,7 +531,7 @@ UAT scope, bukan alasan melemahkan permission.
 | Tax assignment Product/Category | Complete pada Sales online boundary | Category default dan Product inheritance/override memakai nama Tax Rule; resolver aktif saat Draft/Post |
 | Tax resolver/calculator | Complete pada Sales online boundary | Effective-dated resolver + deterministic calculation dipakai Draft/Post; Purchase/jurnal belum dicutover |
 | Master Import/Export | Complete untuk 7 simple master | Phase 40 DB dan Phase 41 authenticated UI smoke PASS |
-| Global Data Exchange Center | DEX-4 navigation cutover local-ready; closing smoke pending | Data Exchange menjadi satu-satunya visible Import/Export entry; role-aware 10 master CSV, tujuh Finance XLSX, serta guarded import tersedia. Backend compatibility lama tetap aktif |
+| Global Data Exchange Center | DEX-4 navigation cutover local-ready; closing smoke pending | Data Exchange menjadi satu-satunya visible Import/Export entry; role-aware master CSV, tujuh Finance XLSX, guarded import, serta Invoice Penjualan XLSX per rentang tanggal tersedia secara local-ready. Backend compatibility lama tetap aktif |
 | Generic import framework | Phase 47 UI local-ready | Grouped Product, Product-Supplier, dan Minimum Stock Produk–Gudang database PASS; Minimum Stock guarded API/UI serta fixed import-export lint/build PASS dan menunggu authenticated smoke; Opening Stock, transaksi, Company, dan Staff/password tetap workflow khusus |
 | Stock ledger/FIFO production | Complete pada G3 core boundary | Integrated stress/regression diteruskan tanpa error dan Phase-14 rerun seluruh invariant PASS; Sale/Return/Receipt coverage pindah ke gate transaksi |
 | POS checkout/offline production | Online checkout dan Offline core COMPLETE sampai Phase 24 | Retained queue/status-first recovery, time-bounded sync, controlled disconnect/reconnect, single final effect, allowance, dan Stock–Movement–FIFO closing diagnostics dikonfirmasi PASS |
@@ -1225,6 +1252,13 @@ Fix hanya memberi dua child idempotency key deterministik; root Revision Apply,
 lineage, optimistic version, rollback atomik, Reservation, Invoice/SJ, Payment,
 Purchasing, dan Finance boundary tetap dipertahankan. Urutan manual ada di
 [`docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`](docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md).
+
+Authenticated revision juga menemukan `TEMPO_TRANSACTION_DATE_FUTURE` ketika
+timestamp Order yang disalin mempunyai jam lebih maju pada tanggal bisnis
+Company yang sama. Forward-fix `20260904110000` sekarang **LOCAL-READY / MANUAL
+SUPABASE ROLLOUT PENDING**. Validator membandingkan tanggal bisnis Company,
+bukan jam mentah; future-date scheduled, periode, due date, delivery date,
+atomic revision, serta seluruh Stock/Finance boundary tetap dipertahankan.
 
 # Negative-stock FIFO cost settlement (2026-08-31)
 

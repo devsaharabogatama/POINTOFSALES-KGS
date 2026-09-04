@@ -1,5 +1,135 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-04 — SALES INVOICE ACTIVITY COMPACT UI LOCAL-READY
+
+- Modal detail Invoice tidak lagi memenuhi layar dengan banner pembatalan dan
+  timeline permanen. Status menjadi badge ringkas, hubungan Invoice revisi
+  menjadi satu baris nomor Invoice yang dapat diklik, dan Riwayat dibuka dari
+  tombol header sebagai drawer tertutup secara default.
+- Alasan, actor, dan waktu pembatalan/revisi tetap tersedia di drawer Riwayat.
+  Pembatalan biasa tidak menampilkan link pengganti. Tidak ada perubahan API,
+  database, Stock, Reservation, Payment, Financial Event, atau Journal.
+- Manual gate: deploy/restart Backoffice, hard refresh, buka Invoice revisi lama
+  dan pengganti, uji navigasi dua arah, buka/tutup Riwayat, lalu pastikan Invoice
+  batal biasa hanya memiliki badge dan histori tanpa link pengganti.
+
+### 2026-09-04 — SALES INVOICE REVISION ACTIVITY LOCAL-READY
+
+- Backoffice Invoice sekarang menampilkan waktu terakhir diperbarui, timeline
+  create/confirm/revision/cancel dengan nama actor, serta tautan dua arah memakai
+  nomor Invoice manusiawi. UUID tetap hanya dipakai sebagai routing internal.
+- Invoice source revisi `APPLIED` menampilkan **Buka Invoice Pengganti** dan
+  replacement menampilkan **Lihat Invoice Sebelumnya**. Pembatalan biasa tidak
+  diberi tautan pengganti.
+- Migration additive `20260904120000` menambah RPC VIEW-guarded
+  `get_sales_document_activity()` dan memperkaya RPC linkage existing. Tidak ada
+  backfill atau perubahan Order, Stock, Reservation, Invoice snapshot, Payment,
+  Financial Event, dan Journal. API memiliki fallback saat RPC baru belum live
+  agar rolling deploy tidak memutus daftar Invoice.
+- Files: migration/preflight/contract/postflight bertema
+  `sales_invoice_revision_activity`, Sales Document API/UI, revision spec,
+  rollout, manifest, root README, dan handoff ini.
+- Manual gate: preflight -> migration 120000 -> contract test -> postflight ->
+  deploy Backoffice -> hard refresh -> smoke source/replacement dua arah,
+  timeline actor/waktu, serta cancel biasa tanpa link. PostgreSQL live belum
+  dijalankan agent.
+- Evidence lokal: scoped ESLint PASS, Backoffice production build PASS,
+  migration hash cocok dengan manifest, dan `git diff --check` PASS. Contract
+  test memakai definisi SQL lowercase agar tidak false-fail karena kapitalisasi.
+
+### 2026-09-04 — SALES ORDER REVISION TEMPO BUSINESS-DATE FIX LOCAL-READY
+
+- Authenticated use menemukan `TEMPO_TRANSACTION_DATE_FUTURE` saat membuka/
+  menyimpan Draft revisi. Root cause terkonfirmasi pada validator lama yang
+  membandingkan timestamp mentah dengan jam server, sedangkan Order, periode,
+  due date, dan delivery menggunakan tanggal bisnis Company.
+- Forward migration `20260904110000` mengganti hanya validator private agar
+  future check memakai tanggal bisnis dalam timezone Company. Jam lebih maju
+  pada tanggal yang sama diterima; tanggal bisnis mendatang tetap hanya melalui
+  jalur TEMPO `SCHEDULED`.
+- Guard accounting period, due date, delivery date, private execution,
+  idempotency revision, optimistic version, dan rollback atomik dipertahankan.
+  Tidak ada row backfill atau perubahan Stock, Reservation, Invoice/SJ,
+  Payment, Financial Event, dan Journal.
+- Added SELECT-only preflight/postflight, definition-only contract regression,
+  serta update specification/runbook. Static SQL delimiter/parenthesis dan
+  contract scan PASS; `git diff --check` PASS. PostgreSQL live belum dijalankan
+  agent. PWA tidak perlu diubah/deploy karena resume Draft sudah mengirim intent
+  `PRESERVE`; defect berada pada validator server.
+- Manual gate: preflight -> migration 110000 -> contract test -> postflight ->
+  buka kembali Draft revisi yang gagal -> Simpan Draft -> Konfirmasi Order ->
+  periksa source/replacement, Reserved Out, Invoice, dan SJ exact-once. Stop
+  pada `BLOCKER`, SQL error, atau `FAIL`.
+- User menjalankan migration lalu Step 3 sempat gagal karena defect pada test:
+  hasil `pg_get_functiondef` sudah dinormalisasi lowercase, tetapi assertion
+  mencari literal uppercase `ATTIMEZONE`. Test dan postflight diselaraskan
+  menjadi pemeriksaan fragmen terpisah dengan pesan kegagalan spesifik; assertion
+  bentuk internal payload yang brittle juga dihapus. Runtime/migration/data tidak
+  berubah. Next safe step: rerun Step 3 terbaru, lalu Step 4; jangan rerun migration.
+
+### 2026-09-04 — SALES INVOICE DATE-RANGE XLSX EXPORT LOCAL-READY
+
+- User menyetujui export Invoice Penjualan per rentang tanggal dari Global Data
+  Exchange. Implementasi hanya menambah read path; tidak mengubah transaksi,
+  Stock, Payment, Financial Event, atau Journal.
+- Catalog/UI sekarang menampilkan `XLSX` dan dua input tanggal. Dasar filter
+  mengikuti tanggal yang tampil pada snapshot Invoice (`ORDER_DATE` atau
+  `POSTED_DATE`) dalam timezone Company.
+- API menghasilkan tiga sheet: `Daftar Invoice` satu baris per Invoice,
+  `Detail Produk` satu baris per produk, dan `Informasi Export`. Total header
+  tidak digandakan untuk Invoice multi-produk.
+- Migration `20260904100000` menambah overload guarded
+  `export_sales_documents(DATE,DATE)` dan mempertahankan RPC no-argument untuk
+  compatibility. Tidak ada data backfill atau schema transaksi.
+- Files: catalog/UI/API Backoffice, migration, SELECT-only preflight/postflight,
+  rollback-safe behavioral test, spesifikasi, manual pengguna, gate, README,
+  dan runbook `SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md`.
+- Evidence lokal: Backoffice full ESLint PASS; Next.js production build PASS;
+  scoped ESLint PASS; endpoint production-mode tanpa token mengembalikan JSON
+  `401 AUTHENTICATION_REQUIRED`; `git diff --check` PASS. PostgreSQL live tidak
+  dijalankan agent.
+- Manual gate: preflight → migration 100000 → behavioral rollback → postflight
+  → deploy/restart Backoffice → hard refresh → authenticated multi-product,
+  empty-range, permission-denial, dan cross-Company smoke. Stop pada SQL error,
+  `BLOCKER`, atau `FAIL`.
+- First manual preflight attempt failed before any write because it referenced
+  nonexistent `public.permission_catalog`. Diagnostic was corrected to the
+  canonical `public.access_permission_catalog.enforcement_status`. A cross-file
+  relation/column audit found no other occurrence; migration was not run.
+
+### 2026-09-03 — FUTURE MODULE FINANCE AND VARIABLE-OUTPUT MANUFACTURE NOTED
+
+- User menegaskan BOM/recipe yang sama dapat menghasilkan Product, grade dan
+  yield berbeda. Roadmap Manufacture sekarang memperlakukan BOM sebagai
+  baseline, sedangkan MO menyimpan actual consumption, multi-output, scrap,
+  lot/batch dan immutable cost-allocation snapshot.
+- Candidate allocation policy mencakup berat/quantity equivalent, standard
+  cost, relative sales value/NRV, atau manual controlled allocation. Total
+  output plus scrap/variance wajib menutup WIP; COGS berasal dari actual finished
+  goods batch.
+- Integrasi Finance HR, Manufacture dan Logistik dicatat memakai immutable
+  source -> versioned Financial Event -> canonical dispatcher -> Journal.
+  Aktivitas non-finansial seperti planning, GPS, route dan signature tidak
+  otomatis membuat Journal.
+- Status tetap roadmap `DEFERRED`. Tidak ada kode, schema, migration, database,
+  permission, entitlement, atau deployment yang diubah.
+
+### 2026-09-03 — HR / MANUFACTURE / LOGISTICS FUTURE ROADMAP NOTED
+
+- User meminta wacana pengembangan HR, Manufacture, dan Logistik dicatat tanpa
+  implementasi. `docs/ERP_EVOLUTION_ARCHITECTURE_NOTES.md` kini merinci kandidat
+  fase, authority, data ownership, Finance/Stock boundary, risiko privasi dan
+  urutan implementasi.
+- HR memakai kelompok fungsi resmi Mekari Talenta sebagai referensi; Manufacture
+  memakai konsep BOM, MO/Work Order, Work Center, Quality dan subcontracting
+  Odoo. Logistik dimulai dari Proof of Delivery/tanda tangan digital dan route
+  planning, lalu aplikasi Driver/advanced optimization sebagai fase lanjutan.
+- Status seluruh modul tetap `DEFERRED`. Tidak ada folder modul, schema, UI,
+  migration, permission, feature entitlement, runtime, database write atau
+  deployment yang dibuat.
+- Next safe step tetap stabilisasi/UAT operasional aktif. Modul baru hanya boleh
+  dibuka setelah user menyetujui scope/non-scope dan gate pada catatan arsitektur.
+
 ### 2026-09-03 — PWA POS TWO-ROW HEADER LOCAL-READY
 
 - Header POS diringkas menjadi dua baris tanpa mengubah fungsi. Baris pertama

@@ -75,6 +75,44 @@ Hentikan pada `BLOCKER`, SQL error, atau `FAIL`. Sesudah seluruh hasil bersih,
 buka ulang Draft revisi yang sama dan tekan **Konfirmasi Order**; tidak perlu
 membuat ulang Draft karena attempt yang gagal telah rollback atomik.
 
+## Forward-fix tanggal bisnis TEMPO pada revisi
+
+Jika simpan atau konfirmasi Draft revisi menampilkan
+`TEMPO_TRANSACTION_DATE_FUTURE` padahal tanggal kalender masih sama, jalankan:
+
+1. `supabase/diagnostics/sales_order_revision_tempo_date_preflight.sql`
+2. `supabase/migrations/20260904110000_sales_order_revision_tempo_business_date_fix.sql`
+3. `supabase/tests/sales_order_revision_tempo_business_date_contract_test.sql`
+4. `supabase/diagnostics/sales_order_revision_tempo_date_postflight.sql`
+
+`SETUP` pada `tempo_timestamp_guard_state` adalah expected sebelum migration.
+Hentikan pada `BLOCKER`, SQL error, atau `FAIL`. Migration tidak mengubah baris
+Order maupun Finance; ia mengganti pembanding timestamp mentah dengan tanggal
+bisnis Company dan mempertahankan guard periode, due date, delivery date, serta
+Order terjadwal.
+
+Sesudah postflight bersih, buka kembali Draft revisi yang gagal dan simpan lalu
+konfirmasi tanpa membuat Draft baru. Pastikan source baru dibatalkan setelah
+replacement berhasil, dan periksa bahwa Invoice/SJ serta Reserved Out hanya
+terbentuk satu kali.
+
+## Timeline dan tautan Invoice revisi
+
+Setelah runtime revisi dan forward-fix tanggal bisnis telah lulus, jalankan:
+
+1. `supabase/diagnostics/sales_invoice_revision_activity_preflight.sql`
+2. `supabase/migrations/20260904120000_sales_invoice_revision_activity_read_model.sql`
+3. `supabase/tests/sales_invoice_revision_activity_contract_test.sql`
+4. `supabase/diagnostics/sales_invoice_revision_activity_postflight.sql`
+
+Migration ini read-only dari sudut operasional: hanya menambah composed RPC
+activity dan memperluas response linkage revisi dengan nama actor. Tidak ada
+backfill atau mutation terhadap Order, Invoice, SJ, Stock, Payment, dan Finance.
+Deploy Backoffice dilakukan setelah postflight PASS. Smoke wajib membuka Invoice
+sumber dan pengganti, menguji tautan dua arah, timeline, pembatalan biasa tanpa
+tautan, lalu hard refresh. Client tetap dapat memuat Invoice tanpa timeline saat
+RPC baru belum tersedia selama rolling deployment.
+
 ## Compatibility dan rollback operasional
 
 - Order biasa yang bukan revision tetap memakai Confirm/Cancel runtime lama.

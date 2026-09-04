@@ -18,7 +18,7 @@ export type DataExchangeCatalogItem = {
   formats: DataExchangeFormat[];
   scopeKind: "COMPANY" | "STORE" | "WAREHOUSE";
   exportOnly: boolean;
-  filters: Array<"MONTH">;
+  filters: Array<"MONTH" | "DATE_RANGE">;
 };
 
 type CatalogDefinition = Omit<DataExchangeCatalogItem, "allowedActions"> & {
@@ -99,21 +99,17 @@ const inventoryReport = (
   filters: [],
 });
 
-const salesReport = (
-  typeKey: string,
-  label: string,
-  description: string,
-): CatalogDefinition => ({
+const salesInvoiceReport: CatalogDefinition = {
   moduleKey: "SALES",
-  typeKey,
-  label,
-  description,
+  typeKey: "SALES_DOCUMENTS",
+  label: "Invoice Penjualan",
+  description: "Daftar Invoice dan detail produk berdasarkan rentang tanggal Invoice.",
   exportRoles: salesRoles,
-  formats: ["CSV"],
+  formats: ["XLSX"],
   scopeKind: "COMPANY",
   exportOnly: true,
-  filters: [],
-});
+  filters: ["DATE_RANGE"],
+};
 
 const salesPricelistExchange: CatalogDefinition = {
   moduleKey: "SALES",
@@ -144,7 +140,7 @@ const definitions: CatalogDefinition[] = [
   master("INVENTORY", "PRODUCT_WAREHOUSE_MINIMUM_STOCK", "Minimum Stock", "Konfigurasi minimum stock per Produk–Gudang.", inventoryRoles),
   inventoryReport("STOCK_REAL", "Stock Real", "Saldo aktual, minimum stock, dan valuasi FIFO per Produk–Gudang."),
   inventoryReport("STOCK_MOVEMENTS", "Kartu Stok", "Ledger perubahan stok final beserta dokumen sumber."),
-  salesReport("SALES_DOCUMENTS", "Invoice Penjualan", "Snapshot final Invoice penjualan."),
+  salesInvoiceReport,
   salesPricelistExchange,
   financeReport("JOURNAL_ENTRIES", "Journal Entries", "Dokumen jurnal beserta seluruh baris debit/kredit."),
   financeReport("GENERAL_LEDGER", "Buku Besar", "Ringkasan akun dan detail ledger POSTED."),

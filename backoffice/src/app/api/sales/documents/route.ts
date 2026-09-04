@@ -24,6 +24,11 @@ function rpcFailure(message: string): never {
   throw new ApiRouteError(code ?? 'SALES_DOCUMENT_OPERATION_FAILED', 400)
 }
 
+function isOptionalActivityRpcMissing(error: { code?: string; message?: string } | null) {
+  return error?.code === 'PGRST202'
+    || Boolean(error?.message?.includes('get_sales_document_activity'))
+}
+
 export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
@@ -31,38 +36,52 @@ export async function GET(request: Request) {
     const salesIdParam = new URL(request.url).searchParams.get('salesId')
     if (salesIdParam) {
       const salesId = uuidValue(salesIdParam)
-      const [invoiceRpc, revisionRpc] = await Promise.all([
+      const [invoiceRpc, revisionRpc, activityRpc] = await Promise.all([
         caller.client.rpc('get_sales_invoice_document', {
           p_sales_id: salesId,
         }),
         caller.client.rpc('get_sales_order_revision_links'),
+        caller.client.rpc('get_sales_document_activity'),
       ])
       if (invoiceRpc.error) rpcFailure(invoiceRpc.error.message)
       if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
+      if (activityRpc.error && !isOptionalActivityRpcMissing(activityRpc.error)) {
+        rpcFailure(activityRpc.error.message)
+      }
       const links = Array.isArray(revisionRpc.data)
         ? revisionRpc.data as Array<Record<string, unknown>> : []
+      const activities = Array.isArray(activityRpc.data)
+        ? activityRpc.data as Array<Record<string, unknown>> : []
       const revision = links.find((item) =>
         item.sourceSalesId === salesId || item.replacementSalesId === salesId)
       return Response.json({ companyId, invoice: {
         ...(invoiceRpc.data as Record<string, unknown>),
         revision: revision ?? null,
+        activity: activities.find((item) => item.salesId === salesId) ?? null,
       } })
     }
-    const [documentRpc, revisionRpc] = await Promise.all([
+    const [documentRpc, revisionRpc, activityRpc] = await Promise.all([
       caller.client.rpc('get_sales_documents'),
       caller.client.rpc('get_sales_order_revision_links'),
+      caller.client.rpc('get_sales_document_activity'),
     ])
     if (documentRpc.error) throw documentRpc.error
     if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
+    if (activityRpc.error && !isOptionalActivityRpcMissing(activityRpc.error)) {
+      rpcFailure(activityRpc.error.message)
+    }
     const payload = documentRpc.data as { data?: unknown[] } | null
     const links = Array.isArray(revisionRpc.data)
       ? revisionRpc.data as Array<Record<string, unknown>> : []
+    const activities = Array.isArray(activityRpc.data)
+      ? activityRpc.data as Array<Record<string, unknown>> : []
     const rows = Array.isArray(payload?.data)
       ? payload.data as Array<Record<string, unknown>> : []
     return Response.json({ companyId, data: rows.map((row) => ({
       ...row,
       revision: links.find((item) =>
         item.sourceSalesId === row.salesId || item.replacementSalesId === row.salesId) ?? null,
+      activity: activities.find((item) => item.salesId === row.salesId) ?? null,
     })) })
   } catch (error) {
     return apiError(error)

@@ -29,6 +29,9 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 - [`runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md`](runbooks/PRD_PRODUCT_UOM_ADDITIVE_IMPORT_EXPORT.md)
 - [`runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md`](runbooks/PRODUCT_UOM_CONTEXT_TEMPLATE_JOB_CANCEL_ROLLOUT.md)
 - [`runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md`](runbooks/DISTRIBUTOR_PRICELIST_IMPORT_ROLLOUT.md)
+- [`runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md`](runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md)
+  — export XLSX Invoice per rentang tanggal dengan sheet header, detail produk,
+  dan informasi export.
 
 Koreksi preview harga Pricelist langsung pada kartu Product dan cart POS:
 

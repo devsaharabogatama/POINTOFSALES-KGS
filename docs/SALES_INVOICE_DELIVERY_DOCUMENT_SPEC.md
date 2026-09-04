@@ -227,6 +227,12 @@ fallback `ORDER_DATE` untuk compatibility. Policy ini hanya presentation
 Invoice; tidak mengubah tanggal bisnis Sale, periode Finance, due date, Stock,
 Payment, Financial Event, jurnal, atau tanggal Surat Jalan.
 
+Filter rentang tanggal pada export Invoice di Global Data Exchange menggunakan
+tanggal tampilan yang sama dari snapshot tersebut. Workbook memisahkan header
+Invoice dan detail produk agar total Invoice tidak terduplikasi pada laporan
+multi-produk. Export bersifat read-only dan no-argument RPC lama dipertahankan
+untuk compatibility.
+
 Nama Kasir dan Terminal tetap disimpan dalam snapshot canonical sebagai bukti
 audit, tetapi tidak ditampilkan pada template Invoice Customer. Penghilangan
 ini tidak mengubah struk POS internal maupun data transaksi.

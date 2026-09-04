@@ -66,6 +66,12 @@ Laporan Finance diekspor sebagai XLSX berdasarkan Accounting Period/filter
 tanggal, timezone Company, report version, serta access scope. Export tidak
 boleh membaca raw table di luar canonical report/read contract.
 
+Invoice Penjualan diekspor sebagai XLSX rentang tanggal dengan dua dataset
+terpisah: satu baris header per Invoice dan satu baris per detail produk. Dasar
+tanggal mengikuti policy tanggal pada snapshot Invoice, bukan waktu export.
+Dataset tetap memakai capability `sales.sales_documents EXPORT`, Company aktif,
+dan snapshot immutable; export tidak menghasilkan efek transaksi atau Finance.
+
 ### Workflow khusus, bukan generic import
 
 - Opening Stock;

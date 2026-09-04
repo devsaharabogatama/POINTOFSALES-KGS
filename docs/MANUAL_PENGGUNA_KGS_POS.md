@@ -372,6 +372,18 @@ dan menelusuri bukti transaksi. Nama berkas PDF diawali nama pelanggan, misalnya
 `PT-MAJU-JAYA_INV-20260820-000012.pdf`. Perubahan master tidak mengubah invoice
 historis.
 
+Pada daftar Invoice, informasi **Terakhir diperbarui** menunjukkan waktu
+perubahan terakhir menurut server. Buka **Detail** untuk melihat riwayat dibuat,
+dikonfirmasi, direvisi, atau dibatalkan beserta nama pengguna dan waktunya.
+Tanggal order/transaksi tetap merupakan tanggal bisnis dan berbeda dari waktu
+aktivitas sistem tersebut.
+
+Jika Invoice dibatalkan karena revisi, detail Invoice lama menampilkan nomor dan
+tombol **Buka Invoice Pengganti**. Detail Invoice baru menampilkan nomor dan
+tombol **Lihat Invoice Sebelumnya**. Pembatalan biasa tidak menampilkan tautan
+pengganti. Nomor Invoice yang terlihat digunakan untuk operasional; ID teknis
+tidak ditampilkan.
+
 Template Invoice tidak menampilkan nama perusahaan pada header dan tidak
 memiliki area tanda tangan. Stempel tetap dapat ditampilkan secara mandiri.
 
@@ -586,6 +598,14 @@ Pilihan dataset hanya muncul jika pengguna memiliki akses modul dan kemampuan **
 1. Pilih modul dan dataset.
 2. Tentukan filter/periode bila tersedia.
 3. Unduh hasil ekspor.
+
+Untuk **Sales → Invoice Penjualan**, isi tanggal mulai dan tanggal akhir.
+Tanggal filter mengikuti tanggal yang ditampilkan pada Invoice sesuai
+pengaturan Company. Hasilnya berupa Excel dengan sheet **Daftar Invoice** (satu
+baris per Invoice), **Detail Produk** (satu baris per produk), dan **Informasi
+Export**. Dengan demikian, Invoice yang memiliki banyak produk tidak
+menggandakan nilai total header. Rentang tanpa transaksi tetap menghasilkan file
+kosong berheader agar dapat dipakai sebagai bukti export.
 
 ### Impor
 
