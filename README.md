@@ -1260,6 +1260,26 @@ SUPABASE ROLLOUT PENDING**. Validator membandingkan tanggal bisnis Company,
 bukan jam mentah; future-date scheduled, periode, due date, delivery date,
 atomic revision, serta seluruh Stock/Finance boundary tetap dipertahankan.
 
+Audit berikutnya menemukan tanggal Invoice replacement pada mode `ORDER_DATE`
+dapat bergeser ke waktu Draft revisi dibuat. Forward-fix `20260904130000`
+sekarang **LOCAL READY / MANUAL SUPABASE ROLLOUT PENDING**: revision start
+menyalin kembali tanggal bisnis dan provenance source ke replacement serta
+payload canonical. Waktu create/post, nomor Invoice/SJ replacement, Stock,
+Reservation, Payment, Dispatch, dan Finance tidak diubah. Invoice final lama
+tidak dibackfill; authenticated smoke dua mode tanggal masih wajib.
+
+Audit read-only berikutnya membuktikan Order Scheduled dapat mempunyai waktu
+header lama dan `plannedOrderAt` berbeda. Untuk `ORDER_DATE`, planned date adalah
+authority; mengarahkan validator ke header saja akan membuat Invoice salah.
+Forward-fix `20260904140000` sekarang **DATABASE LIVE / BEHAVIORAL TEST RERUN
+PENDING**: Scheduled memakai planned date, sedangkan Immediate/Backorder memakai
+canonical header date; revision runtime dan pembuat snapshot Invoice baru memakai
+resolver yang sama, sementara timing metadata/provenance dipertahankan atomik.
+Ordinary TEMPO dan seluruh efek Stock/Finance tidak berubah, dan periode
+effective Order date tetap wajib `OPEN/REOPENED`. Behavioral test awal gagal
+karena assertion menginspeksi implementasi wrapper lama; assertion tersebut
+diganti dengan pemeriksaan nilai bisnis tanpa mengubah migration yang sudah live.
+
 # Negative-stock FIFO cost settlement (2026-08-31)
 
 Kontrak koreksi biaya stok minus dan Supplier Invoice sudah dikunci; diagnostic

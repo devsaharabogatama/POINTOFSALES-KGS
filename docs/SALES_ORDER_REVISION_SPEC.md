@@ -50,7 +50,20 @@ Return, refund, reversal, atau dokumen koreksi yang sesuai.
 ### Tanggal TEMPO pada revisi
 
 - Draft pengganti mempertahankan tanggal bisnis Order sumber sampai Kasir
-  mengubah field tanggal secara eksplisit.
+  mengubah field tanggal secara eksplisit. Untuk `SCHEDULED`, authority adalah
+  `plannedOrderAt` yang tanggal lokalnya wajib sama dengan `planned_order_date`;
+  untuk `IMMEDIATE` dan `BACKORDER`, authority adalah canonical header date.
+- Identitas yang disalin mencakup resolved `transaction_date`, sumber tanggal,
+  actor/waktu pemilih, `order_timing_mode`, planned-date metadata, dan
+  `transactionAt` canonical pada payload agar save/resume tidak menggantinya
+  dengan waktu Draft revisi dibuat.
+- Setting template `ORDER_DATE` mencetak tanggal bisnis Order sumber pada
+  Invoice pengganti. Setting `POSTED_DATE` tetap mencetak tanggal replacement
+  benar-benar dikonfirmasi; perubahan tanggal pada mode ini adalah perilaku
+  yang memang dipilih Company, bukan tanggal Order yang hilang.
+- `created_at`, `posted_at`, nomor Invoice, dan nomor Surat Jalan milik
+  replacement tetap baru. Timestamp lifecycle tersebut tidak boleh disalin
+  dari source.
 - Validasi "masa depan" membandingkan tanggal bisnis dalam timezone Company,
   bukan bagian jam dari timestamp. Jam yang lebih maju pada tanggal bisnis yang
   sama tidak boleh menggagalkan simpan atau konfirmasi revisi.
@@ -86,6 +99,10 @@ Return, refund, reversal, atau dokumen koreksi yang sesuai.
 - Offline revision, revisi sesudah partial Dispatch, penggunaan ulang nomor
   Invoice lama, serta edit langsung snapshot final berada di luar scope.
 - Tidak ada backfill terhadap Order historis.
+- Forward-fix preservasi tanggal tidak mengubah Invoice source/replacement yang
+  sudah final. Revisi `PENDING` yang berasal dari runtime lama dan mempunyai
+  date identity berbeda wajib diselesaikan atau dibatalkan sebelum rollout,
+  lalu dibuat ulang sesudah migration.
 - Read model activity bersifat additive dan tidak membuat efek Stock, Payment,
   Financial Event, atau Journal.
 

@@ -2147,3 +2147,32 @@ Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
 - Tidak ada backfill atau perubahan Stock, Reservation, Invoice/SJ, Payment,
   Financial Event, maupun Journal. Rollout dan smoke mengikuti
   `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`.
+
+## Sales Order Revision replacement Invoice date preservation
+
+Status: `LOCAL READY; MANUAL SUPABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Root cause berada pada `start_pos_sales_order_revision`: Draft replacement
+  dibuat pada waktu baru tetapi tuple identitas tanggal Order sumber tidak
+  disalin kembali secara eksplisit.
+- Migration `20260904130000` mempertahankan `transaction_date` beserta source/
+  selection provenance dan payload canonical. `created_at`, `posted_at`, nomor
+  Invoice, dan nomor SJ replacement tetap baru.
+- Template `ORDER_DATE` harus mengikuti Order sumber; `POSTED_DATE` tetap
+  mengikuti waktu replacement dikonfirmasi sesuai setting Company.
+- Tidak ada backfill final maupun perubahan Stock, Reservation, FIFO, Payment,
+  cashier session, Dispatch, Financial Event, atau Journal. Gate mengikuti
+  `docs/runbooks/SALES_ORDER_REVISION_ROLLOUT.md`.
+
+Audit read-only kemudian menemukan dua defect yang harus dipisahkan. Pertama,
+`PRESERVE` dapat memvalidasi tanggal sementara replacement untuk source
+`SERVER_CREATED`. Kedua, Order `SCHEDULED` mempunyai date authority pada
+`plannedOrderAt`/`planned_order_date`, bukan header creation timestamp.
+Forward-fix `20260904140000` berstatus `DATABASE LIVE; BEHAVIORAL RERUN,
+POSTFLIGHT, AND AUTHENTICATED SMOKE PENDING`. Resolver membedakan Scheduled, Backorder, dan
+Immediate, mempertahankan timing metadata replacement, dan menjadi authority
+untuk `transactionAt` snapshot Invoice baru. Snapshot final lama tetap immutable.
+Ordinary TEMPO dan guard periode effective Order date tidak dilonggarkan.
+Behavioral test pertama berhenti pada assertion static terhadap body wrapper
+public, bukan pada mismatch tanggal. Test diperbaiki agar memeriksa output bisnis
+dan preservation delivery date tanpa mengubah runtime live.

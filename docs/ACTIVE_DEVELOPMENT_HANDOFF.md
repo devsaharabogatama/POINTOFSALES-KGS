@@ -1,5 +1,73 @@
 # Active Development Handoff — KGS POS
 
+### 2026-09-04 — REVISION SCHEDULED DATE AUTHORITY DATABASE-LIVE; TEST RERUN PENDING
+
+- Read-only production evidence untuk KGS Order `DRF-20260828-000128`:
+  header `transaction_date` = 29 Agustus waktu Company, tetapi
+  `order_timing_mode=SCHEDULED`, `plannedOrderDate=2026-09-04`, dan
+  `plannedOrderAt` = 4 September waktu Company. Branding memakai `ORDER_DATE`.
+  Invoice snapshot lama menyimpan timestamp header 29 Agustus.
+- Query periode KGS untuk Agustus–September mengembalikan hanya Agustus `OPEN`;
+  September tidak ditemukan. Karena date authority Scheduled adalah 4 September,
+  periode Agustus tidak dapat membuat smoke Order ini lolos. Ini adalah evidence
+  database, bukan inferensi dari screenshot.
+- Runtime 130000 juga mempunyai regression terpisah: source `SERVER_CREATED`
+  memakai `PRESERVE`, sehingga canonical wrapper dapat memvalidasi tanggal
+  sementara replacement sebelum tanggal source dipulihkan.
+- Forward migration `20260904140000` direvisi sebelum rollout. Resolver private
+  kini membedakan `SCHEDULED` (planned date), `BACKORDER`, dan `IMMEDIATE`;
+  canonical validation menerima date authority tersebut, lalu replacement
+  menyimpan transaction provenance sekaligus timing/planned metadata. Builder
+  snapshot Invoice baru memakai resolver yang sama; snapshot final lama tidak
+  dimutasi.
+- Preflight menampilkan jumlah revisable Order tanpa periode effective date;
+  deterministic behavior mencakup tiga timing mode, mismatch fail-closed,
+  exact payload retry, serta static runtime boundary. Postflight membatasi
+  reconciliation ke Revision yang dibuat setelah migration.
+- Tidak ada row backfill atau perubahan ordinary TEMPO, Stock, Reservation,
+  FIFO, Payment, cashier session, Dispatch, Financial Event, dan Journal.
+- Manual gate: pastikan periode effective Order tersedia -> preflight ->
+  migration 140000 -> behavior -> postflight -> authenticated smoke Scheduled,
+  Immediate, Backorder, exact retry, closed-period rejection, dan dua mode
+  tanggal Invoice.
+- User menjalankan migration 140000; behavioral test mencapai assertion
+  `canonical TEMPO explicit-date behavior drift`, yang membuktikan helper
+  migration tersedia tetapi test gagal karena menginspeksi body wrapper public
+  lama. Assertion implementation-detail tersebut dihapus. Test sekarang hanya
+  menguji nilai tanggal Scheduled/Immediate/Backorder, preservation tanggal
+  kirim, mismatch fail-closed, exact retry, dan keberadaan dependency runtime.
+  Postflight juga tidak lagi menganggap implementasi validator wajib berada
+  langsung di wrapper public; dependency public dan validator private diperiksa
+  terpisah. Hash migration live tetap
+  `7247afb2a65feff2fa1f864d794e6caff31d0763d3ee54766790ba937abfbf4d`.
+- Evidence lokal setelah koreksi test: assertion obsolete tidak ditemukan,
+  assertion nilai bisnis masih lengkap, `git diff --check` PASS, dan PWA
+  production build PASS. Tidak ada runtime/client/migration yang diubah pada
+  koreksi test ini. Rerun behavioral, postflight, authenticated smoke, dan UAT
+  masih pending dan dijalankan manual oleh user di Supabase/POS.
+
+### 2026-09-04 — REVISION REPLACEMENT ORDER-DATE PRESERVATION LOCAL-READY
+
+- Root cause tanggal Invoice replacement berubah ditemukan pada RPC
+  `start_pos_sales_order_revision`: replacement dibuat pada waktu baru tanpa
+  menyalin tuple `transaction_date` source secara eksplisit. Renderer Invoice
+  sendiri sudah benar: `ORDER_DATE` memakai `transactionAt`, sedangkan
+  `POSTED_DATE` memakai `postedAt`.
+- Migration `20260904130000` menambah private pure date-payload transformer dan
+  mengganti revision-start RPC agar transaction date/source/selector provenance
+  source disalin atomik. `created_at`, `posted_at`, sequence Invoice/SJ,
+  idempotency, optimistic version, dan seluruh eligibility guard dipertahankan.
+- Files baru: preflight, migration 130000, deterministic behavior regression,
+  postflight; spec/runbook/gate/README/manifest/handoff ikut diperbarui.
+- Direct impact hanya pembentukan Draft revisi baru. Tidak ada perubahan atau
+  backfill final pada Stock, Reservation, FIFO, Payment, cashier session,
+  Dispatch, Financial Event, dan Journal.
+- Manual gate: jalankan preflight -> migration -> behavior -> postflight. Stop
+  pada `BLOCKER`/`FAIL`/SQL error. Lanjutkan authenticated smoke mode
+  `ORDER_DATE` dan `POSTED_DATE`, exact retry, serta validasi source canceled dan
+  replacement documents/Reserved Out exact-once. Database live, client deploy,
+  smoke, dan UAT belum diklaim.
+
 ### 2026-09-04 — SALES INVOICE ACTIVITY COMPACT UI LOCAL-READY
 
 - Modal detail Invoice tidak lagi memenuhi layar dengan banner pembatalan dan
