@@ -20,6 +20,12 @@ Runtime eligibility UI juga berasal dari server melalui
 untuk Order yang sudah mulai dikirim, sudah memiliki pembayaran VERIFIED, atau
 sudah mempunyai Draft revisi aktif.
 
+Ketika revision berstatus `PENDING`, PWA menyembunyikan source dari daftar
+**Order aktif** dan **Order terjadwal**. Source tetap aktif di server sesuai
+kontrak atomik dan kembali tampil setelah Draft revisi dibatalkan; bila Draft
+dikonfirmasi, source dibatalkan dan replacement baru yang tampil. Tidak ada
+perubahan Reservation, Stock, Invoice, Payment, atau Finance dari filter UI ini.
+
 Hentikan pada SQL error, `BLOCKER`, atau `FAIL`. `SETUP` pada preflight hanya
 berarti foundation belum dipasang. Jangan menjalankan ulang migration yang sudah
 tercatat pada ledger; gunakan postflight untuk memeriksa hasilnya.
@@ -39,7 +45,8 @@ dikonfirmasi, dan jangan memakai Order operasional aktif.
 2. Buka **Order aktif**, cari Order, tekan **Revisi Order**, isi alasan.
 3. Pastikan Draft pengganti langsung terbuka dan harga dihitung ulang.
 4. Tutup editor tanpa konfirmasi; pastikan source masih aktif, Reserved Out dan
-   Invoice/SJ source tidak berubah.
+   Invoice/SJ source tidak berubah, tetapi source tidak ditampilkan di daftar
+   **Order aktif/terjadwal** selama Draft revisi masih `PENDING`.
 5. Buka kembali Draft revisi, ubah satu quantity, isi ulang payment, lalu
    konfirmasi.
 6. Pastikan source menjadi canceled, Reserved Out source dilepas, Invoice/SJ
@@ -51,7 +58,8 @@ dikonfirmasi, dan jangan memakai Order operasional aktif.
    harus replay dan tidak menambah Reservation, Invoice, SJ, payment request,
    atau audit ganda.
 9. Buat revisi kedua lalu batalkan Draft revisinya. Source harus tetap aktif dan
-   revision berstatus `ABANDONED`.
+   revision berstatus `ABANDONED`; setelah daftar dimuat ulang, source kembali
+   tampil di **Order aktif/terjadwal**.
 10. Negative test: Order yang sudah partial Dispatch dan Order dengan payment
     `VERIFIED` tidak boleh menawarkan/menjalankan revisi.
 

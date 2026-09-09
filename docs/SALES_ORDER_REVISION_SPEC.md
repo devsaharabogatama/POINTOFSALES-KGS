@@ -33,8 +33,13 @@ Return, refund, reversal, atau dokumen koreksi yang sesuai.
    bayar. Harga dihitung ulang oleh resolver canonical ketika Draft dibuka.
 3. Selama Draft pengganti belum dikonfirmasi, Order sumber, Reservation,
    Invoice, Surat Jalan, demand Purchasing, dan payment request lama tetap aktif.
+   Untuk mencegah tindakan ganda dan kebingungan Kasir, proyeksi PWA tidak
+   menampilkan Order sumber tersebut di daftar **Order aktif** maupun **Order
+   terjadwal** selama relasi revisinya masih `PENDING`; Draft pengganti menjadi
+   satu-satunya entry operasional yang ditampilkan pada daftar **Draft**.
 4. Kasir dapat membatalkan Draft revisi. Tindakan ini hanya menandai revisi
-   `ABANDONED`; Order sumber tidak berubah.
+   `ABANDONED`; Order sumber tidak berubah dan kembali tampil pada daftar Order
+   setelah workspace dimuat ulang.
 5. Saat **Konfirmasi Order**, server mengunci source dan replacement, memeriksa
    ulang version, status Dispatch, dan pembayaran, kemudian dalam satu transaksi:
    - membatalkan payment request lama yang masih dapat dibatalkan;
