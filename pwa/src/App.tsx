@@ -515,6 +515,11 @@ export default function App() {
   const [saleDrafts, setSaleDrafts] = useState<SaleDraftListItem[]>([])
   const [draftPanelOpen, setDraftPanelOpen] = useState(false)
   const [salesOrders, setSalesOrders] = useState<SalesOrderListItem[]>([])
+  const visibleSalesOrders = useMemo(
+    () => salesOrders.filter((order) =>
+      order.orderRuntimeStatus !== 'DELIVERED' && !order.hasPendingRevision),
+    [salesOrders],
+  )
   const [orderPanelOpen, setOrderPanelOpen] = useState(false)
   const [confirmedOrder, setConfirmedOrder] = useState<{
     orderNo: string
@@ -3769,7 +3774,7 @@ export default function App() {
                     className="pos-draft-list-button"
                   >
                     <ClipboardList className="h-4 w-4" />
-                    Order <span>{salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED').length}</span>
+                    Order <span>{visibleSalesOrders.length}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -5180,7 +5185,7 @@ export default function App() {
 
       {orderPanelOpen && cashierSession && (
         <SalesOrderPanel
-          orders={salesOrders.filter((order) => order.orderRuntimeStatus !== 'DELIVERED')}
+          orders={visibleSalesOrders}
           customers={catalog.customers}
           loading={loading}
           close={() => setOrderPanelOpen(false)}

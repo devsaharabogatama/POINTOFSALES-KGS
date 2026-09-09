@@ -110,17 +110,13 @@ export function SalesOrderPanel({
       customerCodeById.get(order.customerId) ?? '',
     ].some((value) => value.toLocaleLowerCase('id-ID').includes(keyword)))
   }, [customerCodeById, orders, query])
-  const visibleOrders = useMemo(
-    () => filteredOrders.filter((order) => !order.hasPendingRevision),
+  const scheduled = useMemo(
+    () => filteredOrders.filter((order) => order.orderTimingMode === 'SCHEDULED'),
     [filteredOrders],
   )
-  const scheduled = useMemo(
-    () => visibleOrders.filter((order) => order.orderTimingMode === 'SCHEDULED'),
-    [visibleOrders],
-  )
   const active = useMemo(
-    () => visibleOrders.filter((order) => order.orderTimingMode !== 'SCHEDULED'),
-    [visibleOrders],
+    () => filteredOrders.filter((order) => order.orderTimingMode !== 'SCHEDULED'),
+    [filteredOrders],
   )
 
   async function cancel() {
@@ -204,7 +200,7 @@ export function SalesOrderPanel({
         <button type="button" onClick={close} className="rounded-xl bg-slate-100 p-2 text-slate-700" aria-label="Tutup daftar Order"><X className="h-5 w-5"/></button>
       </header>
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-        <span className="text-sm font-bold text-slate-600">{query.trim() ? `${visibleOrders.length} ditemukan` : `${visibleOrders.length} Order`}</span>
+        <span className="text-sm font-bold text-slate-600">{query.trim() ? `${filteredOrders.length} ditemukan` : `${orders.length} Order`}</span>
         <button type="button" onClick={() => void refresh()} disabled={loading || busy} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button>
       </div>
       <div className="border-b border-slate-100 px-5 py-4">
@@ -214,7 +210,7 @@ export function SalesOrderPanel({
         </label>
       </div>
       {error && <p className="mx-5 mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-      <div className="flex-1 space-y-7 overflow-y-auto p-5">{visibleOrders.length === 0 && query.trim() ? <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-semibold text-slate-500">Order tidak ditemukan.</p> : <>{group('Order aktif', 'Siap diproses gudang atau sedang dikirim.', active)}{group('Order terjadwal', 'Stok sudah dicadangkan untuk tanggal rencana.', scheduled)}</>}</div>
+      <div className="flex-1 space-y-7 overflow-y-auto p-5">{filteredOrders.length === 0 && query.trim() ? <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-semibold text-slate-500">Order tidak ditemukan.</p> : <>{group('Order aktif', 'Siap diproses gudang atau sedang dikirim.', active)}{group('Order terjadwal', 'Stok sudah dicadangkan untuk tanggal rencana.', scheduled)}</>}</div>
     </section>
     {cancelTarget && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950"><h3 className="text-xl font-black">Batalkan {cancelTarget.orderNo}?</h3><p className="mt-1 text-sm text-slate-500">Reserved Out yang belum dikirim akan dilepas. Jika pembayaran Cash berasal dari sesi lama yang sudah tutup, pengembaliannya dicatat pada sesi aktif toko ini. Histori tetap tersimpan.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} rows={4} maxLength={500} placeholder="Alasan pembatalan" className="mt-5 w-full rounded-xl border border-slate-300 p-3"/>{error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setCancelTarget(null)} disabled={busy} className="min-h-11 rounded-xl border px-5 font-bold">Kembali</button><button type="button" onClick={() => void cancel()} disabled={busy || cancelReason.trim().length < 3} className="min-h-11 rounded-xl bg-rose-600 px-5 font-black text-white disabled:opacity-40">{busy ? 'Memproses...' : 'Batalkan Order'}</button></div></section></div>}
     {revisionTarget && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950"><h3 className="text-xl font-black">Revisi {revisionTarget.orderNo}?</h3><p className="mt-1 text-sm text-slate-500">Sistem membuat Draft pengganti. Order dan Reserved Out lama tetap aktif sampai Draft baru berhasil dikonfirmasi. Harga dihitung ulang dan cara bayar wajib diperiksa kembali.</p><textarea value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} rows={4} maxLength={500} placeholder="Alasan revisi, contoh: quantity salah input" className="mt-5 w-full rounded-xl border border-slate-300 p-3"/>{error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setRevisionTarget(null)} disabled={busy} className="min-h-11 rounded-xl border px-5 font-bold">Kembali</button><button type="button" onClick={() => void startRevision()} disabled={busy || revisionReason.trim().length < 3} className="min-h-11 rounded-xl bg-emerald-700 px-5 font-black text-white disabled:opacity-40">{busy ? 'Membuat Draft...' : 'Buat Draft Revisi'}</button></div></section></div>}
