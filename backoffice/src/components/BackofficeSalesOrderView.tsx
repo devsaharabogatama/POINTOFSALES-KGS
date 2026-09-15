@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Session } from "@supabase/supabase-js";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, FilePenLine, FileText, History, Loader2, Plus, RefreshCw, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { BackofficeSalesInvoiceView } from "@/components/BackofficeSalesInvoiceView";
+import { OfficeRetailHistoryDetail } from '@/components/OfficeRetailHistoryDetail';
+import { filterRetailHistory, retailStatusLabel, type RetailHistory } from '@/lib/office-retail-history';
 
 type Status = "DRAFT" | "SENT" | "CONFIRMED" | "CANCELED";
 type FulfillmentStatus = "QUOTATION" | "CONFIRMED" | "PREPARING" | "PARTIALLY_SHIPPED" | "IN_TRANSIT" | "COMPLETED" | "CANCELED";
@@ -21,7 +23,7 @@ type Order = {
   id: string; quotationNo: string; orderNo: string | null; status: Status; fulfillmentStatus: FulfillmentStatus; fulfillmentStatusUpdatedAt: string; storeId: string; warehouseId: string; customerId: string; pricelistId: string | null;
   orderDate: string; plannedDeliveryDate: string; isTempo: boolean; dueDate: string | null; customerSnapshot: { code?: string; name?: string; phone?: string | null; email?: string | null; address?: string | null };
   notes: string | null; subtotal: number; discountTotal: number; globalDiscount: number; taxTotal: number; deliveryFeeAmount: number; deliveryFeeInvoiceDisplayMode: string; grandTotalBeforeRounding: number; roundingDirection: string; roundingIncrement: number; roundingAdjustment: number; grandTotal: number; masterVersion: number;
-  revisionCount: number; lastRevisedAt: string | null; lastRevisedBy: string | null; updatedAt: string; sentAt: string | null; confirmedAt: string | null; canceledAt: string | null; cancelReason: string | null; activity?: { action: string; reason: string | null; actorId: string; actorName: string | null; createdAt: string }[]; lines: OrderLine[];
+  revisionCount: number; lastRevisedAt: string | null; lastRevisedBy: string | null; updatedAt: string; sentAt: string | null; confirmedAt: string | null; canceledAt: string | null; cancelReason: string | null; activity?: { action: string; reason: string | null; actorId: string; actorName: string | null; createdAt: string; relatedDocumentId?: string; relatedDocumentNo?: string; relatedDocumentType?: string }[]; lines: OrderLine[];
   invoiceStatus: InvoiceStatus; draftInvoiceId: string | null; activeInvoiceCount: number; postedInvoiceCount: number;
 };
 type FormLine = { key: string; productUomId: string; quantity: string; canonicalUnitPrice?: number; overrideUnitPrice: string | null; lineDiscountType: "" | "AMOUNT" | "PERCENT"; lineDiscountInput: string; taxLabel?: string; taxRatePercent?: number | null };
@@ -71,6 +73,8 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
   const consumedOrderLink = useRef("");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [history, setHistory] = useState<RetailHistory[]>([]);
+  const [selectedHistory, setSelectedHistory] = useState<RetailHistory | null>(null);
   const [documentKind, setDocumentKind] = useState<DocumentKind>("QUOTATION");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("");
   const [invoiceStatus, setInvoiceStatus] = useState("");
@@ -93,11 +97,13 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
       if (dateFrom) query.set("dateFrom", dateFrom);
       if (dateTo) query.set("dateTo", dateTo);
       if (search.trim()) query.set("search", search.trim());
-      const [workspaceBody, orderBody] = await Promise.all([
+      const [workspaceBody, orderBody, historyBody] = await Promise.all([
         fetch("/api/sales/backoffice-orders/workspace", { headers: authHeaders(session), cache: "no-store" }).then(jsonResponse),
-        fetch(`/api/sales/backoffice-orders?${query}`, { headers: authHeaders(session), cache: "no-store" }).then(jsonResponse)
+        fetch(`/api/sales/backoffice-orders?${query}`, { headers: authHeaders(session), cache: "no-store" }).then(jsonResponse),
+        fetch('/api/sales/backoffice-orders/history', { headers: authHeaders(session), cache: 'no-store' }).then(jsonResponse)
       ]);
       setWorkspace(workspaceBody as Workspace); setOrders((orderBody.data ?? []) as Order[]);
+      setHistory((historyBody.data ?? []) as RetailHistory[]);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Data gagal dimuat."); }
     finally { setLoading(false); }
   }, [dateBasis, dateFrom, dateTo, documentKind, fulfillmentStatus, invoiceStatus, search, session]);
@@ -142,8 +148,20 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
 
   if (invoiceMode) return <BackofficeSalesInvoiceView session={session} initialSalesOrderId={!invoiceMode.list && !invoiceMode.invoiceId ? invoiceMode.salesOrderId ?? null : null} initialInvoiceId={invoiceMode.invoiceId ?? null} initialListSalesOrderId={invoiceMode.list ? invoiceMode.salesOrderId ?? null : null} canCreate={canCreate} canEdit={canEdit} canManage={canManage} companyName={companyName} notify={notify} back={() => { setInvoiceMode(null); void load(); }} />;
   if (editing !== undefined && workspace) return <OrderEditor session={session} workspace={workspace} order={editing} close={() => setEditing(undefined)} saved={async (order) => { setEditing(undefined); await load(); setSelected(await readOrder(order.id)); }} />;
-  if (selected && workspace) return <OrderDetail session={session} order={selected} workspace={workspace} canCreate={canCreate} canEdit={canEdit} canManage={canManage} close={() => setSelected(null)} edit={() => { setEditing(selected); setSelected(null); }} createInvoice={() => setInvoiceMode({ salesOrderId: selected.id })} transition={transition} refresh={async () => setSelected(await readOrder(selected.id))} error={error} />;
+  if (selected && workspace) return <OrderDetail openSource={(id) => { setSelected(null); void openHistory({ id }); }} session={session} order={selected} workspace={workspace} canCreate={canCreate} canEdit={canEdit} canManage={canManage} close={() => setSelected(null)} edit={() => { setEditing(selected); setSelected(null); }} createInvoice={() => setInvoiceMode({ salesOrderId: selected.id })} transition={transition} refresh={async () => setSelected(await readOrder(selected.id))} error={error} />;
 
+  const visibleHistory = filterRetailHistory(history, { companyId, kind: documentKind,
+    search, fulfillment: documentKind === 'SALES_ORDER' ? fulfillmentStatus : '',
+    invoice: documentKind === 'SALES_ORDER' ? invoiceStatus : '', dateBasis, dateFrom, dateTo });
+  async function openHistory(row: Pick<RetailHistory, "id">) {
+    setError('');
+    try {
+      const body = await fetch(`/api/sales/backoffice-orders/history?salesId=${encodeURIComponent(row.id)}`, { headers: authHeaders(session), cache: 'no-store' }).then(jsonResponse);
+      if (body.companyId !== companyId) throw new Error('Company dokumen tidak sesuai. Muat ulang.');
+      setSelectedHistory((body.data as RetailHistory[])[0]);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Histori gagal dimuat.'); }
+  }
+  if (selectedHistory?.companyId === companyId) return <OfficeRetailHistoryDetail key={selectedHistory.id} row={selectedHistory} session={session} companyName={companyName} notify={notify} back={() => setSelectedHistory(null)} />;
   const missingMaster = workspace && (!workspace.stores.length || !workspace.warehouses.length || !workspace.customers.length || !(workspace.pricelists?.length ?? 0) || !workspace.products.length);
   return <div className="space-y-5">
     <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -154,8 +172,9 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
       <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(240px,1fr)_170px_180px_170px_150px_150px_auto]"><label className="relative"><Search className="absolute left-3 top-3 h-5 w-5 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void load(); }} placeholder="Cari nomor atau Customer" className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3" /></label>{documentKind === "SALES_ORDER" ? <><select aria-label="Status Sales Order" value={fulfillmentStatus} onChange={(event) => setFulfillmentStatus(event.target.value)} className="rounded-xl border border-slate-200 px-3"><option value="">Semua status SO</option>{(["CONFIRMED","PREPARING","PARTIALLY_SHIPPED","IN_TRANSIT","COMPLETED","CANCELED"] as FulfillmentStatus[]).map((value) => <option key={value} value={value}>{fulfillmentLabel[value]}</option>)}</select><select aria-label="Status Invoice" value={invoiceStatus} onChange={(event) => setInvoiceStatus(event.target.value)} className="rounded-xl border border-slate-200 px-3"><option value="">Semua status Invoice</option>{(["NOT_READY","READY","DRAFT","PARTIALLY_INVOICED","INVOICED"] as InvoiceStatus[]).map((value) => <option key={value} value={value}>{invoiceLabel[value]}</option>)}</select></> : <><div className="hidden xl:block"/><div className="hidden xl:block"/></>}<select aria-label="Jenis tanggal" value={dateBasis} onChange={(event) => setDateBasis(event.target.value as DateBasis)} className="rounded-xl border border-slate-200 px-3"><option value="ORDER_DATE">Tanggal Order</option><option value="DELIVERY_DATE">Rencana Kirim</option><option value="DUE_DATE">Jatuh Tempo</option></select><input aria-label="Tanggal mulai" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="rounded-xl border border-slate-200 px-3" /><input aria-label="Tanggal akhir" type="date" min={dateFrom || undefined} value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="rounded-xl border border-slate-200 px-3" /><button onClick={() => void load()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 font-bold"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Muat ulang</button></div>
     </section>
     <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[1120px] table-fixed text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="w-[19%] px-5 py-4">Nomor</th><th className="w-[18%] px-5 py-4">Customer</th><th className="w-[19%] px-5 py-4">Tanggal Order</th><th className="w-[15%] px-5 py-4">Status Pengiriman</th>{documentKind === "SALES_ORDER" && <th className="w-[16%] px-5 py-4">Status Invoice</th>}<th className="w-[13%] px-5 py-4 text-right">Total</th></tr></thead><tbody className="divide-y divide-slate-100">
-      {!loading && !orders.length && <tr><td colSpan={documentKind === "SALES_ORDER" ? 6 : 5} className="px-5 py-14 text-center text-slate-500">Belum ada {documentKind === "QUOTATION" ? "Quotation" : "Sales Order"} pada filter ini.</td></tr>}
+      {!loading && !orders.length && !visibleHistory.length && <tr><td colSpan={documentKind === "SALES_ORDER" ? 6 : 5} className="px-5 py-14 text-center text-slate-500">Belum ada {documentKind === "QUOTATION" ? "Quotation" : "Sales Order"} pada filter ini.</td></tr>}
       {orders.map((order) => <tr key={order.id} onClick={() => setSelected(order)} className="cursor-pointer hover:bg-slate-50"><td className="px-5 py-4"><div className="font-black">{order.orderNo ?? order.quotationNo}</div>{order.orderNo && <div className="text-xs text-slate-500">Asal {order.quotationNo}</div>}</td><td className="px-5 py-4"><div className="font-bold">{order.customerSnapshot.name ?? "-"}</div><div className="text-xs text-slate-500">{order.customerSnapshot.code ?? "-"}</div></td><td className="px-5 py-4"><div>{dateText(order.orderDate)}</div><div className="text-xs text-slate-500">Rencana kirim {dateText(order.plannedDeliveryDate)}</div>{order.isTempo && <div className="text-xs text-slate-500">Jatuh tempo {dateText(order.dueDate)}</div>}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${fulfillmentClass[order.fulfillmentStatus]}`}>{order.orderNo ? fulfillmentLabel[order.fulfillmentStatus] : order.status === "CANCELED" ? "Dibatalkan" : "Draft"}</span></td>{documentKind === "SALES_ORDER" && <td className="px-5 py-4"><button type="button" disabled={order.invoiceStatus === "NOT_READY"} onClick={(event) => { event.stopPropagation(); if (order.invoiceStatus === "DRAFT" && order.draftInvoiceId) setInvoiceMode({ invoiceId: order.draftInvoiceId }); else if (order.invoiceStatus === "READY") setInvoiceMode({ salesOrderId: order.id }); else if (order.invoiceStatus === "PARTIALLY_INVOICED" || order.invoiceStatus === "INVOICED") setInvoiceMode({ salesOrderId: order.id, list: true }); }} className={`rounded-full px-2.5 py-1 text-xs font-bold ${invoiceClass[order.invoiceStatus]} disabled:cursor-default`}>{invoiceLabel[order.invoiceStatus]}</button></td>}<td className="px-5 py-4 text-right font-black">{money(Number(order.grandTotal))}</td></tr>)}
+      {visibleHistory.map((row) => <tr key={`retail-${row.id}`} onClick={() => void openHistory(row)} className="cursor-pointer hover:bg-slate-50"><td className="px-5 py-4"><div className="font-black">{row.documentNo}</div><div className="text-xs text-slate-500">Dokumen asal Retail · Histori</div></td><td className="px-5 py-4"><div className="font-bold">{row.customerName ?? '-'}</div><div className="text-xs text-slate-500">{row.storeName ?? '-'}</div></td><td className="px-5 py-4">{dateText(row.orderDate)}{row.dueDate && <div className="text-xs text-slate-500">Jatuh tempo {dateText(row.dueDate)}</div>}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{retailStatusLabel(row)}</span></td>{documentKind === 'SALES_ORDER' && <td className="px-5 py-4">{row.invoiceSnapshotId ? <button onClick={(event) => { event.stopPropagation(); void openHistory(row); }} className="text-xs font-bold text-emerald-700">Invoice asli</button> : <span className="text-xs text-slate-500">Belum ada Invoice</span>}</td>}<td className="px-5 py-4 text-right font-black">{money(row.total)}</td></tr>)}
     </tbody></table></div></section>
   </div>;
 }
@@ -245,7 +264,7 @@ function OrderEditor({ session, workspace, order, close, saved }: { session: Ses
   </div>;
 }
 
-function OrderDetail({ session, order, workspace, canCreate, canEdit, canManage, close, edit, createInvoice, transition, refresh, error }: { session: Session; order: Order; workspace: Workspace; canCreate: boolean; canEdit: boolean; canManage: boolean; close: () => void; edit: () => void; createInvoice: () => void; transition: (order: Order, action: "SEND" | "CONFIRM" | "CANCEL") => Promise<void>; refresh: () => Promise<void>; error: string }) {
+function OrderDetail({ openSource, session, order, workspace, canCreate, canEdit, canManage, close, edit, createInvoice, transition, refresh, error }: { openSource: (id: string) => void; session: Session; order: Order; workspace: Workspace; canCreate: boolean; canEdit: boolean; canManage: boolean; close: () => void; edit: () => void; createInvoice: () => void; transition: (order: Order, action: "SEND" | "CONFIRM" | "CANCEL") => Promise<void>; refresh: () => Promise<void>; error: string }) {
   const [activeTab, setActiveTab] = useState<DocumentTab>("lines");
   const [showActivity, setShowActivity] = useState(true);
   const warehouse = workspace.warehouses.find((item) => item.id === order.warehouseId); const store = workspace.stores.find((item) => item.id === order.storeId);
@@ -281,7 +300,7 @@ function OrderDetail({ session, order, workspace, canCreate, canEdit, canManage,
       {activeTab === "other" && <div className="space-y-5 p-5 text-sm"><div className="grid gap-4 md:grid-cols-3"><Info label="Store" value={store ? `${store.code} · ${store.name}` : "-"} /><Info label="Warehouse" value={warehouse ? `${warehouse.code} · ${warehouse.name}` : "-"} /><Info label="Status SO" value={order.orderNo ? fulfillmentLabel[order.fulfillmentStatus] : order.status === "CANCELED" ? "Dibatalkan" : "Draft Quotation"} /><Info label="Versi Dokumen" value={String(order.masterVersion)} /><Info label="Jumlah Revisi" value={String(order.revisionCount ?? 0)} /><Info label="Revisi Terakhir" value={dateTimeText(order.lastRevisedAt)} /><Info label="Terakhir Diperbarui" value={dateTimeText(order.updatedAt)} /><Info label="SO Dikonfirmasi" value={dateTimeText(order.confirmedAt)} /></div></div>}
       {activeTab === "notes" && <div className="min-h-28 whitespace-pre-wrap p-5 text-sm text-slate-700">{order.notes || "Tidak ada catatan."}</div>}
     </section>
-    <ActivityLog activity={order.activity ?? []} open={showActivity} toggle={() => setShowActivity((value) => !value)} />
+    <ActivityLog openSource={openSource} activity={order.activity ?? []} open={showActivity} toggle={() => setShowActivity((value) => !value)} />
   </div>;
 }
 
@@ -324,7 +343,7 @@ function SalesDiscrepancyApprovalPanel({ session, orderId, canApprove, refreshed
   </section>;
 }
 
-function ActivityLog({ activity, open, toggle }: { activity: OrderActivity[]; open: boolean; toggle: () => void }) {
+function ActivityLog({ openSource, activity, open, toggle }: { openSource: (id: string) => void; activity: OrderActivity[]; open: boolean; toggle: () => void }) {
   return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
     <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-slate-50">
       <span className="flex items-center gap-3"><span className="rounded-full bg-emerald-50 p-2 text-emerald-700"><History className="h-4 w-4" /></span><span><strong className="block text-sm text-slate-950">Log aktivitas</strong><span className="text-xs text-slate-500">Riwayat perubahan dokumen · {activity.length} aktivitas</span></span></span>
@@ -336,6 +355,7 @@ function ActivityLog({ activity, open, toggle }: { activity: OrderActivity[]; op
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1"><strong className="text-sm text-slate-950">{activityLabel(item.action)}</strong><time className="text-xs text-slate-500">{dateTimeText(item.createdAt)}</time></div>
         <p className="mt-0.5 text-xs text-slate-500">oleh {item.actorName ?? "User"}</p>
         {item.reason && <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{item.reason}</div>}
+        {item.relatedDocumentType === 'RETAIL_SALE' && item.relatedDocumentId && <button onClick={() => openSource(item.relatedDocumentId!)} className="mt-2 text-sm font-bold text-emerald-700 underline">Buka dokumen asal {item.relatedDocumentNo}</button>}
       </li>)}</ol> : <p className="py-3 text-center text-sm text-slate-500">Belum ada aktivitas pada dokumen ini.</p>}
     </div>}
   </section>;

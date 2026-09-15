@@ -1,5 +1,16 @@
 # MADS — Management Distribution System
 
+## 2026-09-16 - Office history visibility patch LOCAL READY / clone verified
+
+Original Retail inputs/history now read in existing Quotation/Sales Order list,
+with original status, detail and canonical Invoice template. Converted source
+links are in SO activity; no duplicate active source or transaction recreation.
+Additive read-only reader requires one migration, no historic data backfill.
+Clone116 sources/all detail lines PASS, protected values unchanged; canonical
+recovery/dedupe/cross-Company regression exit0. Production install/client smoke
+for this patch remain manual, not inferred from prior six-release PASS.
+[Patch rollout](docs/runbooks/OFFICE_HISTORY_VISIBILITY_RELEASE_2026-09-16.md).
+
 ## 2026-09-16 - Production database PASS, user Git delivery pending
 
 User Production runtime/ACL postflight25 PASS, six migration ledger entries.

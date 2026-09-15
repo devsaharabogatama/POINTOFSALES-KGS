@@ -1,6 +1,37 @@
 # Active Development Handoff — KGS POS
 
 
+## 2026-09-16 - Office history visibility compatibility patch
+
+User asks retained old inputs/history visible after switching. Root cause:
+get_backoffice_sales_orders_v3 reads only Office table; original Retail remains
+in sales_headers, so preserved rows were not visible in Office list.
+Added get_office_retail_history(uuid), Company-scoped existing VIEW permission,
+read-only list/detail, original status/number, unconfirmed/scheduled -> Quotation,
+other statuses -> SO. Converted source suppressed in list, original accessible
+from SO source activity link. Canonical SalesDocumentView/print settings reused.
+No writer/converter/stock/reservation/FIFO/payment/session/Finance changes.
+
+Files: new migration20260916110000; schema audit/preflight/postflight; new
+history API, OfficeRetailHistoryDetail, office-retail-history helper/filter test;
+BackofficeSalesOrderView and SalesDocumentView; retained_order_recovery_behavior
+adds conditional dedupe/source-target/cross-Company history assertions; impact,
+rollout/root/router/spec/handoff notes. Unrelated HR/bootstrap/dummy files untouched.
+Evidence: clone preflight3PASS, fresh additive migration exit0, postflight3PASS;
+history behavior116 original/all lines, retry/anonymous/tenant scope and protected
+values unchanged PASS, fixture rollback. Canonical recovery nonzero fixture
+including dedupe/cross-Company history regression exit0. Pure filter test PASS;
+scoped lint/tsc exit0; Next compile85 pages exit0 before final source-link JSX
+change; final scoped ESLint/TypeScript/filter rerun exit0 after source-link JSX.
+Final null-safe recovered-target assertion regression also exit0. No browser/Production
+authenticated HTTP smoke claim. Prior six migrations Production PASS unaffected.
+
+Next safe step: entire new preflight -> migration -> postflight in Production,
+then scoped client commit/push by user and authenticated KMS/LSM history/detail/
+Invoice/source-link smoke. Do not rerun90 migrations/reset/clone/delete data.
+Rollback UI/API patch first, leave additive reader safe. Rollout:
+docs/runbooks/OFFICE_HISTORY_VISIBILITY_RELEASE_2026-09-16.md.
+
 ## 2026-09-16 - user Production postflight PASS; scoped Git delivery
 
 User evidence: six migrations Production installed, runtime/ACL postflight25

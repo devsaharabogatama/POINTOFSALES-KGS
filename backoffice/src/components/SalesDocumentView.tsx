@@ -37,7 +37,7 @@ type DocumentActivity = {
   canceledAt?: string | null
   canceledByName?: string | null
 }
-type InvoiceSummary = {
+export type InvoiceSummary = {
   salesId: string; invoiceSnapshotId: string; invoiceNo: string
   snapshotProvenance: string; invoiceDate?: string | null; postedAt: string; total: number
   fulfillmentMode: 'PICKUP' | 'DELIVERY'; sourceChannel: string
@@ -79,7 +79,7 @@ async function readApiJson<T extends { error?: string }>(response: Response): Pr
   return await response.json() as T
 }
 
-export function SalesDocumentView({ session, companyId, companyName, notify, canViewBackoffice = false, canCreateBackoffice = false, canEditBackoffice = false, canManageBackoffice = false }: { session: Session; companyId: string; companyName: string; notify: (message: string) => void; canViewBackoffice?: boolean; canCreateBackoffice?: boolean; canEditBackoffice?: boolean; canManageBackoffice?: boolean }) {
+export function SalesDocumentView({ session, companyId, companyName, notify, initialDocument = null, canViewBackoffice = false, canCreateBackoffice = false, canEditBackoffice = false, canManageBackoffice = false }: { session: Session; companyId: string; companyName: string; notify: (message: string) => void; initialDocument?: InvoiceSummary | null; canViewBackoffice?: boolean; canCreateBackoffice?: boolean; canEditBackoffice?: boolean; canManageBackoffice?: boolean }) {
   const [documents, setDocuments] = useState<InvoiceSummary[]>([])
   const [backofficeInvoices, setBackofficeInvoices] = useState<BackofficeInvoice[]>([])
   const [selectedBackofficeInvoice, setSelectedBackofficeInvoice] = useState<{ id: string; edit: boolean } | null>(null)
@@ -129,7 +129,7 @@ export function SalesDocumentView({ session, companyId, companyName, notify, can
     return (statusFilter === 'ALL' || mappedStatus === statusFilter) && (!keyword || [invoice.invoiceNo, invoice.draftNo, invoice.salesOrderNo, invoice.customerSnapshot.name, invoice.storeName].some((value) => value?.toLowerCase().includes(keyword)))
   }), [backofficeInvoices, search, statusFilter])
 
-  async function openDetail(document: InvoiceSummary) {
+  const openDetail = useCallback(async (document: InvoiceSummary) => {
     setSelected(document); setDetail(null); setDetailLoading(true); setError('')
     try {
       const response = await fetch(`/api/sales/documents?salesId=${encodeURIComponent(document.salesId)}`, { headers: headers(session), cache: 'no-store' })
@@ -137,7 +137,12 @@ export function SalesDocumentView({ session, companyId, companyName, notify, can
       if (!response.ok) throw new Error(friendly(result.error)); setDetail(result)
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Detail Invoice gagal dimuat.'); setSelected(null) }
     finally { setDetailLoading(false) }
-  }
+  }, [session])
+  useEffect(() => {
+    if (!initialDocument) return;
+    const timer = window.setTimeout(() => void openDetail(initialDocument), 0);
+    return () => window.clearTimeout(timer);
+  }, [initialDocument, openDetail, companyId])
   async function recordPrint() {
     if (!selected || !detail?.invoice) return
     const response = await fetch('/api/sales/documents', { method: 'POST', headers: headers(session, true), body: JSON.stringify({ salesId: selected.salesId, documentType: 'SALES_INVOICE', documentId: detail.invoice.invoiceSnapshotId }) })

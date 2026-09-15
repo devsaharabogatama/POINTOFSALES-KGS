@@ -258,6 +258,12 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.get_sales_document_activity()) activity
  WHERE activity->>'salesId'=v_other_sale::text AND activity->'cutover'->>'targetDocumentId'=v_reserved_target::text)
  THEN RAISE EXCEPTION 'TEST_FAILED: Retail source document activity lost target link'; END IF;
+ IF to_regprocedure('public.get_office_retail_history(uuid)') IS NOT NULL THEN
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(public.get_office_retail_history()->'data') history
+   WHERE history->>'id'=v_other_sale::text) THEN RAISE EXCEPTION 'TEST_FAILED: recovered source duplicated in Office history list'; END IF;
+  IF (public.get_office_retail_history(v_other_sale)->'data'->0->>'targetId') IS DISTINCT FROM v_reserved_target::text
+  THEN RAISE EXCEPTION 'TEST_FAILED: original history lost recovered target'; END IF;
+ END IF;
  UPDATE public.profiles SET role='cashier'::public.user_role WHERE id=v_actor;
  BEGIN
   PERFORM public.recover_retained_sales_process_order(v_item_id,1,v_version,v_setting_version,gen_random_uuid());
@@ -270,6 +276,14 @@ BEGIN
  VALUES(v_scheduled_target,'REC-'||substr(replace(v_scheduled_target::text,'-',''),1,12),
  'Rollback-only recovery tenant','rec-'||replace(v_scheduled_target::text,'-',''),'ACTIVE');
  UPDATE public.user_active_company_contexts SET company_id=v_scheduled_target WHERE user_id=v_actor;
+ IF to_regprocedure('public.get_office_retail_history(uuid)') IS NOT NULL THEN
+  INSERT INTO public.company_features(company_id,feature_code,is_enabled,config,updated_by)
+  VALUES(v_scheduled_target,'backoffice_delivered_qty_sales_enabled',true,'{}',v_actor);
+  BEGIN
+   PERFORM public.get_office_retail_history(v_other_sale);
+   RAISE EXCEPTION 'TEST_FAILED: cross-Company original history read';
+  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'SALES_DOCUMENT_NOT_FOUND' THEN RAISE; END IF; END;
+ END IF;
  BEGIN
   PERFORM public.recover_retained_sales_process_order(v_item_id,1,1,1,gen_random_uuid());
   RAISE EXCEPTION 'TEST_FAILED: other Company recovered source';

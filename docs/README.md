@@ -1,5 +1,14 @@
 # Router Dokumen KGS POS
 
+## 2026-09-16 - Existing Office list history repair
+
+[Impact](audits/OFFICE_HISTORY_VISIBILITY_IMPACT_2026-09-16.md) and
+[rollout](runbooks/OFFICE_HISTORY_VISIBILITY_RELEASE_2026-09-16.md).
+One additive read-only reader; existing list/detail/original Invoice template.
+Clone116 nonzero sources/all details PASS, canonical recovered-source dedupe and
+cross-Company regression exit0. No stock/Finance/source transaction mutation.
+Production reader install, client deployment and authenticated smoke pending.
+
 ## 2026-09-16 - Production database PASS, user Git delivery pending
 
 User Production runtime/ACL postflight25 PASS, six migration ledger entries.

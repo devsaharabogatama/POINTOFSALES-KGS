@@ -1,5 +1,16 @@
 # Optional POS Retail and Backoffice Delivered-Quantity Sales Process
 
+## 2026-09-16 - original history visibility compatibility
+
+User reaffirmed: process switch must not hide old inputs/history. Existing Office
+Quotation/SO list now includes original Retail source rows via additive authorized
+read-only reader. Unconfirmed/scheduled inputs appear with Quotations; other
+original statuses with SO. Original status/number preserved, Retail badge, detail
+and original Invoice template reused. Converted source is linked from SO log,
+not duplicated as an active order. No final document/stock/FIFO/Finance replay.
+Local/clone verified; Production reader install/client/authenticated smoke for
+this patch remain manual. See OFFICE_HISTORY_VISIBILITY_RELEASE_2026-09-16.
+
 
 ## Current 2026-09-16 - recovery release candidate
 
