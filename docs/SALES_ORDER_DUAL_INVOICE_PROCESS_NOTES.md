@@ -1,5 +1,50 @@
 # Optional POS Retail and Backoffice Delivered-Quantity Sales Process
 
+
+## Current 2026-09-16 - recovery release candidate
+
+Supersedes historical NOT READY / pending notes below.
+LOCAL READY: six repair migrations and existing UI/API/document-log integration.
+DATABASE LIVE: clone idrufihckscppsyclmsu only. No Production SQL/deploy by agent.
+12 nonzero rollback behavioral regressions exit0: open/closed sessions, shared
+request/two recovered SOs, final PO, actual partial/full dispatch, role/tenant,
+retry/stale, Retail/Office Invoice/DP/payment and Purchase regression.
+Two live connections verify Recovery Company-lock serialization; retry separately.
+Scoped eslint, tsc and Next production build exit0 (compile-only non-access keys).
+Atomic installer re-entry/parser proof exit0; full release postflight25 PASS.
+No fake Receive/stock reset/historical plan-item-KEEP_ITEM rewrite.
+Linked active procurement remains blocked on reverse until ownership transfer.
+
+Production nine orders are NOT claimed restored. CLIENT DEPLOYED,
+authenticated HTTP SMOKE PASS and UAT PASS remain manual gates.
+[Current report, complete package and installation order](runbooks/OFFICE_PROCUREMENT_RECOVERY_RELEASE_REPORT_2026-09-16.md).
+Use its one atomic bundle, NOT historical partial installation instructions.
+Changed: six new migrations, release pre/post/installer, representative tests,
+cutover route/settings, SalesOrderView/page deep links, SalesDocumentView logs,
+impact/spec/root/router/handoff. Recovery is explicit Super Admin action with
+current versions, atomic target/link/audit and immutable APPLY_ITEM exact retry.
+Next safe step: user Production preflight/fingerprints, atomic install/postflight,
+unchanged-data comparison, user push/redeploy without env change, KMS/LSM smoke.
+Stop on drift/blocker; no reset, ledger-only insertion or private SQL bypass.
+
+
+> 2026-09-15 procurement preservation approved: existing active Stock Requests
+> are linked to Office SO, not replaced. Actual inventory nine RESERVED sources,
+> 27 REQUESTED lines, two SUBMITTED requests, no PO allocation/payment/dispatch.
+> User delegates a balanced method targeting stock0; this is not permission to
+> reset On Hand or fabricate Receipt/Finance events. Immutable linkage foundation
+> 20260915140000 is installed/tested only on rehearsal clone; converter recovery
+> and Office lifecycle synchronization remain pending.
+
+> 2026-09-15 latest user decision: already-entered orders must follow the new
+> process; internal procurement is not a reason to leave the affected open
+> orders behind. Production evidence shows KMS4/LSM5 APPLIED-plan sources
+> BLOCKED/KEPT solely by OPEN_PROCUREMENT_MUST_FINISH, all targets null.
+> Earlier procurement-only grandfathering is superseded for this case.
+> [Impact-first recovery audit](audits/OFFICE_SALES_RETAINED_PROCUREMENT_IMPACT_2026-09-15.md)
+> records cancellation/RO/PO side effects and facts required before repair.
+> No converter fix or Production recovery is live from this decision yet.
+
 > 2026-09-12 — Step 6/6.1 authenticated read smoke **LOCAL READY**. Script
 > login dengan user Development nyata lalu membaca active Company, SO, DO/SJ,
 > Invoice, Delivered Not Invoiced, dan katalog export melalui API lokal. Target
@@ -452,6 +497,25 @@ Forward-fix `20260908121000` diperlukan karena `pgcrypto` berada di schema
 Feature tetap OFF dan tidak ada runtime business row yang dipertahankan.
 
 ## 17. Revision and fulfillment-status foundation (2026-09-09)
+
+2026-09-16 clone update:15142000 supplies the pre-dispatch delta described below.
+Same SO/Reservation/initial DO IDs/numbers; canonical mutable line recomposition,
+immutable full before/after history, atomic negative-stock opt-out rollback,
+retry/stale and cancellation verified. Actual partial/full dispatch denies ordinary
+revision/cancel. Authorized UI Edit/Cancel now includes PREPARING with no active
+invoice; server validates untouched dependencies. Production/client rollout and
+authenticated smoke are not yet performed. Historical APPLIED/KEPT recovery and
+remaining linked-procurement matrix remain separate pending gates.
+
+Historical diagnosis before15142000:
+
+2026-09-15 actual-clone audit: automatic Confirm sets PREPARING and creates READY
+DO, but the active core Save/Cancel guards still accept confirmed edits only at
+CONFIRMED fulfillment. Save deletes/recreates lines while Reservation/DO FKs
+protect those identities. Procurement-preserving recovery phase2 behavior fails
+at this real public revision boundary; no guard bypass is authorized. Transactional
+pre-dispatch Reservation/DO delta and full behavior verification are required
+before recovery release; same-number revision remains the approved target.
 
 Keputusan operasional terbaru menghapus aksi UI `Tandai Terkirim` yang ambigu.
 Quotation `DRAFT` dikonfirmasi dan berpindah ke tab Sales Order. Record legacy

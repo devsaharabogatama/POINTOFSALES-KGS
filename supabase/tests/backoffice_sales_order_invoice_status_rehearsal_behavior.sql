@@ -61,12 +61,14 @@ BEGIN
         AND product_uom.sales_allowed AND product_uom.factor_to_base>0)
     AND EXISTS(SELECT 1 FROM public.accounting_periods period
       WHERE period.company_id=company.id AND period.status IN('OPEN','REOPENED')
-        AND current_date BETWEEN period.start_date AND period.end_date)
+        AND (clock_timestamp() AT TIME ZONE company.timezone)::date BETWEEN period.start_date AND period.end_date)
   ORDER BY company.id LIMIT 1;
   IF v_company IS NULL THEN
     RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: canonical Company with current open period required';
   END IF;
-  SELECT current_date INTO v_period_date;
+  -- Receipt validates the dispatch date in Company timezone, not database UTC.
+  SELECT (clock_timestamp() AT TIME ZONE company.timezone)::date INTO STRICT v_period_date
+  FROM public.companies company WHERE company.id=v_company;
   PERFORM set_config('request.jwt.claim.sub',v_actor::text,true);
   INSERT INTO public.user_active_company_contexts(user_id,company_id)
   VALUES(v_actor,v_company) ON CONFLICT(user_id) DO UPDATE

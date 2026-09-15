@@ -65,6 +65,18 @@ BEGIN
   UPDATE public.warehouses SET allow_negative_stock=true
   WHERE company_id=v_company AND id=v_warehouse;
   v_today:=(clock_timestamp() AT TIME ZONE v_timezone)::date;v_future:=v_today+2;
+  -- This older converter test predates the root-creation mode gate.
+  -- Prepare the source Company mode transactionally, then clear the trusted scope
+  -- before public Sales creation. The entire test rolls this preparation back.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_company::text,20260911130000));
+  PERFORM set_config('kgs.sales_process_cutover_mutation','1',true);
+  UPDATE public.company_sales_process_settings SET
+    active_mode='BACKOFFICE_DELIVERED_QTY_INVOICE',mode_effective_at='-infinity',
+    master_version=master_version+1,updated_by=v_actor,updated_at=clock_timestamp()
+  WHERE company_id=v_company;
+  IF NOT FOUND THEN RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Company sales process setting required'; END IF;
+  PERFORM set_config('kgs.sales_process_cutover_mutation','',true);
+  PERFORM private.assert_sales_process_root_creation_allowed(v_company,'BACKOFFICE_DELIVERED_QTY_INVOICE');
 
   v_payload:=jsonb_build_object('storeId',v_store,'warehouseId',v_warehouse,
     'customerId',v_customer,'selectedPricelistId',NULL,'orderDate',v_today,

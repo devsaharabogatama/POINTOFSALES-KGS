@@ -17,7 +17,7 @@ const PROCESS_MODES = [
   'RETAIL_CONFIRM_INVOICE',
   'BACKOFFICE_DELIVERED_QTY_INVOICE',
 ] as const
-const ACTIONS = ['CREATE', 'REFRESH', 'CANCEL', 'APPLY'] as const
+const ACTIONS = ['CREATE', 'REFRESH', 'CANCEL', 'APPLY', 'RECOVER'] as const
 
 type ProcessMode = (typeof PROCESS_MODES)[number]
 type RpcError = { message?: string } | null
@@ -60,6 +60,19 @@ function throwCutoverError(error: RpcError): never {
     'SALES_PROCESS_CUTOVER_NONTERMINAL_OFFLINE_SUBMISSION',
     'SALES_PROCESS_CUTOVER_IDEMPOTENCY_PAYLOAD_CONFLICT',
     'BACKOFFICE_SALES_FEATURE_NOT_ENABLED',
+    'SALES_PROCESS_RECOVERY_REQUEST_INVALID',
+    'SALES_PROCESS_RECOVERY_ITEM_NOT_FOUND',
+    'SALES_PROCESS_RECOVERY_SOURCE_NOT_FOUND',
+    'SALES_PROCESS_RECOVERY_SOURCE_VERSION_STALE',
+    'SALES_PROCESS_RECOVERY_ITEM_NOT_ELIGIBLE',
+    'SALES_PROCESS_RECOVERY_ALREADY_APPLIED',
+    'SALES_PROCESS_RECOVERY_ACTIVE_OPERATION',
+    'CUTOVER_SOURCE_RETAIL_STATE_INVALID',
+    'CUTOVER_SOURCE_RETAIL_NOT_CONVERTIBLE',
+    'CUTOVER_SOURCE_RETAIL_REVALIDATION_BLOCKED',
+    'CUTOVER_SOURCE_RETAIL_DATE_INVALID',
+    'CUTOVER_SOURCE_RETAIL_LINE_MAPPING_INVALID',
+    'BACKOFFICE_SALES_NEGATIVE_RESERVATION_REQUIRES_WAREHOUSE_OPT_IN',
   ] as const
   const code = codes.find((candidate) => message.includes(candidate))
   if (!code) throw new ApiRouteError('SALES_PROCESS_CUTOVER_OPERATION_FAILED', 500)
@@ -120,14 +133,18 @@ export async function GET(request: Request) {
       ['DRAFT', 'PREVIEWED', 'APPLYING'].includes(row.status),
     )?.id
     const latestId = rows[0]?.id
-    const [previewResult, openPlan, latestPlan] = await Promise.all([
+    const [previewResult, openPlan, latestPlan, recoveryResult] = await Promise.all([
       caller.client.rpc('get_sales_process_cutover_preview', {
         p_target_mode: targetMode,
       }),
       getPlan(caller, openId),
       latestId === openId ? Promise.resolve(null) : getPlan(caller, latestId),
+      caller.client.rpc('get_retained_sales_process_recovery_candidates'),
     ])
     if (previewResult.error) throwCutoverError(previewResult.error)
+    // New client remains compatible during SQL-first staged rollout.
+    const recoverySetupPending = recoveryResult.error?.code === 'PGRST202'
+    if (recoveryResult.error && !recoverySetupPending) throwCutoverError(recoveryResult.error)
 
     return Response.json({
       companyId,
@@ -142,6 +159,8 @@ export async function GET(request: Request) {
       preview: previewResult.data,
       openPlan,
       latestPlan: openPlan ?? latestPlan,
+      recoveryCandidates: recoveryResult.data ?? [],
+      recoverySetupPending,
     })
   } catch (error) {
     return apiError(error)
@@ -161,7 +180,15 @@ export async function POST(request: Request) {
     )
     let result: { data: unknown; error: RpcError }
 
-    if (action === 'CREATE') {
+    if (action === 'RECOVER') {
+      result = await caller.client.rpc('recover_retained_sales_process_order', {
+        p_item_id: uuidValue(typeof body.itemId === 'string' ? body.itemId : '', 'SALES_PROCESS_RECOVERY_REQUEST_INVALID'),
+        p_expected_plan_version: version(body.planVersion, 'SALES_PROCESS_CUTOVER_PLAN_VERSION_REQUIRED'),
+        p_expected_source_version: version(body.sourceVersion, 'SALES_PROCESS_RECOVERY_REQUEST_INVALID'),
+        p_expected_settings_version: version(body.settingsVersion, 'SALES_PROCESS_CUTOVER_SETTINGS_VERSION_REQUIRED'),
+        p_operation_id: operationId,
+      })
+    } else if (action === 'CREATE') {
       const targetMode = enumValue(
         body.targetMode,
         PROCESS_MODES,

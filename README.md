@@ -1,5 +1,142 @@
 # MADS — Management Distribution System
 
+## 2026-09-16 - Production database PASS, user Git delivery pending
+
+User Production runtime/ACL postflight25 PASS, six migration ledger entries.
+Legacy reconciliation matches16 previous closing table results; cashier109
+already documented (historical full109 digest not captured). UI deployment,
+authenticated recovery smoke and UAT remain pending, not database-install gates.
+[Scoped commit/push script](scripts/commit-push-office-recovery.ps1):
+default preview; -Execute stages only listed recovery files and pushes main.
+Excludes HR/dummy/bootstrap operations, rejects unrelated staged files/commits,
+no force/pull/reset or Supabase/env mutation. User executes, agent does not push.
+
+
+## 2026-09-16 - CRLF fingerprint fix CLONE VERIFIED, Production retry pending
+
+Supersedes prior diagnostic hold for formatting, not Production-live/smoke gates.
+User Production output proves all six release ledger entries absent and six new
+routines missing: failed install did not commit. Old function CR counts3..299.
+Pre-update LF hashes are NOT expected to equal post-update hashes.
+Clone reproduces15 actual definitions changed to CRLF: raw comparison15 failures,
+CRLF->LF comparison15 matches, entire routine fixture rolled back.
+Exact revised installer guard accepts those15 CRLF definitions and rejects a
+real reader source change; rollback test exit0. No hash expectations changed,
+no whitespace/comments/config stripping, no business routine/migration body changes.
+Installer and postflight now compare full definitions after CRLF->LF only.
+Recovery behavioral regression exit0; installer re-entry exit0; postflight25 PASS.
+Production may still expose genuine post-update code drift; guard remains strict.
+
+Changed this fix: installer verification, release postflight, two rollback tests,
+impact/report/router/handoff/root notes. No new schema/backfill, stock/reservation/
+FIFO/payment/session/Finance/audit operation, CLI link/env change or agent deployment.
+No seventh migration/ledger entry is required for verification-file correction.
+Local code ready; database verified only in clone; Production installation and
+CLIENT DEPLOYED/authenticated SMOKE/UAT remain user manual checks.
+
+Next safe run: current backup/pause; entire
+[preflight](supabase/diagnostics/office_procurement_recovery_release_preflight.sql),
+[transaction fingerprints](supabase/diagnostics/office_purchase_clone_closing_fingerprints.sql),
+[updated atomic installer](supabase/releases/office_procurement_recovery_install.sql),
+[updated postflight](supabase/diagnostics/office_procurement_recovery_release_postflight.sql),
+then same fingerprints BEFORE recovery. All17 counts/digests must match while
+paused; postflight expects25 PASS. Do not rerun previous90 files or seed tests.
+On genuine error, transaction guard still rolls back; stop, retain error, trace
+actual definitions rather than bypass. Then user client deployment/recovery smoke
+as detailed in current release report. No restored-Production-order claim yet.
+
+
+
+## 2026-09-16 - PRODUCTION INSTALL BLOCKED: all15 runtime fingerprints fail
+
+Supersedes release-candidate readiness below. User reports RELEASE_RUNTIME_DRIFT
+for all15 functions at final guard before COMMIT. Do not retry/deploy/recover yet.
+Committed Production installation state must be checked from the live ledger.
+Clone raw fingerprints still match15; CR count0 for all15. Local bundle and reader
+migration CR count0. Neither actual Production code drift nor clipboard/formatting
+cause is proved; do not normalize/remove fingerprint guard on this evidence.
+Prior bundle test was installed-clone re-entry, NOT fresh combined installation.
+That proof did not establish fresh Production bundle readiness.
+
+[Read-only live diagnosis](supabase/diagnostics/office_procurement_recovery_runtime_drift_diagnosis.sql) returns one result set:
+15 expected/actual hashes, missing functions, LF comparison, CR counts, ledger
+and session metadata. Clone run exit0:15 MATCH +2 INFO. No runtime/DDL or stock,
+reservation, FIFO, payment, cashier-session, Finance or audit mutation in this fix.
+No privileged credentials logged; no CLI/environment/Production link changed.
+Next safe step: obtain complete Production diagnosis, confirm rollback/install
+state, then inspect actual discrepancy before any functional installer patch.
+Keep historical tests intact; no reset, ledger insertion or guard bypass.
+
+
+
+## Current 2026-09-16 - recovery release candidate
+
+Supersedes historical NOT READY / pending notes below.
+LOCAL READY: six repair migrations and existing UI/API/document-log integration.
+DATABASE LIVE: clone idrufihckscppsyclmsu only. No Production SQL/deploy by agent.
+12 nonzero rollback behavioral regressions exit0: open/closed sessions, shared
+request/two recovered SOs, final PO, actual partial/full dispatch, role/tenant,
+retry/stale, Retail/Office Invoice/DP/payment and Purchase regression.
+Two live connections verify Recovery Company-lock serialization; retry separately.
+Scoped eslint, tsc and Next production build exit0 (compile-only non-access keys).
+Atomic installer re-entry/parser proof exit0; full release postflight25 PASS.
+Clone installation re-entry preserves all17 protected transaction fingerprints;
+all six bundled source bodies match reviewed migrations exactly.
+No fake Receive/stock reset/historical plan-item-KEEP_ITEM rewrite.
+Linked active procurement remains blocked on reverse until ownership transfer.
+
+Production nine orders are NOT claimed restored. CLIENT DEPLOYED,
+authenticated HTTP SMOKE PASS and UAT PASS remain manual gates.
+[Current report, complete package and installation order](docs/runbooks/OFFICE_PROCUREMENT_RECOVERY_RELEASE_REPORT_2026-09-16.md).
+Use its one atomic bundle, NOT historical partial installation instructions.
+Changed: six new migrations, release pre/post/installer, representative tests,
+cutover route/settings, SalesOrderView/page deep links, SalesDocumentView logs,
+impact/spec/root/router/handoff. Recovery is explicit Super Admin action with
+current versions, atomic target/link/audit and immutable APPLY_ITEM exact retry.
+Next safe step: user Production preflight/fingerprints, atomic install/postflight,
+unchanged-data comparison, user push/redeploy without env change, KMS/LSM smoke.
+Stop on drift/blocker; no reset, ledger-only insertion or private SQL bypass.
+
+
+> 2026-09-16: pre-dispatch revision/cancel delta20260915142000 is clone-verified.
+> Same SO/Reservation/DO identities, canonical recomposition and immutable audit;
+> real partial/full dispatch remains protected. Retention, ordinary converter
+> two-way, Apply, Invoice/DP/payment and PO/Receive/Bill/payment regression exit0.
+> Client eslint/typecheck passed; no Production rollout/client smoke for this fix.
+> Historical nine-order recovery RPC and remaining procurement matrix are pending:
+> the entire recovery is still NOT RELEASE READY. Do not deploy the incomplete
+> retention package. [Current evidence](docs/runbooks/SALES_CUTOVER_PROCUREMENT_RECOVERY.md).
+>
+> Historical 2026-09-15 blocker (resolved in clone, not Production):
+> Procurement recovery current phase2/3 is NOT RELEASE READY. Clone retention
+> migration20260915141000 installed; preflight4 PASS/1 SETUP, postflight5 PASS/1 INFO.
+> Nonzero conversion fixture stopped at confirmed SO revision: Confirm automatically
+> creates PREPARING/READY fulfillment, while canonical Save only accepts CONFIRMED
+> fulfillment. Actual Cancel has the same state limitation. Do not relax guards:
+> Save deletes/recreates SO lines whose Reservation/DO foreign keys restrict deletion.
+> Recovery RPC/UI and Production nine-order recovery are not delivered or executed.
+> [Root-cause/evidence and next safe boundary](docs/runbooks/SALES_CUTOVER_PROCUREMENT_RECOVERY.md).
+
+> Procurement-preserving recovery Phase1/3 foundation is clone-verified:
+> [rollout/evidence boundaries](docs/runbooks/SALES_CUTOVER_PROCUREMENT_RECOVERY.md).
+> Immutable Company-scoped links and Sales VIEW reader preserve existing records;
+> canonical owned fixture, retry, authorization and zero operational delta tested.
+> This does NOT activate converter/recover retained Production orders; phases2/3
+> and authenticated smoke remain pending. No Production reset/mutation/deploy.
+
+> Production Office-empty root cause confirmed: KMS4/LSM5 sources are KEPT solely
+> by the procurement blocker in APPLIED plans, with no target documents. Latest
+> user decision requires entered orders to move with the business process.
+> [Impact audit](docs/audits/OFFICE_SALES_RETAINED_PROCUREMENT_IMPACT_2026-09-15.md)
+> and [read-only procurement inventory](supabase/diagnostics/office_sales_retained_procurement_inventory.sql)
+> are available; clone SELECT exit0/25 INFO rows is not conversion behavior PASS.
+> Actual Production RO/PO links are required before guarded recovery. No fix,
+> Production mutation or deployment performed by this task yet.
+
+> User reports empty Office SO after Production activation. [Read-only cutover/list diagnosis](supabase/diagnostics/office_sales_empty_list_cutover_diagnosis.sql)
+> is clone syntax-verified; Production mode/counts/lineage await user output. No
+> speculative data conversion or application fix performed.
+
 > Release preparation authorized by user: old11 dispatch audits/current COGS and
 > one Session CLOSE agree with recorded operations; no fix justified by that trace.
 > Local Vercel links point to projects named staging; exact live hosting targets

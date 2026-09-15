@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, FilePenLine, FileText, History, Loader2, Plus, RefreshCw, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { BackofficeSalesInvoiceView } from "@/components/BackofficeSalesInvoiceView";
@@ -58,7 +58,7 @@ function dateText(value: string | null) { return value ? new Intl.DateTimeFormat
 function dateTimeText(value: string | null) { return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-"; }
 function errorText(code: string) { return friendly[code] ?? code.replaceAll("_", " "); }
 function activityLabel(action: string) {
-  return ({ CREATE: "Quotation dibuat", UPDATE: "Quotation diperbarui", SEND: "Quotation dikirim", CONFIRM: "Dikonfirmasi menjadi Sales Order", REVISE: "Sales Order direvisi", CANCEL: "Dokumen dibatalkan" } as Record<string, string>)[action] ?? action.replaceAll("_", " ");
+  return ({ CREATE: "Quotation dibuat", UPDATE: "Quotation diperbarui", SEND: "Quotation dikirim", CONFIRM: "Dikonfirmasi menjadi Sales Order", REVISE: "Sales Order direvisi", CANCEL: "Dokumen dibatalkan", CUTOVER_RECOVERY: "Dipindahkan dari proses Retail" } as Record<string, string>)[action] ?? action.replaceAll("_", " ");
 }
 async function jsonResponse(response: Response) { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(errorText(typeof body.error === "string" ? body.error : "OPERASI_GAGAL")); return body; }
 function newForm(workspace: Workspace): FormState {
@@ -68,6 +68,7 @@ function newForm(workspace: Workspace): FormState {
 }
 
 export function BackofficeSalesOrderView({ session, companyId, companyName, canCreate, canEdit, canManage, notify }: { session: Session; companyId: string; companyName: string; canCreate: boolean; canEdit: boolean; canManage: boolean; notify: (message: string) => void }) {
+  const consumedOrderLink = useRef("");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [documentKind, setDocumentKind] = useState<DocumentKind>("QUOTATION");
@@ -110,6 +111,21 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
     }).then(jsonResponse);
     return body.data as Order;
   }, [session]);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const orderId = query.get("orderId");
+    if (!orderId || query.get("companyId") !== companyId || consumedOrderLink.current === orderId) return;
+    consumedOrderLink.current = orderId;
+    let active = true;
+    void readOrder(orderId).then((order) => {
+      if (!active) return;
+      setSelected(order); setDocumentKind(order.orderNo ? "SALES_ORDER" : "QUOTATION");
+      for (const key of ["view", "orderId", "companyId"]) query.delete(key);
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${query.size ? `?${query}` : ""}${window.location.hash}`);
+    }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Dokumen gagal dimuat."); });
+    return () => { active = false; consumedOrderLink.current = ""; };
+  }, [companyId, readOrder]);
 
   async function transition(order: Order, action: "SEND" | "CONFIRM" | "CANCEL") {
     const reason = action === "CANCEL" ? window.prompt("Alasan pembatalan")?.trim() : undefined;
@@ -235,7 +251,7 @@ function OrderDetail({ session, order, workspace, canCreate, canEdit, canManage,
   const warehouse = workspace.warehouses.find((item) => item.id === order.warehouseId); const store = workspace.stores.find((item) => item.id === order.storeId);
   const pricelistName = order.lines[0]?.pricingSnapshot?.pricelistName ?? workspace.pricelists?.find((item) => item.id === order.pricelistId)?.name ?? "Harga dasar Product";
   const pricelistSource = order.lines[0]?.pricingSnapshot?.pricingSelectionSource === "BACKOFFICE_EXPLICIT" ? "Dipilih pada dokumen" : "Otomatis dari Customer / Global";
-  const actions = <>{order.status === "CONFIRMED" && order.fulfillmentStatus === "COMPLETED" && canCreate && <button onClick={createInvoice} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><FileText className="h-4 w-4" />Buat Invoice</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && order.fulfillmentStatus === "CONFIRMED")) && canEdit && <button onClick={edit} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 font-bold"><FilePenLine className="h-4 w-4" />{order.status === "CONFIRMED" ? "Revisi SO" : "Edit"}</button>}{(order.status === "DRAFT" || order.status === "SENT") && canManage && <button onClick={() => void transition(order, "CONFIRM")} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><ShoppingCart className="h-4 w-4" />Konfirmasi menjadi SO</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && order.fulfillmentStatus === "CONFIRMED")) && canManage && <button onClick={() => void transition(order, "CANCEL")} className="rounded-xl border border-rose-200 px-4 py-2 font-bold text-rose-700">{order.status === "CONFIRMED" ? "Batalkan SO" : "Batalkan"}</button>}</>;
+  const actions = <>{order.status === "CONFIRMED" && order.fulfillmentStatus === "COMPLETED" && canCreate && <button onClick={createInvoice} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><FileText className="h-4 w-4" />Buat Invoice</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canEdit && <button onClick={edit} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 font-bold"><FilePenLine className="h-4 w-4" />{order.status === "CONFIRMED" ? "Revisi SO" : "Edit"}</button>}{(order.status === "DRAFT" || order.status === "SENT") && canManage && <button onClick={() => void transition(order, "CONFIRM")} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><ShoppingCart className="h-4 w-4" />Konfirmasi menjadi SO</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canManage && <button onClick={() => void transition(order, "CANCEL")} className="rounded-xl border border-rose-200 px-4 py-2 font-bold text-rose-700">{order.status === "CONFIRMED" ? "Batalkan SO" : "Batalkan"}</button>}</>;
   return <div className="space-y-3"><DocumentHeader title={order.orderNo ?? order.quotationNo} subtitle={order.orderNo ? `Sales Order · asal ${order.quotationNo}` : "Quotation"} status={order.status} fulfillmentStatus={order.fulfillmentStatus} back={close} actions={actions} />
     {error && <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</div>}{order.cancelReason && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">Alasan pembatalan: {order.cancelReason}</div>}
     <section className="overflow-hidden border border-slate-200 bg-white shadow-sm">

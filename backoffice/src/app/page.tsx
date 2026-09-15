@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   Activity,
@@ -211,6 +211,7 @@ export default function Home() {
   const [activeCompanyId, setActiveCompanyId] = useState("");
   const [switchingCompany, setSwitchingCompany] = useState(false);
   const [activeView, setActiveView] = useState<View>("dashboard");
+  const consumedOrderLink = useRef("");
   const [supplierInvoiceLaunch, setSupplierInvoiceLaunch] = useState<SupplierInvoiceLaunch | null>(null);
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
@@ -626,6 +627,24 @@ export default function Home() {
     },
     [activeView, navigationModules],
   );
+
+  useEffect(() => {
+    if (!session || !activeCompanyId || navigationModules.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams(window.location.search);
+      const orderId = query.get("orderId");
+      if (query.get("view") !== "backoffice-sales-orders" || !orderId) return;
+      const key = `${activeCompanyId}:${orderId}`;
+      if (consumedOrderLink.current === key) return;
+      consumedOrderLink.current = key;
+      if (query.get("companyId") !== activeCompanyId) {
+        setNotice("Link dokumen berasal dari Company lain. Pilih Company dokumen terlebih dahulu.");
+        return;
+      }
+      navigateTo("backoffice-sales-orders");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeCompanyId, navigateTo, navigationModules, session]);
 
   const goBack = useCallback(() => {
     const previousView = viewHistory.at(-1) ?? "dashboard";

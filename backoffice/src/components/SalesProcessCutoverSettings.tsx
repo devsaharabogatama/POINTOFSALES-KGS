@@ -15,7 +15,9 @@ import {
 } from 'lucide-react'
 
 type ProcessMode = 'RETAIL_CONFIRM_INVOICE' | 'BACKOFFICE_DELIVERED_QTY_INVOICE'
-type Action = 'CREATE' | 'REFRESH' | 'CANCEL' | 'APPLY'
+type Action = 'CREATE' | 'REFRESH' | 'CANCEL' | 'APPLY' | 'RECOVER'
+type RecoveryCandidate = { itemId: string; planId: string; planVersion: number; sourceVersion: number; settingsVersion: number; sourceDocumentNo: string; sourceStatus: string }
+type RecoveryResult = { targetDocumentId: string; targetDocumentNo: string }
 type Summary = {
   convertible: number
   blocked: number
@@ -62,6 +64,9 @@ type Plan = {
   items: Candidate[]
 }
 type StatePayload = {
+  companyId?: string
+  recoveryCandidates?: RecoveryCandidate[]
+  recoverySetupPending?: boolean
   serverNow?: string
   setting?: {
     activeMode: ProcessMode
@@ -167,7 +172,7 @@ function authHeaders(session: Session, json = false) {
 }
 
 async function jsonResponse(response: Response) {
-  const payload = await response.json() as StatePayload & { data?: Plan }
+  const payload = await response.json() as StatePayload & { data?: unknown }
   if (!response.ok) throw new Error(friendlyError(payload.error))
   return payload
 }
@@ -191,11 +196,14 @@ export function SalesProcessCutoverSettings({
   const [cancelReason, setCancelReason] = useState('')
   const [effectiveAt, setEffectiveAt] = useState(nowLocalInput)
   const [confirmed, setConfirmed] = useState(false)
+  const [recovered, setRecovered] = useState<RecoveryResult[]>([])
+  const recoveryOperations = useRef<Record<string, string>>({})
   const operationIds = useRef<Record<Action, string>>({
     CREATE: crypto.randomUUID(),
     REFRESH: crypto.randomUUID(),
     CANCEL: crypto.randomUUID(),
     APPLY: crypto.randomUUID(),
+    RECOVER: crypto.randomUUID(),
   })
 
   const load = useCallback(async () => {
@@ -293,6 +301,25 @@ export function SalesProcessCutoverSettings({
     }
   }
 
+  async function recover(item: RecoveryCandidate) {
+    if (!window.confirm(`Pindahkan ${item.sourceDocumentNo} ke Office? Stock Request lama dipertahankan; sumber Retail ditutup dan SO/DO dibuat oleh sistem.`)) return
+    const key = `${item.itemId}:${item.sourceVersion}:${item.settingsVersion}:${item.planVersion}`
+    const operationId = recoveryOperations.current[key] ??= crypto.randomUUID()
+    setBusy('RECOVER'); setError('')
+    try {
+      const body = await jsonResponse(await fetch('/api/platform/sales-process-cutover', {
+        method: 'POST', headers: authHeaders(session, true),
+        body: JSON.stringify({ action: 'RECOVER', itemId: item.itemId, planVersion: item.planVersion,
+          sourceVersion: item.sourceVersion, settingsVersion: item.settingsVersion, operationId }),
+      }))
+      const result = body.data as RecoveryResult
+      setRecovered((rows) => rows.some((row) => row.targetDocumentId === result.targetDocumentId) ? rows : [...rows, result])
+      await complete(); await load()
+      notify(`${item.sourceDocumentNo} berhasil dipindahkan ke ${result.targetDocumentNo}.`)
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Pemindahan gagal. Muat ulang untuk memeriksa kondisi terbaru.') }
+    finally { setBusy('') }
+  }
+
   return <article className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
     <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
@@ -310,6 +337,13 @@ export function SalesProcessCutoverSettings({
     </div>
 
     <div className="p-5">
+      {state.recoverySetupPending && state.setting?.activeMode === 'BACKOFFICE_DELIVERED_QTY_INVOICE' && <p className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Paket SQL recovery belum terpasang. Pergantian proses biasa tetap tersedia.</p>}
+      {(state.recoveryCandidates?.length ?? 0) > 0 && <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+        <h4 className="font-black text-slate-950">Order tertahan dari pergantian sebelumnya</h4>
+        <p className="mt-1 text-sm text-slate-600">Sistem memeriksa ulang kondisi setiap order saat dipindahkan. Stock Request dan histori lama tetap dipertahankan.</p>
+        <ul className="mt-3 space-y-2">{state.recoveryCandidates!.map((item) => <li key={item.itemId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white p-3"><span><strong className="block text-sm">{item.sourceDocumentNo}</strong><span className="text-xs text-slate-500">{item.sourceStatus}</span></span><button type="button" disabled={Boolean(busy) || loading} onClick={() => void recover(item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy === 'RECOVER' ? 'Memproses...' : 'Pindahkan ke Office'}</button></li>)}</ul>
+      </section>}
+      {recovered.length > 0 && <ul className="mb-4 space-y-1 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{recovered.map((row) => <li key={row.targetDocumentId}><a className="font-bold underline" href={`/?view=backoffice-sales-orders&orderId=${encodeURIComponent(row.targetDocumentId)}&companyId=${encodeURIComponent(state.companyId ?? '')}`}>{row.targetDocumentNo}</a> berhasil dibuat.</li>)}</ul>}
       {error && <div className="mb-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
       {loading && !state.setting ? <div className="flex items-center gap-2 py-8 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Memuat kontrol proses...</div> : state.setting && preview && <>
         <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
