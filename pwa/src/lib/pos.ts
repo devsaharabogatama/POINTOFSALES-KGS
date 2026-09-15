@@ -431,6 +431,9 @@ export type SaleDraftListItem = {
   customerName: string
   storeId: string
   storeName: string
+  salesWarehouseId: string
+  salesOrigin: 'POS' | 'BACKOFFICE_SALES' | 'BACKOFFICE_CUTOVER'
+  commercialSnapshotPreserved: boolean
   createdBy: string
   createdByName: string
   createdAt: string
@@ -575,6 +578,7 @@ export type SaleReceipt = {
 export type SalesInvoiceDocument = {
   invoiceSnapshotId: string
   invoiceNo: string
+  invoiceDate?: string | null
   snapshotVersion: number
   snapshotProvenance: 'LIVE_POST' | 'LEGACY_CUTOVER'
   snapshot: Record<string, unknown>
@@ -2205,6 +2209,14 @@ export async function listSaleDrafts(
     customerName: String(row.customerName),
     storeId: String(row.storeId),
     storeName: String(row.storeName),
+    salesWarehouseId: String(row.salesWarehouseId ?? ''),
+    salesOrigin:
+      row.salesOrigin === 'BACKOFFICE_CUTOVER'
+        ? 'BACKOFFICE_CUTOVER'
+        : row.salesOrigin === 'BACKOFFICE_SALES'
+          ? 'BACKOFFICE_SALES'
+          : 'POS',
+    commercialSnapshotPreserved: Boolean(row.commercialSnapshotPreserved),
     createdBy: String(row.createdBy),
     createdByName: String(row.createdByName),
     createdAt: String(row.createdAt),
@@ -2254,6 +2266,55 @@ export async function acquireSaleDraftLock(
     p_cashier_session_id: cashierSessionId,
     p_confirm_takeover: confirmTakeover,
   })
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function adoptBackofficeCutoverSaleDraft(input: {
+  salesId: string
+  expectedMasterVersion: number
+  cashierSessionId: string
+  operationId: string
+  confirmTakeover: boolean
+}) {
+  const { data, error } = await supabase.rpc(
+    'adopt_backoffice_cutover_sale_draft',
+    {
+      p_sales_id: input.salesId,
+      p_expected_master_version: input.expectedMasterVersion,
+      p_cashier_session_id: input.cashierSessionId,
+      p_operation_id: input.operationId,
+      p_confirm_takeover: input.confirmTakeover,
+    },
+  )
+  throwIfError(error)
+  return data as DbRow
+}
+
+export async function saveBackofficeCutoverSaleDraftPreserved(input: {
+  salesId: string
+  expectedMasterVersion: number
+  cashierSessionId: string
+  operationId: string
+  payments: Array<{
+    clientPaymentKey: string
+    paymentMethodId: string
+    amount: number
+    tenderedAmount: number
+    proofUrl?: string
+    overpaymentDisposition?: 'RETURNED' | 'CUSTOMER_BALANCE'
+  }>
+}) {
+  const { data, error } = await supabase.rpc(
+    'save_backoffice_cutover_sale_draft_preserved',
+    {
+      p_sales_id: input.salesId,
+      p_expected_master_version: input.expectedMasterVersion,
+      p_cashier_session_id: input.cashierSessionId,
+      p_operation_id: input.operationId,
+      p_payments: input.payments,
+    },
+  )
   throwIfError(error)
   return data as DbRow
 }
@@ -2529,6 +2590,7 @@ export async function loadSalesInvoiceDocument(
   return {
     invoiceSnapshotId: String(row.invoiceSnapshotId),
     invoiceNo: String(row.invoiceNo),
+    invoiceDate: row.invoiceDate ? String(row.invoiceDate) : null,
     snapshotVersion: numberValue(row.snapshotVersion),
     snapshotProvenance: row.snapshotProvenance as 'LIVE_POST' | 'LEGACY_CUTOVER',
     snapshot: row.snapshot as Record<string, unknown>,

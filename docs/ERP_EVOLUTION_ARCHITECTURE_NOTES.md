@@ -92,6 +92,12 @@ Fase ini tetap prioritas. Catatan masa depan tidak boleh memperluas acceptance c
 
 ### Kandidat roadmap HR — referensi fungsi Mekari Talenta
 
+Requirement baseline tiga kanal HR (Backoffice HR, Office Attendance Kiosk,
+dan Employee Android App), entitlement per Company, scope bertahap, security,
+Finance boundary, serta keputusan terbuka dicatat di
+[`HR_MODULE_PRODUCT_NOTES.md`](HR_MODULE_PRODUCT_NOTES.md). Dokumen tersebut
+tetap berstatus discovery dan tidak membuka implementasi database/runtime.
+
 Catatan ini memakai kelompok fungsi pada [halaman fitur resmi Mekari
 Talenta](https://www.talenta.co/fitur/) sebagai referensi produk, bukan target
 untuk menyalin seluruh fiturnya. Implementasi harus dibuka bertahap:
@@ -368,3 +374,7 @@ Folder Manufacture/HR/Logistik baru dibuat ketika development modul tersebut ben
 | 2026-09-03 | Tidak ada schema, UI, migration, entitlement, atau runtime modul baru yang dibuka dari catatan ini | CONFIRMED |
 | 2026-09-03 | BOM Manufacture menjadi baseline; satu MO boleh menghasilkan multi-output/grade aktual dengan policy cost allocation tersnapshot | NOTED, tetap DEFERRED |
 | 2026-09-03 | Finance lintas HR/Manufacture/Logistik memakai immutable source dan canonical Financial Event, bukan direct Journal write | NOTED, tetap DEFERRED |
+| 2026-09-07 | HR bersifat opsional per Company dan memiliki Backoffice HR, Office Attendance Kiosk terbatas, serta Employee Android App personal | NOTED, tetap DEFERRED |
+| 2026-09-07 | Prototype HR boleh memakai mock/contract tanpa database; schema/runtime menunggu keputusan attendance, approval, payroll, security dan privacy | NOTED, tidak ada implementasi |
+| 2026-09-07 | Mobile HR diarahkan Android-first melalui signed APK internal; iPhone sementara memakai web/PWA, native iOS ditunda, dan APK POS menunggu PWA stabil | NOTED, tetap DEFERRED |
+| 2026-09-12 | Request Order Purchasing direncanakan mempunyai dua mode pembuatan: otomatis dan manual | NOTED, detail kedua mode wajib dikonfirmasi user sebelum implementasi |

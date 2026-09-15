@@ -1,8 +1,668 @@
 # Gate Implementasi dan Rollout POS v1
 
+## Backoffice Sales authenticated read smoke — Step 6/6.1 (2026-09-12)
+
+Status: `LOCAL READY; AUTHENTICATED DEVELOPMENT EXECUTION PENDING`.
+
+- Environment guard hanya menerima isolated Development dan menolak production
+  serta existing staging.
+- Login memakai publishable key dan credential interaktif; secret/token tidak
+  ditulis ke file atau output.
+- Read matrix mencakup active Company, SO, DO/SJ, Invoice, Delivered Not
+  Invoiced, dan katalog export; unauthenticated boundary harus HTTP 401.
+- Tidak ada mutation. Multi-Company denial, mutation E2E, POS regression,
+  visual UAT, dan production compatibility tetap substep terpisah.
+- Local evidence: environment guard PASS ke `fkywtxucmyjvpwdiqpix` dengan
+  production/staging denied; PowerShell parser PASS; HTTP 401 boundary PASS;
+  targeted ESLint PASS; Next production build/TypeScript 83 pages PASS.
+
+## Delivered Not Invoiced report — Step 5/6.3 (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED
+DEVELOPMENT; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- Basis mengikuti Odoo: cumulative Customer accepted less Invoice Posted per
+  komponen SO pada tanggal As-of; tidak membuat Invoice-to-receipt FIFO lineage.
+- Draft Invoice tetap termasuk dan diberi status terpisah; Payment tidak
+  memengaruhi DNI.
+- Regular delivery dan accepted overage dihitung sebagai source terpisah setelah
+  `137000` user-confirmed PASS.
+- Ongkir disajikan sebagai komponen nilai terpisah; tidak dicampur sebagai Qty.
+- Report bersifat operational flywheel multicompany dan tidak membuat Journal,
+  Financial Event, Stock/FIFO, Invoice, Payment, atau historical rewrite.
+- Local gate: targeted ESLint PASS dan Next production build/TypeScript PASS.
+- Preflight, migration `138000`, behavioral test, dan postflight seluruhnya
+  user-confirmed PASS pada isolated Development. Authenticated smoke, UAT, serta
+  client deployment masih pending.
+
+## Accepted-overage ledger split forward-fix (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED
+DEVELOPMENT; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- Root cause terbukti pada active call chain: resolver C3 menambah overage ke
+  regular SO accepted ledger dan discrepancy overage ledger, sedangkan Invoice
+  menjumlahkan keduanya sebagai source terpisah.
+- Forward-fix `137000` mempertahankan regular accepted quantity maksimum sebesar
+  Qty Order dan menaruh accepted overage hanya pada ledger discrepancy.
+- Backfill hanya berjalan untuk exact legacy shape yang belum dipakai oleh
+  allocation Invoice regular; state ambigu fail closed tanpa rewrite Invoice.
+- User mengonfirmasi preflight, migration, behavior, dan postflight PASS; Step
+  5/6.3 dapat memakai ledger regular/overage yang sudah terpisah.
+
+## Discrepancy Stock-Loss Finance posting - Step 5/6.2 (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED
+DEVELOPMENT; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- Behavioral base rollback karena resolver menulis movement discrepancy sebagai
+  `ADJUSTMENT`, sementara constraint canonical mencadangkan identity tersebut
+  untuk `stock_adjustment_documents`.
+- Forward-fix additive memberi identity `BACKOFFICE_DISCREPANCY_LOSS` dan hanya
+  mengganti exact literal pada private resolver aktif. Constraint/dokumen Stock
+  Adjustment, quantity, FIFO, balance, audit, dan Finance source tetap utuh.
+- Behavioral wajib memverifikasi identity/source movement sebelum Journal Dr
+  Stock Loss Expense/Cr Transit Inventory. Production/staging tidak disentuh.
+
+## Accepted-overage Finance posting - Step 5/6.1 (2026-09-12)
+
+Status: `LOCAL READY; MANUAL ISOLATED-DEVELOPMENT DATABASE GATE PENDING`.
+
+- Menambahkan private posting core dan menyambungkan event COGS accepted
+  overage ke controlled Posting Queue existing.
+- Journal hanya Dr COGS/Cr Inventory Asset pada Transit Warehouse setelah
+  exact reconciliation terhadap Stock effect, FIFO, Movement, SO/DO, dan rule.
+- Gudang tetap hanya membuat Event HOLD; tidak ada Journal sinkron, public RPC,
+  atau UI Finance baru.
+- POS Retail, Stock/FIFO, Invoice, Payment, template, dan cutover tidak diubah.
+
+
+## Discrepancy client activation - Step 4/6.5C4 (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- SO/Sales menangani approval harga, diskon, dan pajak accepted overage.
+- Surat Jalan/Gudang menangani fakta penerimaan dan penyesuaian Stock terhadap
+  DO melalui runtime canonical C3.
+- Projection Gudang tidak mengekspos data komersial; role Sales dan Sales Admin
+  mengikuti policy akses modul Sales yang sama.
+- Clean receipt, POS Retail, Invoice/template, Payment, dan posting Journal
+  tidak diubah. Authenticated smoke/UAT belum dilakukan.
+
+## Overage/Wrong Item resolution - Step 4/6.5C3 (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED
+DEVELOPMENT; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- Accept Overage merekonstruksi source→Transit, mengonsumsi exact reconstructed
+  FIFO, membuka Qty To Invoice, dan membuat Financial Event COGS HOLD terpisah.
+- Return Overage merekonstruksi lalu mengembalikan Stock ke source Warehouse.
+- Wrong Item mengembalikan actual dan expected Stock serta membuat child DO/SJ
+  canonical `BACKORDER` pada SO asli; lineage
+  `resolution_kind=WRONG_ITEM_CORRECTION` menjaga klasifikasi koreksinya dan
+  tanggal default Company tetap editable.
+- Shortage pada mixed case wajib diselesaikan lebih dahulu. Backorder shortage
+  dan correction Wrong Item mempunyai lineage terpisah.
+- Accepted-overage memakai system event/category/versioned mapping tersendiri
+  untuk COGS dan Inventory Asset; event tetap HOLD dan posting jurnal masih gate
+  berikutnya.
+- POS Retail, Invoice template, Payment, receipt event lama, production, dan
+  staging tidak diubah.
+
+## Accepted-overage Invoice client - Step 4/6.5C2C (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- Memakai workspace/menu/template Invoice existing; tidak membuat dokumen atau
+  tab Invoice baru.
+- Line `Kelebihan barang` menampilkan Qty Order 0, Qty diterima overage, dan Qty
+  Invoice editable. Harga/diskon/pajak approval bersifat read-only di client.
+- Edit Draft, partial Invoice, Print/PDF, tenant/permission, dan compatibility SO
+  normal tercakup paket C2C.
+- Build Next.js/TypeScript 83 page lokal PASS; migration, behavior, dan
+  postflight user-konfirmasi PASS. Authenticated smoke/UAT masih pending.
+
+## Accepted-overage Invoice runtime - Step 4/6.5C2B (2026-09-12)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- Accepted overage `APPROVED + RESOLVED` dapat menjadi line Product Invoice
+  terpisah `Kelebihan barang` dan dapat ditagih melalui beberapa Invoice.
+- Diskon dialokasikan proporsional; pajak dihitung per Invoice dari nilai
+  setelah diskon memakai immutable approval snapshot. Invoice terakhir
+  mengambil sisa pembulatan diskon dan pajak.
+- Draft/Edit/Cancel/Post memakai counter discrepancy terpisah; counter SO lama
+  hanya berubah untuk allocation `SALES_ORDER`.
+- Paket lengkap preflight/migration/postflight/rollback behavior ada di
+  `runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_RUNTIME_ROLLOUT.md`.
+- SQL tidak dijalankan agent. Client/UI C2C, authenticated smoke/UAT, resolver final
+  Gudang, production, dan staging tetap belum dibuka.
+
+## Backoffice shortage Dispatch to Transit (2026-09-11)
+
+Status: `BASE DATABASE LIVE; MAPPING FORWARD-FIX LOCAL READY; BEHAVIOR PENDING`.
+
+- Migration `20260911140000` menutup gap antara Reservation Backoffice yang
+  sudah mengizinkan shortage dan Dispatch yang sebelumnya selalu memakai
+  Stock Transfer nonnegative.
+- Exception hanya berlaku pada Stock Transfer yang memiliki Delivery/Reservation
+  Backoffice dan allocation `WAREHOUSE` sah. Transfer manual tetap strict.
+- Transit menerima batch provisional sehingga Customer Receipt existing tetap
+  dapat diselesaikan. Replenishment menutup source shortage dan memisahkan
+  revaluasi Transit versus variance COGS.
+- POS, Invoice, Payment, Cashier Session, mode cutover, production, dan staging
+  tidak disentuh. PO berbasis SO/DO dicatat sebagai gap Purchasing berikutnya.
+- Paket manual dan rollback berada di
+  `runbooks/BACKOFFICE_SALES_NEGATIVE_DISPATCH_ROLLOUT.md`.
+
+## Platform cutover control UI - Step 4F/6 (2026-09-11)
+
+Status: `LOCAL READY; AUTHENTICATED ISOLATED-DEVELOPMENT SMOKE PENDING`.
+
+- Panel hanya dirender untuk Platform Super Admin pada Pengaturan Modul Sales.
+- API mengikat semua read/mutation pada session dan Company aktif. Service role
+  hanya menemukan setting/plan tenant-scoped; mutation tetap melalui public RPC
+  create/refresh/cancel/apply yang menjaga version, retry, dan role.
+- UI menampilkan nama proses, nomor dokumen, keputusan convert/retain,
+  warning/blocker, waktu berlaku, serta konfirmasi Apply; UUID tidak menjadi
+  label operasional.
+- Backoffice scoped lint PASS dan Next.js production build 82 route PASS.
+- Authenticated visual/action smoke, deployment, UAT, production, dan staging
+  belum dilakukan.
+
+## Atomic Apply and mode-authoritative creation - Cutover Step 4E/6 (2026-09-11)
+
+Status: `DATABASE LIVE; CORRECTED BEHAVIOR USER-CONFIRMED PASS ON ISOLATED
+DEVELOPMENT; FINAL POSTFLIGHT CONFIRMATION PENDING`.
+
+- Apply manual Super Admin merevalidasi plan/settings/live preview, source,
+  effective time, entitlement, Finance queue, dan Offline submission.
+- Conversion item eligible, retention item blocked/final, target lineage,
+  Company mode history, dan plan `APPLIED` berada dalam satu transaksi.
+- Creation root Retail/Backoffice/Offline diserialkan dengan Apply dan hanya
+  mengikuti mode aktif. Existing source serta Revision lineage lama tetap
+  memakai runtime source/grandfathered.
+- Behavioral rollback membentuk sendiri satu convertible source dan satu
+  future non-TEMPO blocker; menguji stale preview, refresh, Apply, exact retry,
+  tenant boundary, retained-source edit, creation gate, dan zero Stock/Finance.
+- Behavioral awal salah bergantung pada Company aktif kedua. Test terkoreksi
+  membuat tenant pembanding rollback-only sendiri dan dikonfirmasi PASS user.
+  Agent tidak menjalankan SQL. Final postflight confirmation, authenticated
+  smoke/UAT, client deployment, production, dan staging belum dilakukan.
+
+## Retail real-session adoption - Cutover Step 4D/6 (2026-09-11)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- `BACKOFFICE_CUTOVER` tetap detached sampai actor mengambilnya melalui sesi
+  POS OPEN dengan Company, Store, dan Warehouse yang identik.
+- Attachment/lock tidak memanggil reprice. Preserve-save hanya memperbarui
+  payment intent; nilai komersial, line, tanggal, dan total tetap source.
+- Edit nyata memakai save/reprice Retail canonical. Draft POS/revisi biasa
+  tidak dirutekan ke RPC baru.
+- Optimistic version, exact retry, takeover, immutable audit/operation, tenant,
+  dan Warehouse immutability dijaga server-side.
+- PWA lint/build PASS. Database behavior/postflight dikonfirmasi user PASS;
+  public Apply masih Step 4E local-ready. Production/staging, client deployment,
+  authenticated smoke, dan UAT belum dijalankan.
+
+## Backoffice-to-Retail converter kernel - Cutover Step 4C/6 (2026-09-11)
+
+Status: `DATABASE LIVE + FORWARD-FIX/BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON
+ISOLATED DEVELOPMENT`.
+
+- Seluruh Draft/Sent/Confirmed Backoffice eligible diturunkan menjadi Retail
+  Draft; confirmed TEMPO future menjadi Scheduled Draft. User wajib
+  mengonfirmasi ulang di Retail sebelum Reservation, SJ, dan Invoice dibuat.
+- Preflight SELECT-only membuktikan dependency, Product-UOM, active master,
+  Reservation/DO untouched, future non-TEMPO, multi-installment, Finance queue,
+  Offline, collision, dan public Apply boundary dari data Development aktual.
+- Paket lokal `20260911110000` menambah preview v3 dan private converter.
+  Confirmed source hanya dapat dilepas bila Reservation dan initial DO masih
+  untouched; bentuk lain diberi blocker. Tidak ada public Apply, mode switch,
+  client, atau deployment. Production/staging tidak disentuh.
+- Behavioral awal rollback pada FK audit karena cabang confirmed-source belum
+  membuat parent operation. Base migration tetap immutable; forward-fix
+  additive `20260911111000` memperbaiki pasangan operation/audit tersebut.
+  User mengonfirmasi migration forward-fix, corrected behavior, base
+  postflight, dan forward-fix postflight seluruhnya PASS.
+- Gate lanjutan adalah attachment Draft `BACKOFFICE_CUTOVER` ke sesi Retail
+  nyata tanpa sesi/terminal palsu dan tanpa repricing diam-diam. Public Apply
+  tetap tertutup sampai boundary client/runtime tersebut lulus.
+
+## Retail-to-Backoffice converter kernel - Cutover Step 4B/6 (2026-09-11)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- Mapping user-approved berdasarkan lifecycle: `DRAFT_INPUT` -> Draft
+  Quotation; `CONFIRMED/RESERVED` dan row legacy yang benar-benar ber-runtime
+  `SCHEDULED` -> confirmed SO + Reservation + initial DO.
+- Scheduled timing future canonical masih memiliki lifecycle `DRAFT_INPUT`;
+  status Scheduled di UI adalah operational projection. Karena itu source ini
+  tetap menjadi Draft Quotation dan tanggal rencananya dipertahankan.
+- Converter hanya private/service-role, dilindungi Super Admin, active Company,
+  advisory lock, transaction-local cutover marker, exact operation retry, dan
+  revalidasi source. Public Apply dan mode switch belum tersedia.
+- Active Store, Customer, sale-source Warehouse, Product-UOM, Product, dan UOM
+  mengikuti boundary canonical Backoffice; source yang tidak lagi memenuhi
+  syarat ditolak fail-closed dan diinformasikan oleh preflight.
+- Commercial/date/tax/ongkir source dipertahankan. Source ditutup setelah
+  target lengkap; source confirmed memakai cancellation/release canonical dan
+  immutable Invoice history tetap ada sebagai jejak formal.
+- Behavioral rollback membuat sendiri Retail Draft, Scheduled Draft, dan
+  Reserved source melalui RPC canonical; memeriksa exact retry, penolakan
+  reuse operation UUID untuk source berbeda, target
+  Quotation/SO/Reservation/DO, source retirement, serta nol Stock Movement,
+  FIFO, dan Finance effect. Periode bulan berjalan yang dibutuhkan fixture
+  TEMPO dibuat/dibuka hanya di dalam transaksi test dan ikut `ROLLBACK`.
+- Paket manual hanya untuk isolated Development. Production/staging tidak
+  disentuh. Authenticated positive smoke menunggu public Apply step berikutnya.
+- Migration terbukti sudah terpasang karena behavioral dapat mengeksekusi
+  private converter. Attempt pertama gagal pada ekspektasi test Scheduled,
+  bukan pada mutation converter; corrected behavioral dan postflight kemudian
+  dikonfirmasi seluruhnya PASS oleh user.
+
+## Unified Warehouse negative-stock authority - Cutover Step 4A/6 (2026-09-11)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- `warehouses.allow_negative_stock` menjadi satu-satunya gate shortage baru
+  bagi POS dan Backoffice. Tidak ada alasan, permission user, terminal/toko,
+  feature flag, atau limit per-user/Company.
+- Migration `20260910153000` menambah evidence `LEGACY_USER_POLICY` versus
+  `WAREHOUSE`, mempertahankan histori, dan menyelaraskan direct POS,
+  confirmation Reservation, cross-process availability, serta Dispatch/FIFO.
+- Attempt manual pertama rollback pada migration guard karena file lokal salah
+  menganggap wrapper komposisi Revision sebagai core Reservation. Paket telah
+  dikoreksi untuk mengganti hanya `private.confirm_pos_sales_order_core` dan
+  memverifikasi wrapper Invoice/SJ/procurement/payment tetap utuh.
+- Attempt kedua juga rollback sebelum commit: Dispatch aktif telah dibentuk
+  ulang oleh forward-fix `20260901100000`, sehingga exact-whitespace marker
+  lama tidak stabil. Patch kini memakai empat anchor semantik dengan cardinality
+  tepat satu; perubahan tetap fail-closed bila struktur bisnisnya drift.
+- Role dan tenant scope tidak dilonggarkan. Stock Movement, provisional cost,
+  replenishment, Finance, idempotency, dan audit tetap canonical.
+- Apply/converter dan mode switch belum dibuka. Urutan manual ada di
+  `runbooks/UNIFIED_WAREHOUSE_NEGATIVE_STOCK_AUTHORITY.md`.
+- Dua behavioral attempt berhenti pada fixture dependency, bukan assertion
+  policy: versi pertama memerlukan OPEN session operasional dan versi kedua
+  masih memerlukan Draft operasional ber-requirement positif. Test terkoreksi
+  sekarang membuat actor, OPEN session, Draft melalui RPC canonical, payment
+  intent, dan shortage sendiri dalam transaksi rollback-only. Guard OPEN
+  session pada runtime POS tidak dilonggarkan.
+- Rerun berikutnya membuka gap runtime terpisah: ODR confirmation membuat SJ
+  untuk `PICKUP` saat header masih `DRAFT/RESERVED`, tetapi constraint hanya
+  mengizinkan `PICKUP + sj_required` setelah `POSTED`. Test authority disempitkan
+  ke canonical `DELIVERY`; constraint dan runtime Pickup tidak diubah diam-diam.
+- User mengonfirmasi behavioral rollback dan postflight seluruhnya PASS pada
+  isolated Development. Authenticated smoke/UAT tetap pending; Step 4B/6 dapat
+  melanjutkan converter atomik tanpa menyentuh production/staging.
+
+## Sales process cutover Payment Term boundary - Step 1E-B2/6 (2026-09-10)
+
+Status: `DATABASE LIVE + POSTFLIGHT/BEHAVIOR USER-CONFIRMED PASS` pada isolated
+Development. Production/staging tidak disentuh dan converter Apply belum dibuat.
+
+- Retail memiliki satu `due_date`; Backoffice dapat menghasilkan beberapa
+  schedule piutang dari Payment Term. Mapping yang disetujui adalah satu tanggal
+  absolut dipertahankan dua arah, sedangkan lebih dari satu installment pada
+  open SO/Draft Invoice Backoffice menjadi `BLOCKED`/grandfathered.
+- Migration `20260910152000` mempertahankan classifier 10 argumen, menambahkan
+  overload 11 argumen, dan mengubah preview read-only menjadi versi 2 dengan
+  fakta term/schedule aktual serta blocker
+  `MULTI_INSTALLMENT_MUST_FINISH_IN_BACKOFFICE`.
+- Convertible tempo candidate membawa `legacyDueDate` dan requirement
+  `PRESERVE_SINGLE_ABSOLUTE_DUE_DATE`; converter kelak dilarang menghitung ulang
+  jatuh tempo. Resolver target hanya berlaku setelah edit manual target.
+- Tidak ada mutation Sales/Invoice/Payment/Stock/Reservation/Finance/mode pada
+  gate ini. Open cutover plan, Finance queue aktif, dan Offline nonterminal
+  fail-closed.
+- Urutan manual dan rollback/forward-fix note tersedia di
+  `runbooks/SALES_PROCESS_CUTOVER_PAYMENT_TERM_BOUNDARY.md`.
+
+## Backoffice delivery-fee parity - Step 1E-B1/6 (2026-09-10)
+
+Status: `20260910150000 DATABASE LIVE; 20260910151000 FORWARD-FIX DATABASE
+LIVE + POSTFLIGHT/BEHAVIOR USER-CONFIRMED PASS` pada isolated Development.
+Authenticated smoke dan UAT belum dijalankan. Production/staging tidak disentuh.
+
+- User menetapkan ongkir Backoffice SO default nol dan editable. Regular
+  Invoice pertama mengisi seluruh sisa ongkir secara otomatis, dapat dipecah
+  sebelum posting, aggregate Draft/Posted tidak boleh melebihi SO, dan Cancel
+  Draft melepaskan alokasi. DP tidak membawa ongkir.
+- Migration `20260910150000` menambahkan invariant SO/Invoice, wrapper snapshot
+  dan save, schedule piutang, event amount, serta posting terpisah ke canonical
+  `DELIVERY_FEE_REVENUE`. POS Retail, Stock, Reservation, DO, FIFO/COGS,
+  Payment, dan Cashier Session tidak berubah.
+- Behavioral runtime menemukan wrapper tersebut melakukan post-update terhadap
+  audit Invoice immutable. Forward-fix `20260910151000` memindahkan penetapan
+  ongkir ke BEFORE trigger sebelum core canonical membuat response/operation/
+  audit, mempertahankan trigger immutable, serta membersihkan input
+  transaction-local setelah call agar tidak bocor ke operasi Invoice lain.
+- Form/detail Quotation/SO Backoffice menampilkan ongkir dan total setelah
+  ongkir. Scoped lint dan Next production build PASS.
+- Manual preflight, migration, postflight, rollback behavior, dan authenticated
+  smoke mengikuti
+  `runbooks/BACKOFFICE_SALES_DELIVERY_FEE_PARITY_ROLLOUT.md`.
+- Step 1E-B2 converter belum ditulis. Step 1E-B1 database gate sudah PASS dan
+  mapping Payment Term sudah dikunci; boundary classifier/preview B2 menunggu
+  manual rollout isolated Development.
+
+## Sales process cutover procurement blocker - Step 1E-A/6 (2026-09-10)
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS` pada isolated
+Development; authenticated smoke dan UAT belum dijalankan.
+
+- Actual-data preflight V2 dikonfirmasi user: dependency, schema, mapping
+  Product-UOM, Reservation shape, Finance/Offline boundary, dan collision PASS;
+  candidate/plan runtime nol.
+- Satu expected `SETUP` membuktikan open procurement masih menghasilkan
+  `CONVERT + TRANSFER_PROCUREMENT_LINEAGE`.
+- Paket `20260910140000` menggantinya secara fail-closed menjadi
+  `BLOCKED + OPEN_PROCUREMENT_MUST_FINISH`, tanpa Apply, conversion, mode
+  switch, Order/Reservation/PO/Stock/Payment/Finance mutation.
+- Migration, behavioral rollback, serta postflight Step 1E-A telah
+  dikonfirmasi PASS oleh user. User kemudian menetapkan commercial/date/payment
+  snapshot target dipertahankan persis dari source; resolver target hanya
+  berlaku bila target diedit setelah cutover. Step 1E-B1 menutup gap parity
+  ongkir sebelum converter atomik Step 1E-B2 ditulis.
+
+## Sales process cutover plan refresh/cancel (2026-09-10)
+
+Status: `20260910120000 DATABASE LIVE + POSTFLIGHT/BEHAVIOR USER-CONFIRMED PASS
+ON ISOLATED DEVELOPMENT`.
+
+- Step 1C/6 menambah optimistic `master_version` pada plan dan RPC Super Admin
+  untuk refresh/cancel dengan Company advisory lock serta exact operation retry.
+- Refresh mempertahankan target mode, `effective_at`, dan reason; hanya preview
+  snapshot serta candidate item/version yang dihitung ulang. Settings drift,
+  stale plan version, non-previewed plan, dan item yang sudah mempunyai action
+  audit ditolak.
+- Cancel hanya menerima Draft/Previewed plan, mewajibkan alasan, menaikkan
+  version, dan mempertahankan item/audit sebagai histori.
+- Tidak ada apply/conversion/switch atau mutation terhadap Company mode,
+  entitlement, Order, Reservation, PO, Dispatch, Stock/FIFO, Invoice, Payment,
+  Finance, dan Offline.
+- User mengonfirmasi migration, closing postflight, dan behavioral rollback
+  seluruhnya PASS. Step 1C ditutup. Untuk Step 1D, user menetapkan item
+  `BLOCKED` tetap grandfathered dan tidak menggagalkan switch; Apply dilakukan
+  manual oleh Platform Super Admin pada/setelah `effective_at`, tanpa scheduler,
+  serta wajib atomik bersama revalidasi, conversion, dan perubahan mode.
+- Converter Step 1D belum boleh ditulis sebelum dua mapping lintas aggregate
+  diputuskan: pending Revision Retail (source + replacement Draft) ke model
+  revisi satu-SO Backoffice, serta SO Backoffice tanpa Cashier Session/POS
+  Terminal ke aggregate Retail yang mewajibkan kedua identitas tersebut.
+- Kedua mapping sudah diputuskan user. Pending Revision menjadi `BLOCKED` dan
+  grandfathered; Office-to-Retail memakai origin `BACKOFFICE_CUTOVER` tanpa
+  sesi/terminal palsu. Migration fondasi identitas/classifier
+  `20260910130000` berstatus DATABASE LIVE + BEHAVIOR/POSTFLIGHT
+  USER-CONFIRMED PASS pada isolated Development. Apply, conversion, dan switch
+  tetap tertutup sampai mapping source retirement, procurement lintas
+  aggregate, dan Office non-TEMPO future-date diputuskan.
+
+## Sales process cutover persistent preview plan (2026-09-10)
+
+Status: `20260910110000 DATABASE LIVE + POSTFLIGHT/BEHAVIOR USER-CONFIRMED PASS
+ON ISOLATED DEVELOPMENT`.
+
+- Step 1B/6 mempersist hasil actual-data preview ke plan `PREVIEWED` dan satu
+  item per source document, termasuk exact Company settings version serta
+  source document master version.
+- Create hanya untuk Platform Super Admin pada Company aktif, dilindungi
+  advisory lock per Company, operation UUID, SHA-256 request hash, stale
+  settings rejection, dan one-open-plan guard.
+- Exact retry mengembalikan plan yang sama; operation UUID sama dengan payload
+  berbeda ditolak. Plan aktif lain tidak dibatalkan atau diganti otomatis.
+- Write hanya ke cutover plan/item/audit dan ledger. Tidak ada perubahan mode,
+  entitlement, Order/Revision, Reservation, procurement/PO, Dispatch,
+  Stock/FIFO, Invoice, Payment, Finance queue/event/journal, atau POS Offline.
+- `effective_at` baru direkam; refresh/cancel/apply/conversion/switch belum
+  tersedia. Rollout hanya ke isolated Development setelah preflight bersih.
+- User mengonfirmasi closing postflight: ledger, empat routine, private/public
+  execution boundary, create-core runtime contract, serta plan/item/audit
+  reconciliation seluruhnya PASS; runtime inventory plan/item/audit masih nol.
+  Behavioral rollback juga dikonfirmasi PASS; Step 1B ditutup. Next safe step
+  adalah Step 1C refresh/cancel plan dengan drift check; apply/switch tetap
+  tertutup.
+
+## POS Scheduled Draft resume production forward-fix (2026-09-10)
+
+Status: `20260910100000 PRODUCTION DATABASE LIVE; BEHAVIOR + POSTFLIGHT
+USER-CONFIRMED PASS; AUTHENTICATED SMOKE PENDING`.
+
+- Bukti call chain: PWA `Lanjutkan` mengambil lock lalu menjalankan canonical
+  save/reprice dengan intent `PRESERVE`; existing private wrapper meneruskan
+  planned timestamp masa depan ke validator TEMPO effective-date aktif sehingga
+  menghasilkan `TEMPO_TRANSACTION_DATE_FUTURE`.
+- Fix tidak mengubah validator effective-date. Hanya canonical Draft dengan
+  `SCHEDULED + TEMPO + PRESERVE` dan planned date masih mendatang yang memakai
+  validator Scheduled; timestamp rencana dikembalikan ke payload setelah
+  repricing.
+- Lock/version chain, ordinary Draft, Backorder, Revision lineage, dan
+  `SCHEDULED_ORDER_NOT_ACTIVE` pada Post dipertahankan. Tidak ada backfill,
+  Stock/Reservation/FIFO, SJ/Invoice, Payment, Finance, atau Accounting Period
+  mutation dari migration.
+- Preflight SELECT-only production telah dikonfirmasi user: seluruh guard PASS,
+  legacy definition SETUP sesuai ekspektasi, queue/offline nol. Migration,
+  kemudian berhasil dijalankan user. Behavioral dan postflight juga dikonfirmasi
+  PASS; authenticated smoke LSM masih manual sesuai runbook.
+
+## Sales process cutover actual-data preview (2026-09-10)
+
+Status: `20260909163000 DATABASE LIVE; POSTFLIGHT + BEHAVIOR USER-CONFIRMED PASS
+ON ISOLATED DEVELOPMENT`.
+
+- RPC Super Admin read-only menginventarisasi dokumen aktual dari mode Company
+  aktif dan memberi keputusan `CONVERT`, `BLOCKED`, atau `KEEP_SOURCE`.
+- Pemeriksaan mencakup pending Revision sebagai pair, Reservation,
+  procurement/PO, Dispatch, final Stock effect, Invoice, `sales_payments`,
+  payment verification, seluruh Finance event `POSTED` dengan root Sales,
+  Offline submission, Finance queue, dan entitlement.
+- Gate ini tidak membuat cutover plan, tidak mengganti Company mode, tidak
+  mengubah entitlement, dan tidak memutasi Order/Reservation/PO/Stock/Invoice/
+  Payment/Finance.
+- User telah mengonfirmasi migration, behavior, dan postflight PASS. Gate
+  persistent preview plan dengan version locking kini local-ready; apply/switch
+  tetap tertutup.
+
+## Sales process cutover foundation (2026-09-10)
+
+Status: `20260909162000 DATABASE LIVE; POSTFLIGHT + BEHAVIOR USER-CONFIRMED PASS
+ON ISOLATED DEVELOPMENT`.
+
+- User menyetujui optional conversion dua arah saat Company mengganti business
+  process. Dokumen final tetap pada source lama; dokumen eligible dikonversi
+  melalui lineage baru, bukan mengubah immutable process identity.
+- Invoice Retail yang sudah terbit tetapi belum mempunyai Dispatch, Payment,
+  final Stock effect, atau posted Finance dapat dikonversi dengan requirement
+  formal cancellation. Pending Revision diperlakukan sebagai satu pair dan
+  procurement/PO terbuka memerlukan transfer lineage, bukan delete/recreate.
+- Gate foundation `20260909162000` menambah default-Retail Company setting,
+  immutable mode history, cutover plan/item/audit, pure eligibility classifier,
+  RLS dan direct-browser closure. Tidak ada Company yang di-switch dan tidak
+  ada Order, Reservation, PO, Stock/FIFO, Invoice, Payment atau Finance yang
+  dimutasi.
+- Gate berikutnya adalah preview runtime terhadap dokumen nyata. Atomic
+  conversion dan UI masih tertutup.
+
+## Backoffice Customer receipt / Qty To Invoice foundation (2026-09-09)
+
+Status: `FOUNDATION, FINANCE MAPPING, CLEAN RECEIPT, AND RECEIPT COGS POSTING
+DATABASE LIVE + MANUAL TEST PASS ON ISOLATED DEVELOPMENT; ODOO-STYLE INVOICE
+ACCOUNTING FOUNDATION 156000 DATABASE LIVE/PASS ON ISOLATED DEVELOPMENT;
+DRAFT INVOICE RUNTIME 157000 + DIGEST FIX 158000 DATABASE LIVE/MANUAL TEST PASS;
+INVOICE MULTI-TAX BREAKDOWN 159000 DATABASE LIVE/MANUAL TEST PASS;
+INVOICE FINANCE MAPPING 160000 DATABASE LIVE/MANUAL TEST PASS;
+INVOICE POSTING RUNTIME 161000 DATABASE LIVE/MANUAL TEST PASS ON ISOLATED DEVELOPMENT`.
+
+- Gate `20260909151000` Dispatch Gudang -> Transit sudah lulus postflight dan
+  rollback behavior manual pada isolated Development; UI smoke/UAT pending.
+- Migration `20260909152000` menyiapkan tiga immutable receipt/FIFO relation
+  dan enam kolom ledger quantity pada line SO.
+- User mengonfirmasi postflight dan behavioral `152000` seluruhnya PASS.
+- User mengonfirmasi postflight dan behavioral mapping `20260909153000` PASS.
+- Gate `20260909154000` membuka clean receipt hanya untuk DO `IN_TRANSIT` penuh,
+  memakai batch Transit milik Dispatch DO yang sama, menyelesaikan Reservation
+  dan SO, serta membuat Event COGS `HOLD`. Tanggal default berasal dari timezone
+  Company dan dapat diedit dengan guard tidak sebelum Dispatch/tidak future.
+- User mengonfirmasi postflight dan behavioral `20260909154000` seluruhnya PASS.
+- Gate `20260909155000` menghubungkan Event receipt ke dispatcher/queue Finance
+  canonical: Dr COGS dan Cr Inventory Asset actual Transit FIFO, period-aware,
+  source-reconciled, idempotent, serta zero-cost `NO_FINANCIAL_EFFECT`.
+- Migration dan postflight `155000` PASS menurut user. Behavioral pertama
+  berhenti pada fixture `P0002` karena syarat periode-test terlalu sempit;
+  test diperbaiki memakai canonical next-open-period fallback dan rerun
+  kemudian dikonfirmasi PASS oleh user.
+- Gate `20260909156000` menyiapkan zero-backfill Payment Terms, Pro-Forma
+  non-akuntansi, Regular/DP Invoice, quantity hold, DP deduction, installment
+  schedule, dan audit. User mengonfirmasi migration, postflight, behavior, dan
+  postflight ulang seluruhnya PASS pada isolated Development. Preflight
+  SELECT-only Draft runtime kemudian dikonfirmasi PASS.
+- Gate `20260909157000` sekarang dilaporkan user PASS untuk Create/Edit/Cancel
+  Regular/DP Draft secara transactional. DP percentage memakai DPP dan
+  proportional tax; quantity hold, schedule, exact retry, stale version,
+  tenant/permission, serta cancel release ditegakkan server-side. Posting
+  Revenue/Tax/AR tetap belum dibuka.
+- Behavioral pertama `157000` menemukan pemanggilan pgcrypto tidak
+  schema-qualified. Forward-fix `20260909158000` mengganti dua call menjadi
+  `extensions.digest(bytea,text)`; user mengonfirmasi behavioral dan postflight
+  ulang PASS tanpa perubahan flow atau data.
+- SELECT-only Invoice Finance posting preflight telah dijalankan pada tahap
+  sebelumnya. Dua keputusan yang saat itu `REVIEW` kini sudah dikunci: DP
+  multi-tax grouping dan closed-period policy.
+- User mengunci kedua keputusan: DP dibagi per tax group/account di backend dan
+  posting periode tertutup harus diblokir. Gate `20260909159000` menambah
+  snapshot tax breakdown tanpa membuka posting Finance; corrected behavior dan
+  closing postflight dilaporkan user PASS.
+- Gate `20260909160000` local-ready menambah system event, Transaction Category,
+  canonical account rules, dan approved posting definition terpisah untuk
+  Regular/DP Invoice. Migration tidak membuat Event/Journal dan runtime posting
+  masih tertutup. Tax runtime berikutnya wajib memakai account snapshot per tax
+  group dari `159000`.
+- User mengonfirmasi migration/postflight/behavior mapping `20260909160000`
+  seluruhnya PASS pada isolated Development.
+- Gate `20260909161000` membuka posting atomik Regular/DP Invoice,
+  exact retry, shared canonical Invoice numbering, finalisasi quantity hold,
+  auto/editable DP application, serta balanced Journal AR/Advance/Revenue/
+  Output Tax per exact tax account. Permission Finance ditegakkan lokal agar
+  custom override berlaku tanpa mengubah lifecycle global Finance yang masih
+  `SHADOW`. User mengonfirmasi migration, postflight, dan behavior PASS pada
+  isolated Development; SQL tidak dijalankan oleh agent.
+- Percobaan migration `161000` pada isolated Development berhenti sebelum
+  commit karena rule Regular v2 sempat dibuat langsung `APPROVED`, bertentangan
+  dengan trigger G6. File terbaru sudah mengikuti lifecycle canonical
+  `DRAFT -> lines -> CREATE audit -> APPROVED -> APPROVE audit`; preflight
+  memeriksa trigger aktif dan postflight memeriksa audit serta zero Draft
+  residue. Rerun manual lengkap kemudian dikonfirmasi PASS oleh user.
+- Payment runtime, partial receipt, discrepancy,
+  Return dan Backorder tetap tertutup. Selisih tetap fail-closed.
+
+## Backoffice fulfillment lineage foundation (2026-09-09)
+
+Status: `FOUNDATION, CONFIRM RUNTIME, AND RESERVED-OUT READ MODEL
+POSTFLIGHT/BEHAVIOR PASS PER USER; DATABASE LIVE - ISOLATED DEVELOPMENT ONLY;
+DELIVERY VISIBILITY MANUAL POSTFLIGHT/BEHAVIOR PASS PER USER; TRANSIT USAGE
+FOUNDATION DATABASE LIVE DEVELOPMENT ONLY, MANUAL TEST PENDING`.
+
+- Migration `20260909145000` menambah Reservation dan multi-Delivery Order
+  Backoffice terpisah dari relation POS retail.
+- Forward-fix `20260909146000` mengunci kontrak final sebelum runtime:
+  DO awal `INITIAL/READY`, DO tambahan hanya `BACKORDER` dengan parent.
+- Composite tenant/source FK mengikat Reservation -> SO/line/Warehouse dan
+  Delivery -> Reservation/SO/line. Satu SO dapat memiliki DO Initial serta
+  DO Backorder yang menunjuk parent.
+- Discrepancy sebelum penerimaan tidak membuat DO baru; koreksi dilakukan pada
+  DO yang sama. Setelah status selesai/diterima, perubahan memakai Retur.
+- RLS aktif, browser direct privilege nol, dan fulfillment audit immutable.
+- Zero backfill; Confirm SO, Inventory read model, Stock/FIFO, Invoice, Payment,
+  Financial Event, dan Journal belum berubah.
+- Migration `20260909147000` mengaktifkan komposisi Confirm baru secara atomik:
+  full Reservation + satu DO `INITIAL/READY`. Shortage hanya diizinkan oleh
+  opt-in Warehouse dan belum mengurangi On Hand atau membuat efek Finance.
+- User mengonfirmasi postflight dan behavioral Confirm seluruhnya PASS/sukses.
+- Gate `20260909148000` menggabungkan Reserved Out POS + Backoffice dan
+  allocation lineage ke Stock Overview canonical secara read-only. Migration
+  sudah live hanya di isolated Development; postflight dan behavioral PASS
+  berdasarkan eksekusi user. Authenticated client smoke dan UAT masih pending.
+- Gate berikut `20260909149000` hanya membuka visibility DO Backoffice pada
+  Inventory > Surat Jalan. Merge client memakai source eksplisit; seluruh
+  mutation Backoffice tetap terkunci sampai kontrak Gudang -> Transit ->
+  penerimaan Customer dan discrepancy selesai serta lulus gate terpisah.
+  Migration sudah live hanya di isolated Development; lint dan full build PASS,
+  postflight dan behavioral PASS menurut eksekusi user; authenticated smoke dan
+  UAT masih pending.
+- Gate `20260909150000` memisahkan Transit per Gudang operasional dan tujuan
+  proses tanpa mutasi Stock. Existing Transit tidak dipilih/dibackfill secara
+  otomatis. Gate foundation sudah live hanya di isolated Development; manual
+  postflight, behavior, authenticated smoke, dan UAT masih pending.
+- Exit gate mengikuti
+  `docs/runbooks/BACKOFFICE_SALES_FULFILLMENT_FOUNDATION_ROLLOUT.md`.
+
+## Backoffice Sales revision and fulfillment-status foundation (2026-09-09)
+
+Status: `DATABASE LIVE - ISOLATED DEVELOPMENT ONLY; CLIENT LOCAL BUILD PASS;
+MANUAL POSTFLIGHT, BEHAVIOR, AUTHENTICATED SMOKE, AND UAT PENDING`.
+
+- Quotation dan Sales Order dipisah pada list. Aksi legacy `SEND` dipertahankan
+  server-side hanya untuk compatibility, tetapi tidak ditawarkan oleh UI baru.
+- Revisi mempertahankan nomor SO/Quotation, wajib alasan, memakai optimistic
+  version/exact-operation, dan dicatat pada audit immutable.
+- Status tampilan SO adalah `Dikonfirmasi`, `Disiapkan`, `Dikirim sebagian`,
+  `Dalam perjalanan`, `Selesai`, atau `Dibatalkan`. Customer menerima menjadi
+  authority `Selesai`; sesudah itu koreksi wajib memakai Retur.
+- Revisi/cancel saat ini hanya dibuka pada SO `Dikonfirmasi`, sebelum proses
+  fulfillment dimulai. Runtime tidak membuka setter status manual dari browser.
+- Confirm Backoffice tetap zero-effect. Reservation/DO belum dibuat karena
+  schema SJ retail wajib memiliki Invoice, berlawanan dengan desain Backoffice
+  DO-before-Invoice. Lineage additive adalah gate berikutnya.
+- Gate manual mengikuti
+  `docs/runbooks/BACKOFFICE_SALES_REVISION_STATUS_ROLLOUT.md`.
+- Behavioral pertama rollback karena transient line rebuild menyisakan
+  `grand_total_before_rounding` lama ketika subtotal sementara sudah nol.
+  Forward-fix `20260909144000` live hanya di isolated Development dan mereset
+  seluruh commercial header sebagai zero-state konsisten; amount constraint
+  tetap aktif. Fix postflight dan behavioral rerun masih pending.
+
+## Backoffice Sales role and commercial parity (2026-09-09)
+
+Status: `DATABASE LIVE — ISOLATED DEVELOPMENT ONLY; CLIENT LOCAL READY; MANUAL
+POSTFLIGHT, BEHAVIOR, AUTHENTICATED SMOKE, POS REGRESSION, AND UAT PENDING`.
+
+- Role formal `SALES` dan `SALES_ADMIN` memperoleh seluruh capability modul
+  Sales. Platform Super Admin tetap tertinggi dan tenant boundary tidak berubah.
+- Quotation/SO Backoffice memakai canonical Pricelist/price/tax, menyimpan
+  manual price override, line/order discount, inclusive tax, dan rounding.
+- Izin stok minus bersumber dari Warehouse; runtime guard Company, Warehouse,
+  user, sesi, online, reason, limit, audit, FIFO, dan reconciliation existing
+  tidak dilonggarkan. POS tetap memakai runtime yang sama.
+- Save Draft wajib zero-effect terhadap Reservation, Stock/FIFO, Delivery,
+  Invoice, Payment, Finance Event, dan Journal.
+- Gate dan urutan test manual mengikuti
+  `docs/runbooks/BACKOFFICE_SALES_COMMERCIAL_PARITY_ROLLOUT.md`.
+- Behavioral pertama berhenti pada `canonical_unit_price NOT NULL` sebelum
+  helper commercial berjalan. Forward-fix `20260909141000` sekarang live hanya
+  di isolated Development dan mengisi harga canonical langsung pada INSERT
+  atomik. Fix postflight dan behavioral rerun masih pending.
+
+## Hotfix aktif — Scheduled Invoice display date (2026-09-07)
+
+Status: `LOCAL READY; DATABASE LIVE; CLIENT DEPLOY, SMOKE, AND UAT PENDING`.
+
+- Root cause live KMS membuktikan Invoice Scheduled lama menyimpan
+  `transactionAt` waktu Draft 29 Agustus, sementara date authority
+  `planned_order_date` adalah 31 Agustus.
+- Migration `20260907100000` menambahkan resolver read-only canonical.
+  `ORDER_DATE` untuk Scheduled memakai planned date; `POSTED_DATE`, Immediate,
+  dan Backorder mempertahankan contract existing.
+- Daftar/detail Backoffice, print/PDF, print POS, dan export rentang memakai
+  resolver yang sama. Snapshot immutable, nomor Invoice, Order, SJ, Stock,
+  Reservation, FIFO, Payment, periode, Event, dan Journal tidak dimutasi.
+- Exit gate mengikuti
+  `docs/runbooks/SALES_INVOICE_SCHEDULED_DATE_READ_FIX.md`.
+
 ## Gate aktif — Sales Invoice date-range XLSX export (2026-09-04)
 
-Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+Status: `LOCAL READY; DATABASE LIVE; CLIENT AUTHENTICATED SMOKE PENDING`.
 
 - Global Data Exchange menyediakan rentang tanggal khusus Invoice Penjualan.
 - Dasar tanggal mengikuti policy tanggal immutable pada snapshot Invoice.
@@ -12,6 +672,10 @@ Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
 - Tidak ada mutation Sale, Stock, Payment, Financial Event, atau Journal.
 - Gate rollout mengikuti
   `docs/runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md`.
+- Forward-fix routing 2026-09-07 memakai collection endpoint
+  `/api/sales/documents?operation=EXPORT` karena child route export terbukti
+  404 pada runtime Next dev. Handler, permission, Company scope, RPC, dan
+  workbook tetap sama; tidak ada database mutation tambahan.
 
 ## Gate aktif — Revisi Sales Order pre-dispatch (2026-09-03)
 
@@ -834,6 +1498,56 @@ database rollout/regression selesai.
 ---
 
 ## 7. G5 — Purchasing Dasar
+
+**Purchase Daily Replenishment Step 6/6C database-pass 2026-09-14:** seluruh gate
+Step 6/6B termasuk forward-fix midnight telah dikonfirmasi user PASS pada
+isolated Development. Client lokal sekarang menambahkan tab RO/PO, konfirmasi
+AUTO_RO dengan allocation editable/split per Supplier, serta cancel RO/PO
+melalui RPC canonical. Migration read-model `20260914150000` hanya mengekspos
+identitas Product-Supplier, Purchase UOM, dan Gudang penerimaan exact. Migration,
+behavioral test, dan postflight 6C telah user-confirmed PASS pada isolated
+Development; authenticated smoke dan UAT masih pending. Production/staging
+tidak disentuh.
+
+**Purchase Daily Replenishment Step 6/6A local-ready 2026-09-14:** migration
+`20260914130000` menghubungkan Receipt supplier-pending dan assignment Supplier
+append-only dengan AP Provisional serta Finance queue existing. Receipt
+membukukan Dr Inventory / Cr Unassigned Supplier Clearing lebih dahulu, lalu
+assignment membukukan Dr Unassigned Supplier Clearing / Cr AP Provisional per Supplier; Receipt posted,
+Stock/FIFO, serta runtime Faktur Supplier/Pembayaran Supplier existing tidak
+diganti. Paket preflight, guarded migration, behavior rollback, postflight, dan
+runbook tersedia; database/smoke/UAT belum dijalankan.
+
+**Purchase Daily Replenishment Step 5/6B database-pass 2026-09-14:** forward-fix
+`20260914110000` menghapus asumsi bahwa gudang penerimaan harus tersedia saat
+AUTO_PO dibuat. Product aktif pada gudang sumber aktif tetap masuk PO walaupun
+tujuannya kosong; Product/gudang sumber nonaktif tetap dikecualikan. Gudang
+penerimaan aktif tetap wajib dipilih saat Goods Receipt. Tidak ada supplemental
+PO sebagai flow normal, dan batch lama yang sudah tertahan tidak dikonversi
+diam-diam. Preflight, migration, postflight, behavioral rollback, dan runbook
+tersedia; migration/behavior/postflight telah dikonfirmasi user PASS pada
+isolated Development. Authenticated smoke/UAT belum dijalankan.
+
+**Purchase Daily Replenishment Step 5/6A database-pass 2026-09-14:** migration
+`20260914100000` menambah Receipt PO harian per Gudang, Product COGS default
+yang editable, explicit zero-cost confirmation, Stock/FIFO pending-Supplier,
+unassigned clearing append-only, assignment Supplier per line, exact retry,
+dan Finance queue exclusion. Receipt posted tidak diubah saat Supplier
+ditentukan. Runtime Receipt manual/POS/Backoffice lama tetap dipertahankan.
+Paket preflight, migration, behavior rollback, postflight, dan runbook sudah
+tersedia; migration/behavior/postflight dikonfirmasi user PASS pada isolated
+Development. Jurnal reklasifikasi/Supplier Bill/Payment tetap Step 6.
+
+**Purchase Daily Replenishment Step 4/6 database-pass 2026-09-13:** Step 1–4/6
+telah user-konfirmasi migration/behavior/postflight PASS pada isolated
+Development. Step 4 menyediakan generator AUTO_PO atomik setelah cutoff. Line
+siap menjadi PO confirmed per Supplier plus kelompok `SUPPLIER_PENDING`; line
+dengan blocker Gudang/UOM/master tetap ditahan dalam batch Draft tanpa
+menghentikan line siap. Exact retry, same-date reuse, allocation, dan audit
+tetap canonical. PO manual/legacy dan AUTO_RO tetap kompatibel. Receipt
+multi-Gudang, Stock/FIFO/AP, resolution blocker/Supplier, Supplier Bill,
+scheduler, UI dan UAT belum diaktifkan. Rollout mengikuti
+`PURCHASE_DAILY_AUTO_PO_RUNTIME_ROLLOUT.md`.
 
 **Penyesuaian local-ready 2026-08-25:** Goods Receipt ditambah sebagai channel
 Backoffice untuk Owner/Admin/Warehouse Admin tanpa mewajibkan sesi Kasir.
@@ -2176,3 +2890,90 @@ Ordinary TEMPO dan guard periode effective Order date tidak dilonggarkan.
 Behavioral test pertama berhenti pada assertion static terhadap body wrapper
 public, bukan pada mismatch tanggal. Test diperbaiki agar memeriksa output bisnis
 dan preservation delivery date tanpa mengubah runtime live.
+
+## 2026-09-11 — Backoffice Payment Collection Step 1/3
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT`.
+
+- Direct impact: typed allocation Invoice Backoffice pada Customer Receipt
+  canonical, pembayaran partial/berulang, final Cash/Bank-to-AR Journal, dan
+  rekonsiliasi receivable schedule.
+- Server authority: hanya Invoice `POSTED` milik Company/Customer yang sama dan
+  bertanggal tidak sesudah receipt dapat dialokasikan; outstanding dikunci dan
+  dihitung ulang saat Save dan Post. Draft zero-final-effect, stale version dan
+  over-allocation ditolak, exact retry tidak membuat jurnal kedua.
+- Compatibility: FK/RPC Retail existing dipertahankan. Header receipt dan
+  Financial Event tetap satu, sedangkan FK allocation Retail dan Backoffice
+  dipisah. Customer Balance advance tidak diubah.
+- Tidak berubah: Stock, Reservation, FIFO/HPP, DO/Transit/penerimaan barang,
+  POS checkout, posting/tanggal/nilai/template Invoice, production, dan staging.
+- Gate berikut: jalankan paket Step 1 sesuai
+  `docs/runbooks/BACKOFFICE_SALES_PAYMENT_COLLECTION_ROLLOUT.md`. Step 2 UI/read
+  model dan Step 3 AR/reporting baru dibuka setelah seluruh output PASS.
+- Behavioral mencapai posting receipt dan membuktikan isolated Development
+  belum mempunyai fallback `CUSTOMER_RECEIVABLE` maupun `BANK`, walaupun akun
+  sistem canonical keduanya tersedia. Forward-fix additive `20260911161000`
+  sudah dipasang untuk memprovisi mapping existing/future Company tanpa
+  menimpa mapping custom efektif; user kemudian mengonfirmasi behavior dan
+  postflight seluruhnya PASS.
+
+## 2026-09-11 — Backoffice Payment Collection Step 2/3
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS ON ISOLATED DEVELOPMENT; AUTHENTICATED UAT PENDING`.
+
+- Direct impact: Invoice payment context read-model, atomic Register Payment RPC,
+  operation identity table, authenticated API route, dan detail Invoice existing.
+- Server authority: permission `finance.customer_receipts` VIEW/CREATE_DRAFT/POST,
+  active Company, active payment method, proof mode, invoice `POSTED`, receipt
+  date, outstanding lock, request-exact idempotency, dan accounting period tetap
+  divalidasi pada server/database.
+- UI: sisa tagihan auto-fill tetapi editable; status Belum Dibayar/Dibayar
+  Sebagian/Lunas dan beberapa receipt/jurnal tampil pada Invoice yang sama.
+- Compatibility: tidak membuat tab/template/Invoice pembayaran baru dan tidak
+  mengganti Customer Receipt canonical. POS Retail, Stock, Reservation, DO,
+  Transit, FIFO/HPP, nilai/tanggal Invoice, dan source SO tidak berubah.
+- Evidence lokal: scoped ESLint PASS; Next.js build/TypeScript PASS (83 routes);
+  static SQL delimiter/parenthesis dan `git diff --check` PASS. Runtime PostgreSQL,
+  authenticated smoke, dan UAT belum dijalankan.
+
+User kemudian mengonfirmasi migration, behavioral, dan postflight Step 2/3
+seluruhnya PASS pada isolated Development. Status database menjadi `DATABASE
+LIVE + MANUAL DATABASE TEST PASS`; authenticated smoke/UAT tetap belum diklaim.
+
+## 2026-09-11 — Backoffice Payment Collection Step 3/3
+
+Status: `LOCAL READY; MANUAL ISOLATED-DEVELOPMENT SQL + AUTHENTICATED SMOKE PENDING`.
+
+- Existing Penerimaan Customer, AR Aging, Customer Statement, dan Excel export
+  menerima source Retail dan Backoffice secara eksplisit; tidak ada menu atau
+  template laporan kedua.
+- Save/Post tetap server-authoritative. Receipt biasa memakai typed allocation
+  dan unified Post; Customer Balance advance tetap memakai lifecycle existing.
+- AR Aging Backoffice dihitung per receivable schedule/installment. Summary
+  `invoiceCount` tetap distinct Invoice agar tidak membesar karena cicilan.
+- Tidak ada backfill atau perubahan Stock, Reservation, FIFO/HPP, SO/DO,
+  Invoice final, POS, maupun Journal historis.
+- Gate manual dan matrix regression ada di
+  `docs/runbooks/BACKOFFICE_SALES_AR_REPORTING_INTEGRATION_ROLLOUT.md`.
+
+## 2026-09-11 — Backoffice Invoice client activation
+
+Status: `LOCAL READY; MANUAL ISOLATED-DEVELOPMENT SQL + AUTHENTICATED SMOKE PENDING`.
+
+- Direct impact: tab/list/detail/form Invoice Backoffice dan API Route
+  terautentikasi; tombol `Buat Invoice` hanya pada SO `COMPLETED`.
+- Server authority: canonical Draft hold, tax, delivery-fee allocation,
+  idempotency/version, Finance POST permission, open period, posting journal,
+  dan immutable final Invoice tetap dipakai. Wrapper baru menolak SO yang belum
+  selesai dan membawa single explicit due date ke schedule sebelum immutable
+  operation/audit snapshot ditulis.
+- Downstream: posting mengubah Qty held menjadi invoiced dan menghasilkan
+  Finance event/journal melalui runtime yang sudah ada. Tidak ada Stock/FIFO/DO/
+  receipt effect baru.
+- Compatibility: Invoice/Payment Term existing tetap memakai schedule canonical;
+  request tanpa `dueDate` tetap jatuh pada tanggal Invoice. POS Retail dan
+  dokumen historis tidak diubah.
+- Evidence lokal: scoped ESLint PASS; Next.js production build dan TypeScript
+  PASS dengan 83 static pages. SQL belum dijalankan oleh agent.
+- Gate berikut: user menjalankan preflight → migration → rollback-only behavior
+  → postflight, lalu smoke sesuai runbook pada `fkywtxucmyjvpwdiqpix`.

@@ -17,6 +17,7 @@ const exportTypes = [
   "BALANCE_SHEET",
   "PENDING_ANALYSIS",
   "RECONCILIATION_SUMMARY",
+  "DELIVERED_NOT_INVOICED",
   "CUSTOMER_BALANCES",
   "SUPPLIER_INVOICES",
   "SUPPLIER_PAYMENTS",
@@ -104,6 +105,7 @@ const reportLabels: Record<ExportType, string> = {
   BALANCE_SHEET: "Balance Sheet",
   PENDING_ANALYSIS: "Pending Analysis",
   RECONCILIATION_SUMMARY: "Reconciliation Summary",
+  DELIVERED_NOT_INVOICED: "Delivered Not Invoiced",
   CUSTOMER_BALANCES: "Customer Balances",
   SUPPLIER_INVOICES: "Supplier Invoices",
   SUPPLIER_PAYMENTS: "Supplier Payments",
@@ -153,6 +155,30 @@ function reportSheets(
     "ledgerBalance",
     "difference",
     "eventCount",
+    "salesOrderNo",
+    "sourceKind",
+    "measureKind",
+    "customerName",
+    "productCode",
+    "productName",
+    "uomName",
+    "firstAcceptedDate",
+    "lastAcceptedDate",
+    "invoiceStatus",
+    "draftInvoiceNumbers",
+    "deliveredBaseQty",
+    "deliveredQty",
+    "draftInvoiceBaseQty",
+    "draftInvoiceQty",
+    "postedInvoiceBaseQty",
+    "postedInvoiceQty",
+    "notDraftedBaseQty",
+    "notDraftedQty",
+    "outstandingBaseQty",
+    "outstandingQty",
+    "estimatedUntaxedAmount",
+    "estimatedTaxAmount",
+    "estimatedTotalAmount",
   ];
   const keySet = new Set(rows.flatMap((row) => Object.keys(row)));
   const columns = [
@@ -213,6 +239,13 @@ async function canonicalReport(
   if (type === "PENDING_ANALYSIS") {
     return caller.client.rpc("get_finance_pending_analysis", {
       p_date_from: dateFrom,
+      p_as_of: asOf,
+      p_limit: 500,
+      p_offset: 0,
+    });
+  }
+  if (type === "DELIVERED_NOT_INVOICED") {
+    return caller.client.rpc("get_finance_delivered_not_invoiced", {
       p_as_of: asOf,
       p_limit: 500,
       p_offset: 0,
@@ -292,7 +325,9 @@ export async function GET(request: Request) {
         ["As Of", asOf],
         ["Generated At", new Date().toISOString()],
         ["Report Version", workbookCell(payload.reportVersion ?? "-")],
-        ["Accounting Basis", "Canonical POSTED report"],
+        ["Accounting Basis", type === "DELIVERED_NOT_INVOICED"
+          ? "Customer accepted less Posted Invoice; Draft remains included"
+          : "Canonical POSTED report"],
       ];
       const workbook = createXlsx(reportSheets(type, payload, metadata));
       const companyCode = String(company.data.company_code ?? "COMPANY").replace(

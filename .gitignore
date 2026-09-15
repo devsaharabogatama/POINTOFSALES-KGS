@@ -20,6 +20,8 @@ dist/
 
 # Local platform/tool state
 /.supabase/
+/.supabase-local-home/
+/.local-dev/
 /.codex/
 /.agents/
 /.vercel/
@@ -69,5 +71,9 @@ Thumbs.db
 
 # Local documentation not pushed to GitHub
 KGS_MIGRATION_CHANGELOG.md
+
+# Isolated HR prototype. Kept outside the operational MADS build and repository
+# until its product contract and integration gate are explicitly approved.
+/hr-sandbox/
 
 .vercel

@@ -1,7 +1,216 @@
 # Router Dokumen KGS POS
 
+Purchase Daily Replenishment Step 1–6A sudah user-confirmed database, behavior,
+dan postflight PASS pada isolated Development. Paket Step 6/6B scheduler dan
+cancellation tersedia local-ready di
+[`runbooks/PURCHASE_DAILY_SCHEDULER_CANCELLATION_ROLLOUT.md`](runbooks/PURCHASE_DAILY_SCHEDULER_CANCELLATION_ROLLOUT.md).
+Scheduler menjalankan AUTO_RO/AUTO_PO pukul 23:59 waktu Company sebagai
+`Sistem Otomatis`. RO Draft dan PO tanpa Receipt Posted dapat dibatalkan; PO
+setelah Receive hanya dapat dibatalkan setelah seluruh quantity stock-bearing
+diretur melalui Purchase Return Posted. Database rollout, client Step 6/6C,
+authenticated smoke, dan UAT masih pending.
+
+Spesifikasi canonical dan riwayat Step 1–5 tetap tersedia di
+[`PURCHASE_DAILY_REPLENISHMENT_SPEC.md`](PURCHASE_DAILY_REPLENISHMENT_SPEC.md),
+[`runbooks/PURCHASE_DAILY_AUTO_PO_RUNTIME_ROLLOUT.md`](runbooks/PURCHASE_DAILY_AUTO_PO_RUNTIME_ROLLOUT.md),
+dan
+[`runbooks/PURCHASE_DAILY_MULTIWAREHOUSE_RECEIPT_ROLLOUT.md`](runbooks/PURCHASE_DAILY_MULTIWAREHOUSE_RECEIPT_ROLLOUT.md).
+Default Company tetap Manual; AUTO_RO/AUTO_PO tidak mengubah Stock sebelum
+Receipt posted.
+
+Authenticated read smoke Step 6/6.1 tersedia di
+[`runbooks/BACKOFFICE_SALES_AUTHENTICATED_READ_SMOKE.md`](runbooks/BACKOFFICE_SALES_AUTHENTICATED_READ_SMOKE.md).
+Script hanya menembak API lokal dengan user Supabase Development nyata,
+menolak production/staging, dan tidak membuat mutation. Eksekusi login user
+masih pending.
+
+Delivered Not Invoiced Step 5/6.3 tersedia di
+[`runbooks/BACKOFFICE_SALES_DELIVERED_NOT_INVOICED_REPORT_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DELIVERED_NOT_INVOICED_REPORT_ROLLOUT.md).
+Report mengikuti posisi As-of per komponen SO: Customer accepted dikurangi Invoice
+Posted; ongkir ditampilkan sebagai komponen nilai terpisah, Draft tetap termasuk,
+dan Payment tidak memengaruhi status. Database, behavioral test, dan postflight
+sudah user-konfirmasi PASS pada isolated Development; authenticated smoke/UAT
+masih pending.
+
+Forward-fix pemisahan ledger accepted overage tersedia di
+[`runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_LEDGER_SPLIT_FIX.md`](runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_LEDGER_SPLIT_FIX.md).
+Paket ini mencegah satu overage menjadi Qty To Invoice melalui source SO regular
+dan discrepancy sekaligus; database, behavior, dan postflight telah
+user-konfirmasi PASS pada isolated Development.
+
+Discrepancy Stock-Loss Finance posting Step 5/6.2 tersedia di
+[`runbooks/BACKOFFICE_SALES_DISCREPANCY_STOCK_LOSS_FINANCE_POSTING_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DISCREPANCY_STOCK_LOSS_FINANCE_POSTING_ROLLOUT.md).
+Base `135000` dan forward-fix additive `136000` sudah live serta seluruh
+behavior/postflight telah user-konfirmasi PASS pada isolated Development.
+Identity `BACKOFFICE_DISCREPANCY_LOSS` menjaga constraint Stock Adjustment tanpa
+mengubah Stock/FIFO/Finance lineage; authenticated smoke/UAT masih pending.
+
+Accepted-overage Finance posting Step 5/6.1 tersedia di
+[`runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_FINANCE_POSTING_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_FINANCE_POSTING_ROLLOUT.md).
+Event COGS kelebihan yang sudah HOLD diproses melalui Posting
+Queue existing menjadi Dr COGS/Cr Inventory Transit tanpa efek Stock kedua.
+
+Discrepancy client activation Step 4/6.5C4 tersedia di
+[`runbooks/BACKOFFICE_SALES_DISCREPANCY_CLIENT_ACTIVATION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DISCREPANCY_CLIENT_ACTIVATION_ROLLOUT.md).
+Approval komersial berada di SO/Sales; pencocokan fisik DO berada di Surat
+Jalan/Gudang. Database gate dan behavioral telah user-konfirmasi PASS pada
+isolated Development; authenticated smoke/UAT masih menunggu.
+
+Overage/Wrong Item resolution Step 4/6.5C3 tersedia di
+[`runbooks/BACKOFFICE_SALES_OVERAGE_WRONG_ITEM_RESOLUTION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_OVERAGE_WRONG_ITEM_RESOLUTION_ROLLOUT.md).
+Base migration dan kedua forward-fix sudah live pada isolated Development.
+Migration, behavior, dan seluruh postflight telah user-konfirmasi PASS; event
+accepted-overage COGS tetap HOLD sesuai batas C3. Authenticated smoke/UAT masih
+menunggu.
+
+Accepted-overage Invoice client Step 4/6.5C2C tersedia di
+[`runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_CLIENT_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_CLIENT_ROLLOUT.md).
+Paket ini menghubungkan source overage ke form/detail/template Invoice existing;
+database, behavior, dan postflight telah user-konfirmasi PASS pada isolated
+Development; authenticated smoke/UAT masih pending.
+
+Accepted-overage Invoice runtime Step 4/6.5C2B tersedia di
+[`runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_RUNTIME_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_RUNTIME_ROLLOUT.md).
+Gate ini membuka partial Draft/Edit/Cancel/Post dengan diskon proporsional dan
+pajak per Invoice dari snapshot approval. Database, behavior, dan postflight
+telah user-konfirmasi PASS pada isolated Development.
+
+Accepted-overage Invoice-line foundation Step 4/6.5C2A tersedia di
+[`runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_LINE_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_ACCEPTED_OVERAGE_INVOICE_LINE_ROLLOUT.md).
+Gate ini menambah identity/counter allocation terpisah tanpa mengaktifkan
+resolver Stock, generator Invoice, UI, atau Finance event.
+
+Discrepancy reconstruction transfer Step 4/6.5C1 tersedia di
+[`runbooks/BACKOFFICE_SALES_DISCREPANCY_RECONSTRUCTION_TRANSFER_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DISCREPANCY_RECONSTRUCTION_TRANSFER_ROLLOUT.md).
+Helper private menegakkan exact FIFO dan policy minus Warehouse sebelum
+Overage/Wrong Item boleh diselesaikan oleh resolver final. Database, behavior,
+dan postflight telah user-konfirmasi PASS pada isolated Development; resolver
+final serta authenticated UI smoke/UAT masih menunggu.
+
+Shortage resolution runtime Step 4/6.5B tersedia di
+[`runbooks/BACKOFFICE_SALES_SHORTAGE_RESOLUTION_RUNTIME_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_SHORTAGE_RESOLUTION_RUNTIME_ROLLOUT.md).
+Paket ini menyelesaikan `SHORT`, exact Transit return/write-off, dan Backorder
+DO/SJ. Overage/Wrong Item reconstruction dan UI tetap gate berikutnya.
+
+Warehouse resolution foundation Step 4/6.5A tersedia di
+[`runbooks/BACKOFFICE_SALES_WAREHOUSE_RESOLUTION_FOUNDATION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_WAREHOUSE_RESOLUTION_FOUNDATION_ROLLOUT.md).
+Paket local-ready ini mengunci exact Stock/FIFO/Backorder lineage dan approved
+overage boundary; resolver Gudang dan efek operasional belum diaktifkan.
+
+Approval komersial accepted overage Step 4/6.4 tersedia di
+[`runbooks/BACKOFFICE_SALES_OVERAGE_COMMERCIAL_APPROVAL_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_OVERAGE_COMMERCIAL_APPROVAL_ROLLOUT.md).
+Database, behavior, dan postflight telah user-konfirmasi PASS pada isolated
+Development: default mengikuti SO dan Sales Admin dapat menyesuaikan;
+Warehouse physical resolution belum aktif.
+
+Runtime mixed Customer Receipt Step 4/6.3 tersedia di
+[`runbooks/BACKOFFICE_SALES_MIXED_CUSTOMER_RECEIPT_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_MIXED_CUSTOMER_RECEIPT_ROLLOUT.md).
+Accepted qty keluar dari Transit dan langsung invoiceable; discrepancy fisik
+tetap terbuka. Resolution/Backorder/UI masih gate berikutnya.
+
+Forward correction Discrepancy Step 4/6.2 tersedia di
+[`runbooks/BACKOFFICE_SALES_DISCREPANCY_PHYSICAL_STATE_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DISCREPANCY_PHYSICAL_STATE_ROLLOUT.md).
+Paket ini memisahkan keputusan Customer dari posisi fisik shortage dan
+menormalkan actual Wrong Item; mixed receipt/runtime/UI belum dibuka.
+
+Discrepancy/Backorder Backoffice Sales Step 4/6.1 tersedia di
+[`runbooks/BACKOFFICE_SALES_DISCREPANCY_CONTRACT_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DISCREPANCY_CONTRACT_ROLLOUT.md).
+Paket ini baru foundation lokal: quantity accepted dan quantity bermasalah
+dipisahkan, approval Sales/Warehouse serta audit dikunci, tetapi mutation
+penerimaan campuran, Return, Backorder, UI, dan Finance queue belum dibuka.
+
+Payment Collection Invoice Backoffice Step 1/3 tersedia di
+[`runbooks/BACKOFFICE_SALES_PAYMENT_COLLECTION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_PAYMENT_COLLECTION_ROLLOUT.md).
+Step 2 UI/payment action:
+[`runbooks/BACKOFFICE_SALES_INVOICE_PAYMENT_UI_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_PAYMENT_UI_ROLLOUT.md).
+Paket ini local-ready untuk Supabase Development terisolasi dan belum mengubah
+client, production, staging, POS, Stock, DO, atau template Invoice.
+Forward-fix mapping `CASH_DRAWER/BANK/CUSTOMER_RECEIVABLE` untuk Company existing
+dan future tercakup dalam runbook yang sama; statusnya masih manual gate pending.
+
+Forward-fix agar Backoffice DO shortage mengikuti izin minus Warehouse sambil
+mempertahankan Transit FIFO, Customer Receipt, replenishment cost, dan larangan
+minus untuk Stock Transfer biasa tersedia di
+[`runbooks/BACKOFFICE_SALES_NEGATIVE_DISPATCH_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_NEGATIVE_DISPATCH_ROLLOUT.md).
+Statusnya local-ready untuk SQL gate manual pada isolated Development saja.
+
+UI kontrol pergantian proses Step 4F/6 tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_CONTROL_UI.md`](runbooks/SALES_PROCESS_CUTOVER_CONTROL_UI.md).
+Panel hanya untuk Platform Super Admin dan seluruh mutation tetap memakai RPC
+Step 4E. Statusnya local-ready; authenticated smoke pada isolated Development
+masih pending dan production/staging tidak disentuh.
+
+Atomic Apply dan creation gate mode-authoritative Step 4E/6 tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_ATOMIC_APPLY_ROLLOUT.md`](runbooks/SALES_PROCESS_CUTOVER_ATOMIC_APPLY_ROLLOUT.md).
+Behavioral terkoreksi sudah dikonfirmasi PASS oleh user pada isolated
+Development. Konfirmasi postflight final dan authenticated smoke/UAT masih
+pending; production dan staging tidak disentuh.
+
+Attachment Draft hasil cutover ke sesi Retail nyata tanpa repricing saat buka
+tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_RETAIL_SESSION_ADOPTION_ROLLOUT.md`](runbooks/SALES_PROCESS_CUTOVER_RETAIL_SESSION_ADOPTION_ROLLOUT.md).
+Step 4D/6 sudah live dan lulus behavior/postflight pada isolated Development.
+
+Boundary satu tanggal jatuh tempo versus multi-installment untuk cutover
+Retail/Backoffice tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_PAYMENT_TERM_BOUNDARY.md`](runbooks/SALES_PROCESS_CUTOVER_PAYMENT_TERM_BOUNDARY.md).
+Payment Term boundary Step 1E-B2/6 sudah live dan lulus behavior/postflight pada
+isolated Development; converter Retail ke Backoffice Step 4B/6 juga sudah live
+dan lulus. Public Apply serta mode switch tetap belum tersedia.
+
+Paket reverse converter Backoffice ke Retail Step 4C/6 tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_BACKOFFICE_TO_RETAIL_CONVERTER.md`](runbooks/SALES_PROCESS_CUTOVER_BACKOFFICE_TO_RETAIL_CONVERTER.md).
+Base converter dan operation/audit forward-fix sudah live serta lulus behavior
+dan kedua postflight pada isolated Development. Public Apply, mode switch,
+client attachment, authenticated smoke/UAT, dan production tetap belum dibuka.
+
+Forward-fix untuk membuka kembali future Scheduled TEMPO Draft melalui tombol
+`Lanjutkan` tanpa melemahkan larangan posting sebelum tanggal rencana tersedia
+di [`runbooks/POS_SCHEDULED_DRAFT_RESUME_FIX.md`](runbooks/POS_SCHEDULED_DRAFT_RESUME_FIX.md).
+
+Foundation perencanaan dan audit switch Retail/Backoffice tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_FOUNDATION_ROLLOUT.md`](runbooks/SALES_PROCESS_CUTOVER_FOUNDATION_ROLLOUT.md).
+Gate ini belum mengganti mode Company atau mengonversi dokumen operasional.
+
+Parity ongkir Quotation/SO dan Regular Invoice Backoffice beserta forward-fix
+immutable history sebelum converter cutover tersedia di
+[`runbooks/BACKOFFICE_SALES_DELIVERY_FEE_PARITY_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_DELIVERY_FEE_PARITY_ROLLOUT.md).
+Migration awal dan forward-fix `20260910151000` sudah live dengan
+postflight/behavior user-confirmed PASS pada isolated Development;
+production/staging tidak disentuh.
+
+Fondasi identitas target Retail tanpa sesi/terminal palsu dan canonical blocker
+untuk pending Revision tersedia di
+[`runbooks/SALES_PROCESS_CUTOVER_RETAIL_IDENTITY_ROLLOUT.md`](runbooks/SALES_PROCESS_CUTOVER_RETAIL_IDENTITY_ROLLOUT.md).
+Gate Step 1D ini tetap belum membuka Apply atau mode switch.
+
+Foundation Reservation dan multi-Delivery Order Backoffice tersedia di
+[`runbooks/BACKOFFICE_SALES_FULFILLMENT_FOUNDATION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_FULFILLMENT_FOUNDATION_ROLLOUT.md).
+
+Runtime atomik Confirm SO Backoffice menjadi full Reservation dan DO awal
+`INITIAL/READY` tersedia di
+[`runbooks/BACKOFFICE_SALES_CONFIRM_FULFILLMENT_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_CONFIRM_FULFILLMENT_ROLLOUT.md).
+
+Read model Stock Real gabungan Reserved Out POS dan Backoffice beserta detail
+alokasinya tersedia di
+[`runbooks/BACKOFFICE_SALES_INVENTORY_RESERVATION_READ_MODEL_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVENTORY_RESERVATION_READ_MODEL_ROLLOUT.md).
+
+Rollout pemisahan Quotation/Sales Order, revisi nomor tetap, audit aktivitas,
+status pemenuhan, dan filter tanggal tersedia di
+[`runbooks/BACKOFFICE_SALES_REVISION_STATUS_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_REVISION_STATUS_ROLLOUT.md).
+
+Rollout role, commercial parity, dan pengaturan Warehouse untuk Backoffice
+Sales terbaru tersedia di
+[`runbooks/BACKOFFICE_SALES_COMMERCIAL_PARITY_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_COMMERCIAL_PARITY_ROLLOUT.md).
+
 Panduan penggunaan untuk operator dan pengguna akhir tersedia di
 [`MANUAL_PENGGUNA_KGS_POS.md`](MANUAL_PENGGUNA_KGS_POS.md) (Manual Pengguna MADS).
+
+Requirement discovery future HR opsional—Backoffice HR, Office Attendance
+Kiosk, Employee Android App, Employee Self Service, phased scope dan batas
+Finance/security—tersedia di
+[`HR_MODULE_PRODUCT_NOTES.md`](HR_MODULE_PRODUCT_NOTES.md). Statusnya tetap
+`DEFERRED`; dokumen tersebut bukan izin implementasi schema/runtime.
 
 Checklist UAT lintas role/modul, edge case, stop condition, serta daftar risiko
 data/operasional tersedia di
@@ -32,6 +241,9 @@ Rollout import/export Customer dan penambahan UOM Product secara additive:
 - [`runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md`](runbooks/SALES_INVOICE_RANGE_EXPORT_ROLLOUT.md)
   — export XLSX Invoice per rentang tanggal dengan sheet header, detail produk,
   dan informasi export.
+- [`runbooks/SALES_INVOICE_SCHEDULED_DATE_READ_FIX.md`](runbooks/SALES_INVOICE_SCHEDULED_DATE_READ_FIX.md)
+  — menyatukan tanggal Invoice Scheduled pada list, detail/print/PDF, POS,
+  dan export tanpa menulis ulang snapshot atau transaksi historis.
 
 Koreksi preview harga Pricelist langsung pada kartu Product dan cart POS:
 
@@ -58,6 +270,56 @@ Finance G6 Phase 8:
 
 Order Reservation/Dispatch:
 
+- [`runbooks/BACKOFFICE_SALES_INVOICE_FINANCE_MAPPING_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_FINANCE_MAPPING_ROLLOUT.md)
+  — system event, Transaction Category, canonical account mapping, dan
+  approved posting definition untuk Regular/DP Invoice tanpa membuka runtime
+  posting atau membuat Event/Journal.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_POSTING_RUNTIME_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_POSTING_RUNTIME_ROLLOUT.md)
+  — posting atomik Regular/DP Invoice, finalisasi quantity hold, auto/editable
+  DP application, exact tax-account Journal, exact retry, dan shared canonical
+  Invoice numbering pada isolated Development.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_TAX_BREAKDOWN_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_TAX_BREAKDOWN_ROLLOUT.md)
+  — snapshot Regular/DP per tax rule/version/account, proportional DP split,
+  immutable history, dan zero Finance effect sebelum mapping/posting dibuat.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_FINANCE_POSTING_PREFLIGHT.md`](runbooks/BACKOFFICE_SALES_INVOICE_FINANCE_POSTING_PREFLIGHT.md)
+  — SELECT-only audit Account Function/mapping, Invoice reconciliation, isolasi
+  posting POS, DP tax grouping, dan Accounting Period sebelum posting Invoice.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_DRAFT_RUNTIME_PREFLIGHT.md`](runbooks/BACKOFFICE_SALES_INVOICE_DRAFT_RUNTIME_PREFLIGHT.md)
+  — audit SELECT-only sebelum membuka runtime Draft Regular/DP Invoice; membaca
+  dependency nyata, ledger Qty To Invoice, commercial/tax snapshot, dan zero
+  foundation state tanpa membuat fixture atau efek operasional.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_DRAFT_RUNTIME_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_DRAFT_RUNTIME_ROLLOUT.md)
+  — Create/Edit/Cancel Draft Regular/DP Invoice transactional; DP memakai DPP
+  plus proportional tax, Regular memegang Qty To Invoice, tanpa posting Finance.
+- [`runbooks/BACKOFFICE_SALES_INVOICE_ACCOUNTING_FOUNDATION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_INVOICE_ACCOUNTING_FOUNDATION_ROLLOUT.md)
+  — foundation zero-backfill untuk Payment Terms, Pro-Forma non-akuntansi,
+  Regular/DP Invoice, quantity hold, DP deduction, installment schedule, dan
+  audit; runtime serta Finance posting masih terkunci.
+- [`runbooks/BACKOFFICE_SALES_RECEIPT_FINANCE_POSTING_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_RECEIPT_FINANCE_POSTING_ROLLOUT.md)
+  — posting period-aware actual FIFO COGS Customer receipt ke jurnal canonical;
+  tidak membuat Invoice, Revenue/AR, Payment, atau mutasi Stock baru.
+- [`runbooks/BACKOFFICE_SALES_CUSTOMER_RECEIPT_RUNTIME_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_CUSTOMER_RECEIPT_RUNTIME_ROLLOUT.md)
+  — clean receipt DO Backoffice dari exact Transit FIFO, tanggal Company
+  auto-fill/editable, Qty To Invoice, dan Event COGS HOLD tanpa Invoice/Journal.
+
+- [`runbooks/BACKOFFICE_SALES_CUSTOMER_RECEIPT_FOUNDATION_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_CUSTOMER_RECEIPT_FOUNDATION_ROLLOUT.md)
+  — foundation immutable penerimaan bersih dan Qty To Invoice; runtime penerimaan,
+  sale-out Transit, COGS, dan Invoice masih dikunci.
+- [`runbooks/BACKOFFICE_SALES_RECEIPT_FINANCE_MAPPING_ROLLOUT.md`](runbooks/BACKOFFICE_SALES_RECEIPT_FINANCE_MAPPING_ROLLOUT.md)
+  — mapping deterministik COGS/Inventory Asset untuk Customer receipt tanpa
+  membuat Event, Journal, Stock, atau Invoice.
+
+- [`runbooks/BACKOFFICE_SALES_LOCAL_ENVIRONMENT.md`](runbooks/BACKOFFICE_SALES_LOCAL_ENVIRONMENT.md)
+  — boundary local-first optional Backoffice Sales. PostgreSQL parser-only
+  tersedia pada loopback; full Supabase local masih menunggu Docker dan tidak
+  boleh memakai project/database aktif.
+- [`SALES_ORDER_DUAL_INVOICE_PROCESS_NOTES.md`](SALES_ORDER_DUAL_INVOICE_PROCESS_NOTES.md)
+  — arah future dua flow yang hidup berdampingan: source POS selalu memakai
+  retail existing, sedangkan entitlement Company membuka Backoffice Quotation
+  -> SO -> DO -> delivered quantity -> multiple Invoice. Mencakup Stock On
+  Hand/Reserved/Available/Incoming/Forecasted, Backorder, Qty To Invoice, dan
+  Delivered Not Invoiced. Implementasi wajib dimulai pada Supabase/client lokal
+  terisolasi; status discovery, belum runtime.
 - [`runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`](runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md)
   — bulk `READY -> DISPATCHED -> DELIVERED` atas checkbox Inventory dengan
   runtime canonical per Surat Jalan dan tanpa direct table update.
@@ -458,6 +720,11 @@ berada di [`../README.md`](../README.md).
 | ODR-5E Dispatch advance reconciliation | `runbooks/ODR5E_DISPATCH_ADVANCE_RECONCILIATION.md` | One-time atomic rebalance payment surcharge dan verified Customer Advance ke Dispatch source, menjaga residual Clearing/AR dan automatic closure sampai ODR-5F |
 | ODR-5F Finance runtime closure | `runbooks/ODR5F_FINANCE_RUNTIME_CLOSURE.md` | Parity controlled/automatic dispatcher, normalisasi no-effect event, urutan Advance sebelum Dispatch, dan explicit automatic-policy unlock tanpa mengubah Company existing |
 | ODR-6 UI/E2E cutover preflight | `runbooks/ODR6_UI_E2E_CUTOVER_PREFLIGHT.md` | SELECT-only audit canonical browser RPC, protected tables, active queue/exception, reservation/Dispatch/Finance reconciliation, legacy consumer cutover, Offline boundary, dan authenticated UAT scope |
+| Sales process persistent cutover preview | `runbooks/SALES_PROCESS_CUTOVER_PERSISTENT_PREVIEW_ROLLOUT.md` | Step 1B/6 menyimpan preview Retail/Office dengan settings/document version lock, idempotency, dan audit tanpa apply atau Company switch |
+| Sales process cutover plan refresh/cancel | `runbooks/SALES_PROCESS_CUTOVER_PLAN_REFRESH_CANCEL_ROLLOUT.md` | Step 1C/6 optimistic refresh candidate dengan parameter plan terkunci dan audited cancel tanpa apply/switch |
+| Sales process cutover Retail identity | `runbooks/SALES_PROCESS_CUTOVER_RETAIL_IDENTITY_ROLLOUT.md` | Step 1D/6 strict `BACKOFFICE_CUTOVER` identity tanpa sesi POS palsu dan pending Revision blocker; Apply/switch belum dibuka |
+| Sales process cutover Apply | `runbooks/SALES_PROCESS_CUTOVER_APPLY_ROLLOUT.md` | Step 1E-A/6 package lokal mengubah open procurement menjadi blocker grandfathered; converter atomik dan mode switch masih menunggu gate berikutnya |
+| Backoffice Sales delivery-fee parity | `runbooks/BACKOFFICE_SALES_DELIVERY_FEE_PARITY_ROLLOUT.md` | Step 1E-B1/6 menutup parity ongkir SO/Regular Invoice; `150000` + forward-fix `151000` live dan postflight/behavior user-confirmed PASS pada isolated Development |
 | ODR-6A POS Order cutover | `runbooks/ODR6A_POS_ORDER_CUTOVER.md` | PWA online memakai Confirm/Cancel/List Order canonical, memisahkan Order aktif/terjadwal dari Draft, menutup checkout Offline baru, menjaga pembatalan setelah Payment capture, dan mengalokasikan identitas Invoice final sebelum snapshot Invoice/SJ |
 | ODR-6B.1 Reservation Stock read model | `runbooks/ODR6B_RESERVATION_STOCK_READ_MODEL.md` | Mengaktifkan Reserved Out dan Available to Sell pada Stock Real dari Reservation canonical tanpa mengubah On Hand/FIFO/Movement |
 | Forward-fix serah barang Pickup | `runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md` | Memulihkan Pickup legacy READY ke DELIVERED tanpa Dispatch, sambil mempertahankan Dispatch wajib untuk Pickup ODR dan Delivery |
@@ -492,6 +759,17 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - Setelah perubahan, perbarui source-of-truth dan decision log terkait saja; hindari menyalin keputusan ke banyak file kecuali diperlukan sebagai boundary lintas modul.
 ## Rollout terbaru
 
+- [Purchase Order full document dan revisi sebelum Receipt](runbooks/PURCHASE_ORDER_DOCUMENT_REVISION_ROLLOUT.md)
+- [Purchase AUTO_PO smoke fixture](runbooks/PURCHASE_AUTO_PO_SMOKE_FIXTURE.md)
+- [Backoffice Sales Invoice Client Activation](runbooks/BACKOFFICE_SALES_INVOICE_CLIENT_ACTIVATION_ROLLOUT.md)
+- [Sales Process Cutover Preview Runtime](runbooks/SALES_PROCESS_CUTOVER_PREVIEW_ROLLOUT.md)
+- [Sales Process Cutover Foundation](runbooks/SALES_PROCESS_CUTOVER_FOUNDATION_ROLLOUT.md)
+- [Warehouse Transit Usage Foundation](runbooks/WAREHOUSE_TRANSIT_USAGE_FOUNDATION_ROLLOUT.md)
+- [Backoffice Sales Inventory Delivery Read Model](runbooks/BACKOFFICE_SALES_INVENTORY_DELIVERY_READ_MODEL_ROLLOUT.md)
+- [Backoffice Sales Inventory Reservation Read Model](runbooks/BACKOFFICE_SALES_INVENTORY_RESERVATION_READ_MODEL_ROLLOUT.md)
+- [Backoffice Sales Safe Development Plan](runbooks/BACKOFFICE_SALES_SAFE_DEVELOPMENT_PLAN.md)
+- [Backoffice Delivered-Quantity Sales Phase 0 Preflight](runbooks/BACKOFFICE_DELIVERED_SALES_PHASE0_PREFLIGHT.md)
+- [Backoffice Sales Process Identity Foundation](runbooks/BACKOFFICE_SALES_PROCESS_FOUNDATION_ROLLOUT.md)
 - [Pengaturan tanggal Invoice](runbooks/INVOICE_DATE_DISPLAY_POLICY_ROLLOUT.md)
 - [Penyelarasan template Invoice A4 dan Surat Jalan](runbooks/SALES_DOCUMENT_TEMPLATE_ALIGNMENT_ROLLOUT.md)
 - [Kontak opsional Surat Jalan](runbooks/SALES_DELIVERY_OPTIONAL_CONTACT_ROLLOUT.md)
@@ -502,3 +780,26 @@ File `database-current-state.md` dan `multi-company-gap-analysis.md` adalah snap
 - [Forward-fix runtime ODR Dispatch](runbooks/ODR_DISPATCH_RUNTIME_SCHEMA_FORWARD_FIX.md)
 - [Forward-fix serah barang Pickup](runbooks/INVENTORY_PICKUP_HANDOVER_LIFECYCLE_FIX.md)
 - [Stok Minus POS ke Permintaan Barang per Sesi](runbooks/PRD_NEGATIVE_STOCK_SESSION_REQUEST_ROLLOUT.md)
+
+## Latest historical-clone rehearsal evidence (2026-09-15)
+
+Production all90 migrations/final postflight USER PASS; client release next:
+[legacy-value reconciliation and release](runbooks/OFFICE_PURCHASE_PRODUCTION_CLIENT_RELEASE.md).
+Client/SMOKE/UAT remain separate; do not rerun installed migrations or use clone builds.
+
+[Ordered Production manual installation](runbooks/OFFICE_PURCHASE_PRODUCTION_MANUAL_INSTALL.md)
+contains90 file links/checksums and8 checkpoints; user-supplied data guards PASS.
+Database/client rollout remains manual; do not upload clone build or run fixtures.
+
+Next gate: [Production delta read-only package](runbooks/OFFICE_PURCHASE_PRODUCTION_DELTA_READ_ONLY.md).
+
+User-supplied Production outputs reviewed in
+[delta review](audits/OFFICE_PURCHASE_PRODUCTION_DELTA_REVIEW_2026-09-15.md);
+targeted Receipt uniqueness/legacy-negative evidence checks remain manual.
+Reuse completed rehearsal; additional clone/replay is conditional on proven relevant
+drift, not transaction count differences. Production SQL execution is manual.
+
+[Office/Purchase final clone report](runbooks/OFFICE_PURCHASE_CLONE_REHEARSAL_FINAL_REPORT.md)
+records reconciled migration delta, canonical SQL E2E, preservation evidence and
+remaining fresh-snapshot/authenticated UI/UAT gates. This is not a production
+deployment authorization or claim of full production readiness.

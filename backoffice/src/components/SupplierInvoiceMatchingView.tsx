@@ -225,14 +225,20 @@ const authHeaders = (session: Session) => ({ Authorization: `Bearer ${session.ac
 
 export function SupplierInvoiceMatchingView({
   session, canCreate, canEdit, canPost, canManagePolicy,
+  initialDocumentIds = [], initialSupplierId = null, startCreate = false,
 }: {
   session: Session
   canCreate: boolean
   canEdit: boolean
   canPost: boolean
   canManagePolicy: boolean
+  initialDocumentIds?: string[]
+  initialSupplierId?: string | null
+  startCreate?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'invoices' | 'create-draft' | 'policies'>('invoices')
+  const [activeTab, setActiveTab] = useState<'invoices' | 'create-draft' | 'policies'>(
+    startCreate && canCreate ? 'create-draft' : 'invoices',
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -254,6 +260,9 @@ export function SupplierInvoiceMatchingView({
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL')
+  const [focusedDocumentIds, setFocusedDocumentIds] = useState<Set<string>>(
+    () => new Set(initialDocumentIds),
+  )
 
   // Modals
   const [selectedDoc, setSelectedDoc] = useState<SupplierInvoiceDoc | null>(null)
@@ -280,7 +289,7 @@ export function SupplierInvoiceMatchingView({
   // Draft Form State
   const [draftDocId, setDraftDocId] = useState<string | null>(null)
   const [draftMasterVersion, setDraftMasterVersion] = useState<number | null>(null)
-  const [draftSupplierId, setDraftSupplierId] = useState('')
+  const [draftSupplierId, setDraftSupplierId] = useState(initialSupplierId ?? '')
   const [draftReceiptId, setDraftReceiptId] = useState('')
   const [draftInvoiceNo, setDraftInvoiceNo] = useState('')
   const [draftInvoiceDate, setDraftInvoiceDate] = useState(
@@ -324,7 +333,11 @@ export function SupplierInvoiceMatchingView({
 
       if (!invRes.ok) throw new Error(invData.message || invData.error || 'Gagal memuat data faktur supplier')
 
-      setDocuments(invData.data || [])
+      const nextDocuments = (invData.data || []) as SupplierInvoiceDoc[]
+      setDocuments(nextDocuments)
+      if (!isRefresh && initialDocumentIds.length === 1) {
+        setSelectedDoc(nextDocuments.find((row) => row.id === initialDocumentIds[0]) ?? null)
+      }
       setLines(invData.lines || [])
       setAllocations(invData.allocations || [])
       setToleranceResults(invData.toleranceResults || [])
@@ -364,9 +377,10 @@ export function SupplierInvoiceMatchingView({
       const matchStatus = statusFilter === 'ALL' || doc.status === statusFilter
       const matchSupplier = supplierFilter === 'ALL' || doc.supplier_id === supplierFilter
 
-      return matchSearch && matchStatus && matchSupplier
+      const matchFocus = focusedDocumentIds.size === 0 || focusedDocumentIds.has(doc.id)
+      return matchSearch && matchStatus && matchSupplier && matchFocus
     })
-  }, [documents, suppliers, searchQuery, statusFilter, supplierFilter])
+  }, [documents, focusedDocumentIds, suppliers, searchQuery, statusFilter, supplierFilter])
 
   // Profile map helper
   const profileMap = useMemo(() => {
@@ -821,6 +835,7 @@ export function SupplierInvoiceMatchingView({
       {/* TAB 1: INVOICES LIST */}
       {activeTab === 'invoices' && (
         <div className="space-y-4">
+          {focusedDocumentIds.size > 0 && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-800"><span>Menampilkan {focusedDocumentIds.size} Faktur Supplier yang terhubung ke Purchase Order.</span><button onClick={() => setFocusedDocumentIds(new Set())} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold">Lihat semua Faktur</button></div>}
           {/* Filters Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="relative flex-1 min-w-[240px]">

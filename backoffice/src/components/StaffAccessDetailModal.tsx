@@ -27,8 +27,8 @@ type DetailPayload = {
   error?: string
 }
 
-const roles = ['COMPANY_OWNER','COMPANY_ADMIN','STORE_MANAGER','WAREHOUSE_ADMIN','FINANCE','ACCOUNTING','CASHIER']
-const roleLabels: Record<string,string> = { COMPANY_OWNER:'Pemilik Perusahaan', COMPANY_ADMIN:'Admin Perusahaan', STORE_MANAGER:'Manajer Toko', WAREHOUSE_ADMIN:'Admin Gudang', FINANCE:'Finance', ACCOUNTING:'Accounting', CASHIER:'Kasir' }
+const roles = ['COMPANY_OWNER','COMPANY_ADMIN','STORE_MANAGER','WAREHOUSE_ADMIN','SALES','SALES_ADMIN','FINANCE','ACCOUNTING','CASHIER']
+const roleLabels: Record<string,string> = { COMPANY_OWNER:'Pemilik Perusahaan', COMPANY_ADMIN:'Admin Perusahaan', STORE_MANAGER:'Manajer Toko', WAREHOUSE_ADMIN:'Admin Gudang', SALES:'Sales', SALES_ADMIN:'Admin Sales', FINANCE:'Finance', ACCOUNTING:'Accounting', CASHIER:'Kasir' }
 const presetLabels: Record<string,string> = { IKUTI_ROLE:'Mengikuti role', LIHAT_SAJA:'Lihat saja', OPERASIONAL:'Operasional', TANPA_AKSES:'Tanpa akses' }
 const moduleLabels: Record<string,string> = { INVENTORY:'Inventory', CONTACTS:'Kontak', PURCHASE:'Pembelian', SALES:'Penjualan', FINANCE:'Keuangan', DATA:'Data Exchange', PLATFORM:'Pengaturan Platform' }
 const moduleOrder = ['INVENTORY','CONTACTS','PURCHASE','SALES','FINANCE','DATA','PLATFORM']

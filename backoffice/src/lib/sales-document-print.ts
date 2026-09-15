@@ -33,7 +33,12 @@ function dateTime(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('id-ID')
 }
 
-function invoiceDate(snapshot: JsonMap) {
+function invoiceDate(document: JsonMap, snapshot: JsonMap) {
+  const resolvedDate = document.invoiceDate
+  if (resolvedDate) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(resolvedDate))
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`
+  }
   const branding = map(snapshot.branding)
   const company = map(snapshot.company)
   const source = branding.invoiceDateDisplayMode === 'POSTED_DATE'
@@ -232,6 +237,8 @@ export async function downloadSalesInvoicePdf(
   const invoiceNo = document.invoiceNo ?? snapshot.invoiceNo ?? 'INV'
   const lines = rows(snapshot.lines)
   const payments = rows(snapshot.payments)
+  const hasFulfillmentQuantities = lines.some((line) =>
+    line.orderedQty !== undefined || line.acceptedQty !== undefined)
   const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
   const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
   const effectiveShowBank = snapshotFlag(branding, 'showBankAccountOnInvoice', showBankAccount)
@@ -241,8 +248,15 @@ export async function downloadSalesInvoicePdf(
   doc.setFontSize(9)
   doc.text(`Customer: ${String(customer.name ?? customerFileName ?? 'Pelanggan Umum')}`, 14, 38)
   doc.text(`Toko: ${String(store.name ?? '-')}`, 14, 44)
-  doc.text(`Tanggal: ${invoiceDate(snapshot)}`, 14, 50)
-  const columns: PdfColumn[] = [
+  doc.text(`Tanggal: ${invoiceDate(document, snapshot)}`, 14, 50)
+  const columns: PdfColumn[] = hasFulfillmentQuantities ? [
+    { text: 'PRODUK', x: 16 }, { text: 'UOM', x: 76 },
+    { text: 'ORDER', x: 103, align: 'right' },
+    { text: 'DITERIMA', x: 125, align: 'right' },
+    { text: 'INVOICE', x: 147, align: 'right' },
+    { text: 'HARGA', x: 171, align: 'right' },
+    { text: 'TOTAL', x: 194, align: 'right' },
+  ] : [
     { text: 'PRODUK', x: 16 }, { text: 'UOM', x: 94 },
     { text: 'QTY', x: 124, align: 'right' }, { text: 'HARGA', x: 159, align: 'right' },
     { text: 'TOTAL', x: 194, align: 'right' },
@@ -253,11 +267,19 @@ export async function downloadSalesInvoicePdf(
     y = ensurePdfPage(doc, y, (nextY) => drawPdfTableHeader(doc, nextY, columns))
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
-    const name = doc.splitTextToSize(String(line.productName ?? '-'), 72) as string[]
+    const name = doc.splitTextToSize(String(line.productName ?? '-'),
+      hasFulfillmentQuantities ? 54 : 72) as string[]
     doc.text(name, 16, y)
-    doc.text(String(line.uomName ?? '-'), 94, y)
-    doc.text(quantity(line.quantity), 124, y, { align: 'right' })
-    doc.text(pdfMoney(line.unitPrice), 159, y, { align: 'right' })
+    doc.text(String(line.uomName ?? '-'), hasFulfillmentQuantities ? 76 : 94, y)
+    if (hasFulfillmentQuantities) {
+      doc.text(quantity(line.orderedQty), 103, y, { align: 'right' })
+      doc.text(quantity(line.acceptedQty), 125, y, { align: 'right' })
+      doc.text(quantity(line.quantity), 147, y, { align: 'right' })
+      doc.text(pdfMoney(line.unitPrice), 171, y, { align: 'right' })
+    } else {
+      doc.text(quantity(line.quantity), 124, y, { align: 'right' })
+      doc.text(pdfMoney(line.unitPrice), 159, y, { align: 'right' })
+    }
     doc.text(pdfMoney(line.lineTotal), 194, y, { align: 'right' })
     y += Math.max(7, name.length * 4.5)
     doc.setDrawColor(226, 232, 240)
@@ -269,6 +291,10 @@ export async function downloadSalesInvoicePdf(
     ['Diskon', Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0)],
   ]
   if (Number(totals.deliveryFee ?? 0) > 0 && totals.deliveryFeeInvoiceDisplayMode !== 'HIDE_BREAKDOWN') totalRows.push(['Ongkir', totals.deliveryFee])
+  if (Number(totals.tax ?? 0) > 0) totalRows.push(['Pajak', totals.tax])
+  if (Number(totals.downPaymentDeduction ?? 0) > 0) {
+    totalRows.push(['Potongan uang muka', -Number(totals.downPaymentDeduction)])
+  }
   for (const payment of payments) totalRows.push([String(payment.methodName ?? 'Pembayaran'), payment.amount])
   totalRows.push(['TOTAL AKHIR', totals.grandTotal])
   for (const [label, value] of totalRows) {
@@ -404,6 +430,8 @@ export function printSalesInvoiceDocument(
   const invoiceNo = document.invoiceNo ?? snapshot.invoiceNo ?? 'Invoice'
   const lines = rows(snapshot.lines)
   const payments = rows(snapshot.payments)
+  const hasFulfillmentQuantities = lines.some((line) =>
+    line.orderedQty !== undefined || line.acceptedQty !== undefined)
   const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
   const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
   const effectiveShowBank = snapshotFlag(branding, 'showBankAccountOnInvoice', showBankAccount)
@@ -416,13 +444,24 @@ export function printSalesInvoiceDocument(
     ? `<img class="logo" src="${escapeHtml(branding.logoPublicUrl)}" alt="Logo perusahaan">` : ''
   const stamp = effectiveShowStamp && branding.logoPublicUrl
     ? `<span class="stamp"><img src="${escapeHtml(branding.logoPublicUrl)}" alt="Stempel perusahaan"></span>` : ''
-  const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td><td class="num">${quantity(line.quantity)}</td><td class="num">${money(line.unitPrice)}</td><td class="num">${money(line.discount)}</td><td class="num">${money(line.lineTotal)}</td></tr>`).join('')
+  const quantityHeaders = hasFulfillmentQuantities
+    ? '<th class="num">Qty Order</th><th class="num">Qty Diterima</th><th class="num">Qty Invoice</th>'
+    : '<th class="num">Qty</th>'
+  const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td>${hasFulfillmentQuantities ? `<td class="num">${quantity(line.orderedQty)}</td><td class="num">${quantity(line.acceptedQty)}</td>` : ''}<td class="num">${quantity(line.quantity)}</td><td class="num">${money(line.unitPrice)}</td><td class="num">${money(line.discount)}</td><td class="num">${money(line.lineTotal)}</td></tr>`).join('')
   const paymentHtml = payments.map((payment) => `<div><span>${escapeHtml(payment.methodName)}</span><strong>${money(payment.amount)}</strong></div>`).join('')
   const bank = effectiveShowBank && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<section class="box" style="margin-top:18px;max-width:390px;background:#f5f3ff"><b>Rekening pembayaran</b>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></section>` : ''
   const cancelEvidence = invoiceCanceled(document)
     ? `<div class="void-watermark">DIBATALKAN</div><section class="void-note"><b>Order dibatalkan</b><br>${escapeHtml(document.cancelReason ?? 'Tanpa keterangan')} · ${escapeHtml(document.canceledByName ?? 'Pengguna')} · ${escapeHtml(document.canceledAt ?? '')}</section>` : ''
-  openPrint(String(invoiceNo), `${cancelEvidence}<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(snapshot)}</div></div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${deliveryFeeHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}${stamp ? `<section class="invoice-stamp">${stamp}</section>` : ''}`)
+  const taxHtml = Number(totals.tax ?? 0) > 0
+    ? `<div><span>Pajak</span><strong>${money(totals.tax)}</strong></div>` : ''
+  const downPaymentHtml = Number(totals.downPaymentDeduction ?? 0) > 0
+    ? `<div><span>Potongan uang muka</span><strong>-${money(totals.downPaymentDeduction)}</strong></div>` : ''
+  const sourceHtml = document.salesOrderNo
+    ? `<div class="muted">SO ${escapeHtml(document.salesOrderNo)}</div>` : ''
+  const dueDateHtml = document.dueDate
+    ? `<div class="muted">Jatuh tempo ${escapeHtml(document.dueDate)}</div>` : ''
+  openPrint(String(invoiceNo), `${cancelEvidence}<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(invoiceNo)}</b><div>${invoiceDate(document, snapshot)}</div>${sourceHtml}${dueDateHtml}</div></header><section class="identity"><div class="box"><b>Ditagihkan kepada</b>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br>${escapeHtml(customer.phone)}<br>${escapeHtml(customer.address)}</div><div class="box"><b>Lokasi transaksi</b>${escapeHtml(store.name)}<br>${escapeHtml(store.address)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th>${quantityHeaders}<th class="num">Harga</th><th class="num">Diskon</th><th class="num">Total</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="totals"><div><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div><div><span>Diskon</span><strong>${money(Number(totals.itemDiscount ?? 0) + Number(totals.orderDiscount ?? 0))}</strong></div>${taxHtml}${deliveryFeeHtml}${downPaymentHtml}${paymentHtml}<div class="grand"><span>Total akhir</span><span>${money(totals.grandTotal)}</span></div></section>${bank}${stamp ? `<section class="invoice-stamp">${stamp}</section>` : ''}`)
 }
 
 export function printSalesDeliveryDocument(

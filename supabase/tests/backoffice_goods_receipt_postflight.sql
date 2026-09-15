@@ -1,6 +1,6 @@
 -- Backoffice Goods Receipt postflight. SELECT-only.
 WITH checks AS (
-  SELECT 'migration_ledger'::TEXT check_name,CASE WHEN count(*)=1 THEN 'PASS' ELSE 'FAIL' END status,count(*)::BIGINT violation_rows,jsonb_build_object('ledgerRows',count(*)) details
+  SELECT 'migration_ledger'::TEXT check_name,CASE WHEN count(*)=1 THEN 'PASS' ELSE 'FAIL' END status,abs(1-count(*))::BIGINT violation_rows,jsonb_build_object('ledgerRows',count(*)) details
     FROM private.kgs_schema_migrations WHERE version='20260825130000'
   UNION ALL
   SELECT 'workspace_line_number_forward_fix',CASE WHEN count(*)=1 THEN 'PASS' ELSE 'FAIL' END,abs(1-count(*)),jsonb_build_object('ledgerRows',count(*))

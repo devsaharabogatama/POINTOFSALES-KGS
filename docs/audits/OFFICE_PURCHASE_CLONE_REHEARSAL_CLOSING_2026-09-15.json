@@ -1,0 +1,411 @@
+{
+  "targetRef": "idrufihckscppsyclmsu",
+  "scope": "HISTORICAL_CLONE_ONLY",
+  "productionMutated": false,
+  "checks": {
+    "supabase/diagnostics/office_purchase_clone_closing_ledger.sql": [
+      {
+        "check_name": "additional_forward_fix_dependencies",
+        "details": {
+          "expected": 2,
+          "installed": 2
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "candidate_file_ledger_reconciliation",
+        "details": {
+          "expected": 89,
+          "installed": 89,
+          "missing": []
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "company_modes_not_activated",
+        "details": {
+          "companies": 5,
+          "modes": [
+            "RETAIL_CONFIRM_INVOICE",
+            "RETAIL_CONFIRM_INVOICE",
+            "RETAIL_CONFIRM_INVOICE",
+            "RETAIL_CONFIRM_INVOICE",
+            "RETAIL_CONFIRM_INVOICE"
+          ]
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "purchase_remains_manual",
+        "details": {
+          "companies": 5,
+          "modes": [
+            "MANUAL",
+            "MANUAL",
+            "MANUAL",
+            "MANUAL",
+            "MANUAL"
+          ]
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      }
+    ],
+    "supabase/diagnostics/office_purchase_clone_sales_delta_preflight.sql": [
+      {
+        "check_name": "execution_contract",
+        "details": {
+          "comparisonRule": "Both complete outputs must be retained and compared before migration",
+          "runOn": [
+            "PRODUCTION",
+            "REHEARSAL_CLONE"
+          ],
+          "writes": false
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "sales_header_identity_snapshot",
+        "details": {
+          "identityValueDigest": "002a8460fdc68377472594bdda9ea2bb",
+          "latestCreatedAt": "2026-09-11T10:58:33.743256+00:00",
+          "latestTransactionDate": "2026-09-12T09:24:00+00:00",
+          "rows": 266
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "sales_detail_identity_snapshot",
+        "details": {
+          "identityValueDigest": "3b140424aa36f1abd4173d8cc51d9678",
+          "quantityTotal": 55306,
+          "rows": 657,
+          "subtotalTotal": 1144097581
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "common_266_header_candidate",
+        "details": {
+          "comparisonRule": "Must match between Production and clone if only one later Production transaction is absent from clone",
+          "identityValueDigest": "002a8460fdc68377472594bdda9ea2bb",
+          "rows": 266
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "common_266_header_detail_candidate",
+        "details": {
+          "comparisonRule": "Must match between Production and clone if only the later Production transaction lines are absent from clone",
+          "expectedCloneRows": 657,
+          "identityValueDigest": "3b140424aa36f1abd4173d8cc51d9678",
+          "rows": 657
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      }
+    ],
+    "supabase/diagnostics/office_purchase_production_discovery_preflight.sql": [
+      {
+        "check_name": "active_finance_posting_queue",
+        "details": {
+          "runRows": 0
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "base_relation_contract",
+        "details": {
+          "expected": 19,
+          "missing": [],
+          "present": 19
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "nonterminal_offline_submission",
+        "details": {
+          "submissionRows": 0
+        },
+        "status": "PASS",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "application_migration_ledger",
+        "details": {
+          "candidateRows": 89,
+          "firstInstalled": "20260908100000",
+          "installedVersions": [
+            "20260908100000",
+            "20260908110000",
+            "20260908120000",
+            "20260908121000",
+            "20260909100000",
+            "20260909110000",
+            "20260909120000",
+            "20260909130000",
+            "20260909140000",
+            "20260909141000",
+            "20260909142000",
+            "20260909143000",
+            "20260909144000",
+            "20260909145000",
+            "20260909146000",
+            "20260909147000",
+            "20260909148000",
+            "20260909149000",
+            "20260909150000",
+            "20260909151000",
+            "20260909152000",
+            "20260909153000",
+            "20260909154000",
+            "20260909155000",
+            "20260909156000",
+            "20260909157000",
+            "20260909158000",
+            "20260909159000",
+            "20260909160000",
+            "20260909161000",
+            "20260909162000",
+            "20260909163000",
+            "20260910100000",
+            "20260910110000",
+            "20260910120000",
+            "20260910130000",
+            "20260910140000",
+            "20260910150000",
+            "20260910151000",
+            "20260910152000",
+            "20260910153000",
+            "20260911100000",
+            "20260911110000",
+            "20260911111000",
+            "20260911120000",
+            "20260911130000",
+            "20260911140000",
+            "20260911150000",
+            "20260911160000",
+            "20260911161000",
+            "20260911162000",
+            "20260911163000",
+            "20260911164000",
+            "20260911165000",
+            "20260911166000",
+            "20260912100000",
+            "20260912110000",
+            "20260912120000",
+            "20260912121000",
+            "20260912122000",
+            "20260912123000",
+            "20260912124000",
+            "20260912125000",
+            "20260912130000",
+            "20260912131000",
+            "20260912132000",
+            "20260912133000",
+            "20260912134000",
+            "20260912135000",
+            "20260912136000",
+            "20260912137000",
+            "20260912138000",
+            "20260912139000",
+            "20260912140000",
+            "20260913100000",
+            "20260913110000",
+            "20260913120000",
+            "20260913130000",
+            "20260914100000",
+            "20260914110000",
+            "20260914111000",
+            "20260914112000",
+            "20260914130000",
+            "20260914140000",
+            "20260914141000",
+            "20260914150000",
+            "20260914160000",
+            "20260914170000",
+            "20260914180000"
+          ],
+          "lastInstalled": "20260914180000"
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "candidate_object_inventory",
+        "details": {
+          "absent": [],
+          "expectedAfterFullRollout": 12,
+          "present": [
+            "backoffice_sales_delivery_orders",
+            "backoffice_sales_invoice_lines",
+            "backoffice_sales_invoices",
+            "backoffice_sales_order_lines",
+            "backoffice_sales_orders",
+            "backoffice_sales_reservations",
+            "company_purchase_replenishment_settings",
+            "purchase_daily_batch_lines",
+            "purchase_daily_batches",
+            "purchase_daily_scheduler_runs",
+            "sales_process_cutover_items",
+            "sales_process_cutover_plans"
+          ],
+          "presentCount": 12
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "environment_identity",
+        "details": {
+          "capturedAt": "2026-09-15T07:24:40.972257+00:00",
+          "database": "postgres",
+          "databaseUser": "postgres",
+          "serverAddress": "2406:da18:167b:f900:b02a:85b:4f72:5d9",
+          "serverPort": 5432
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "existing_transaction_inventory",
+        "details": {
+          "financialEvents": 245,
+          "goodsReceipts": 16,
+          "purchaseReturns": 0,
+          "salesDetails": 657,
+          "salesHeaders": 266,
+          "stockMovements": 585,
+          "supplierInvoices": 4,
+          "supplierOrders": 56,
+          "supplierPayments": 2
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "generated_receipt_backfill_current_shape",
+        "details": {
+          "candidatePoWarehousePairs": 0,
+          "identityDigest": "d41d8cd98f00b204e9800998ecf8427e",
+          "note": "Exact post-checkpoint candidate set must be captured again immediately before 20260914180000"
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "open_supplier_order_inventory",
+        "details": {
+          "confirmedOrPartial": 51,
+          "identityDigest": "ba3cb82575f879bc9ff7de405f20f857"
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      },
+      {
+        "check_name": "scheduler_extension_inventory",
+        "details": {
+          "pgCronInstalled": true
+        },
+        "status": "INFO",
+        "violation_rows": 0
+      }
+    ],
+    "supabase/diagnostics/office_purchase_clone_closing_fingerprints.sql": [
+      {
+        "row_value_digest": "a0fda50f95cbe87c95abf3500098f775",
+        "rows": 102,
+        "table_name": "cashier_sessions"
+      },
+      {
+        "row_value_digest": "d41d8cd98f00b204e9800998ecf8427e",
+        "rows": 0,
+        "table_name": "customer_receipt_documents"
+      },
+      {
+        "row_value_digest": "e8deaf5afbc42d24a5c1b8e1583971b9",
+        "rows": 127,
+        "table_name": "finance_journal_lines"
+      },
+      {
+        "row_value_digest": "9959a4f7ee856b040a2a7e9398dc9491",
+        "rows": 40,
+        "table_name": "finance_journals"
+      },
+      {
+        "row_value_digest": "ab40b3a33126be802ddb7b3e0dc6e956",
+        "rows": 245,
+        "table_name": "financial_events"
+      },
+      {
+        "row_value_digest": "fb7140ef23f058652b0eb6d97fdfe55c",
+        "rows": 16,
+        "table_name": "goods_receipt_documents"
+      },
+      {
+        "row_value_digest": "988301b876ea19dbf725ace270fab923",
+        "rows": 45,
+        "table_name": "goods_receipt_lines"
+      },
+      {
+        "row_value_digest": "2d98d274f9a673f085de16b0f60fc3bf",
+        "rows": 13,
+        "table_name": "product_batches"
+      },
+      {
+        "row_value_digest": "37798a76e44c047b7881a825ddfb4bd4",
+        "rows": 76,
+        "table_name": "product_stocks"
+      },
+      {
+        "row_value_digest": "d41d8cd98f00b204e9800998ecf8427e",
+        "rows": 0,
+        "table_name": "purchase_return_documents"
+      },
+      {
+        "row_value_digest": "3c5d1f6b7062d7652624f735a2993b7a",
+        "rows": 657,
+        "table_name": "sales_details"
+      },
+      {
+        "row_value_digest": "921381438c4db9c1c3b926301a459fcb",
+        "rows": 266,
+        "table_name": "sales_headers"
+      },
+      {
+        "row_value_digest": "eb21d85ff426a161af03727c21e08021",
+        "rows": 585,
+        "table_name": "stock_movements"
+      },
+      {
+        "row_value_digest": "0a615df9fc202a22ae2569c6973ff88b",
+        "rows": 4,
+        "table_name": "supplier_invoice_documents"
+      },
+      {
+        "row_value_digest": "43f0a34feb9f80a2deb10f4d0c9c3cc9",
+        "rows": 56,
+        "table_name": "supplier_order_documents"
+      },
+      {
+        "row_value_digest": "3e81e73790a30a009ab5db5ebc02efa7",
+        "rows": 387,
+        "table_name": "supplier_order_lines"
+      },
+      {
+        "row_value_digest": "073cc0718a195f9d938a81081a591ab7",
+        "rows": 2,
+        "table_name": "supplier_payment_documents"
+      }
+    ]
+  }
+}

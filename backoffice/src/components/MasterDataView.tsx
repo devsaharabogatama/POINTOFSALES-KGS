@@ -57,8 +57,11 @@ type WarehouseRow = {
   location: string | null
   is_sale_source: boolean
   is_purchase_destination: boolean
+  allow_negative_stock: boolean
   is_active: boolean
   master_version: number
+  transit_parent_warehouse_id: string | null
+  transit_operation: string | null
 }
 
 type Editor =
@@ -106,6 +109,12 @@ const warehouseTypeLabels: Record<string, string> = {
   TRANSIT: 'Transit',
 }
 
+const transitOperationLabels: Record<string, string> = {
+  SALES_DELIVERY_OUTBOUND: 'Pengiriman ke customer',
+  WAREHOUSE_TRANSFER_OUTBOUND: 'Transfer antar gudang',
+  CUSTOMER_RETURN_INBOUND: 'Retur dari customer',
+}
+
 function authHeaders(session: Session) {
   return { Authorization: `Bearer ${session.access_token}` }
 }
@@ -128,6 +137,11 @@ function friendlyError(code?: string) {
     PRODUCT_CATEGORY_IN_USE: 'Kategori sudah dipakai atau memiliki referensi sehingga tidak dapat dihapus. Pindahkan referensinya atau nonaktifkan kategori melalui menu Edit.',
     UOM_SEMANTICS_LOCKED_BY_USAGE: 'Tipe dan aturan quantity UOM yang sudah dipakai tidak dapat diubah. Nama dan status masih dapat diperbarui.',
     MASTER_NOT_FOUND: 'Data tidak ditemukan pada company aktif.',
+    TRANSIT_PARENT_INVALID: 'Pilih gudang operasional yang terkait.',
+    TRANSIT_USAGE_INPUT_INVALID: 'Gudang operasional dan penggunaan Transit wajib dipilih.',
+    TRANSIT_PARENT_OPERATIONAL_WAREHOUSE_INVALID: 'Gudang terkait harus aktif dan bukan Gudang Transit.',
+    TRANSIT_USAGE_ALREADY_ASSIGNED: 'Gudang operasional tersebut sudah mempunyai Transit aktif untuk penggunaan yang sama.',
+    TRANSIT_WAREHOUSE_TYPE_CHANGE_NOT_ALLOWED: 'Gudang yang sudah memiliki penggunaan Transit tidak dapat diubah menjadi tipe lain.',
   }
   return messages[code ?? ''] ?? code ?? 'Operasi master data gagal.'
 }
@@ -137,12 +151,14 @@ export function MasterDataView({
   companyId,
   stores,
   canManage,
+  canManageNegativeStock,
   notify,
 }: {
   session: Session
   companyId: string
   stores: StoreOption[]
   canManage: boolean
+  canManageNegativeStock: boolean
   notify: (message: string) => void
 }) {
   const [activeTab, setActiveTab] = useState<MasterKind>('category')
@@ -242,6 +258,23 @@ export function MasterDataView({
     setDeleteTarget(null)
     await refreshMasters()
     notify(`${target.kind === 'uom' ? 'UOM' : 'Kategori'} berhasil dihapus.`)
+  }
+
+  async function setWarehouseNegativeStock(row: WarehouseRow, allow: boolean) {
+    setError('')
+    try {
+      const response = await fetch('/api/platform/negative-stock-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+        body: JSON.stringify({ action: 'SET_WAREHOUSE', warehouseId: row.id, allow }),
+      })
+      const payload = (await response.json()) as ApiItem<unknown>
+      if (!response.ok) throw new Error(friendlyError(payload.error))
+      await refreshMasters()
+      notify(`Stok minus untuk ${row.name} ${allow ? 'diizinkan' : 'dinonaktifkan'}.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Pengaturan stok minus gagal disimpan.')
+    }
   }
 
   const currentCount =
@@ -345,7 +378,9 @@ export function MasterDataView({
             rows={warehouses}
             stores={stores}
             canManage={canManage}
+            canManageNegativeStock={canManageNegativeStock}
             edit={(record) => setEditor({ kind: 'warehouse', record })}
+            setNegativeStock={(record, allow) => void setWarehouseNegativeStock(record, allow)}
           />
         )}
       </div>
@@ -355,6 +390,7 @@ export function MasterDataView({
           key={`${editor.kind}:${editor.record?.id ?? 'new'}`}
           editor={editor}
           stores={stores}
+          warehouses={warehouses}
           taxRules={taxRules}
           taxEntitlements={taxEntitlements}
           close={() => setEditor(null)}
@@ -401,15 +437,15 @@ function UomTable({ rows, canManage, edit, remove }: { rows: Uom[]; canManage: b
   return <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Nama satuan</th><th className="px-5 py-4">Tipe</th><th className="px-5 py-4">Quantity</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-bold">{row.name}</td><td className="px-5 py-4 text-slate-600">{uomTypeLabels[row.uom_type] ?? row.uom_type}</td><td className="px-5 py-4 text-slate-600">{row.allow_decimal ? `Desimal · ${row.decimal_precision} digit` : 'Bilangan bulat'}</td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4"><div className="flex justify-end gap-2"><EditButton onClick={() => edit(row)} /><DeleteButton onClick={() => remove(row)} /></div></td>}</tr>)}{!rows.length && <EmptyRow columns={canManage ? 5 : 4} />}</tbody></table></div>
 }
 
-function WarehouseTable({ rows, stores, canManage, edit }: { rows: WarehouseRow[]; stores: StoreOption[]; canManage: boolean; edit: (row: WarehouseRow) => void }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Gudang</th><th className="px-5 py-4">Tipe</th><th className="px-5 py-4">Toko</th><th className="px-5 py-4">Penggunaan</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => { const store = stores.find((item) => item.id === row.store_id); return <tr key={row.id}><td className="px-5 py-4 font-bold">{row.name}</td><td className="px-5 py-4 text-slate-600">{row.warehouse_type ? warehouseTypeLabels[row.warehouse_type] ?? row.warehouse_type : 'Belum diklasifikasi'}</td><td className="px-5 py-4 text-slate-600">{store?.store_name ?? '-'}</td><td className="px-5 py-4 text-xs text-slate-500">{[row.is_sale_source && 'Penjualan', row.is_purchase_destination && 'Penerimaan pembelian'].filter(Boolean).join(' · ') || '-'}</td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4 text-right"><EditButton onClick={() => edit(row)} /></td>}</tr>})}{!rows.length && <EmptyRow columns={canManage ? 6 : 5} />}</tbody></table></div>
+function WarehouseTable({ rows, stores, canManage, canManageNegativeStock, edit, setNegativeStock }: { rows: WarehouseRow[]; stores: StoreOption[]; canManage: boolean; canManageNegativeStock: boolean; edit: (row: WarehouseRow) => void; setNegativeStock: (row: WarehouseRow, allow: boolean) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Gudang</th><th className="px-5 py-4">Tipe</th><th className="px-5 py-4">Toko</th><th className="px-5 py-4">Penggunaan</th><th className="px-5 py-4">Stok minus</th><th className="px-5 py-4">Status</th>{canManage && <th className="px-5 py-4 text-right">Aksi</th>}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => { const store = stores.find((item) => item.id === row.store_id); const parent = rows.find((item) => item.id === row.transit_parent_warehouse_id); const usage = row.warehouse_type === 'TRANSIT' ? row.transit_operation ? `${transitOperationLabels[row.transit_operation] ?? row.transit_operation} · ${parent?.name ?? 'Gudang tidak ditemukan'}` : 'Transit belum ditentukan' : [row.is_sale_source && 'Penjualan', row.is_purchase_destination && 'Penerimaan pembelian'].filter(Boolean).join(' · ') || '-'; return <tr key={row.id}><td className="px-5 py-4 font-bold">{row.name}</td><td className="px-5 py-4 text-slate-600">{row.warehouse_type ? warehouseTypeLabels[row.warehouse_type] ?? row.warehouse_type : 'Belum diklasifikasi'}</td><td className="px-5 py-4 text-slate-600">{store?.store_name ?? '-'}</td><td className="px-5 py-4 text-xs text-slate-500">{usage}</td><td className="px-5 py-4">{row.is_sale_source ? <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={row.allow_negative_stock} disabled={!canManageNegativeStock} onChange={(event) => setNegativeStock(row, event.target.checked)} className="h-4 w-4 accent-amber-600" /><span>{row.allow_negative_stock ? 'Diizinkan' : 'Tidak'}</span></label> : <span className="text-xs text-slate-400">Bukan sumber penjualan</span>}</td><td className="px-5 py-4"><StatusBadge active={row.is_active} /></td>{canManage && <td className="px-5 py-4 text-right"><EditButton onClick={() => edit(row)} /></td>}</tr>})}{!rows.length && <EmptyRow columns={canManage ? 7 : 6} />}</tbody></table><p className="border-t border-slate-100 px-5 py-3 text-xs leading-5 text-slate-500">Gudang Transit dipisahkan menurut gudang operasional dan tujuan proses. Izin stok minus hanya berlaku pada Gudang sumber penjualan.</p></div>
 }
 
-function MasterEditor({ editor, stores, taxRules, taxEntitlements, close, save }: { editor: Editor; stores: StoreOption[]; taxRules: TaxRuleOption[]; taxEntitlements: { salesEnabled: boolean; purchaseEnabled: boolean }; close: () => void; save: (path: string, method: 'POST' | 'PATCH', body: object) => Promise<void> }) {
+function MasterEditor({ editor, stores, warehouses, taxRules, taxEntitlements, close, save }: { editor: Editor; stores: StoreOption[]; warehouses: WarehouseRow[]; taxRules: TaxRuleOption[]; taxEntitlements: { salesEnabled: boolean; purchaseEnabled: boolean }; close: () => void; save: (path: string, method: 'POST' | 'PATCH', body: object) => Promise<void> }) {
   if (editor.kind === 'category') return <CategoryEditor record={editor.record} close={close} save={save} />
   if (editor.kind === 'category-tax') return <CategoryTaxEditor record={editor.record} taxRules={taxRules} entitlements={taxEntitlements} close={close} save={save} />
   if (editor.kind === 'uom') return <UomEditor record={editor.record} close={close} save={save} />
-  return <WarehouseEditor record={editor.record} stores={stores} close={close} save={save} />
+  return <WarehouseEditor record={editor.record} stores={stores} warehouses={warehouses} close={close} save={save} />
 }
 
 function EditorShell({ title, description, close, children }: { title: string; description: string; close: () => void; children: React.ReactNode }) {
@@ -496,9 +532,41 @@ function UomEditor({ record, close, save }: { record?: Uom; close: () => void; s
   return <EditorShell title={record ? 'Edit UOM' : 'UOM baru'} description="Gunakan nama satuan yang dikenali user. Precision menentukan quantity yang boleh dimasukkan; identitas internal dibuat otomatis." close={close}><form onSubmit={submit} className="space-y-4"><FormField label="Nama UOM"><input required maxLength={100} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="input" /></FormField><FormField label="Tipe UOM"><select value={form.uomType} onChange={(event) => setForm({ ...form, uomType: event.target.value })} className="input">{Object.entries(uomTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField><label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.allowDecimal} onChange={(event) => setForm({ ...form, allowDecimal: event.target.checked, decimalPrecision: event.target.checked ? 3 : 0 })} className="h-4 w-4 accent-emerald-500" />Quantity boleh pecahan</label>{form.allowDecimal && <FormField label="Digit desimal"><input type="number" min={1} max={6} required value={form.decimalPrecision} onChange={(event) => setForm({ ...form, decimalPrecision: Number(event.target.value) })} className="input" /></FormField>}<ActiveCheckbox checked={form.isActive} change={(isActive) => setForm({ ...form, isActive })} />{error && <EditorError message={error} />}<EditorActions close={close} loading={loading} /></form></EditorShell>
 }
 
-function WarehouseEditor({ record, stores, close, save }: { record?: WarehouseRow; stores: StoreOption[]; close: () => void; save: MasterEditorProps['save'] }) {
-  const [form, setForm] = useState({ name: record?.name ?? '', warehouseType: record?.warehouse_type ?? 'CENTRAL', storeId: record?.store_id ?? '', location: record?.location ?? '', isSaleSource: record?.is_sale_source ?? false, isPurchaseDestination: record?.is_purchase_destination ?? false, isActive: record?.is_active ?? true })
+function WarehouseEditor({ record, stores, warehouses, close, save }: { record?: WarehouseRow; stores: StoreOption[]; warehouses: WarehouseRow[]; close: () => void; save: MasterEditorProps['save'] }) {
+  const [form, setForm] = useState({ name: record?.name ?? '', warehouseType: record?.warehouse_type ?? 'CENTRAL', storeId: record?.store_id ?? '', location: record?.location ?? '', isSaleSource: record?.is_sale_source ?? false, isPurchaseDestination: record?.is_purchase_destination ?? false, isActive: record?.is_active ?? true, transitParentWarehouseId: record?.transit_parent_warehouse_id ?? '', transitOperation: record?.transit_operation ?? 'SALES_DELIVERY_OUTBOUND' })
   const [loading, setLoading] = useState(false); const [error, setError] = useState('')
-  async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { await save(record ? `/api/master/warehouses/${record.id}` : '/api/master/warehouses', record ? 'PATCH' : 'POST', { ...form, storeId: form.storeId || null, ...(record ? { masterVersion: record.master_version } : {}) }) } catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal menyimpan gudang.') } finally { setLoading(false) } }
-  return <EditorShell title={record ? 'Edit gudang' : 'Gudang baru'} description="Gudang toko wajib terhubung ke Store aktif. Nama harus unik dan identitas internal dibuat otomatis." close={close}><form onSubmit={submit} className="space-y-4"><FormField label="Nama gudang"><input required maxLength={150} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="input" /></FormField><div className="grid gap-4 sm:grid-cols-2"><FormField label="Tipe gudang"><select value={form.warehouseType} onChange={(event) => setForm({ ...form, warehouseType: event.target.value, storeId: event.target.value === 'STORE' ? form.storeId : '' })} className="input">{Object.entries(warehouseTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField><FormField label="Toko terkait"><select required={form.warehouseType === 'STORE'} disabled={form.warehouseType !== 'STORE'} value={form.storeId} onChange={(event) => setForm({ ...form, storeId: event.target.value })} className="input disabled:bg-slate-100"><option value="">Tidak terkait toko</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.store_name} ({store.store_code})</option>)}</select></FormField></div><FormField label="Lokasi / alamat (opsional)"><textarea maxLength={500} rows={3} placeholder="Boleh kosong atau sama untuk beberapa gudang fungsional" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} className="input resize-none" /></FormField><div className="grid gap-3 sm:grid-cols-2"><label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={form.isSaleSource} onChange={(event) => setForm({ ...form, isSaleSource: event.target.checked })} className="mt-0.5 h-4 w-4 accent-emerald-500" /><span>Sumber stok penjualan<span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Stok barang penjualan boleh dipotong dari gudang ini.</span></span></label><label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={form.isPurchaseDestination} onChange={(event) => setForm({ ...form, isPurchaseDestination: event.target.checked })} className="mt-0.5 h-4 w-4 accent-emerald-500" /><span>Dapat menerima stok pembelian<span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Gudang penerimaan barang dari vendor, bukan alamat vendor.</span></span></label></div><ActiveCheckbox checked={form.isActive} change={(isActive) => setForm({ ...form, isActive })} />{error && <EditorError message={error} />}<EditorActions close={close} loading={loading} /></form></EditorShell>
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const transitFields = form.warehouseType === 'TRANSIT'
+        ? {
+            transitParentWarehouseId: form.transitParentWarehouseId,
+            transitOperation: form.transitOperation,
+          }
+        : {}
+      await save(
+        record ? `/api/master/warehouses/${record.id}` : '/api/master/warehouses',
+        record ? 'PATCH' : 'POST',
+        {
+          name: form.name,
+          warehouseType: form.warehouseType,
+          storeId: form.storeId || null,
+          location: form.location,
+          isSaleSource: form.isSaleSource,
+          isPurchaseDestination: form.isPurchaseDestination,
+          isActive: form.isActive,
+          ...transitFields,
+          ...(record ? { masterVersion: record.master_version } : {}),
+        },
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal menyimpan gudang.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  const operationalWarehouses = warehouses.filter((warehouse) => warehouse.id !== record?.id && warehouse.warehouse_type !== 'TRANSIT' && warehouse.is_active)
+  return <EditorShell title={record ? 'Edit gudang' : 'Gudang baru'} description="Tentukan tipe dan fungsi operasional gudang. Gudang Transit memerlukan gudang operasional terkait dan tujuan penggunaan." close={close}><form onSubmit={submit} className="space-y-4"><FormField label="Nama gudang"><input required maxLength={150} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="input" /></FormField><div className="grid gap-4 sm:grid-cols-2"><FormField label="Tipe gudang"><select value={form.warehouseType} onChange={(event) => setForm({ ...form, warehouseType: event.target.value, storeId: event.target.value === 'STORE' ? form.storeId : '', isSaleSource: event.target.value === 'TRANSIT' ? false : form.isSaleSource, isPurchaseDestination: event.target.value === 'TRANSIT' ? false : form.isPurchaseDestination })} className="input">{Object.entries(warehouseTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField><FormField label="Toko terkait"><select required={form.warehouseType === 'STORE'} disabled={form.warehouseType !== 'STORE'} value={form.storeId} onChange={(event) => setForm({ ...form, storeId: event.target.value })} className="input disabled:bg-slate-100"><option value="">Tidak terkait toko</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.store_name} ({store.store_code})</option>)}</select></FormField></div>{form.warehouseType === 'TRANSIT' && <div className="grid gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:grid-cols-2"><FormField label="Gudang operasional terkait"><select required value={form.transitParentWarehouseId} onChange={(event) => setForm({ ...form, transitParentWarehouseId: event.target.value })} className="input"><option value="">Pilih gudang</option>{operationalWarehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} ({warehouse.code})</option>)}</select></FormField><FormField label="Penggunaan Transit"><select required value={form.transitOperation} onChange={(event) => setForm({ ...form, transitOperation: event.target.value })} className="input">{Object.entries(transitOperationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField><p className="text-xs leading-5 text-blue-800 sm:col-span-2">Satu Transit aktif hanya dapat dipakai oleh satu gudang dan satu jenis operasi. Dokumen tetap dipisahkan melalui allocation operasionalnya.</p></div>}<FormField label="Lokasi / alamat (opsional)"><textarea maxLength={500} rows={3} placeholder="Boleh kosong atau sama untuk beberapa gudang fungsional" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} className="input resize-none" /></FormField>{form.warehouseType !== 'TRANSIT' && <div className="grid gap-3 sm:grid-cols-2"><label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={form.isSaleSource} onChange={(event) => setForm({ ...form, isSaleSource: event.target.checked })} className="mt-0.5 h-4 w-4 accent-emerald-500" /><span>Sumber stok penjualan<span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Stok barang penjualan boleh dipotong dari gudang ini.</span></span></label><label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={form.isPurchaseDestination} onChange={(event) => setForm({ ...form, isPurchaseDestination: event.target.checked })} className="mt-0.5 h-4 w-4 accent-emerald-500" /><span>Dapat menerima stok pembelian<span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Gudang penerimaan barang dari vendor, bukan alamat vendor.</span></span></label></div>}<ActiveCheckbox checked={form.isActive} change={(isActive) => setForm({ ...form, isActive })} />{error && <EditorError message={error} />}<EditorActions close={close} loading={loading} /></form></EditorShell>
 }

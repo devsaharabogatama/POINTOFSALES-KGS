@@ -43,7 +43,11 @@ function dateTime(value: unknown) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('id-ID')
 }
 
-function invoiceDate(snapshot: JsonObject) {
+function invoiceDate(document: SalesInvoiceDocument, snapshot: JsonObject) {
+  if (document.invoiceDate) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(document.invoiceDate)
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`
+  }
   const branding = objectValue(snapshot.branding)
   const company = objectValue(snapshot.company)
   const source = branding.invoiceDateDisplayMode === 'POSTED_DATE'
@@ -111,7 +115,7 @@ export function openSalesInvoicePrint(document: SalesInvoiceDocument) {
   const paymentRows = payments.map((payment) => `<div class="row"><span>${escapeHtml(payment.methodName)}</span><strong>${rupiah(payment.amount)}</strong></div>`).join('')
   const bank = branding.showBankAccountOnInvoice === true && company.bankName && company.bankAccountNumber && company.bankAccountHolder
     ? `<div class="card bank"><strong>Rekening pembayaran</strong>${escapeHtml(company.bankName)} · ${escapeHtml(company.bankAccountNumber)}<br/><span class="muted">a.n. ${escapeHtml(company.bankAccountHolder)}</span></div>` : ''
-  openPrintDocument(`Invoice ${document.invoiceNo}`, `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(document.invoiceNo)}</b><div>${escapeHtml(invoiceDate(snapshot))}</div></div></header>
+  openPrintDocument(`Invoice ${document.invoiceNo}`, `<header><div>${logo}<div class="muted">${escapeHtml(company.taxId)}</div></div><div class="right"><h1>INVOICE</h1><b>${escapeHtml(document.invoiceNo)}</b><div>${escapeHtml(invoiceDate(document, snapshot))}</div></div></header>
     <section class="meta"><div class="card"><strong>Ditagihkan kepada</strong>${escapeHtml(customer.name ?? 'Walk-In Customer')}<br/>${escapeHtml(customer.phone)}<br/>${escapeHtml(customer.address)}</div><div class="card"><strong>Lokasi transaksi</strong>${escapeHtml(store.name)}<br/>${escapeHtml(store.address)}</div></section>
     <table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="number">Qty</th><th class="number">Harga</th><th class="number">Diskon</th><th class="number">Total</th></tr></thead><tbody>${lineRows}</tbody></table>
     <section class="totals"><div class="row"><span>Subtotal</span><strong>${rupiah(totals.subtotal)}</strong></div><div class="row"><span>Diskon</span><strong>${rupiah(numberValue(totals.itemDiscount) + numberValue(totals.orderDiscount))}</strong></div>${showDeliveryFee ? `<div class="row"><span>Ongkir</span><strong>${rupiah(totals.deliveryFee)}</strong></div>` : ''}${paymentRows}<div class="row grand"><span>Total akhir</span><strong>${rupiah(totals.grandTotal)}</strong></div></section>

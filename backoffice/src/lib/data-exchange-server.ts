@@ -29,7 +29,7 @@ type CatalogDefinition = Omit<DataExchangeCatalogItem, "allowedActions"> & {
 const ownerRoles = ["COMPANY_OWNER", "COMPANY_ADMIN"];
 const inventoryRoles = [...ownerRoles, "STORE_MANAGER", "WAREHOUSE_ADMIN"];
 const supplierRoles = [...inventoryRoles, "FINANCE", "ACCOUNTING"];
-const salesRoles = [...ownerRoles, "STORE_MANAGER", "FINANCE", "ACCOUNTING"];
+const salesRoles = [...ownerRoles, "STORE_MANAGER", "SALES", "SALES_ADMIN", "FINANCE", "ACCOUNTING"];
 const financeRoles = [...ownerRoles, "FINANCE", "ACCOUNTING"];
 
 const master = (
@@ -149,6 +149,7 @@ const definitions: CatalogDefinition[] = [
   financeReport("BALANCE_SHEET", "Neraca", "Aset, liabilitas, dan ekuitas per akhir bulan."),
   financeReport("PENDING_ANALYSIS", "Transaksi Belum Masuk Laporan", "Financial Event HOLD/deferred yang tidak masuk laporan POSTED."),
   financeReport("RECONCILIATION_SUMMARY", "Ringkasan Rekonsiliasi", "Perbandingan current-state subledger dan ledger."),
+  financeReport("DELIVERED_NOT_INVOICED", "Delivered Not Invoiced", "Barang yang sudah diterima Customer tetapi belum masuk Invoice Posted."),
   financeReport("CUSTOMER_BALANCES", "Saldo Customer", "Saldo berjalan dan mutasi Customer pada periode terpilih."),
   financeReport("SUPPLIER_INVOICES", "Faktur Supplier", "Faktur, matching, pajak, dan variance pembelian pada periode terpilih."),
   financeReport("SUPPLIER_PAYMENTS", "Pembayaran Supplier", "Pembayaran AP dan alokasi Faktur Supplier pada periode terpilih."),
@@ -314,6 +315,8 @@ export async function requireDataExchangeAction(
           ? "finance.supplier_payments"
         : typeKey === "PAYMENT_METHODS"
           ? "finance.payment_methods"
+        : typeKey === "DELIVERED_NOT_INVOICED"
+          ? "finance.journals_reports"
         : null;
   if (permissionKey) {
     await requirePermissionCapability(caller, companyId, permissionKey, action);

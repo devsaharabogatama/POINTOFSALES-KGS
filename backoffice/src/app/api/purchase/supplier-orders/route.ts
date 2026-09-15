@@ -6,20 +6,24 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     await requireActiveCompany(caller)
-    const [ordersResult, demandResult] = await Promise.all([
+    const [ordersResult, demandResult, dailyResult] = await Promise.all([
       caller.client.rpc('get_purchase_supplier_orders'),
       caller.client.rpc('get_purchase_procurement_demands'),
+      caller.client.rpc('get_purchase_daily_replenishment_client_workspace'),
     ])
     if (ordersResult.error) throwDatabaseError(ordersResult.error)
     if (demandResult.error) throwDatabaseError(demandResult.error)
+    if (dailyResult.error) throwDatabaseError(dailyResult.error)
     const orders = (ordersResult.data ?? {}) as Record<string, unknown>
     const demand = (demandResult.data ?? {}) as Record<string, unknown>
+    const daily = (dailyResult.data ?? {}) as Record<string, unknown>
     return Response.json({
       ...orders,
       procurementWorkspaceVersion: 1,
       procurementDemands: demand.demands ?? [],
       procurementDemandLines: demand.lines ?? [],
       procurementAmendments: demand.amendments ?? [],
+      dailyWorkspace: daily,
     })
   } catch (error) { return apiError(error) }
 }

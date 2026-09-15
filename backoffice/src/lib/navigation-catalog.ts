@@ -5,6 +5,7 @@ export type NavigationViewId =
   | 'products'
   | 'bundles'
   | 'sales-returns'
+  | 'backoffice-sales-orders'
   | 'sales-documents'
   | 'delivery-documents'
   | 'expense-approvals'
@@ -104,7 +105,7 @@ export const OPENING_STOCK_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MAN
 export const SUPPLIER_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
 export const PURCHASE_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
 export const GOODS_RECEIPT_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'WAREHOUSE_ADMIN']
-export const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
+export const SALES_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'SALES', 'SALES_ADMIN', 'FINANCE', 'ACCOUNTING']
 export const SALES_RETURN_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER']
 export const EXPENSE_REVIEW_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE', 'ACCOUNTING']
 export const EXPENSE_APPROVER_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'FINANCE']
@@ -134,6 +135,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'pricelists', label: 'Pricelist', description: 'Harga jual final per kelompok dan periode.', iconKey: 'tags', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'bundles', label: 'Bundle', description: 'Paket penjualan dan komponen stoknya.', iconKey: 'boxes', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'sales-returns', label: 'Approval Return', description: 'Review dan posting retur penjualan.', iconKey: 'rotate', roles: SALES_RETURN_APPROVER_ROLES, capabilities: ['VIEW'] },
+  { id: 'backoffice-sales-orders', label: 'Quotation & Sales Order', description: 'Quotation dan Sales Order Backoffice sebelum pemenuhan.', iconKey: 'clipboard-pen', roles: SALES_ROLES, requiredAnyFeature: ['backoffice_delivered_qty_sales_enabled'], capabilities: ['VIEW'] },
   { id: 'sales-documents', label: 'Invoice Penjualan', description: 'Dokumen final Invoice dan cetak ulang.', iconKey: 'receipt', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'delivery-documents', label: 'Surat Jalan', description: 'Persiapan, cetak, dan status pengiriman barang.', iconKey: 'truck', roles: INVENTORY_ROLES, capabilities: ['VIEW'] },
   { id: 'expense-approvals', label: 'Expense', description: 'Pengajuan, approval, pencairan, dan settlement.', iconKey: 'dollar', roles: EXPENSE_REVIEW_ROLES, requiredAnyFeature: ['expense_enabled'], capabilities: ['VIEW'] },
@@ -157,7 +159,7 @@ const moduleDefinitions: ModuleDefinition[] = [
   { id: 'inventory', name: 'Inventory', description: 'Produk, gudang, saldo aktual, mutasi, transfer, opname, Surat Jalan, dan konfigurasi stok.', iconKey: 'boxes', color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'delivery-documents', 'products', 'opening-stock', 'minimum-stock', 'masters'] },
   { id: 'contacts', name: 'Kontak', description: 'Pelanggan, supplier, dan user Company.', iconKey: 'contact', color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
   { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
-  { id: 'sales', name: 'Sales', description: 'Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
+  { id: 'sales', name: 'Sales', description: 'Quotation, Sales Order, Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['backoffice-sales-orders', 'sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
   { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Health operasional, Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['platform-health', 'companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },
@@ -167,10 +169,12 @@ export function buildNavigationCatalog(input: {
   isSuperAdmin: boolean
   roleCode: string
   enabledFeatures: ReadonlySet<string>
+  hiddenViewIds?: ReadonlySet<NavigationViewId>
   effectiveCapabilities?: Partial<Record<NavigationViewId, string[]>>
 }): NavigationCatalogModule[] {
   const visibleItems = new Map(
     itemDefinitions
+      .filter((item) => !input.hiddenViewIds?.has(item.id))
       .filter((item) => (!item.superOnly || input.isSuperAdmin))
       .filter((item) => !item.roles || input.isSuperAdmin || item.roles.includes(input.roleCode))
       .filter((item) => !item.requiredAnyFeature || input.isSuperAdmin ||

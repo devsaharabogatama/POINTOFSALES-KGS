@@ -54,11 +54,31 @@ export async function POST(request: Request) {
         const item = row as Record<string, unknown>
         const amount = Number(item.allocatedAmount)
         if (!Number.isFinite(amount) || amount <= 0) throw new Error('CUSTOMER_RECEIPT_ALLOCATION_INVALID')
-        return { salesId: requiredUuid(item.salesId, 'SALES_ID_INVALID'), clientAllocationKey: requiredUuid(item.clientAllocationKey, 'CLIENT_KEY_INVALID'), allocatedAmount: amount }
+        const legacySalesId = optionalUuid(item.salesId)
+        const sourceType = String(item.sourceType ?? (legacySalesId ? 'RETAIL_SALE' : '')).trim().toUpperCase()
+        if (!['RETAIL_SALE', 'BACKOFFICE_SALES_INVOICE'].includes(sourceType)) throw new Error('CUSTOMER_RECEIPT_SOURCE_TYPE_INVALID')
+        return {
+          sourceType,
+          sourceId: requiredUuid(item.sourceId ?? legacySalesId, 'CUSTOMER_RECEIPT_SOURCE_ID_INVALID'),
+          clientAllocationKey: requiredUuid(item.clientAllocationKey, 'CLIENT_KEY_INVALID'),
+          allocatedAmount: amount,
+        }
       })
       const receivedAmount = Number(body.receivedAmount)
       if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) throw new Error('CUSTOMER_RECEIPT_AMOUNT_INVALID')
-      const { data, error } = await caller.client.rpc('save_customer_receipt_draft_with_disposition', {
+      const rpc = disposition === 'NONE'
+        ? 'save_customer_receipt_allocated_draft'
+        : 'save_customer_receipt_draft_with_disposition'
+      const args = disposition === 'NONE' ? {
+        p_document_id: documentId,
+        p_master_version: documentId ? version(body.masterVersion) : null,
+        p_customer_id: requiredUuid(body.customerId, 'CUSTOMER_ID_INVALID'),
+        p_receipt_date: body.receiptDate,
+        p_payment_method_id: requiredUuid(body.paymentMethodId, 'PAYMENT_METHOD_ID_INVALID'),
+        p_reference_no: optionalText(body.referenceNo), p_evidence_url: optionalText(body.evidenceUrl),
+        p_notes: optionalText(body.notes), p_received_amount: receivedAmount,
+        p_allocations: allocations,
+      } : {
         p_document_id: documentId,
         p_master_version: documentId ? version(body.masterVersion) : null,
         p_customer_id: requiredUuid(body.customerId, 'CUSTOMER_ID_INVALID'),
@@ -67,13 +87,14 @@ export async function POST(request: Request) {
         p_reference_no: optionalText(body.referenceNo), p_evidence_url: optionalText(body.evidenceUrl),
         p_notes: optionalText(body.notes), p_received_amount: receivedAmount,
         p_unapplied_disposition: disposition, p_allocations: allocations,
-      })
+      }
+      const { data, error } = await caller.client.rpc(rpc, args)
       if (error) throwDatabaseError(error)
       return Response.json({ data })
     }
     if (action === 'POST') {
       await requirePermissionCapability(caller, companyId, 'finance.customer_receipts', 'POST')
-      const { data, error } = await caller.client.rpc('post_customer_receipt_with_disposition', {
+      const { data, error } = await caller.client.rpc('post_customer_receipt_unified', {
         p_document_id: requiredUuid(body.documentId, 'DOCUMENT_ID_INVALID'),
         p_master_version: version(body.masterVersion),
         p_idempotency_key: requiredUuid(body.idempotencyKey, 'IDEMPOTENCY_KEY_INVALID'),

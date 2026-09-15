@@ -13,6 +13,7 @@ import {
   uuidValue,
 } from "@/lib/master-data";
 import { requireDataExchangeAction } from "@/lib/data-exchange-server";
+import { getFinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -113,6 +114,12 @@ async function reportResponse(request: Request, report: string) {
     result = await caller.client.rpc("get_finance_reconciliation_summary", {
       p_as_of: asOf,
     });
+  } else if (report === "DELIVERED_NOT_INVOICED") {
+    result = await caller.client.rpc("get_finance_delivered_not_invoiced", {
+      p_as_of: asOf,
+      p_limit: 500,
+      p_offset: 0,
+    });
   } else if (report === "GENERAL_LEDGER") {
     const accountId = uuidValue(
       params.get("accountId") ?? "",
@@ -196,7 +203,16 @@ export async function GET(request: Request) {
       .order("accounting_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(journalMonth ? 5000 : 200);
-    const [company, periods, journals, queueRuns, exceptions, accounts, policy] =
+    const [
+      company,
+      periods,
+      journals,
+      queueRuns,
+      exceptions,
+      accounts,
+      policy,
+      financeProcessUiPolicy,
+    ] =
       await Promise.all([
         caller.client
           .from("companies")
@@ -239,6 +255,7 @@ export async function GET(request: Request) {
           .order("account_code")
           .limit(1000),
         caller.client.rpc("get_finance_company_policy"),
+        getFinanceProcessUiPolicy(companyId),
       ]);
     for (const result of [
       company,
@@ -301,6 +318,7 @@ export async function GET(request: Request) {
       exceptions: exceptions.data ?? [],
       accounts: accounts.data ?? [],
       policy: policy.data,
+      financeProcessUiPolicy,
     });
   } catch (error) {
     return apiError(error);

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       .select('id,company_id,code,name,uom_type,allow_decimal,decimal_precision,is_active,master_version,created_at,updated_at')
       .eq('company_id', companyId).order('name').limit(200)
     let warehouses = caller.client.from('warehouses')
-      .select('id,company_id,code,name,warehouse_type,store_id,location,is_sale_source,is_purchase_destination,allow_negative_stock,is_active,master_version,created_at,updated_at')
+      .select('id,company_id,code,name,warehouse_type,store_id,location,is_sale_source,is_purchase_destination,allow_negative_stock,is_active,master_version,transit_parent_warehouse_id,transit_operation,created_at,updated_at')
       .eq('company_id', companyId).order('name').limit(200)
     if (!includeInactive) {
       categories = categories.eq('is_active', true)

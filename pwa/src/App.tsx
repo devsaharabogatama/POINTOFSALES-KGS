@@ -56,6 +56,7 @@ import './App.css'
 import { CurrencyInput } from './CurrencyInput'
 import {
   acquireSaleDraftLock,
+  adoptBackofficeCutoverSaleDraft,
   cancelSaleDraft,
   closeCashierSession,
   confirmSalesOrder,
@@ -76,6 +77,7 @@ import {
   recordSalesDocumentPrint,
   releaseSaleDraftLock,
   saveSaleDraft,
+  saveBackofficeCutoverSaleDraftPreserved,
   setActiveCompany,
   signIn,
   signOut,
@@ -475,6 +477,16 @@ function friendlyError(code: string) {
       'Order sudah dikonfirmasi dan stoknya telah dicadangkan. Lanjutkan dari daftar Order, bukan dari Draft.',
     SALES_ORDER_VIEW_FORBIDDEN:
       'Akun ini tidak boleh melihat Order pada toko aktif.',
+    SALE_DRAFT_WAREHOUSE_ACCESS_DENIED:
+      'Draft ini berasal dari gudang berbeda. Buka sesi POS pada gudang asal Draft.',
+    SALE_DRAFT_SCOPE_ACCESS_DENIED:
+      'Sesi POS tidak sesuai dengan toko atau gudang asal Draft.',
+    BACKOFFICE_CUTOVER_DRAFT_REQUIRED:
+      'Draft ini bukan hasil perpindahan proses Backoffice ke Retail.',
+    BACKOFFICE_CUTOVER_PRESERVED_DRAFT_REQUIRED:
+      'Snapshot awal Draft sudah berubah. Simpan ulang memakai proses harga Retail.',
+    CUTOVER_RETAIL_ADOPTION_IDEMPOTENCY_CONFLICT:
+      'Permintaan membuka Draft bertabrakan dengan percobaan sebelumnya.',
   }
   return labels[code] ?? code.replaceAll('_', ' ')
 }
@@ -530,6 +542,10 @@ export default function App() {
     crypto.randomUUID(),
   )
   const [resolvedLines, setResolvedLines] = useState<ResolvedSaleLine[]>([])
+  const cutoverDraftBaselineRef = useRef<{
+    salesId: string
+    fingerprint: string
+  } | null>(null)
   const [pricePreviewLines, setPricePreviewLines] = useState<
     PosPricePreviewLine[]
   >([])
@@ -1859,6 +1875,32 @@ export default function App() {
     }))
   }
 
+  function currentDraftEditFingerprint() {
+    return JSON.stringify({
+      customerId,
+      selectedPricelistId,
+      draftLabel: draftLabel.trim(),
+      draftNotes: draftNotes.trim(),
+      lines: draftLines(),
+      globalDiscount: Number(globalDiscount || 0),
+      roundingDirection,
+      isTempo,
+      transactionAt: isTempo ? transactionAt : null,
+      transactionDateIsManual,
+      dueDate: isTempo && dueDate ? new Date(dueDate).toISOString() : null,
+      fulfillmentMode,
+      deliveryRecipientName: deliveryRecipientName.trim(),
+      deliveryRecipientPhone: deliveryRecipientPhone.trim(),
+      deliveryAddress: deliveryAddress.trim(),
+      deliveryScheduledAt: deliveryScheduledAt
+        ? new Date(deliveryScheduledAt).toISOString()
+        : null,
+      deliveryNotes: deliveryNotes.trim(),
+      deliveryFeeAmount: effectiveDeliveryFee,
+      deliveryFeeInvoiceDisplayMode,
+    })
+  }
+
   async function persistDraft(
     currentDraft: SaleDraft | null,
     payments: Array<{
@@ -1883,14 +1925,20 @@ export default function App() {
     if (fulfillmentMode === 'DELIVERY' && !deliveryFeeInputValid) {
       throw new Error('INVALID_DELIVERY_FEE_AMOUNT')
     }
-    if (currentDraft) {
+    const preservesCutoverSnapshot = Boolean(
+      currentDraft &&
+      cutoverDraftBaselineRef.current?.salesId === currentDraft.salesId &&
+      cutoverDraftBaselineRef.current.fingerprint !== '' &&
+      cutoverDraftBaselineRef.current.fingerprint === currentDraftEditFingerprint(),
+    )
+    if (currentDraft && !preservesCutoverSnapshot) {
       await acquireSaleDraftLock(
         currentDraft.salesId,
         cashierSession.id,
         false,
       )
     }
-    const saved = await saveSaleDraft({
+    const commonInput: Parameters<typeof saveSaleDraft>[0] = {
       draft: currentDraft,
       clientTransactionId,
       cashierSessionId: cashierSession.id,
@@ -1918,12 +1966,52 @@ export default function App() {
       deliveryFeeInvoiceDisplayMode,
       negativeStockReason,
       payments,
-    })
-    setDraft(saved)
-    setTransactionAt(saved.transactionAt)
-    setResolvedLines(await loadResolvedSaleLines(companyId, saved.salesId))
+    }
+    const saved = preservesCutoverSnapshot && currentDraft
+      ? (() => saveBackofficeCutoverSaleDraftPreserved({
+          salesId: currentDraft.salesId,
+          expectedMasterVersion: currentDraft.masterVersion,
+          cashierSessionId: cashierSession.id,
+          operationId: crypto.randomUUID(),
+          payments,
+        }).then((row) => ({
+          ...currentDraft,
+          masterVersion: Number(row.masterVersion),
+          transactionAt: String(row.transactionAt ?? currentDraft.transactionAt),
+          transactionDateSource:
+            row.transactionDateSource === 'CASHIER_SELECTED'
+              ? 'CASHIER_SELECTED' as const
+              : currentDraft.transactionDateSource,
+          orderTimingMode:
+            row.orderTimingMode === 'SCHEDULED'
+              ? 'SCHEDULED' as const
+              : row.orderTimingMode === 'BACKORDER'
+                ? 'BACKORDER' as const
+                : 'IMMEDIATE' as const,
+          plannedOrderDate: row.plannedOrderDate
+            ? String(row.plannedOrderDate)
+            : currentDraft.plannedOrderDate,
+          operationalStatus:
+            row.operationalStatus === 'SCHEDULED'
+              ? 'SCHEDULED' as const
+              : 'ACTIVE' as const,
+          grandTotalBeforeRounding: Number(row.grandTotalBeforeRounding),
+          roundingAdjustment: Number(row.roundingAdjustment),
+          grandTotalAfterRounding: Number(row.grandTotalAfterRounding),
+          deliveryFeeAmount: Number(row.deliveryFeeAmount),
+          deliveryFeeInvoiceDisplayMode:
+            row.deliveryFeeInvoiceDisplayMode === 'HIDE_BREAKDOWN'
+              ? 'HIDE_BREAKDOWN' as const
+              : 'SHOW_SEPARATE' as const,
+        })))()
+      : saveSaleDraft(commonInput)
+    const resolvedSaved = await saved
+    if (!preservesCutoverSnapshot) cutoverDraftBaselineRef.current = null
+    setDraft(resolvedSaved)
+    setTransactionAt(resolvedSaved.transactionAt)
+    setResolvedLines(await loadResolvedSaleLines(companyId, resolvedSaved.salesId))
     await refreshSaleDrafts(cashierSession)
-    return saved
+    return resolvedSaved
   }
 
   async function handleContinueDraft(item: SaleDraftListItem) {
@@ -1969,11 +2057,22 @@ export default function App() {
           cashierSession.id,
         )
       }
-      await acquireSaleDraftLock(
-        item.salesId,
-        cashierSession.id,
-        confirmTakeover,
-      )
+      const isBackofficeCutover =
+        item.salesOrigin === 'BACKOFFICE_CUTOVER' &&
+        item.commercialSnapshotPreserved
+      const adoption = isBackofficeCutover
+        ? await adoptBackofficeCutoverSaleDraft({
+            salesId: item.salesId,
+            expectedMasterVersion: item.masterVersion,
+            cashierSessionId: cashierSession.id,
+            operationId: crypto.randomUUID(),
+            confirmTakeover,
+          })
+        : await acquireSaleDraftLock(
+            item.salesId,
+            cashierSession.id,
+            confirmTakeover,
+          )
 
       const payload = item.payloadSnapshot
       const rawLines = Array.isArray(payload.lines)
@@ -2056,7 +2155,16 @@ export default function App() {
         deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
       }
 
-      const repriced = await saveSaleDraft({
+      const openedDraft = isBackofficeCutover
+        ? {
+            ...nextDraft,
+            masterVersion: Number(adoption.masterVersion),
+            grandTotalBeforeRounding: Number(adoption.grandTotalBeforeRounding),
+            roundingAdjustment: Number(adoption.roundingAdjustment),
+            grandTotalAfterRounding: Number(adoption.grandTotalAfterRounding),
+            deliveryFeeAmount: Number(adoption.deliveryFeeAmount),
+          }
+        : await saveSaleDraft({
         draft: nextDraft,
         clientTransactionId: nextClientTransactionId,
         cashierSessionId: cashierSession.id,
@@ -2100,14 +2208,14 @@ export default function App() {
         deliveryFeeAmount: Number(nextDeliveryFeeAmount),
         deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
         payments: [],
-      })
+          })
 
       setCartQuantityInputs({})
       setCart(nextCart)
-      setDraft(repriced)
-      setTransactionAt(repriced.transactionAt)
+      setDraft(openedDraft)
+      setTransactionAt(openedDraft.transactionAt)
       setTransactionDateIsManual(
-        repriced.transactionDateSource === 'CASHIER_SELECTED',
+        openedDraft.transactionDateSource === 'CASHIER_SELECTED',
       )
       setClientTransactionId(nextClientTransactionId)
       setCustomerId(nextCustomerId)
@@ -2135,9 +2243,53 @@ export default function App() {
       setResolvedLines(
         await loadResolvedSaleLines(companyId, item.salesId),
       )
+      const openedFingerprint = JSON.stringify({
+        customerId: nextCustomerId,
+        selectedPricelistId: nextPricelistId,
+        draftLabel: (item.draftLabel ?? '').trim(),
+        draftNotes: (item.draftNotes ?? '').trim(),
+        lines: nextCart.map((cartItem) => ({
+          lineKey: cartItem.product.productUomId,
+          productUomId: cartItem.product.productUomId,
+          quantity: cartItem.quantity,
+          ...(cartItem.discountType
+            ? {
+                lineDiscountType: cartItem.discountType,
+                lineDiscountInput: cartItem.discountInput,
+              }
+            : {}),
+          ...(cartItem.overrideUnitPrice !== null
+            ? { overrideUnitPrice: cartItem.overrideUnitPrice }
+            : {}),
+        })),
+        globalDiscount: Number(nextGlobalDiscount || 0),
+        roundingDirection: nextRoundingDirection,
+        isTempo: nextIsTempo,
+        transactionAt: nextIsTempo ? openedDraft.transactionAt : null,
+        transactionDateIsManual:
+          openedDraft.transactionDateSource === 'CASHIER_SELECTED',
+        dueDate: nextIsTempo && nextDueDate
+          ? new Date(nextDueDate).toISOString()
+          : null,
+        fulfillmentMode: nextFulfillmentMode,
+        deliveryRecipientName: String(payload.deliveryRecipientName ?? '').trim(),
+        deliveryRecipientPhone: String(payload.deliveryRecipientPhone ?? '').trim(),
+        deliveryAddress: String(payload.deliveryAddress ?? '').trim(),
+        deliveryScheduledAt: nextDeliveryScheduledAt
+          ? new Date(nextDeliveryScheduledAt).toISOString()
+          : null,
+        deliveryNotes: String(payload.deliveryNotes ?? '').trim(),
+        deliveryFeeAmount: Number(nextDeliveryFeeAmount),
+        deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
+      })
+      cutoverDraftBaselineRef.current = isBackofficeCutover
+        ? { salesId: item.salesId, fingerprint: openedFingerprint }
+        : null
       setDraftPanelOpen(false)
       setNotice(
-        `${item.draftNo} dibuka dan harga dihitung ulang. Konfirmasi pembayaran kembali sebelum Post.`,
+        isBackofficeCutover
+          ? `${item.draftNo} dibuka tanpa menghitung ulang harga. Konfirmasi pembayaran kembali; perubahan isi transaksi akan memakai harga Retail terbaru.`
+          : `${item.draftNo} dibuka dan harga dihitung ulang. Konfirmasi pembayaran kembali sebelum Post.`,
       )
       await refreshSaleDrafts(cashierSession)
       return true
@@ -2814,6 +2966,7 @@ export default function App() {
     setCartQuantityInputs({})
     setEditingCartProductUomId('')
     setDraft(null)
+    cutoverDraftBaselineRef.current = null
     setDraftLabel('')
     setDraftNotes('')
     setResolvedLines([])

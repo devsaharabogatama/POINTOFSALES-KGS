@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { ArrowRight, Ban, Clock3, Download, Eye, History, Loader2, Printer, RefreshCcw, Search, TriangleAlert, X } from 'lucide-react'
+import { ArrowRight, Ban, Clock3, Download, Eye, FilePenLine, History, Loader2, Printer, RefreshCcw, Search, TriangleAlert, X } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
 import { downloadSalesInvoicePdf, printSalesInvoiceDocument } from '@/lib/sales-document-print'
+import { BackofficeSalesInvoiceView, type BackofficeInvoice } from '@/components/BackofficeSalesInvoiceView'
 
 type JsonMap = Record<string, unknown>
 type RevisionLink = {
@@ -37,7 +38,7 @@ type DocumentActivity = {
 }
 type InvoiceSummary = {
   salesId: string; invoiceSnapshotId: string; invoiceNo: string
-  snapshotProvenance: string; postedAt: string; total: number
+  snapshotProvenance: string; invoiceDate?: string | null; postedAt: string; total: number
   fulfillmentMode: 'PICKUP' | 'DELIVERY'; sourceChannel: string
   customerName: string; storeName: string
   invoiceStatus: 'ACTIVE' | 'CANCELED'; orderRuntimeStatus: string
@@ -51,6 +52,13 @@ type DetailPayload = { invoice?: JsonMap; error?: string }
 function headers(session: Session, json = false) { return { Authorization: `Bearer ${session.access_token}`, ...(json ? { 'Content-Type': 'application/json' } : {}) } }
 function money(value: number) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value || 0) }
 function dateTime(value?: string | null) { return value ? new Date(value).toLocaleString('id-ID') : '-' }
+function invoiceDateLabel(value?: string | null) {
+  if (!value) return '-'
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match) return `${Number(match[3])}/${Number(match[2])}/${match[1]}`
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('id-ID')
+}
 function friendly(code?: string) { return ({
   SALES_DOCUMENT_NOT_FOUND: 'Invoice tidak ditemukan atau tidak dapat diakses.',
   SALES_INVOICE_NOT_FOUND: 'Invoice final belum tersedia.',
@@ -70,8 +78,10 @@ async function readApiJson<T extends { error?: string }>(response: Response): Pr
   return await response.json() as T
 }
 
-export function SalesDocumentView({ session, companyId, notify }: { session: Session; companyId: string; notify: (message: string) => void }) {
+export function SalesDocumentView({ session, companyId, companyName, notify, canViewBackoffice = false, canCreateBackoffice = false, canEditBackoffice = false, canManageBackoffice = false }: { session: Session; companyId: string; companyName: string; notify: (message: string) => void; canViewBackoffice?: boolean; canCreateBackoffice?: boolean; canEditBackoffice?: boolean; canManageBackoffice?: boolean }) {
   const [documents, setDocuments] = useState<InvoiceSummary[]>([])
+  const [backofficeInvoices, setBackofficeInvoices] = useState<BackofficeInvoice[]>([])
+  const [selectedBackofficeInvoice, setSelectedBackofficeInvoice] = useState<{ id: string; edit: boolean } | null>(null)
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
   const [search, setSearch] = useState(''); const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'CANCELED'>('ALL')
   const [selected, setSelected] = useState<InvoiceSummary | null>(null)
@@ -84,9 +94,10 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const [response, brandingResponse] = await Promise.all([
+      const [response, brandingResponse, backofficeResponse] = await Promise.all([
         fetch('/api/sales/documents', { headers: headers(session), cache: 'no-store' }),
         fetch('/api/platform/company-branding', { headers: headers(session), cache: 'no-store' }),
+        canViewBackoffice ? fetch('/api/sales/backoffice-invoices', { headers: headers(session), cache: 'no-store' }) : Promise.resolve(null),
       ])
       const result = await readApiJson<{ data?: InvoiceSummary[]; error?: string }>(response)
       if (!response.ok) throw new Error(friendly(result.error)); setDocuments(result.data ?? [])
@@ -94,9 +105,14 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
         const branding = await brandingResponse.json() as { data?: { showLogoOnDocuments?: boolean; showStampOnDocuments?: boolean; showBankAccountOnInvoice?: boolean } }
         setShowLogoOnDocuments(branding.data?.showLogoOnDocuments ?? true); setShowStampOnDocuments(branding.data?.showStampOnDocuments ?? false); setShowBankAccountOnInvoice(branding.data?.showBankAccountOnInvoice ?? false)
       }
+      if (backofficeResponse) {
+        const backoffice = await readApiJson<{ invoices?: BackofficeInvoice[]; error?: string }>(backofficeResponse)
+        if (!backofficeResponse.ok) throw new Error(friendly(backoffice.error))
+        setBackofficeInvoices(backoffice.invoices ?? [])
+      } else setBackofficeInvoices([])
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Invoice gagal dimuat.') }
     finally { setLoading(false) }
-  }, [session])
+  }, [canViewBackoffice, session])
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- active Company owns rows
     void load()
@@ -106,6 +122,11 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
     const keyword = search.trim().toLowerCase()
     return (statusFilter === 'ALL' || document.invoiceStatus === statusFilter) && (!keyword || [document.invoiceNo, document.customerName, document.storeName].some((value) => value?.toLowerCase().includes(keyword)))
   }), [documents, search, statusFilter])
+  const filteredBackoffice = useMemo(() => backofficeInvoices.filter((invoice) => {
+    const keyword = search.trim().toLowerCase()
+    const mappedStatus = invoice.status === 'CANCELED' || invoice.status === 'REVERSED' ? 'CANCELED' : 'ACTIVE'
+    return (statusFilter === 'ALL' || mappedStatus === statusFilter) && (!keyword || [invoice.invoiceNo, invoice.draftNo, invoice.salesOrderNo, invoice.customerSnapshot.name, invoice.storeName].some((value) => value?.toLowerCase().includes(keyword)))
+  }), [backofficeInvoices, search, statusFilter])
 
   async function openDetail(document: InvoiceSummary) {
     setSelected(document); setDetail(null); setDetailLoading(true); setError('')
@@ -149,11 +170,18 @@ export function SalesDocumentView({ session, companyId, notify }: { session: Ses
     void openDetail(related)
   }
 
+  if (selectedBackofficeInvoice) return <BackofficeSalesInvoiceView session={session} initialInvoiceId={selectedBackofficeInvoice.edit ? null : selectedBackofficeInvoice.id} initialEditInvoiceId={selectedBackofficeInvoice.edit ? selectedBackofficeInvoice.id : null} canCreate={canCreateBackoffice} canEdit={canEditBackoffice} canManage={canManageBackoffice} companyName={companyName} notify={notify} back={() => { setSelectedBackofficeInvoice(null); void load() }} />
+
   return <section className="space-y-5">
-    <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between"><div><p className="text-xs font-black uppercase tracking-[.2em] text-emerald-700">Sales</p><h1 className="mt-2 text-2xl font-black text-slate-950">Invoice Penjualan</h1><p className="mt-1 text-sm text-slate-500">Snapshot transaksi dan status Order yang dapat dicetak ulang.</p></div><button onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 font-bold text-slate-700"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button></header>
+    <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between"><div><p className="text-xs font-black uppercase tracking-[.2em] text-emerald-700">Sales</p><h1 className="mt-2 text-2xl font-black text-slate-950">Invoice Penjualan</h1><p className="mt-1 text-sm text-slate-500">Invoice Retail dan Backoffice pada Company aktif dalam satu daftar.</p></div><button onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 font-bold text-slate-700"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button></header>
     <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_210px]"><label className="relative block"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nomor Invoice, customer, atau toko" className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 outline-none focus:border-emerald-500"/></label><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 font-semibold"><option value="ALL">Semua status</option><option value="ACTIVE">Aktif</option><option value="CANCELED">Dibatalkan</option></select></div>
     {error && <p className="rounded-2xl bg-rose-50 p-4 font-semibold text-rose-700">{error}</p>}
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Invoice</th><th className="p-4">Status</th><th className="p-4">Customer / Toko</th><th className="p-4">Pemenuhan</th><th className="p-4 text-right">Total</th><th className="p-4"/></tr></thead><tbody>{loading ? <tr><td colSpan={6} className="p-10 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin"/>Memuat Invoice...</td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-slate-500">Belum ada Invoice yang sesuai.</td></tr> : filtered.map((document) => <tr key={document.salesId} className={`border-t border-slate-100 ${document.invoiceStatus === 'CANCELED' ? 'bg-rose-50/40' : ''}`}><td className="p-4"><strong>{document.invoiceNo}</strong><p className="mt-1 text-xs text-slate-500">{dateTime(document.postedAt)} · {document.sourceChannel}</p><p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5"/>Terakhir diperbarui {dateTime(document.activity?.updatedAt ?? document.postedAt)}</p></td><td className="p-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${document.invoiceStatus === 'CANCELED' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{document.invoiceStatus === 'CANCELED' ? 'Dibatalkan' : 'Aktif'}</span></td><td className="p-4"><strong>{document.customerName}</strong><p className="text-xs text-slate-500">{document.storeName}</p></td><td className="p-4">{document.fulfillmentMode === 'DELIVERY' ? 'Dikirim' : 'Ambil sendiri'}</td><td className="p-4 text-right font-black">{money(document.total)}</td><td className="p-4 text-right"><button onClick={() => void openDetail(document)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></td></tr>)}</tbody></table></div></div>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Invoice</th><th className="p-4">Status</th><th className="p-4">Customer / Toko</th><th className="p-4">Pemenuhan</th><th className="p-4 text-right">Total</th><th className="p-4"/></tr></thead><tbody>
+      {loading ? <tr><td colSpan={6} className="p-10 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin"/>Memuat Invoice...</td></tr> : filtered.length === 0 && filteredBackoffice.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-slate-500">Belum ada Invoice yang sesuai.</td></tr> : <>
+        {filteredBackoffice.map((invoice) => <tr key={`backoffice-${invoice.id}`} className={`border-t border-slate-100 ${invoice.status === 'CANCELED' || invoice.status === 'REVERSED' ? 'bg-rose-50/40' : ''}`}><td className="p-4"><strong>{invoice.invoiceNo ?? invoice.draftNo}</strong><p className="mt-1 text-xs text-slate-500">Tanggal Invoice {invoiceDateLabel(invoice.invoiceDate)} · Backoffice</p><p className="mt-1 text-xs text-slate-500">SO {invoice.salesOrderNo} · Invoice ke-{invoice.invoiceSequence}</p></td><td className="p-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${invoice.status === 'CANCELED' || invoice.status === 'REVERSED' ? 'bg-rose-100 text-rose-700' : invoice.status === 'DRAFT' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-100 text-emerald-700'}`}>{invoice.status === 'DRAFT' ? 'Draft' : invoice.status === 'POSTED' ? 'Terbit' : invoice.status === 'REVERSED' ? 'Diretur' : 'Dibatalkan'}</span></td><td className="p-4"><strong>{invoice.customerSnapshot.name ?? '-'}</strong><p className="text-xs text-slate-500">{invoice.storeName ?? '-'}</p></td><td className="p-4">Qty diterima Customer</td><td className="p-4 text-right font-black">{money(Number(invoice.grandTotal))}</td><td className="p-4"><div className="flex justify-end gap-2">{invoice.status === 'DRAFT' && canEditBackoffice && <button onClick={() => setSelectedBackofficeInvoice({ id: invoice.id, edit: true })} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 px-4 font-bold text-emerald-700"><FilePenLine className="h-4 w-4"/>Edit</button>}<button onClick={() => setSelectedBackofficeInvoice({ id: invoice.id, edit: false })} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></div></td></tr>)}
+        {filtered.map((document) => <tr key={document.salesId} className={`border-t border-slate-100 ${document.invoiceStatus === 'CANCELED' ? 'bg-rose-50/40' : ''}`}><td className="p-4"><strong>{document.invoiceNo}</strong>{document.invoiceDate ? <p className="mt-1 text-xs text-slate-500">Tanggal Invoice {invoiceDateLabel(document.invoiceDate)} · {document.sourceChannel}</p> : <p className="mt-1 text-xs text-amber-700">Waktu konfirmasi {dateTime(document.postedAt)} · {document.sourceChannel}</p>}<p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5"/>Terakhir diperbarui {dateTime(document.activity?.updatedAt ?? document.postedAt)}</p></td><td className="p-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${document.invoiceStatus === 'CANCELED' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{document.invoiceStatus === 'CANCELED' ? 'Dibatalkan' : 'Aktif'}</span></td><td className="p-4"><strong>{document.customerName}</strong><p className="text-xs text-slate-500">{document.storeName}</p></td><td className="p-4">{document.fulfillmentMode === 'DELIVERY' ? 'Dikirim' : 'Ambil sendiri'}</td><td className="p-4 text-right font-black">{money(document.total)}</td><td className="p-4 text-right"><button onClick={() => void openDetail(document)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></td></tr>)}
+      </>}
+    </tbody></table></div></div>
     {selected && <InvoiceDetail summary={selected} payload={detail}
       loading={detailLoading} close={() => { setSelected(null); setDetail(null) }}
       print={() => void printInvoice()} download={() => void downloadInvoice()}
@@ -187,7 +215,7 @@ function InvoiceDetail({ summary, payload, loading, close, print, download, canc
   ].filter((item) => item.at).sort((left, right) =>
     new Date(String(left.at)).getTime() - new Date(String(right.at)).getTime())
   return <div className="fixed inset-0 z-[75] overflow-y-auto bg-slate-950/65 p-4"><article className="relative mx-auto my-5 max-w-5xl rounded-3xl bg-white p-6 shadow-2xl">
-    <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-black uppercase tracking-wider text-emerald-700">Invoice</p><span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${canceled ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{canceled ? 'Dibatalkan' : 'Aktif'}</span></div><h2 className="mt-2 text-2xl font-black">{summary.invoiceNo}</h2><p className="mt-1 text-sm text-slate-500">{summary.customerName} · {summary.storeName} · {dateTime(summary.postedAt)}</p></div><div className="flex shrink-0 items-center gap-2">{activity && <button type="button" onClick={() => setHistoryOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"><History className="h-4 w-4"/><span className="hidden sm:inline">Riwayat</span></button>}<button onClick={close} className="rounded-xl bg-slate-100 p-2" aria-label="Tutup"><X className="h-5 w-5"/></button></div></div>
+    <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-black uppercase tracking-wider text-emerald-700">Invoice</p><span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${canceled ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{canceled ? 'Dibatalkan' : 'Aktif'}</span></div><h2 className="mt-2 text-2xl font-black">{summary.invoiceNo}</h2><p className="mt-1 text-sm text-slate-500">{summary.customerName} · {summary.storeName}</p><p className={`mt-1 text-sm ${summary.invoiceDate ? 'text-slate-500' : 'text-amber-700'}`}>{summary.invoiceDate ? `Tanggal Invoice ${invoiceDateLabel(summary.invoiceDate)}` : `Waktu konfirmasi ${dateTime(summary.postedAt)}`}</p></div><div className="flex shrink-0 items-center gap-2">{activity && <button type="button" onClick={() => setHistoryOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"><History className="h-4 w-4"/><span className="hidden sm:inline">Riwayat</span></button>}<button onClick={close} className="rounded-xl bg-slate-100 p-2" aria-label="Tutup"><X className="h-5 w-5"/></button></div></div>
     {revision?.status === 'APPLIED' && <div className="mt-4 flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900"><span>{isRevisionSource ? 'Digantikan oleh' : 'Revisi dari'}</span>{relatedSalesId && relatedSalesIds.has(relatedSalesId) ? <button type="button" onClick={() => openRelated(relatedSalesId)} className="inline-flex items-center gap-1 font-black underline decoration-blue-300 underline-offset-4 hover:text-blue-700">{relatedInvoiceNo}<ArrowRight className="h-4 w-4"/></button> : <strong>{relatedInvoiceNo}</strong>}</div>}
     {revision?.status === 'PENDING' && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"><strong>Draft revisi sedang disiapkan.</strong> Order asli tetap aktif sampai revisi dikonfirmasi.</div>}
     {loading ? <div className="p-16 text-center"><Loader2 className="mx-auto h-7 w-7 animate-spin"/></div> : payload && <><div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Produk</th><th className="p-4">UOM</th><th className="p-4 text-right">Qty</th><th className="p-4 text-right">Harga</th><th className="p-4 text-right">Total</th></tr></thead><tbody>{lines.map((line, index) => <tr key={`${String(line.lineKey)}-${index}`} className="border-t"><td className="p-4"><strong>{String(line.productName ?? '-')}</strong><p className="text-xs text-slate-500">{String(line.sku ?? '')}</p></td><td className="p-4">{String(line.uomName ?? '-')}</td><td className="p-4 text-right">{String(line.quantity ?? 0)}</td><td className="p-4 text-right">{money(Number(line.unitPrice))}</td><td className="p-4 text-right font-black">{money(Number(line.lineTotal))}</td></tr>)}</tbody></table></div><div className="mt-6 flex flex-wrap justify-end gap-3">{canCancel && <button onClick={() => setCancelOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-300 px-5 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan Order</button>}<button onClick={download} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-200 px-5 font-black text-emerald-700"><Download className="h-4 w-4"/>Unduh PDF</button><button onClick={print} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white"><Printer className="h-4 w-4"/>Print Invoice</button></div></>}

@@ -12,7 +12,7 @@ import {
 } from '@/lib/master-data'
 
 const selectFields =
-  'id, company_id, code, name, warehouse_type, store_id, location, is_sale_source, is_purchase_destination, allow_negative_stock, is_active, master_version, created_at, updated_at'
+  'id, company_id, code, name, warehouse_type, store_id, location, is_sale_source, is_purchase_destination, allow_negative_stock, is_active, master_version, transit_parent_warehouse_id, transit_operation, created_at, updated_at'
 
 async function validateStore(
   caller: Awaited<ReturnType<typeof requireCaller>>,
@@ -68,17 +68,33 @@ export async function POST(request: Request) {
     }
     if (storeId) await validateStore(caller, companyId, storeId)
 
-    const { data, error } = await caller.client.rpc('save_inventory_warehouse', {
-      p_warehouse_id: null,
-      p_expected_version: null,
-      p_name: name,
-      p_warehouse_type: warehouseType,
-      p_store_id: storeId,
-      p_location: optionalText(body, 'location', { maxLength: 500 }) ?? null,
-      p_is_sale_source: optionalBoolean(body, 'isSaleSource') ?? false,
-      p_is_purchase_destination: optionalBoolean(body, 'isPurchaseDestination') ?? false,
-      p_is_active: optionalBoolean(body, 'isActive') ?? true,
-    })
+    const location = optionalText(body, 'location', { maxLength: 500 }) ?? null
+    const isActive = optionalBoolean(body, 'isActive') ?? true
+    const rpc = warehouseType === 'TRANSIT'
+      ? caller.client.rpc('save_inventory_transit_warehouse', {
+        p_warehouse_id: null,
+        p_expected_version: null,
+        p_name: name,
+        p_parent_warehouse_id: uuidValue(
+          optionalText(body, 'transitParentWarehouseId') ?? '',
+          'TRANSIT_PARENT_INVALID',
+        ),
+        p_transit_operation: optionalText(body, 'transitOperation') ?? '',
+        p_location: location,
+        p_is_active: isActive,
+      })
+      : caller.client.rpc('save_inventory_warehouse', {
+        p_warehouse_id: null,
+        p_expected_version: null,
+        p_name: name,
+        p_warehouse_type: warehouseType,
+        p_store_id: storeId,
+        p_location: location,
+        p_is_sale_source: optionalBoolean(body, 'isSaleSource') ?? false,
+        p_is_purchase_destination: optionalBoolean(body, 'isPurchaseDestination') ?? false,
+        p_is_active: isActive,
+      })
+    const { data, error } = await rpc
 
     if (error) throwDatabaseError(error)
     return Response.json({ data: data?.data }, { status: 201 })

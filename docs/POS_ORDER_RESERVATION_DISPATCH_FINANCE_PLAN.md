@@ -12,6 +12,14 @@ Purchasing, dan verifikasi pembayaran Finance.
 
 ## 1. Keputusan bisnis yang dibekukan
 
+> Arah tambahan 2026-09-08: platform kelak menyediakan mode kedua per Company
+> yang menunda Invoice sampai Customer menerima final. Flow retail existing
+> tetap tersedia dan tidak diubah. Mode baru membutuhkan Stock Transit,
+> shipment correction versioned, dan final acceptance atomic; detail serta
+> keputusan terbuka dicatat pada
+> `SALES_ORDER_DUAL_INVOICE_PROCESS_NOTES.md`. Catatan ini belum mengaktifkan
+> schema/runtime baru.
+
 1. Kasir tetap memakai flow POS yang sama: pilih Customer, Product, harga,
    pengiriman, TEMPO/pembayaran, kemudian konfirmasi.
 2. Konfirmasi POS menghasilkan **Sales Order final operasional**, bukan Draft

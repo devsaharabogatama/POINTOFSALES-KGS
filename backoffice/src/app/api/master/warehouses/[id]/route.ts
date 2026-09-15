@@ -46,11 +46,13 @@ export async function PATCH(request: Request, context: RouteContext) {
       'isSaleSource',
       'isPurchaseDestination',
       'isActive',
+      'transitParentWarehouseId',
+      'transitOperation',
     ])
 
     const currentResult = await caller.client
       .from('warehouses')
-      .select('name, warehouse_type, store_id, location, is_sale_source, is_purchase_destination, is_active, master_version')
+      .select('name, warehouse_type, store_id, location, is_sale_source, is_purchase_destination, is_active, master_version, transit_parent_warehouse_id, transit_operation')
       .eq('company_id', companyId)
       .eq('id', id)
       .maybeSingle()
@@ -78,17 +80,44 @@ export async function PATCH(request: Request, context: RouteContext) {
     const purchaseDestination = optionalBoolean(body, 'isPurchaseDestination')
     const isActive = optionalBoolean(body, 'isActive')
 
-    const { data, error } = await caller.client.rpc('save_inventory_warehouse', {
-      p_warehouse_id: id,
-      p_expected_version: masterVersion,
-      p_name: name,
-      p_warehouse_type: warehouseType,
-      p_store_id: storeId,
-      p_location: location === undefined ? currentResult.data.location : location,
-      p_is_sale_source: saleSource ?? currentResult.data.is_sale_source,
-      p_is_purchase_destination: purchaseDestination ?? currentResult.data.is_purchase_destination,
-      p_is_active: isActive ?? currentResult.data.is_active,
-    })
+    const savedLocation = location === undefined ? currentResult.data.location : location
+    const savedActive = isActive ?? currentResult.data.is_active
+    if (currentResult.data.transit_parent_warehouse_id && warehouseType !== 'TRANSIT') {
+      throw new ApiRouteError('TRANSIT_WAREHOUSE_TYPE_CHANGE_NOT_ALLOWED', 409)
+    }
+    let rpc
+    if (warehouseType === 'TRANSIT') {
+      const transitParentInput = optionalText(body, 'transitParentWarehouseId')
+      const transitOperationInput = optionalText(body, 'transitOperation')
+      const transitParent = transitParentInput === undefined
+        ? currentResult.data.transit_parent_warehouse_id
+        : transitParentInput
+      const transitOperation = transitOperationInput === undefined
+        ? currentResult.data.transit_operation
+        : transitOperationInput
+      rpc = caller.client.rpc('save_inventory_transit_warehouse', {
+        p_warehouse_id: id,
+        p_expected_version: masterVersion,
+        p_name: name,
+        p_parent_warehouse_id: uuidValue(transitParent ?? '', 'TRANSIT_PARENT_INVALID'),
+        p_transit_operation: transitOperation ?? '',
+        p_location: savedLocation,
+        p_is_active: savedActive,
+      })
+    } else {
+      rpc = caller.client.rpc('save_inventory_warehouse', {
+        p_warehouse_id: id,
+        p_expected_version: masterVersion,
+        p_name: name,
+        p_warehouse_type: warehouseType,
+        p_store_id: storeId,
+        p_location: savedLocation,
+        p_is_sale_source: saleSource ?? currentResult.data.is_sale_source,
+        p_is_purchase_destination: purchaseDestination ?? currentResult.data.is_purchase_destination,
+        p_is_active: savedActive,
+      })
+    }
+    const { data, error } = await rpc
     if (error) throwDatabaseError(error)
     return Response.json({ data: data?.data })
   } catch (error) {

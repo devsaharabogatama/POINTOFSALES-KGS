@@ -45,6 +45,11 @@ dalam transaksi dan selalu `ROLLBACK`.
 
 ## Compatibility dan forward-fix
 
+- Backoffice memakai collection route
+  `/api/sales/documents?operation=EXPORT&dateFrom=...&dateTo=...` karena runtime
+  Next 16/Turbopack lokal terbukti mengembalikan HTML 404 untuk child route
+  `/api/sales/documents/export`. Keduanya memakai handler export yang sama;
+  child route tidak dihapus.
 - RPC lama `export_sales_documents()` tetap tersedia bagi client lama.
 - RPC baru hanya overload `(DATE, DATE)` dan tidak mengubah schema transaksi.
 - Bila frontend belum dideploy, export CSV lama tetap bekerja melalui bundle

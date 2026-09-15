@@ -166,7 +166,8 @@ export function DataExchangeView({ session, companyId, companyName, notify }: Pr
         ? (() => {
             query.set('dateFrom', dateFrom)
             query.set('dateTo', dateTo)
-            return `/api/sales/documents/export?${query}`
+            query.set('operation', 'EXPORT')
+            return `/api/sales/documents?${query}`
           })()
         : selected.formats.includes('XLSX')
         ? (() => {

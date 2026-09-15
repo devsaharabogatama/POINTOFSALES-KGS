@@ -43,18 +43,20 @@ export async function GET(request: Request) {
     if (result.error) throwDatabaseError(result.error)
     const payload = result.data as Json
     const rows = type === 'AGING'
-      ? [['Invoice', 'Customer', 'Toko', 'Tanggal Order', 'Jatuh Tempo', 'Piutang Awal', 'Terbayar', 'Outstanding', 'Bucket', 'Hari Terlambat'],
-        ...((payload.invoices as Json[] | undefined) ?? []).map((row) => [row.invoiceNo, row.customerName, row.storeName,
+      ? [['Proses', 'Invoice', 'Cicilan', 'Customer', 'Toko', 'Tanggal Invoice', 'Jatuh Tempo', 'Piutang Awal', 'Terbayar', 'Outstanding', 'Bucket', 'Hari Terlambat'],
+        ...((payload.invoices as Json[] | undefined) ?? []).map((row) => [row.sourceProcess === 'BACKOFFICE' ? 'Backoffice' : 'Retail', row.invoiceNo,
+          row.installmentCount && Number(row.installmentCount) > 1 ? `${row.installmentNo}/${row.installmentCount}` : '', row.customerName, row.storeName,
           row.transactionDate, row.dueDate, row.originalReceivable, row.allocatedAmount,
           row.outstanding, row.agingBucket, row.overdueDays].map(cell))]
-      : [['Tanggal', 'Jenis', 'Dokumen', 'Toko', 'Jatuh Tempo', 'Keterangan', 'Debit', 'Kredit', 'Saldo Berjalan'],
-        ...((payload.rows as Json[] | undefined) ?? []).map((row) => [row.businessDate, row.sourceType, row.documentNo,
+      : [['Tanggal', 'Jenis', 'Proses', 'Dokumen', 'Toko', 'Jatuh Tempo', 'Keterangan', 'Debit', 'Kredit', 'Saldo Berjalan'],
+        ...((payload.rows as Json[] | undefined) ?? []).map((row) => [row.businessDate, row.sourceType,
+          row.sourceProcess === 'BACKOFFICE' ? 'Backoffice' : 'Retail', row.documentNo,
           row.storeName, row.dueDate, row.description, row.debit, row.credit, row.runningBalance].map(cell))]
     const summaryRows: WorkbookCell[][] = type === 'AGING'
       ? [['Per Tanggal', cell(payload.asOf)], ['Total Outstanding', cell((payload.summary as Json | undefined)?.outstanding)], ['Total Overdue', cell((payload.summary as Json | undefined)?.overdue)]]
       : [['Customer', cell((payload.customer as Json | undefined)?.name)], ['Dari', cell(payload.dateFrom)], ['Sampai', cell(payload.asOf)], ['Saldo Awal', cell(payload.openingBalance)], ['Saldo Akhir', cell(payload.endingBalance)]]
     const workbook = createXlsx([
-      { name: type === 'AGING' ? 'AR Aging' : 'Customer Statement', rows, widths: type === 'AGING' ? [20,28,22,14,14,16,16,16,18,14] : [14,14,20,22,14,30,16,16,16] },
+      { name: type === 'AGING' ? 'AR Aging' : 'Customer Statement', rows, widths: type === 'AGING' ? [14,20,12,28,22,14,14,16,16,16,18,14] : [14,14,14,20,22,14,30,16,16,16] },
       { name: 'Ringkasan', rows: [['Keterangan', 'Nilai'], ...summaryRows], widths: [24,28] },
     ])
     const customerName = type === 'STATEMENT' ? `_${safe((payload.customer as Json | undefined)?.name)}` : ''

@@ -88,6 +88,7 @@ const movementLabels: Record<string, string> = {
   OPNAME_GAIN: 'Selisih Opname Masuk',
   OPNAME_LOSS: 'Selisih Opname Keluar',
   REVERSAL: 'Pembalikan',
+  BACKOFFICE_DISCREPANCY_LOSS: 'Selisih Pengiriman Keluar',
 }
 
 function authHeaders(session: Session) {

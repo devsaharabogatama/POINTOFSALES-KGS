@@ -117,6 +117,27 @@ export function throwSupplierOrderError(
     "SUPPLIER_ORDER_LINE_WITHOUT_REQUEST_ALLOCATION",
     "REQUEST_ALLOCATION_EXCEEDS_REQUESTED_QUANTITY",
     "MASTER_VERSION_CONFLICT",
+    "PURCHASE_DAILY_BATCH_NOT_FOUND",
+    "PURCHASE_AUTO_RO_BATCH_REQUIRED",
+    "PURCHASE_AUTO_RO_NOT_DRAFT",
+    "PURCHASE_AUTO_RO_DRAFT_REQUIRED",
+    "PURCHASE_AUTO_RO_HAS_ACTIVE_PO",
+    "PURCHASE_AUTO_RO_ALLOCATION_COVERAGE_INVALID",
+    "PURCHASE_AUTO_RO_BATCH_LINE_NOT_FOUND",
+    "PURCHASE_AUTO_RO_BATCH_LINE_VERSION_CONFLICT",
+    "PURCHASE_AUTO_RO_ALLOCATION_QUANTITY_INVALID",
+    "PURCHASE_AUTO_RO_ALLOCATION_EXCEEDS_REQUESTED_QUANTITY",
+    "PURCHASE_AUTO_RO_LINE_DESTINATION_MUST_BE_SINGLE",
+    "PURCHASE_AUTO_RO_DUPLICATE_ALLOCATION",
+    "SUPPLIER_ORDER_NOT_CANCELABLE",
+    "SUPPLIER_ORDER_RETURN_REQUIRED_BEFORE_CANCEL",
+    "PURCHASE_PO_PRE_RECEIPT_REVISION_NOT_ALLOWED",
+    "PURCHASE_PO_RECEIPT_ALREADY_STARTED",
+    "PURCHASE_PO_BILL_ALREADY_STARTED",
+    "PURCHASE_PO_REVISION_ALL_LINES_REQUIRED",
+    "PURCHASE_PO_REVISION_LINE_INVALID",
+    "PURCHASE_PO_SUPPLIER_GROUP_CONFLICT",
+    "IDEMPOTENCY_KEY_CONFLICT",
   ].find((code) => message.includes(code));
   if (codes)
     throw new ApiRouteError(
@@ -131,4 +152,92 @@ export function throwSupplierOrderError(
     );
   if (error?.code === "42501") throw new ApiRouteError("FORBIDDEN", 403);
   throw new ApiRouteError(message || "SUPPLIER_ORDER_OPERATION_FAILED", 500);
+}
+
+export function parsePurchaseCancellationBody(body: JsonObject) {
+  return {
+    masterVersion: requiredVersion(body),
+    idempotencyKey:
+      typeof body.idempotencyKey === "string"
+        ? uuidValue(body.idempotencyKey, "IDEMPOTENCY_KEY_INVALID")
+        : crypto.randomUUID(),
+    reason: optionalText(body, "reason", { maxLength: 1000 }) ?? null,
+  };
+}
+
+export function parseSupplierOrderRevisionBody(body: JsonObject) {
+  if (!Array.isArray(body.lines) || body.lines.length === 0)
+    throw new ApiRouteError("SUPPLIER_ORDER_LINES_REQUIRED", 400);
+  return {
+    masterVersion: requiredVersion(body),
+    operationId:
+      typeof body.operationId === "string"
+        ? uuidValue(body.operationId, "IDEMPOTENCY_KEY_INVALID")
+        : crypto.randomUUID(),
+    supplierId:
+      body.supplierId === null || body.supplierId === ""
+        ? null
+        : uuid(body, "supplierId"),
+    expectedDate: date(body, "expectedDate", false),
+    notes: optionalText(body, "notes", { maxLength: 1000 }) ?? null,
+    lines: body.lines.map((raw, index) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        throw new ApiRouteError(`SUPPLIER_ORDER_LINE_${index + 1}_INVALID`, 400);
+      const line = raw as JsonObject;
+      return {
+        lineId: uuid(line, "lineId"),
+        productId: uuid(line, "productId"),
+        uomId: uuid(line, "uomId"),
+        destinationWarehouseId: uuid(line, "destinationWarehouseId"),
+        quantity: positive(line.quantity, "SUPPLIER_ORDER_QUANTITY_INVALID"),
+        estimatedUnitPrice: positive(
+          line.estimatedUnitPrice,
+          "SUPPLIER_ORDER_PRICE_INVALID",
+          true,
+        ),
+      };
+    }),
+  };
+}
+
+export function parseDailyRoConfirmationBody(body: JsonObject) {
+  if (!Array.isArray(body.allocations) || body.allocations.length === 0)
+    throw new ApiRouteError("PURCHASE_AUTO_RO_ALLOCATIONS_REQUIRED", 400);
+  return {
+    masterVersion: requiredVersion(body),
+    idempotencyKey:
+      typeof body.idempotencyKey === "string"
+        ? uuidValue(body.idempotencyKey, "IDEMPOTENCY_KEY_INVALID")
+        : crypto.randomUUID(),
+    allocations: body.allocations.map((raw, index) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        throw new ApiRouteError(
+          `PURCHASE_AUTO_RO_ALLOCATION_${index + 1}_INVALID`,
+          400,
+        );
+      const item = raw as JsonObject;
+      return {
+        batchLineId: uuid(item, "batchLineId"),
+        batchLineVersion: positive(
+          item.batchLineVersion,
+          "PURCHASE_AUTO_RO_BATCH_LINE_VERSION_INVALID",
+        ),
+        destinationWarehouseId: uuid(item, "destinationWarehouseId"),
+        orderedQty: positive(
+          item.orderedQty,
+          "PURCHASE_AUTO_RO_ALLOCATION_QUANTITY_INVALID",
+        ),
+        purchaseUomId: uuid(item, "purchaseUomId"),
+        productSupplierId:
+          item.productSupplierId === null || item.productSupplierId === ""
+            ? null
+            : uuid(item, "productSupplierId"),
+        estimatedUnitPrice: positive(
+          item.estimatedUnitPrice ?? 0,
+          "SUPPLIER_ORDER_PRICE_INVALID",
+          true,
+        ),
+      };
+    }),
+  };
 }

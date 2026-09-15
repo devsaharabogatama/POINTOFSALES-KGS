@@ -227,6 +227,13 @@ fallback `ORDER_DATE` untuk compatibility. Policy ini hanya presentation
 Invoice; tidak mengubah tanggal bisnis Sale, periode Finance, due date, Stock,
 Payment, Financial Event, jurnal, atau tanggal Surat Jalan.
 
+Untuk Order `SCHEDULED`, authority `ORDER_DATE` adalah `planned_order_date`,
+bukan timestamp awal pembuatan Draft. Snapshot historis yang terlanjur memuat
+timestamp Draft tidak ditulis ulang; seluruh read model dan renderer wajib
+mengoreksinya dari identitas tanggal Order canonical. Waktu konfirmasi boleh
+ditampilkan sebagai audit terpisah, tetapi tidak boleh diberi label Tanggal
+Invoice.
+
 Filter rentang tanggal pada export Invoice di Global Data Exchange menggunakan
 tanggal tampilan yang sama dari snapshot tersebut. Workbook memisahkan header
 Invoice dan detail produk agar total Invoice tidak terduplikasi pada laporan

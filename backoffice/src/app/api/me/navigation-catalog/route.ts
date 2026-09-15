@@ -4,6 +4,8 @@ import {
   requireCaller,
 } from "@/lib/server-auth";
 import { buildNavigationCatalog } from "@/lib/navigation-catalog";
+import type { NavigationViewId } from "@/lib/navigation-catalog";
+import { getFinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
 
 type PermissionResult = {
   data: unknown;
@@ -41,12 +43,14 @@ export async function GET(request: Request) {
       supplierOrderPermissionResult,
       goodsReceiptPermissionResult,
       purchaseReturnPermissionResult,
+      backofficeSalesOrderPermissionResult,
       salesDocumentPermissionResult,
       deliveryDocumentPermissionResult,
       pricelistPermissionResult,
       supplierInvoicePermissionResult,
       supplierPaymentPermissionResult,
       customerReceiptPermissionResult,
+      financeProcessUiPolicy,
     ] = await Promise.all([
       caller.client
         .from("profiles")
@@ -118,6 +122,11 @@ export async function GET(request: Request) {
       caller.client.rpc("resolve_user_permission", {
         p_company_id: companyId,
         p_target_user_id: caller.user.id,
+        p_permission_key: "sales.backoffice_orders",
+      }),
+      caller.client.rpc("resolve_user_permission", {
+        p_company_id: companyId,
+        p_target_user_id: caller.user.id,
         p_permission_key: "sales.sales_documents",
       }),
       caller.client.rpc("resolve_user_permission", {
@@ -145,6 +154,7 @@ export async function GET(request: Request) {
         p_target_user_id: caller.user.id,
         p_permission_key: "finance.customer_receipts",
       }),
+      getFinanceProcessUiPolicy(companyId),
     ]);
     if (profileResult.error) throw profileResult.error;
     if (membershipResult.error) throw membershipResult.error;
@@ -155,12 +165,22 @@ export async function GET(request: Request) {
       : membershipResult.data?.role_code;
     if (!roleCode) throw new Error("COMPANY_ACCESS_DENIED");
 
+    const hiddenViewIds = new Set<NavigationViewId>();
+    if (!financeProcessUiPolicy.showRetailCashDeposits) {
+      hiddenViewIds.add("cash-deposits");
+    }
+    if (!financeProcessUiPolicy.showRetailDepositVariances) {
+      hiddenViewIds.add("deposit-variances");
+    }
+
     return Response.json({
       companyId,
       roleCode,
+      financeProcessUiPolicy,
       modules: buildNavigationCatalog({
         isSuperAdmin,
         roleCode,
+        hiddenViewIds,
         enabledFeatures: new Set(
           (featureResult.data ?? []).map((row) => row.feature_code),
         ),
@@ -185,6 +205,9 @@ export async function GET(request: Request) {
           "purchase-returns": permissionCapabilities(
             purchaseReturnPermissionResult,
           ),
+          "backoffice-sales-orders": (featureResult.data ?? []).some(
+            (row) => row.feature_code === "backoffice_delivered_qty_sales_enabled",
+          ) ? permissionCapabilities(backofficeSalesOrderPermissionResult) : [],
           "sales-documents": permissionCapabilities(
             salesDocumentPermissionResult,
           ),

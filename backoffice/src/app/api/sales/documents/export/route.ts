@@ -90,7 +90,7 @@ function workbookResponse(payload: JsonMap, invoices: JsonMap[], lines: JsonMap[
   } })
 }
 
-export async function GET(request: Request) {
+export async function handleSalesDocumentExport(request: Request) {
   try {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)
@@ -115,3 +115,5 @@ export async function GET(request: Request) {
     return apiError(error)
   }
 }
+
+export const GET = handleSalesDocumentExport

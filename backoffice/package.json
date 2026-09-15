@@ -4,7 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "check:backoffice-sales-env": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-backoffice-sales-development.ps1 -Action check",
+    "dev:backoffice-sales": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-backoffice-sales-development.ps1 -Action dev",
     "build": "next build",
+    "build:backoffice-sales": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-backoffice-sales-development.ps1 -Action build",
+    "smoke:backoffice-sales": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-backoffice-sales-development.ps1",
     "start": "next start",
     "lint": "eslint"
   },

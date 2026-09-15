@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   AlertTriangle,
   Boxes,
+  ChevronDown,
+  ChevronUp,
   RefreshCcw,
   Search,
   Warehouse as WarehouseIcon,
@@ -46,6 +48,8 @@ type Balance = {
   warehouse_id: string
   stock_qty: number | string
   reserved_out_base_qty: number | string
+  pos_reserved_out_base_qty?: number | string
+  backoffice_reserved_out_base_qty?: number | string
   available_to_sell_base_qty: number | string
   updated_at: string
   fifo_value: number | string
@@ -55,9 +59,30 @@ type Balance = {
   last_movement_at: string | null
 }
 
+type ReservationAllocation = {
+  source: 'POS' | 'BACKOFFICE'
+  reservation_line_id: string
+  product_id: string
+  warehouse_id: string
+  sales_order_no: string
+  customer_code: string
+  customer_name: string
+  reservation_status: string
+  reserved_out_base_qty: number | string
+  shortage_base_qty: number | string
+  scheduled_date: string | null
+  delivery_orders: Array<{
+    id: string
+    deliveryNo: string
+    status: string
+    kind?: string
+  }>
+}
+
 type OverviewPayload = {
   reservationReadModelVersion?: number
   balances?: Balance[]
+  reservationAllocations?: ReservationAllocation[]
   warehouses?: Warehouse[]
   error?: string
 }
@@ -101,6 +126,7 @@ export function StockRealView({
   const [query, setQuery] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [onlyLow, setOnlyLow] = useState(false)
+  const [expandedPair, setExpandedPair] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -122,7 +148,7 @@ export function StockRealView({
       )
     }
     const stockPayload = payloads[1] as OverviewPayload
-    if (stockPayload.reservationReadModelVersion !== 1) {
+    if (!stockPayload.reservationReadModelVersion) {
       throw new Error(
         'Read model Reserved Out belum tersedia. Jalankan migration ODR-6B.1 terlebih dahulu.',
       )
@@ -168,6 +194,14 @@ export function StockRealView({
     () => new Map((overview.warehouses ?? []).map((warehouse) => [warehouse.id, warehouse])),
     [overview.warehouses],
   )
+  const allocationsByPair = useMemo(() => {
+    const grouped = new Map<string, ReservationAllocation[]>()
+    for (const allocation of overview.reservationAllocations ?? []) {
+      const key = `${allocation.product_id}:${allocation.warehouse_id}`
+      grouped.set(key, [...(grouped.get(key) ?? []), allocation])
+    }
+    return grouped
+  }, [overview.reservationAllocations])
   const normalized = query.trim().toLocaleLowerCase('id-ID')
   const rows = (overview.balances ?? [])
     .map((balance) => {
@@ -176,6 +210,9 @@ export function StockRealView({
       const warehouse = warehouseById.get(balance.warehouse_id)
       const onHand = Number(balance.stock_qty) || 0
       const reserved = Number(balance.reserved_out_base_qty) || 0
+      const posReserved = Number(balance.pos_reserved_out_base_qty) || 0
+      const backofficeReserved =
+        Number(balance.backoffice_reserved_out_base_qty) || 0
       const available = Number(balance.available_to_sell_base_qty) || 0
       const minimum =
         balance.minimum_stock_base_qty === null ||
@@ -192,6 +229,9 @@ export function StockRealView({
         warehouse,
         onHand,
         reserved,
+        posReserved,
+        backofficeReserved,
+        allocations: allocationsByPair.get(key) ?? [],
         available,
         minimum,
         isLow,
@@ -322,7 +362,8 @@ export function StockRealView({
               {rows.map((row) => {
                 const uom = baseUomName(row.product)
                 return (
-                  <tr key={row.key} className={row.isLow ? 'bg-rose-50/45' : ''}>
+                  <Fragment key={row.key}>
+                    <tr className={row.isLow ? 'bg-rose-50/45' : ''}>
                     <td className="px-5 py-4">
                       <p className="font-black text-slate-900">{row.product?.name ?? 'Product tidak ditemukan'}</p>
                       <p className="mt-1 text-xs text-slate-400">{row.product?.sku ?? '-'}</p>
@@ -333,13 +374,24 @@ export function StockRealView({
                     </td>
                     <td className="px-5 py-4 font-black text-slate-900">{qty(row.onHand)} {uom}</td>
                     <td className="px-5 py-4">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
-                        row.reserved > 0
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {qty(row.reserved)} {uom}
-                      </span>
+                      {row.reserved > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedPair((current) =>
+                            current === row.key ? '' : row.key)}
+                          className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800"
+                          aria-expanded={expandedPair === row.key}
+                        >
+                          {qty(row.reserved)} {uom}
+                          {expandedPair === row.key
+                            ? <ChevronUp className="h-3.5 w-3.5" />
+                            : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500">
+                          0 {uom}
+                        </span>
+                      )}
                     </td>
                     <td className={`px-5 py-4 font-black ${
                       row.available < 0 ? 'text-rose-700' : 'text-slate-900'
@@ -360,7 +412,20 @@ export function StockRealView({
                           </>
                         : <span className="text-slate-400">Belum ada movement</span>}
                     </td>
-                  </tr>
+                    </tr>
+                    {expandedPair === row.key && row.reserved > 0 && (
+                      <tr className="bg-amber-50/45">
+                        <td colSpan={8} className="px-5 py-4">
+                          <ReservationAllocationDetail
+                            allocations={row.allocations}
+                            posReserved={row.posReserved}
+                            backofficeReserved={row.backofficeReserved}
+                            uom={uom}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
               {!loading && !rows.length && (
@@ -376,12 +441,93 @@ export function StockRealView({
         </div>
       </div>
       <p className="mt-4 text-xs leading-5 text-slate-500">
-        Reserved Out berasal dari Sales Order berstatus Open atau Partial
-        Dispatch. Available dihitung server-side sebagai On Hand dikurangi
-        Reserved Out. Konfirmasi Order tidak mengurangi On Hand; pengurangan
-        Stock dan FIFO baru terjadi ketika Surat Jalan di-dispatch.
+        Reserved Out berasal dari Sales Order POS dan Backoffice yang belum
+        dilepas atau dipenuhi. Available dihitung server-side sebagai On Hand
+        dikurangi seluruh Reserved Out. Konfirmasi Order tidak mengurangi On
+        Hand; pengurangan Stock dan FIFO baru terjadi ketika Surat Jalan
+        di-dispatch.
       </p>
     </>
+  )
+}
+
+function ReservationAllocationDetail({
+  allocations,
+  posReserved,
+  backofficeReserved,
+  uom,
+}: {
+  allocations: ReservationAllocation[]
+  posReserved: number
+  backofficeReserved: number
+  uom: string
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-black text-slate-900">Detail Reserved Out</p>
+          <p className="mt-1 text-xs text-slate-500">
+            POS {qty(posReserved)} {uom} - Backoffice {qty(backofficeReserved)} {uom}
+          </p>
+        </div>
+        <span className="text-xs font-bold text-slate-500">
+          {allocations.length} alokasi aktif
+        </span>
+      </div>
+      {allocations.length ? (
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {allocations.map((allocation) => (
+            <div
+              key={`${allocation.source}:${allocation.reservation_line_id}`}
+              className="rounded-xl border border-slate-200 p-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${
+                      allocation.source === 'BACKOFFICE'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {allocation.source === 'BACKOFFICE' ? 'Backoffice' : 'POS'}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">
+                      {allocation.reservation_status}
+                    </span>
+                  </div>
+                  <p className="mt-2 font-black text-slate-900">
+                    {allocation.sales_order_no}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {allocation.customer_name} - {allocation.customer_code}
+                  </p>
+                </div>
+                <p className="font-black text-amber-800">
+                  {qty(Number(allocation.reserved_out_base_qty) || 0)} {uom}
+                </p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+                <span>Rencana {allocation.scheduled_date
+                  ? new Date(`${allocation.scheduled_date}T00:00:00`).toLocaleDateString('id-ID')
+                  : '-'}</span>
+                <span>Kekurangan {qty(Number(allocation.shortage_base_qty) || 0)} {uom}</span>
+                <span>
+                  SJ {allocation.delivery_orders.length
+                    ? allocation.delivery_orders.map((delivery) =>
+                        `${delivery.deliveryNo} (${delivery.status})`).join(', ')
+                    : 'belum tersedia'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-500">
+          Breakdown sumber belum tersedia pada read model database ini.
+        </p>
+      )}
+    </div>
   )
 }
 

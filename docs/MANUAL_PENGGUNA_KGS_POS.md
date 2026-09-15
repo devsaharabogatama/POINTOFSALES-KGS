@@ -346,8 +346,15 @@ yang sama:
 
 1. Pilih Supplier Order berstatus Confirmed atau Partially Received.
 2. Pastikan gudang tujuan dan supplier benar.
-3. Masukkan kuantitas diterima, baik, rusak, atau ditolak.
+3. Kuantitas otomatis terisi sebesar sisa PO dan masih dapat diubah. Periksa
+   kuantitas barang baik, rusak, atau ditolak.
 4. Simpan Draft bila pemeriksaan belum selesai, atau pilih **Post & Tambah Stok**.
+
+Untuk memproses beberapa dokumen, centang Receipt yang diperlukan lalu pilih
+**Terima terpilih**. Popup menampilkan detail setiap PO; kuantitas dan kondisi
+barang tetap dapat disesuaikan sebelum **Konfirmasi Penerimaan**. Setiap Receipt
+diposting secara independen: dokumen yang berhasil selesai, sedangkan dokumen
+yang gagal tetap Draft dengan pesan error untuk diperbaiki dan dicoba kembali.
 
 Draft tidak mengubah stok. Saat Post, barang baik menambah stok/FIFO, barang
 rusak masuk Gudang Rusak, barang ditolak tidak menambah stok/tagihan, AP

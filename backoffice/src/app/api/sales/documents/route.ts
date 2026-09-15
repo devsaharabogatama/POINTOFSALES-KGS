@@ -6,6 +6,7 @@ import {
   requiredVersion,
   uuidValue,
 } from '@/lib/master-data'
+import { handleSalesDocumentExport } from './export/route'
 
 function rpcFailure(message: string): never {
   const known = [
@@ -30,6 +31,9 @@ function isOptionalActivityRpcMissing(error: { code?: string; message?: string }
 }
 
 export async function GET(request: Request) {
+  const operation = new URL(request.url).searchParams.get('operation')?.toUpperCase()
+  if (operation === 'EXPORT') return handleSalesDocumentExport(request)
+
   try {
     const caller = await requireCaller(request)
     const companyId = await requireActiveCompany(caller)

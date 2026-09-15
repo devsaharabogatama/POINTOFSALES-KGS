@@ -206,7 +206,7 @@ export function SalesPaymentVerificationPanel({
       setReview(null);
       notify(
         review.action === "VERIFY"
-          ? "Pembayaran terverifikasi dan masuk event HOLD. Proses melalui Posting Queue."
+          ? "Pembayaran terverifikasi dan masuk event HOLD. Proses melalui Antrian Jurnal."
           : "Permintaan pembayaran ditolak.",
       );
       await load();
@@ -239,11 +239,11 @@ export function SalesPaymentVerificationPanel({
               Maker-checker
             </p>
             <h2 className="mt-1 text-xl font-black text-slate-950">
-              Verifikasi pembayaran Sales Order
+              Verifikasi pembayaran POS
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
               Verifikasi membuat event Finance HOLD. Jurnal baru terbentuk setelah
-              event diproses melalui Posting Queue.
+              event diproses melalui Antrian Jurnal.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -251,7 +251,7 @@ export function SalesPaymentVerificationPanel({
               onClick={openQueue}
               className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-700"
             >
-              <FileClock className="h-4 w-4" /> Posting Queue
+              <FileClock className="h-4 w-4" /> Antrian Jurnal
             </button>
             <button
               onClick={() => void load()}

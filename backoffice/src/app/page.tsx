@@ -71,6 +71,7 @@ import { StockOpnameView } from "@/components/StockOpnameView";
 import { BundleMasterView } from "@/components/BundleMasterView";
 import { SalesReturnApprovalView } from "@/components/SalesReturnApprovalView";
 import { SalesDocumentView } from "@/components/SalesDocumentView";
+import { BackofficeSalesOrderView } from "@/components/BackofficeSalesOrderView";
 import { DeliveryDocumentView } from "@/components/DeliveryDocumentView";
 import { ExpenseApprovalView } from "@/components/ExpenseApprovalView";
 import { CashDepositApprovalView } from "@/components/CashDepositApprovalView";
@@ -93,6 +94,12 @@ import {
 } from "@/lib/navigation-catalog";
 
 type View = "dashboard" | NavigationViewId;
+type SupplierInvoiceLaunch = {
+  invoiceIds: string[];
+  supplierId: string | null;
+  create: boolean;
+  token: string;
+};
 
 type CompanyContext = {
   id: string;
@@ -173,6 +180,8 @@ const roleLabels: Record<string, string> = {
   COMPANY_ADMIN: "Admin Perusahaan",
   STORE_MANAGER: "Manajer Toko",
   WAREHOUSE_ADMIN: "Admin Gudang",
+  SALES: "Sales",
+  SALES_ADMIN: "Admin Sales",
   FINANCE: "Finance",
   ACCOUNTING: "Accounting",
   CASHIER: "Kasir",
@@ -202,6 +211,7 @@ export default function Home() {
   const [activeCompanyId, setActiveCompanyId] = useState("");
   const [switchingCompany, setSwitchingCompany] = useState(false);
   const [activeView, setActiveView] = useState<View>("dashboard");
+  const [supplierInvoiceLaunch, setSupplierInvoiceLaunch] = useState<SupplierInvoiceLaunch | null>(null);
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [navigationModules, setNavigationModules] = useState<
@@ -355,15 +365,33 @@ export default function Home() {
         if (!response.ok)
           throw new Error(payload.error ?? "Gagal memuat akses aplikasi");
         if (!canceled) {
+          const modules = payload.modules ?? [];
           setNotice((current) =>
             current === "PERMISSION_KEY_NOT_FOUND" ? null : current,
           );
-          setNavigationModules(payload.modules ?? []);
+          setNavigationModules(modules);
           setActiveModuleId((current) =>
             current &&
-            (payload.modules ?? []).some((module) => module.id === current)
+            modules.some((module) => module.id === current)
               ? current
               : null,
+          );
+          setActiveView((current) =>
+            current === "dashboard" ||
+            modules.some((module) =>
+              module.items.some((item) => item.id === current),
+            )
+              ? current
+              : "dashboard",
+          );
+          setViewHistory((current) =>
+            current.filter(
+              (view) =>
+                view === "dashboard" ||
+                modules.some((module) =>
+                  module.items.some((item) => item.id === view),
+                ),
+            ),
           );
         }
       } catch (error) {
@@ -459,11 +487,15 @@ export default function Home() {
     supplierOrderNavigation?.capabilities.includes("POST") ?? false;
   const canExportSupplierOrder =
     supplierOrderNavigation?.capabilities.includes("EXPORT") ?? false;
+  const canCancelSupplierOrder =
+    supplierOrderNavigation?.capabilities.includes("CANCEL_FINAL") ?? false;
   const goodsReceiptNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "goods-receipts");
   const canCreateGoodsReceipt =
     goodsReceiptNavigation?.capabilities.includes("CREATE_DRAFT") ?? false;
+  const canEditGoodsReceipt =
+    goodsReceiptNavigation?.capabilities.includes("EDIT_DRAFT") ?? false;
   const canPostGoodsReceipt =
     goodsReceiptNavigation?.capabilities.includes("POST") ?? false;
   const canCancelGoodsReceipt =
@@ -489,6 +521,9 @@ export default function Home() {
   const salesReturnNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "sales-returns");
+  const backofficeSalesOrderNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "backoffice-sales-orders");
   const expenseNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "expense-approvals");
@@ -585,6 +620,7 @@ export default function Home() {
         setNotice("Menu tidak tersedia untuk akses Company yang sedang aktif.");
         return;
       }
+      if (nextView !== "supplier-invoices") setSupplierInvoiceLaunch(null);
       setViewHistory((current) => [...current, activeView].slice(-20));
       setActiveView(nextView);
     },
@@ -868,6 +904,24 @@ export default function Home() {
               key={activeCompanyId}
               session={session}
               companyId={activeCompanyId}
+              companyName={activeCompany.company_name}
+              canViewBackoffice={Boolean(backofficeSalesOrderNavigation)}
+              canCreateBackoffice={backofficeSalesOrderNavigation?.capabilities.includes("CREATE_DRAFT") ?? false}
+              canEditBackoffice={backofficeSalesOrderNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
+              canManageBackoffice={backofficeSalesOrderNavigation?.capabilities.includes("MANAGE") ?? false}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === "backoffice-sales-orders" && (
+            <BackofficeSalesOrderView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
+              companyName={activeCompany.company_name}
+              canCreate={backofficeSalesOrderNavigation?.capabilities.includes("CREATE_DRAFT") ?? false}
+              canEdit={backofficeSalesOrderNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
+              canManage={backofficeSalesOrderNavigation?.capabilities.includes("MANAGE") ?? false}
               notify={setNotice}
             />
           )}
@@ -979,6 +1033,10 @@ export default function Home() {
               companyId={activeCompanyId}
               stores={stores}
               canManage={Boolean(canManageMaster)}
+              canManageNegativeStock={
+                context.isSuperAdmin ||
+                ["COMPANY_OWNER", "COMPANY_ADMIN"].includes(activeCompany.roleCode)
+              }
               notify={setNotice}
             />
           )}
@@ -1032,6 +1090,13 @@ export default function Home() {
               canCreate={canCreateSupplierOrder}
               canPost={canPostSupplierOrder}
               canExport={canExportSupplierOrder}
+              canCancel={canCancelSupplierOrder}
+              canEdit={supplierOrderNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
+              canOpenSupplierInvoices={Boolean(supplierInvoiceNavigation)}
+              openSupplierInvoices={(input) => {
+                setSupplierInvoiceLaunch({ ...input, token: crypto.randomUUID() });
+                navigateTo("supplier-invoices");
+              }}
               notify={setNotice}
             />
           )}
@@ -1041,7 +1106,7 @@ export default function Home() {
               key={activeCompanyId}
               session={session}
               companyId={activeCompanyId}
-              canCreate={canCreateGoodsReceipt}
+              canCreate={canCreateGoodsReceipt || canEditGoodsReceipt}
               canPost={canPostGoodsReceipt}
               canCancel={canCancelGoodsReceipt}
               notify={setNotice}
@@ -1124,12 +1189,15 @@ export default function Home() {
 
           {activeView === "supplier-invoices" && (
             <SupplierInvoiceMatchingView
-              key={activeCompanyId}
+              key={`${activeCompanyId}-${supplierInvoiceLaunch?.token ?? "direct"}`}
               session={session}
               canCreate={supplierInvoiceNavigation?.capabilities.includes("CREATE_DRAFT") ?? false}
               canEdit={supplierInvoiceNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
               canPost={supplierInvoiceNavigation?.capabilities.includes("POST") ?? false}
               canManagePolicy={supplierInvoiceNavigation?.capabilities.includes("APPROVE") ?? false}
+              initialDocumentIds={supplierInvoiceLaunch?.invoiceIds ?? []}
+              initialSupplierId={supplierInvoiceLaunch?.supplierId ?? null}
+              startCreate={supplierInvoiceLaunch?.create ?? false}
             />
           )}
 
@@ -1986,6 +2054,8 @@ function StaffModal({
                 "CASHIER",
                 "STORE_MANAGER",
                 "WAREHOUSE_ADMIN",
+                "SALES",
+                "SALES_ADMIN",
                 "FINANCE",
                 "ACCOUNTING",
                 "COMPANY_ADMIN",
@@ -2137,6 +2207,8 @@ function ExistingStaffAssignmentModal({
                 "COMPANY_ADMIN",
                 "STORE_MANAGER",
                 "WAREHOUSE_ADMIN",
+                "SALES",
+                "SALES_ADMIN",
                 "FINANCE",
                 "ACCOUNTING",
                 "CASHIER",

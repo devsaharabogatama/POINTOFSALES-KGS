@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useEscapeClose } from "@/lib/use-escape-close";
 import { SalesPaymentVerificationPanel } from "@/components/SalesPaymentVerificationPanel";
+import type { FinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
 
 type Period = {
   id: string;
@@ -159,6 +160,7 @@ type Workspace = {
     postingMode: "CONTROLLED" | "AUTOMATIC";
     masterVersion: number | string;
   };
+  financeProcessUiPolicy: FinanceProcessUiPolicy;
 };
 
 type ReportCode =
@@ -166,6 +168,7 @@ type ReportCode =
   | "INCOME_STATEMENT"
   | "BALANCE_SHEET"
   | "PENDING_ANALYSIS"
+  | "DELIVERED_NOT_INVOICED"
   | "RECONCILIATION_SUMMARY";
 
 type ReportData = Record<string, unknown>;
@@ -204,6 +207,7 @@ const reportLabels: Record<ReportCode, string> = {
   INCOME_STATEMENT: "Laba Rugi",
   BALANCE_SHEET: "Neraca",
   PENDING_ANALYSIS: "Transaksi Belum Masuk Laporan",
+  DELIVERED_NOT_INVOICED: "Delivered Not Invoiced",
   RECONCILIATION_SUMMARY: "Ringkasan Rekonsiliasi",
 };
 
@@ -286,6 +290,12 @@ function money(value: unknown) {
     currency: "IDR",
     maximumFractionDigits: 0,
   }).format(Number(value) || 0);
+}
+
+function quantity(value: unknown) {
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 6 }).format(
+    Number(value) || 0,
+  );
 }
 
 function localDate(value: string | null | undefined) {
@@ -424,6 +434,12 @@ export function FinanceOperationsView(props: Props) {
       );
       if (!response.ok) throw new Error(friendly(result.error));
       setData(result);
+      setTab((current) =>
+        current === "payments" &&
+        !result.financeProcessUiPolicy.showRetailPaymentVerification
+          ? "overview"
+          : current,
+      );
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -514,7 +530,7 @@ export function FinanceOperationsView(props: Props) {
             Operasi & laporan keuangan
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Jurnal POSTED, periode, controlled posting queue, laporan, dan
+            Jurnal POSTED, periode, antrian jurnal terkontrol, laporan, dan
             pembalikan resmi berada dalam satu workspace. Transaksi HOLD tidak
             masuk laporan sampai benar-benar terposting.
           </p>
@@ -574,11 +590,18 @@ export function FinanceOperationsView(props: Props) {
             ["ledger", "Buku Besar", Landmark],
             ["journals", "Journal Entries", BookOpen],
             ["periods", "Periode", CalendarRange],
-            ["payments", "Verifikasi Bayar", BadgeCheck],
-            ["queue", "Posting Queue", FileClock],
+            ["payments", "Verifikasi Pembayaran POS", BadgeCheck],
+            ["queue", "Antrian Jurnal", FileClock],
             ["reports", "Laporan", BarChart3],
           ] as [Tab, string, typeof Landmark][]
-        ).map(([id, label, Icon]) => (
+        )
+          .filter(
+            ([id]) =>
+              id !== "payments" ||
+              (data?.financeProcessUiPolicy.showRetailPaymentVerification ??
+                true),
+          )
+          .map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -587,7 +610,7 @@ export function FinanceOperationsView(props: Props) {
             <Icon className="h-4 w-4" />
             {label}
           </button>
-        ))}
+          ))}
       </nav>
 
       {tab === "overview" && <Overview data={data} setTab={setTab} />}
@@ -632,14 +655,15 @@ export function FinanceOperationsView(props: Props) {
           }}
         />
       )}
-      {tab === "payments" && (
+      {tab === "payments" &&
+        (data?.financeProcessUiPolicy.showRetailPaymentVerification ?? true) && (
         <SalesPaymentVerificationPanel
           session={props.session}
           companyId={props.companyId}
           notify={props.notify}
           openQueue={() => setTab("queue")}
         />
-      )}
+        )}
       {tab === "queue" && (
         <QueuePanel
           session={props.session}
@@ -1598,7 +1622,7 @@ function QueuePanel({
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-black">Controlled posting queue</h2>
+            <h2 className="font-black">Antrian jurnal terkontrol</h2>
             <p className="mt-1 text-xs text-slate-500">
               Memproses seluruh event final yang didukung canonical Finance
               dengan snapshot preview dan audit approval.
@@ -1791,7 +1815,7 @@ function ReportsPanel({ session }: { session: Session }) {
               type="date"
               value={dateFrom}
               onChange={(event) => setDateFrom(event.target.value)}
-              disabled={["BALANCE_SHEET", "RECONCILIATION_SUMMARY"].includes(
+              disabled={["BALANCE_SHEET", "RECONCILIATION_SUMMARY", "DELIVERED_NOT_INVOICED"].includes(
                 report,
               )}
               className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3 font-normal disabled:bg-slate-100"
@@ -1823,6 +1847,12 @@ function ReportsPanel({ session }: { session: Session }) {
           <p className="mt-3 text-xs font-semibold text-amber-700">
             Rekonsiliasi hanya current-state. Pilih tanggal hari ini; sistem
             tidak membuat adjustment otomatis.
+          </p>
+        )}
+        {report === "DELIVERED_NOT_INVOICED" && (
+          <p className="mt-3 text-xs font-semibold text-slate-600">
+            Posisi per tanggal penerimaan Customer. Draft Invoice tetap masuk;
+            quantity keluar setelah Invoice di-Posted.
           </p>
         )}
         {error && (
@@ -1885,6 +1915,13 @@ function ReportResult({
                   data.financialStatementIncluded ? "Ya" : "Tidak",
                 ],
               ]
+            : report === "DELIVERED_NOT_INVOICED"
+              ? [
+                  ["SO belum Invoice Posted", data.salesOrderCount],
+                  ["Komponen belum Invoice Posted", data.totalRows],
+                  ["Komponen sudah masuk Draft", data.draftLineCount],
+                  ["Estimasi nilai", data.estimatedTotalAmount],
+                ]
             : [
                 ["Mode valuasi", data.valuationMode],
                 ["Adjustment otomatis", data.autoAdjustment ? "Ya" : "Tidak"],
@@ -1894,7 +1931,7 @@ function ReportResult({
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 p-5">
         <p className="text-xs font-black uppercase tracking-wider text-violet-600">
-          POSTED only
+          {report === "DELIVERED_NOT_INVOICED" ? "Operational subledger" : "POSTED only"}
         </p>
         <h2 className="mt-2 text-xl font-black">{reportLabels[report]}</h2>
         <p className="mt-1 text-xs text-slate-500">
@@ -1908,7 +1945,10 @@ function ReportResult({
                 {String(label)}
               </p>
               <p className="mt-2 text-base font-black">
-                {typeof value === "number" ||
+                {report === "DELIVERED_NOT_INVOICED" &&
+                String(label) !== "Estimasi nilai"
+                  ? quantity(value)
+                  : typeof value === "number" ||
                 (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value))
                   ? money(value)
                   : String(value ?? "-")}
@@ -1927,6 +1967,15 @@ function ReportResult({
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Jumlah</th>
                   <th className="px-4 py-3 text-right">Potensi nilai</th>
+                </>
+              ) : report === "DELIVERED_NOT_INVOICED" ? (
+                <>
+                  <th className="px-4 py-3">SO / Customer</th>
+                  <th className="px-4 py-3">Produk</th>
+                  <th className="px-4 py-3">Penerimaan</th>
+                  <th className="px-4 py-3">Status Invoice</th>
+                  <th className="px-4 py-3 text-right">Qty DNI</th>
+                  <th className="px-4 py-3 text-right">Estimasi nilai</th>
                 </>
               ) : report === "RECONCILIATION_SUMMARY" ? (
                 <>
@@ -1962,6 +2011,50 @@ function ReportResult({
                   <td className="px-4 py-3">{String(row.eventCount ?? 0)}</td>
                   <td className="px-4 py-3 text-right font-bold">
                     {money(row.potentialAmount)}
+                  </td>
+                </tr>
+              ) : report === "DELIVERED_NOT_INVOICED" ? (
+                <tr key={index}>
+                  <td className="px-4 py-3">
+                    <b>{String(row.salesOrderNo ?? "-")}</b>
+                    <p className="text-xs text-slate-500">{String(row.customerName ?? "-")}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <b>{String(row.productName ?? "-")}</b>
+                    <p className="text-xs text-slate-500">
+                      {String(row.productCode ?? "-")} · {String(row.uomName ?? "-")}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {localDate(String(row.firstAcceptedDate ?? ""))}
+                    <p className="text-xs text-slate-500">Umur {String(row.ageDays ?? 0)} hari</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-bold">
+                      {row.invoiceStatus === "FULLY_DRAFTED"
+                        ? "Sudah masuk Draft Invoice"
+                        : row.invoiceStatus === "PARTIALLY_DRAFTED"
+                          ? "Sebagian masuk Draft Invoice"
+                          : "Belum dibuat Invoice"}
+                    </span>
+                    {row.draftInvoiceNumbers ? (
+                      <p className="text-xs text-slate-500">{String(row.draftInvoiceNumbers)}</p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold">
+                    {row.measureKind === "AMOUNT" ? (
+                      "—"
+                    ) : (
+                      <>
+                        {quantity(row.outstandingQty)} {String(row.uomName ?? "")}
+                        <p className="text-xs font-normal text-slate-500">
+                          Draft {quantity(row.draftInvoiceQty)}
+                        </p>
+                      </>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold">
+                    {money(row.estimatedTotalAmount)}
                   </td>
                 </tr>
               ) : report === "RECONCILIATION_SUMMARY" ? (
