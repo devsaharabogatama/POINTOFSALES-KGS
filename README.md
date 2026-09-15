@@ -1,5 +1,14 @@
 # MADS — Management Distribution System
 
+## 2026-09-16 - Purchase saved Receipt resume fix LOCAL READY
+
+Single/bulk Receive restores saved legacy Receipt lines even when PO line
+destinations are null; saved qty/UOM/conditions/SJ/notes are retained. Unsaved
+Warehouse boundaries remain. Representative12-line tests, lint/tsc PASS.
+Client-only patch, no migration/data reset/stock or Finance writer change.
+Production client deployment/authenticated smoke pending.
+[Rollout and commit commands](docs/runbooks/PURCHASE_RECEIPT_SAVED_LINES_FIX_2026-09-16.md).
+
 ## 2026-09-16 - Office history visibility patch LOCAL READY / clone verified
 
 Original Retail inputs/history now read in existing Quotation/Sales Order list,

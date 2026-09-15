@@ -1,6 +1,33 @@
 # Active Development Handoff — KGS POS
 
 
+## 2026-09-16 - Saved Purchase Receipt line visibility fix LOCAL READY
+
+User Production diagnosis proves12 saved lines on KMS PO58/GR34, null source
+destinations and positive remaining. UI filtered them out before reading saved
+Draft values. Corrected shared single/bulk buildForm to include saved Receipt
+source-line IDs first; unsaved exact warehouse/positive remaining filter stays.
+Pure helper extraction allows direct golden-fixture tests; qty/UOM/disposition/
+client keys/SJ/notes unchanged. Empty forms warn and single Save/Post disabled;
+empty positive payload fails locally, bulk existing per-document failure remains.
+
+Changed: GoodsReceiptView, new goods-receipt-form.ts, test-goods-receipt-form.mjs,
+user SELECT diagnosis file, impact/runbook/spec/root/router/handoff docs.
+No API/RPC/schema/migration/data/backfill/stock/FIFO/AP/payment/session/Finance
+changes, no permissions/owner/version/idempotency bypass, no agent Production
+deployment or Git mutation. STORE/DAILY_WAREHOUSE canonical writers unchanged.
+Evidence: representative12 saved legacy null-destination lines PASS with exact
+saved values; single/bulk/other Draft/PO/Warehouse boundaries, saved zero remaining,
+unsaved UOM/qty autofill/edit and source immutability PASS. Scoped ESLint/tsc exit0.
+Final Next build exit0,85 pages, compile-only non-access placeholders (no env file
+changes or authenticated HTTP claim). Production authenticated visual/Save/Post
+smoke remains pending, not inferred from code checks. Unrelated HR/dummy unchanged.
+
+Next safe step: client-only scoped commit/push by user, refresh same GR and check
+all12 saved lines before Save/Post. No SQL migration or new PO/GR required.
+Rollback client patch only. Details/commands:
+docs/runbooks/PURCHASE_RECEIPT_SAVED_LINES_FIX_2026-09-16.md.
+
 ## 2026-09-16 - Office history visibility compatibility patch
 
 User asks retained old inputs/history visible after switching. Root cause:

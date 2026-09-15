@@ -1,5 +1,15 @@
 # Purchase Daily Negative-On-Hand Replenishment
 
+## 2026-09-16 - saved Receipt compatibility repair
+
+Existing Draft receipt lines are authoritative for resuming that Receipt, even
+if a legacy PO line has null destination or remaining qty subsequently changes.
+The UI must not drop saved qty/UOM/dispositions/SJ/notes because of PO warehouse
+filtering. Unsaved lines retain the exact receiving Warehouse/positive remaining
+boundary. Single/bulk use one builder; no source/stock/Finance mutation or access
+guard change. Local12-line regression/lint/tsc PASS, client deployment and
+authenticated Production Save/Post smoke pending. No schema migration required.
+
 **Status:** Business decision approved; Step 1–6C database/behavior/postflight user-confirmed PASS; authenticated smoke/UAT pending  
 **Scope:** Company Purchase mode, daily grouping, negative On Hand, Supplier priority, RO/PO/Receipt boundary  
 **Out of scope Step 1:** scheduler, RO/PO generation, Goods Receipt posting, Supplier Bill, Payment, Stock/FIFO/AP/Journal mutation

@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-16 - Purchase saved Receipt lines compatibility
+
+[Impact](audits/PURCHASE_RECEIPT_SAVED_LINES_IMPACT_2026-09-16.md) and
+[client-only rollout](runbooks/PURCHASE_RECEIPT_SAVED_LINES_FIX_2026-09-16.md).
+Production12-line evidence confirms saved legacy rows hidden by null PO
+destination filter; single/bulk resume restores saved values. No SQL migration
+or source/stock/Finance mutation. Local tests/lint/tsc PASS; Production smoke pending.
+
 ## 2026-09-16 - Existing Office list history repair
 
 [Impact](audits/OFFICE_HISTORY_VISIBILITY_IMPACT_2026-09-16.md) and
