@@ -31,6 +31,7 @@ DECLARE
   v_reserved_sale_id uuid;v_reserved_target uuid;v_reserved_version bigint;
   v_payload jsonb;v_saved jsonb;v_result jsonb;v_target uuid;v_source_total numeric;
   v_target_total numeric;v_stock_before numeric;v_stock_after numeric;
+  v_source_pricelist uuid;v_target_pricelist uuid;v_converter_definition text;
   v_event_before bigint;v_event_after bigint;v_journal_before bigint;v_journal_after bigint;
   v_movement_before bigint;v_movement_after bigint;v_fifo_before bigint;v_fifo_after bigint;
   v_operation uuid:=gen_random_uuid();v_retry jsonb;
@@ -80,6 +81,23 @@ BEGIN
   VALUES(v_company,'backoffice_delivered_qty_sales_enabled',true,'{}',v_actor)
   ON CONFLICT(company_id,feature_code) DO UPDATE SET
     is_enabled=true,config=excluded.config,updated_by=excluded.updated_by;
+
+  -- The operational Company may already be Office after a successful cutover.
+  -- Prepare Retail mode only inside this rollback-only transaction so the test
+  -- can create its own source through the real POS RPC. The marker is cleared
+  -- before that RPC; root-creation enforcement itself is not bypassed.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_company::text,20260911130000));
+  PERFORM set_config('kgs.sales_process_cutover_mutation','1',true);
+  UPDATE public.company_sales_process_settings SET
+    active_mode='RETAIL_CONFIRM_INVOICE',mode_effective_at='-infinity',
+    master_version=master_version+1,updated_by=v_actor,updated_at=clock_timestamp()
+  WHERE company_id=v_company;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Company sales process setting required';
+  END IF;
+  PERFORM set_config('kgs.sales_process_cutover_mutation','',true);
+  PERFORM private.assert_sales_process_root_creation_allowed(
+    v_company,'RETAIL_CONFIRM_INVOICE');
 
   -- A confirmed Retail fixture must be TEMPO: a non-TEMPO confirmation requires
   -- payment intents, while any payment request correctly makes a cutover source
@@ -160,6 +178,16 @@ BEGIN
   v_sale_id:=(v_saved->>'salesId')::uuid;
   SELECT grand_total_after_rounding INTO STRICT v_source_total
   FROM public.sales_headers WHERE company_id=v_company AND id=v_sale_id;
+  SELECT (array_agg(DISTINCT detail.pricelist_id ORDER BY detail.pricelist_id))[1]
+  INTO v_source_pricelist FROM public.sales_details detail
+  WHERE detail.company_id=v_company AND detail.sales_id=v_sale_id
+    AND detail.pricelist_id IS NOT NULL;
+  SELECT pg_get_functiondef(
+    'private.convert_retail_sale_to_backoffice_order(uuid,uuid,uuid,uuid)'::regprocedure)
+  INTO v_converter_definition;
+  IF position('''selectedPricelistId'',v_save_pricelist' IN v_converter_definition)=0 THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Pricelist bridge migration required';
+  END IF;
 
   SELECT COALESCE(sum(stock_qty),0) INTO v_stock_before FROM public.product_stocks
     WHERE company_id=v_company;
@@ -183,9 +211,11 @@ BEGIN
         AND sale.document_status='CANCELED' AND sale.order_runtime_status='CANCELED') THEN
     RAISE EXCEPTION 'TEST_FAILED: Draft mapping or source retirement invalid: %',v_result;
   END IF;
-  SELECT grand_total INTO STRICT v_target_total FROM public.backoffice_sales_orders
+  SELECT grand_total,pricelist_id INTO STRICT v_target_total,v_target_pricelist
+  FROM public.backoffice_sales_orders
   WHERE company_id=v_company AND id=v_target;
   IF round(v_target_total,4) IS DISTINCT FROM round(v_source_total,4)
+    OR v_target_pricelist IS DISTINCT FROM v_source_pricelist
     OR (SELECT count(*) FROM public.backoffice_sales_order_lines
       WHERE company_id=v_company AND sales_order_id=v_target)<>1
     OR EXISTS(SELECT 1 FROM public.backoffice_sales_reservations
@@ -320,8 +350,9 @@ $test$;
 SELECT 'sales_process_cutover_retail_to_backoffice_converter_behavior' check_name,
   'PASS' status,0::bigint violation_rows,jsonb_build_object('tested',jsonb_build_array(
     'self-created canonical Retail Draft','Draft maps to Backoffice Quotation',
+    'rollback-only Retail mode fixture with runtime root guard still enforced',
     'rollback-only Stock headroom isolates converter from procurement shortage',
-    'commercial and tax snapshot preserved',
+    'commercial, tax and source Pricelist snapshot preserved after provisional bridge',
     'future Scheduled timing remains Draft Quotation with planned date preserved',
     'Reserved lifecycle maps to confirmed SO with Reservation and initial DO',
     'Reserved source releases Reservation and cancels Delivery while retaining immutable Invoice history',

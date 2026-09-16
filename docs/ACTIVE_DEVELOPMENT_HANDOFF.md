@@ -1,6 +1,53 @@
 # Active Development Handoff — KGS POS
 
 
+## 2026-09-16 - Retail to Office Pricelist bridge PRODUCTION DATABASE LIVE
+
+User Production Apply berhenti dengan `BACKOFFICE_SALES_PRICELIST_MIXED`.
+Call-chain audit membuktikan converter sudah memperoleh satu Pricelist Retail,
+namun mengirim `selectedPricelistId=NULL` ke konstruksi Draft Backoffice. AUTO
+resolver dapat memilih Customer/Global Pricelist berbeda antar-line sebelum
+converter memulihkan snapshot sumber.
+
+Forward migration `20260916120000` memilih satu eligible Pricelist hanya sebagai
+bridge konstruksi, lalu tetap menulis header/line Pricelist, harga, discount,
+tax dan total dari Retail. Runtime patch guarded terhadap dependency, exact
+anchors, procurement NULL fix, active Finance queue dan Offline submission.
+Tidak ada schema/backfill atau perubahan plan/source/target saat migration.
+
+Files: migration, SELECT-only preflight/postflight, existing rollback behavioral
+yang kini memeriksa bridge + header Pricelist preservation, impact, runbook,
+manifest, root/router/handoff. Compatibility: classifier, Apply atomicity,
+procurement lineage, Reservation, Dispatch, Stock/FIFO, Payment, Session,
+Finance dan Retail runtime tetap sama.
+
+Local static verification: ketiga converter anchor masing-masing tepat satu,
+CRLF dinormalisasi ke LF sebelum guarded patch, migration SHA-256 cocok manifest,
+delimiter scan seimbang, dan `git diff --check` bersih selain warning line-ending
+workspace. PostgreSQL runtime tidak dijalankan agent. Manual gate: preflight → migration → postflight → rollback
+behavior → postflight, lalu authenticated Apply ulang dan source-target
+commercial comparison. Status bukan DATABASE LIVE/SMOKE/UAT sampai user
+mengirim hasil. Jangan downgrade function setelah conversion baru commit.
+
+Attempt Production pertama berhenti sebelum `COMMIT` pada textual anchor blok
+Pricelist; seluruh statement rollback dan ledger tidak terpasang. Root cause
+adalah pencocokan satu blok IF + payload yang terlalu sensitif terhadap format
+runtime. Migration unapplied dikoreksi untuk mempertahankan IF existing dan
+menyisipkan bridge pada token unik `v_payload:=jsonb_build_object(`; declaration,
+payload field, source restore dan procurement NULL guards tetap fail-closed.
+
+Migration terkoreksi kemudian berhasil mencapai behavioral. Behavioral pertama
+berhenti saat membuat source POS dengan `SALES_PROCESS_ROOT_CREATION_MODE_BLOCKED`
+karena Company Production sudah Office; ini bukan kegagalan bridge. Test sekarang
+mengikuti pola fixture canonical repository: mengambil Company advisory lock,
+menetapkan Retail hanya di dalam transaksi dengan cutover marker, membersihkan
+marker sebelum POS RPC, menegakkan root guard normal, dan mengembalikan seluruh
+mode/version melalui final `ROLLBACK`. Migration yang sudah commit tidak diulang.
+
+User kemudian mengonfirmasi corrected behavioral dan postflight aman. Status:
+Production DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS. Authenticated
+Apply ulang atas plan nyata dan UAT tetap pending; belum boleh disebut SMOKE PASS.
+
 ## 2026-09-16 - Backoffice Quotation mode mismatch UI fix LOCAL READY
 
 User SMS menerima raw `SALES_PROCESS_ROOT_CREATION_MODE_BLOCKED` saat menyimpan

@@ -1,5 +1,15 @@
 # MADS — Management Distribution System
 
+## 2026-09-16 - Sales cutover Pricelist bridge PRODUCTION DATABASE LIVE
+
+Forward migration `20260916120000` memperbaiki kegagalan Apply Retail → Office
+`BACKOFFICE_SALES_PRICELIST_MIXED`: converter memakai satu Pricelist eligible
+hanya selama konstruksi Draft, kemudian mempertahankan Pricelist, harga, diskon,
+pajak dan total sumber. Tidak ada backfill atau efek Stock/Finance. Production
+database migration, behavioral, dan postflight sudah user-confirmed PASS;
+authenticated Apply smoke dan UAT masih manual sesuai
+[runbook](docs/runbooks/SALES_CUTOVER_PRICELIST_BRIDGE_ROLLOUT_2026-09-16.md).
+
 ## 2026-09-16 - Backoffice Quotation mode guard LOCAL READY
 
 Quotation Baru sekarang membaca proses aktif Company dan tidak membuka editor

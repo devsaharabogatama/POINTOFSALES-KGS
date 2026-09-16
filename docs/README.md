@@ -1,5 +1,15 @@
 # Router Dokumen KGS POS
 
+## 2026-09-16 - Retail to Office Pricelist bridge
+
+[Impact](audits/SALES_CUTOVER_PRICELIST_BRIDGE_IMPACT_2026-09-16.md) dan
+[rollout](runbooks/SALES_CUTOVER_PRICELIST_BRIDGE_ROLLOUT_2026-09-16.md).
+Draft konstruksi converter memakai satu Pricelist eligible, lalu tetap
+mengembalikan Pricelist dan commercial snapshot Retail asli. Tidak ada backfill,
+Stock/FIFO/Payment/Finance mutation, atau perubahan flow Retail. Production
+migration, behavioral, dan postflight user-confirmed PASS; authenticated Apply
+smoke/UAT masih manual.
+
 ## 2026-09-16 - Backoffice Quotation mode guard
 
 [Impact](audits/BACKOFFICE_QUOTATION_MODE_GUARD_IMPACT_2026-09-16.md).
