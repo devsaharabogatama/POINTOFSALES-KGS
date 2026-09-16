@@ -1,6 +1,39 @@
 # Active Development Handoff — KGS POS
 
 
+## 2026-09-16 - Backoffice Quotation mode mismatch UI fix LOCAL READY
+
+User SMS menerima raw `SALES_PROCESS_ROOT_CREATION_MODE_BLOCKED` saat menyimpan
+Quotation. Audit membuktikan feature entitlement dan process mode adalah dua
+authority berbeda; server benar menolak root Office ketika active mode masih
+Retail. Workspace API kini membaca `company_sales_process_settings.active_mode`
+tenant-scoped, Quotation Baru dinonaktifkan sebelum editor dibuka, banner
+menjelaskan kondisi dan membuka Pengaturan Sales, serta RPC code dipetakan ke
+409/pesan manusia. Guard/cutover tidak dibypass.
+
+Changed: BackofficeSalesOrderView, workspace Route Handler, error mapper,
+page navigation callback, root/router/handoff dan impact note. Tidak ada SQL,
+migration, data/backfill, conversion, Stock, Reservation, FIFO, Payment, Cashier
+Session, Finance, audit atau history mutation. Existing Office document read/edit
+tetap tersedia; hanya root baru mengikuti mode Company.
+
+Evidence: targeted ESLint PASS; `tsc --noEmit` PASS; production build PASS
+(85 pages/routes). DATABASE state tidak berubah. Setelah client deploy, SMS harus Apply proses Office dari
+Pengaturan Sales; feature activation sendiri tidak mengganti mode. Authenticated
+SMS smoke tetap manual. Rollback hanya revert client/API patch.
+
+Follow-up dari screenshot Pengaturan SMS: plan terbaca `PREVIEWED`, satu kandidat
+`RESERVED`, nol blocker, tetapi UI menampilkan fallback
+`SALES_PROCESS_CUTOVER_OPERATION_FAILED`. Root cause observability adalah daftar
+error Route Handler tidak mencakup seluruh error domain converter, sehingga
+penyebab aktual dibuang. Route kini mengekstrak hanya token domain ber-prefix
+yang disetujui (tanpa SQL/context mentah), dan UI memetakan kegagalan procurement,
+revalidation, line/Pricelist, target parity serta converter result. Ini belum
+mengklaim penyebab operasional spesifik sampai aksi diulang setelah client deploy;
+tidak ada DB mutation atau guard bypass.
+Follow-up verification: targeted ESLint PASS, `tsc --noEmit` PASS, Next
+production build PASS (85 pages/routes).
+
 ## 2026-09-16 - Saved Purchase Receipt line visibility fix LOCAL READY
 
 User Production diagnosis proves12 saved lines on KMS PO58/GR34, null source

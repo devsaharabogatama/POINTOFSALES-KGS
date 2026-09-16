@@ -131,6 +131,26 @@ const errorLabels: Record<string, string> = {
     'Aktifkan fitur Backoffice Quotation & Sales Order sebelum Apply.',
   SALES_PROCESS_CUTOVER_IDEMPOTENCY_PAYLOAD_CONFLICT:
     'Identitas operasi pernah digunakan dengan data berbeda. Muat ulang lalu ulangi.',
+  CUTOVER_PROCUREMENT_ORIGINAL_CAP_DRIFT:
+    'Jumlah kebutuhan pembelian Order berubah dari snapshot awal. Refresh preview sebelum mencoba lagi.',
+  CUTOVER_PROCUREMENT_PRESERVATION_FAILED:
+    'Relasi kebutuhan pembelian tidak dapat dipertahankan saat Order dipindahkan. Proses dibatalkan tanpa perubahan data.',
+  CUTOVER_SOURCE_RETAIL_REVALIDATION_BLOCKED:
+    'Order Retail berubah atau tidak lagi memenuhi syarat pemindahan. Refresh preview untuk memeriksa kondisi terbaru.',
+  CUTOVER_SOURCE_RETAIL_LINE_MAPPING_INVALID:
+    'Ada baris Order yang tidak memiliki pasangan Product-UOM aktif untuk proses Office.',
+  CUTOVER_SOURCE_RETAIL_PRICELIST_MIXED:
+    'Baris Order menggunakan Pricelist yang tidak dapat digabungkan ke satu Sales Order Office.',
+  CUTOVER_TARGET_BACKOFFICE_CREATE_FAILED:
+    'Sales Order Office pengganti gagal dibuat. Seluruh proses dibatalkan tanpa perubahan data.',
+  CUTOVER_TARGET_BACKOFFICE_LINE_COUNT_MISMATCH:
+    'Jumlah baris Order sumber dan Sales Order Office pengganti tidak sama. Seluruh proses dibatalkan.',
+  CUTOVER_TARGET_BACKOFFICE_COMMERCIAL_MISMATCH:
+    'Nilai komersial Order sumber tidak sama dengan dokumen Office pengganti. Seluruh proses dibatalkan.',
+  SALES_PROCESS_CUTOVER_ITEM_DIRECTION_INVALID:
+    'Arah pemindahan dokumen tidak sesuai dengan mode tujuan.',
+  SALES_PROCESS_CUTOVER_CONVERTER_RESULT_INVALID:
+    'Hasil pemindahan dokumen tidak lengkap. Seluruh proses dibatalkan tanpa perubahan data.',
 }
 
 function modeLabel(mode?: ProcessMode) {
@@ -140,7 +160,7 @@ function modeLabel(mode?: ProcessMode) {
 }
 
 function friendlyError(code?: string) {
-  return errorLabels[code ?? ''] ?? code ?? 'Operasi pergantian proses gagal.'
+  return errorLabels[code ?? ''] ?? (code ? codeLabel(code) : 'Operasi pergantian proses gagal.')
 }
 
 function codeLabel(code: string) {

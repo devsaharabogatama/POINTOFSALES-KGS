@@ -154,6 +154,8 @@ export function throwBackofficeSalesOrderError(
     "CANCEL_REASON_REQUIRED",
     "MASTER_VERSION_CONFLICT",
     "IDEMPOTENCY_PAYLOAD_CONFLICT",
+    "SALES_PROCESS_ROOT_CREATION_MODE_BLOCKED",
+    "SALES_PROCESS_SETTING_NOT_FOUND",
   ].find((code) => message.includes(code));
   if (known) {
     const status = known === "BACKOFFICE_SALES_ORDER_NOT_FOUND" ? 404
@@ -165,6 +167,8 @@ export function throwBackofficeSalesOrderError(
             "BACKOFFICE_QUOTATION_SEND_STATE_INVALID",
             "BACKOFFICE_SALES_CONFIRM_STATE_INVALID",
             "BACKOFFICE_SALES_CANCEL_STATE_INVALID",
+            "SALES_PROCESS_ROOT_CREATION_MODE_BLOCKED",
+            "SALES_PROCESS_SETTING_NOT_FOUND",
           ].includes(known) ? 409 : 400;
     throw new ApiRouteError(known, status);
   }

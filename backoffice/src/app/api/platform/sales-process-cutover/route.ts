@@ -22,6 +22,23 @@ const ACTIONS = ['CREATE', 'REFRESH', 'CANCEL', 'APPLY', 'RECOVER'] as const
 type ProcessMode = (typeof PROCESS_MODES)[number]
 type RpcError = { message?: string } | null
 
+const SAFE_CUTOVER_ERROR_PREFIXES = [
+  'SALES_PROCESS_',
+  'CUTOVER_',
+  'BACKOFFICE_SALES_',
+  'BACKOFFICE_ENTITLEMENT_',
+  'OPEN_PROCUREMENT_',
+  'PROCUREMENT_OWNED_',
+] as const
+
+function safeCutoverErrorCode(message: string) {
+  const candidates = message.match(/\b[A-Z][A-Z0-9_]{2,127}\b/g) ?? []
+  return candidates.find((candidate) =>
+    SAFE_CUTOVER_ERROR_PREFIXES.some((prefix) => candidate.startsWith(prefix)) ||
+    ['AUTHENTICATION_REQUIRED', 'ACTIVE_COMPANY_NOT_FOUND',
+      'IDEMPOTENCY_PAYLOAD_CONFLICT', 'MASTER_VERSION_CONFLICT'].includes(candidate))
+}
+
 async function requireSuperAdmin(
   caller: Awaited<ReturnType<typeof requireCaller>>,
 ) {
@@ -74,7 +91,8 @@ function throwCutoverError(error: RpcError): never {
     'CUTOVER_SOURCE_RETAIL_LINE_MAPPING_INVALID',
     'BACKOFFICE_SALES_NEGATIVE_RESERVATION_REQUIRES_WAREHOUSE_OPT_IN',
   ] as const
-  const code = codes.find((candidate) => message.includes(candidate))
+  const code = codes.find((candidate) => message.includes(candidate)) ??
+    safeCutoverErrorCode(message)
   if (!code) throw new ApiRouteError('SALES_PROCESS_CUTOVER_OPERATION_FAILED', 500)
   const status = code.endsWith('SUPER_ADMIN_REQUIRED') ? 403
     : code.endsWith('_NOT_FOUND') ? 404

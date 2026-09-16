@@ -942,6 +942,7 @@ export default function Home() {
               canEdit={backofficeSalesOrderNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
               canManage={backofficeSalesOrderNavigation?.capabilities.includes("MANAGE") ?? false}
               notify={setNotice}
+              openProcessSettings={() => navigateTo("module-settings")}
             />
           )}
 

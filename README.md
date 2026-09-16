@@ -1,5 +1,14 @@
 # MADS — Management Distribution System
 
+## 2026-09-16 - Backoffice Quotation mode guard LOCAL READY
+
+Quotation Baru sekarang membaca proses aktif Company dan tidak membuka editor
+Office yang pasti ditolak ketika Company masih Retail. Pesan mengarahkan user ke
+Pengaturan Sales; database cutover guard tetap utuh. Client/API read-only change,
+tanpa migration, transaksi, Stock atau Finance mutation. SMS tetap memerlukan
+Apply proses Office melalui UI setelah client deployment.
+[Impact](docs/audits/BACKOFFICE_QUOTATION_MODE_GUARD_IMPACT_2026-09-16.md).
+
 ## 2026-09-16 - Purchase saved Receipt resume fix LOCAL READY
 
 Single/bulk Receive restores saved legacy Receipt lines even when PO line

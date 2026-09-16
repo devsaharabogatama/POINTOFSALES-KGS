@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-16 - Backoffice Quotation mode guard
+
+[Impact](audits/BACKOFFICE_QUOTATION_MODE_GUARD_IMPACT_2026-09-16.md).
+Workspace membaca mode Company server-side; Quotation Office baru dinonaktifkan
+ketika mode masih Retail dan user diarahkan ke Pengaturan Sales. Database gate,
+cutover, histori, Stock, dan Finance tidak berubah. Client deployment dan smoke
+SMS masih manual.
+
 ## 2026-09-16 - Purchase saved Receipt lines compatibility
 
 [Impact](audits/PURCHASE_RECEIPT_SAVED_LINES_IMPACT_2026-09-16.md) and
