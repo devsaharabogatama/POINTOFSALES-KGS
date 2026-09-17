@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { AlertTriangle, Check, Loader2, PackageCheck, RefreshCcw, Save, Send, X } from "lucide-react";
 
 import { buildForm, type Order, type OrderLine, type Uom, type Draft, type Workspace, type FormLine, type ReceiptForm } from '@/lib/goods-receipt-form';
+import { userFacingError } from '@/lib/user-facing-error';
 type SavedReceipt = { documentId:string;receiptNo:string;masterVersion:number };
 
 const auth=(session:Session)=>({Authorization:`Bearer ${session.access_token}`});
@@ -24,8 +25,9 @@ function friendly(value?:string){
     ACTIVE_DAMAGED_WAREHOUSE_NOT_FOUND:"Gudang Rusak aktif belum tersedia.",
     MASTER_VERSION_CONFLICT:"Dokumen berubah di tab lain. Muat ulang.",
     PURCHASE_UOM_REQUIRES_INTEGER:"Satuan ini wajib bilangan bulat.",
+    NEGATIVE_STOCK_AUTHORIZATION_REQUIRED:"Penerimaan belum dapat diposting karena guard stok minus menolak movement masuk. Ini bukan kekurangan izin user; minta administrator memastikan forward-fix inbound recovery sudah terpasang.",
   };
-  return map[value??""]??value??"Operasi Penerimaan Barang gagal.";
+  return userFacingError(value,map,"Operasi Penerimaan Barang belum berhasil.");
 }
 
 
