@@ -1,5 +1,81 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-17 — SURAT JALAN PROGRESSIVE BULK LOCAL READY
+
+- Root cause checkbox hasil filter: UI lama mengecualikan dan men-disable setiap
+  row `BACKOFFICE_SALES`, walaupun runtime Dispatch/Receive sudah tersedia.
+- Checkbox kini mencakup POS dan Backoffice Sales. Satu tombol mengikuti tahap
+  pilihan: **Mulai pengiriman** (`READY`) lalu **Konfirmasi diterima**
+  (`DISPATCHED` POS / `IN_TRANSIT` Backoffice).
+- Mutation tetap berurutan per dokumen dan source-aware: endpoint POS tidak
+  berubah; Backoffice memakai canonical `DISPATCH`/`RECEIVE`, operation UUID,
+  optimistic version, dan tanggal aktif Company. Bulk receive hanya tanpa
+  selisih; discrepancy wajib dari detail.
+- Tidak ada migration/schema/backfill. Stock, Reservation, FIFO, Movement,
+  Finance, Purchase, Invoice, Payment dan data historis tidak diubah langsung.
+- Evidence lokal: ESLint targeted PASS; `tsc --noEmit` PASS; `npm run build`
+  PASS (85 pages); `node scripts/test-delivery-document-progressive-bulk.mjs`
+  PASS.
+- Status: LOCAL READY. Client deployment dan authenticated UAT atas fixture
+  aman masih manual; jangan melakukan mutation test pada transaksi Production.
+- Rollback: redeploy client build sebelumnya; tidak ada rollback database.
+
+## 2026-09-17 — SMS TRIAL ORDER EXACT REVERSAL LOCAL READY
+
+- User menetapkan reversal hanya untuk Company Smart Muda Solusi dan dokumen
+  `DRF-20260829-000155`; eksekutor harus role `super_admin`.
+- Dua diagnosis Production membuktikan source Retail masih Draft/runtime
+  Delivered, Delivery/Reservation sudah final, shortage T20/T23 masing-masing
+  40, Finance Event masih HOLD tanpa Journal, dan dua demand belum mempunyai
+  PO/Receipt/Bill. Stock Request bersifat shared dan tidak boleh dibatalkan.
+- Paket `20260917100000` menggunakan exact-ID/state guards. Source Sale dan HOLD
+  Event dibatalkan; Stock ditambah tepat +40/+40 dengan append-only REVERSAL;
+  shortage ditutup dengan reversal lineage; dua demand ditutup dan canonical
+  reconciler menurunkan request 3420 -> 3340. Delivery, Reservation dan original
+  negative movement tidak diubah/dihapus.
+- Perubahan schema global hanya membuka Sales REVERSAL yang harus menunjuk exact
+  posted SALE movement dan belum pernah dibalik. Jalur POS/Office biasa, FIFO,
+  payment, PO, Receipt, AP dan Journal tidak berubah.
+- Evidence lokal: seluruh SQL baru mempunyai delimiter/parenthesis seimbang,
+  diagnostic pre/postflight tidak mengandung mutation statement, whitespace
+  check bersih, checksum migration cocok tepat satu baris manifest, dan scoped
+  `git diff --check` bersih selain warning line-ending. PostgreSQL runtime belum
+  dijalankan agent.
+- Manual gate menunggu user: preflight -> migration -> exact nonzero behavior ->
+  postflight -> authenticated Super Admin smoke, sesuai
+  `docs/runbooks/SMS_TRIAL_ORDER_EXACT_REVERSAL_2026-09-17.md`.
+- Rollback data otomatis dilarang; jika perlu koreksi gunakan audited forward-fix.
+
+
+## 2026-09-16 - SMS trial order reversal lineage diagnosis LOCAL READY
+
+User meminta seluruh dampak trial `DRF-20260829-000155` pada Company Smart Muda
+Solusi dikembalikan secara operasional. History tidak boleh dihapus: posted Stock,
+FIFO, Invoice, pembayaran dan Finance harus dibalik melalui dokumen reversal yang
+dapat ditelusuri; hanya artefak untouched Draft/Open yang boleh dicancel melalui
+runtime canonical.
+
+Ditambahkan satu diagnosis SELECT-only dengan scope hard-coded ke Company SMS dan
+nomor dokumen tersebut. Diagnosis memetakan Retail source, cutover item/plan/audit,
+Office target, Reservation/Delivery/Dispatch/Receipt, procurement, FIFO/Movement,
+Invoice/customer receipt/return, Financial Event dan journal. Tidak ada mutation,
+deployment, cancel, delete, post, return atau reversal yang dijalankan agent.
+
+File: `supabase/diagnostics/sms_trial_order_reversal_lineage_diagnosis.sql`.
+Manual gate: jalankan file penuh di Production SQL Editor dan kirim seluruh hasil.
+Jangan membuat reversal sebelum source cardinality tepat satu, target cardinality
+maksimal satu, serta seluruh posted effects sudah teridentifikasi. Status hanya
+LOCAL READY; DATABASE/CLIENT tidak berubah.
+
+Hasil Production pertama: source Retail tepat satu, tidak ada target Office,
+Delivery sudah `DELIVERED`, Reservation `CONSUMED`, dua Movement negative masing-
+masing 40, satu Financial Event masih `HOLD` tanpa journal/invoice/payment/return,
+dan dua procurement demand sudah `REQUESTED`. Karena Stock Request dapat digabung
+ke PO/receipt milik demand lain, ditambahkan diagnosis SELECT-only kedua untuk
+menelusuri shared request line, PO allocation, Goods Receipt, Purchase Return,
+Supplier Invoice, negative replenishment dan saldo Stock terkini. Manual gate
+sekarang menunggu output
+`supabase/diagnostics/sms_trial_order_reversal_procurement_diagnosis.sql`.
 
 ## 2026-09-16 - Retail to Office Pricelist bridge PRODUCTION DATABASE LIVE
 

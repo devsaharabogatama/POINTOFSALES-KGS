@@ -110,7 +110,7 @@ function statusLabel(status?: string, fulfillmentMode: 'PICKUP' | 'DELIVERY' = '
   if (fulfillmentMode === 'PICKUP') {
     return ({ READY: 'Siap disiapkan', PARTIALLY_DISPATCHED: 'Disiapkan sebagian', DISPATCHED: 'Siap diserahkan', DELIVERED: 'Sudah diserahkan', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
   }
-  return ({ READY: 'Siap dikirim', PARTIALLY_DISPATCHED: 'Dikirim sebagian', PARTIALLY_SHIPPED: 'Dikirim sebagian', DISPATCHED: 'Dalam perjalanan', IN_TRANSIT: 'Dalam perjalanan', DELIVERED: 'Terkirim', COMPLETED: 'Selesai', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
+  return ({ READY: 'Siap dikirim', PARTIALLY_DISPATCHED: 'Dikirim sebagian', PARTIALLY_SHIPPED: 'Dikirim sebagian', DISPATCHED: 'Dalam perjalanan', IN_TRANSIT: 'Dalam perjalanan', DELIVERED: 'Diterima', COMPLETED: 'Diterima', CANCELED: 'Dibatalkan' } as Record<string, string>)[status ?? ''] ?? status ?? '-'
 }
 function statusClass(status?: string) {
   if (status === 'DELIVERED' || status === 'COMPLETED') return 'bg-emerald-100 text-emerald-800'
@@ -321,18 +321,20 @@ export function DeliveryDocumentView({
     () => rows.filter((row) => marked.has(row.deliveryDocumentId)),
     [marked, rows],
   )
-  const selectableFiltered = filtered
-    .filter((row) => row.sourceChannel !== 'BACKOFFICE_SALES')
-    .slice(0, MAX_BULK_DOCUMENTS)
+  const selectableFiltered = filtered.slice(0, MAX_BULK_DOCUMENTS)
   const allFilteredMarked = selectableFiltered.length > 0 && selectableFiltered.every(
     (row) => marked.has(row.deliveryDocumentId),
   )
   const bulkDispatchEligible = markedRows.length > 0 && markedRows.every((row) =>
-    row.sourceChannel !== 'BACKOFFICE_SALES' &&
-    row.fulfillmentMode === 'DELIVERY' && row.status === 'READY')
+    row.fulfillmentMode === 'DELIVERY' && row.status === 'READY' &&
+    (row.sourceChannel !== 'BACKOFFICE_SALES' || row.operationsReady === true))
   const bulkDeliverEligible = markedRows.length > 0 && markedRows.every((row) =>
-    row.sourceChannel !== 'BACKOFFICE_SALES' &&
-    row.fulfillmentMode === 'DELIVERY' && row.status === 'DISPATCHED')
+    row.fulfillmentMode === 'DELIVERY' &&
+    (row.sourceChannel === 'BACKOFFICE_SALES'
+      ? row.status === 'IN_TRANSIT' && row.receiptReady === true
+      : row.status === 'DISPATCHED'))
+  const bulkNextAction: BulkStatusAction | null = bulkDispatchEligible
+    ? 'DISPATCH' : bulkDeliverEligible ? 'DELIVER' : null
 
   function toggleRow(id: string) {
     setMarkedIds((current) => current.includes(id)
@@ -413,16 +415,22 @@ export function DeliveryDocumentView({
         while (cursor < markedRows.length) {
           const row = markedRows[cursor++]
           try {
-            const response = await fetch(`/api/inventory/delivery-documents/${row.salesId}`, {
-              headers: headers(session),
-            })
-            const result = await response.json() as { delivery?: JsonMap; error?: string }
-            if (!response.ok || !result.delivery) throw new Error(friendly(result.error))
+            let delivery: JsonMap
+            if (row.sourceChannel === 'BACKOFFICE_SALES') {
+              delivery = backofficeDeliveryDocument(row, dispatchLines, documentBranding)
+            } else {
+              const response = await fetch(`/api/inventory/delivery-documents/${row.salesId}`, {
+                headers: headers(session),
+              })
+              const result = await response.json() as { delivery?: JsonMap; error?: string }
+              if (!response.ok || !result.delivery) throw new Error(friendly(result.error))
+              delivery = result.delivery
+            }
             const pdf = await createSalesDeliveryPdfFile(
-              result.delivery, row.customerName, showLogoOnDocuments,
+              delivery, row.customerName, showLogoOnDocuments,
               showStampOnDocuments,
             )
-            await recordDownload(row)
+            if (row.sourceChannel !== 'BACKOFFICE_SALES') await recordDownload(row)
             files[pdf.fileName] = pdf.data
           } catch (caught) {
             failures.push(`${row.deliveryNo}: ${caught instanceof Error ? caught.message : 'Gagal diproses'}`)
@@ -460,28 +468,27 @@ export function DeliveryDocumentView({
     <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
       <div><p className="text-xs font-black uppercase tracking-[.2em] text-blue-700">Inventory</p><h1 className="mt-2 text-2xl font-black">Surat Jalan</h1><p className="mt-1 text-sm text-slate-500">Siapkan, cetak, dan pantau pengiriman tanpa membuka nilai Invoice.</p></div>
       <div className="flex flex-wrap gap-2">
-        {canManage && <button type="button" onClick={() => setBulkStatus({ action: 'DISPATCH', rows: markedRows })} disabled={!bulkDispatchEligible || bulkDownloading} title={bulkDispatchEligible ? 'Kirim seluruh sisa barang pada Surat Jalan terpilih' : 'Pilih hanya Surat Jalan Pengiriman berstatus Siap dikirim'} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><Send className="h-4 w-4"/>Kirim terpilih ({markedRows.length})</button>}
-        {canManage && <button type="button" onClick={() => setBulkStatus({ action: 'DELIVER', rows: markedRows })} disabled={!bulkDeliverEligible || bulkDownloading} title={bulkDeliverEligible ? 'Tandai Surat Jalan terpilih sebagai terkirim' : 'Pilih hanya Surat Jalan Pengiriman berstatus Dalam perjalanan'} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><PackageCheck className="h-4 w-4"/>Tandai terkirim ({markedRows.length})</button>}
+        {canManage && <button type="button" onClick={() => bulkNextAction && setBulkStatus({ action: bulkNextAction, rows: markedRows })} disabled={!bulkNextAction || bulkDownloading} title={bulkDispatchEligible ? 'Pindahkan seluruh Surat Jalan terpilih ke status Dalam perjalanan' : bulkDeliverEligible ? 'Konfirmasi seluruh Surat Jalan terpilih sudah diterima tanpa selisih' : 'Pilih dokumen Pengiriman dengan tahap yang sama'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300 ${bulkDeliverEligible ? 'bg-emerald-600' : 'bg-sky-600'}`}>{bulkDeliverEligible ? <PackageCheck className="h-4 w-4"/> : <Send className="h-4 w-4"/>}{bulkDispatchEligible ? `Mulai pengiriman (${markedRows.length})` : bulkDeliverEligible ? `Konfirmasi diterima (${markedRows.length})` : `Proses tahap berikutnya (${markedRows.length})`}</button>}
         <button onClick={() => void bulkDownload()} disabled={!markedRows.length || bulkDownloading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Archive className="h-4 w-4"/>{bulkDownloading ? `Menyiapkan ${bulkProgress.done}/${bulkProgress.total}` : `Unduh PDF Terpilih (${markedRows.length})`}</button>
         <button onClick={() => void load()} disabled={loading || bulkDownloading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 font-bold"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Muat ulang</button>
       </div>
     </header>
     <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(260px,1fr)_auto_auto_auto_auto] lg:items-end">
       <label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari SJ, Invoice, penerima, toko, atau gudang" className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3"/></label>
-      <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 px-3"><option value="ALL">Semua status</option><option value="READY">Siap dikirim</option><option value="PARTIALLY_DISPATCHED">Dikirim sebagian</option><option value="DISPATCHED">Dalam perjalanan</option><option value="DELIVERED">Terkirim</option><option value="CANCELED">Dibatalkan</option></select>
+      <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 px-3"><option value="ALL">Semua status</option><option value="READY">Siap dikirim</option><option value="PARTIALLY_DISPATCHED">Dikirim sebagian</option><option value="DISPATCHED">Dalam perjalanan</option><option value="DELIVERED">Diterima</option><option value="CANCELED">Dibatalkan</option></select>
       <label className="text-xs font-black text-slate-600">Tanggal awal<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
       <label className="text-xs font-black text-slate-600">Tanggal akhir<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-900"/></label>
       <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }} disabled={!dateFrom && !dateTo} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700 disabled:text-slate-300"><CalendarRange className="h-4 w-4"/>Semua tanggal</button>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm">
       <label className="inline-flex items-center gap-3 font-black text-blue-950"><input type="checkbox" checked={allFilteredMarked} onChange={toggleFiltered} disabled={!selectableFiltered.length || bulkDownloading} className="h-5 w-5 accent-blue-600"/>Pilih semua hasil filter{filtered.length > MAX_BULK_DOCUMENTS ? ` (maksimal ${MAX_BULK_DOCUMENTS})` : ''}</label>
-      <span className="font-semibold text-blue-800">{markedRows.length} dokumen dipilih{canManage && markedRows.length > 0 && !bulkDispatchEligible && !bulkDeliverEligible ? ' · untuk bulk status, pilih dokumen Pengiriman dengan satu status yang sama' : ''}</span>
+      <span className="font-semibold text-blue-800">{markedRows.length} dokumen dipilih{canManage && markedRows.length > 0 && !bulkNextAction ? ' · untuk lanjut tahap, pilih dokumen Pengiriman dengan status yang sama' : ''}</span>
     </div>
     {error && <p className="rounded-2xl bg-rose-50 p-4 font-semibold text-rose-700">{error}</p>}
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm">
       <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="w-14 p-4">Pilih</th><th className="p-4">Surat Jalan</th><th className="p-4">Penerima</th><th className="p-4">Toko / Gudang</th><th className="p-4">Status</th><th className="p-4"/></tr></thead>
       <tbody>{loading ? <tr><td colSpan={6} className="p-10 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin"/></td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-slate-500">Belum ada Surat Jalan yang sesuai.</td></tr> : filtered.map((row) => <tr key={`${row.sourceChannel ?? 'POS'}:${row.deliveryDocumentId}`} className="border-t">
-        <td className="p-4"><input type="checkbox" checked={marked.has(row.deliveryDocumentId)} onChange={() => toggleRow(row.deliveryDocumentId)} disabled={row.sourceChannel === 'BACKOFFICE_SALES' || bulkDownloading || (!marked.has(row.deliveryDocumentId) && markedRows.length >= MAX_BULK_DOCUMENTS)} aria-label={`Pilih ${row.deliveryNo}`} title={row.sourceChannel === 'BACKOFFICE_SALES' ? 'Operasi bulk dibuka setelah runtime Dispatch Backoffice aktif' : undefined} className="h-5 w-5 accent-blue-600"/></td>
+        <td className="p-4"><input type="checkbox" checked={marked.has(row.deliveryDocumentId)} onChange={() => toggleRow(row.deliveryDocumentId)} disabled={bulkDownloading || (!marked.has(row.deliveryDocumentId) && markedRows.length >= MAX_BULK_DOCUMENTS)} aria-label={`Pilih ${row.deliveryNo}`} className="h-5 w-5 accent-blue-600"/></td>
         <td className="p-4"><strong>{row.deliveryNo}</strong><p className="text-xs text-slate-500">{row.sourceChannel === 'BACKOFFICE_SALES' ? `${row.deliveryKind === 'BACKORDER' ? 'Backorder' : 'Backoffice'} · SO ${row.salesOrderNo}` : `${row.fulfillmentMode === 'PICKUP' ? 'Ambil di toko' : 'Pengiriman'} · Invoice ${row.invoiceNo}`} · {dateTime(row.scheduledAt ?? row.createdAt)}</p></td>
         <td className="p-4"><strong>{row.recipientName}</strong>{row.recipientPhone && <p className="text-xs text-slate-500">{row.recipientPhone}</p>}</td>
         <td className="p-4">{row.storeName}<p className="text-xs text-slate-500">{row.warehouseName}</p></td>
@@ -491,15 +498,16 @@ export function DeliveryDocumentView({
     </table></div></div>
     {selected && <Detail session={session} summary={selected} detail={detail} dispatchLines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} discrepancyWorkspace={discrepancyWorkspace} companyDate={companyDate} canManage={canManage} refreshed={async () => { setSelected(null); setDetail(null); await load() }} close={() => { setSelected(null); setDetail(null) }} print={() => void print()} download={() => void download()} act={setAction}/>}
     {selected && detail && action && <ActionDialog session={session} summary={selected} lines={dispatchLines.filter((line) => line.delivery_document_id === selected.deliveryDocumentId)} productUoms={discrepancyWorkspace.productUoms} action={action} companyDate={companyDate} close={() => setAction(null)} complete={complete}/>}
-    {bulkStatus && <BulkStatusDialog session={session} rows={bulkStatus.rows} dispatchLines={dispatchLines} action={bulkStatus.action} close={() => setBulkStatus(null)} refresh={load} notify={notify}/>}
+    {bulkStatus && <BulkStatusDialog session={session} rows={bulkStatus.rows} dispatchLines={dispatchLines} action={bulkStatus.action} companyDate={companyDate} close={() => setBulkStatus(null)} refresh={load} notify={notify}/>}
   </section>
 }
 
-function BulkStatusDialog({ session, rows, dispatchLines, action, close, refresh, notify }: {
+function BulkStatusDialog({ session, rows, dispatchLines, action, companyDate, close, refresh, notify }: {
   session: Session
   rows: DeliverySummary[]
   dispatchLines: DispatchLine[]
   action: BulkStatusAction
+  companyDate: string
   close: () => void
   refresh: () => Promise<void>
   notify: (message: string) => void
@@ -524,13 +532,31 @@ function BulkStatusDialog({ session, rows, dispatchLines, action, close, refresh
           const remainingLines = dispatchLines.filter((line) =>
             line.delivery_document_id === row.deliveryDocumentId &&
             Number(line.remaining_quantity_uom) > 0)
-          if (action === 'DISPATCH' && row.reservationId && !remainingLines.length) {
+          if (action === 'DISPATCH' && !remainingLines.length) {
             throw new Error('Tidak ada sisa Reservation yang dapat dikirim.')
           }
-          const response = await fetch(`/api/inventory/delivery-documents/${row.salesId}`, {
+          const backoffice = row.sourceChannel === 'BACKOFFICE_SALES'
+          if (backoffice && action === 'DELIVER' && !companyDate) {
+            throw new Error('Tanggal aktif Company belum tersedia.')
+          }
+          const response = await fetch(backoffice
+            ? '/api/inventory/backoffice-delivery-orders'
+            : `/api/inventory/delivery-documents/${row.salesId}`, {
             method: 'PATCH',
             headers: headers(session, true),
-            body: JSON.stringify({
+            body: JSON.stringify(backoffice ? {
+              action: action === 'DELIVER' ? 'RECEIVE' : 'DISPATCH',
+              deliveryOrderId: row.deliveryDocumentId,
+              masterVersion: row.masterVersion,
+              operationId: idempotencyKeys.get(row.deliveryDocumentId),
+              ...(action === 'DISPATCH' ? {
+                lines: remainingLines.map((line) => ({
+                  deliveryLineId: line.id,
+                  quantityUom: Number(line.remaining_quantity_uom),
+                })),
+              } : {}),
+              ...(action === 'DELIVER' ? { acceptedDate: companyDate } : {}),
+            } : {
               action,
               deliveryDocumentId: row.deliveryDocumentId,
               masterVersion: row.masterVersion,
@@ -551,7 +577,7 @@ function BulkStatusDialog({ session, rows, dispatchLines, action, close, refresh
             deliveryDocumentId: row.deliveryDocumentId,
             deliveryNo: row.deliveryNo,
             ok: true,
-            message: action === 'DISPATCH' ? 'Dalam perjalanan' : 'Terkirim',
+            message: action === 'DISPATCH' ? 'Dalam perjalanan' : 'Diterima',
           })
         } catch (caught) {
           nextResults.push({
@@ -574,11 +600,11 @@ function BulkStatusDialog({ session, rows, dispatchLines, action, close, refresh
   }
 
   const title = action === 'DISPATCH'
-    ? 'Kirim semua Surat Jalan terpilih?'
-    : 'Tandai semua sebagai terkirim?'
+    ? 'Mulai pengiriman semua Surat Jalan terpilih?'
+    : 'Konfirmasi semua Surat Jalan sudah diterima?'
   const description = action === 'DISPATCH'
     ? 'Seluruh sisa quantity akan di-dispatch satu per satu melalui runtime Reservation, FIFO, Movement, dan Finance canonical. Pengiriman sebagian tetap dilakukan dari detail Surat Jalan.'
-    : 'Setiap Surat Jalan Dalam perjalanan akan ditandai Terkirim. Langkah ini tidak mengurangi stok untuk kedua kalinya.'
+    : 'Setiap Surat Jalan Dalam perjalanan dikonfirmasi Diterima tanpa selisih. Langkah ini tidak mengurangi stok untuk kedua kalinya. Jika ada barang kurang, lebih, atau salah, proses dokumennya satu per satu dari Detail.'
 
   return <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/70 p-4">
     <section className="mx-auto my-6 w-full max-w-3xl rounded-3xl bg-white p-7">
@@ -643,11 +669,11 @@ function Detail({ session, summary, detail, dispatchLines, discrepancyWorkspace,
             <button onClick={() => act('CANCEL')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 font-black text-rose-700"><Ban className="h-4 w-4"/>Batalkan</button>
             {summary.fulfillmentMode === 'PICKUP'
               ? <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Sudah diserahkan</button>
-              : <button onClick={() => act('DISPATCH')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white"><Send className="h-4 w-4"/>Kirim</button>}
+              : <button onClick={() => act('DISPATCH')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white"><Send className="h-4 w-4"/>Mulai pengiriman</button>}
           </>}
-          {canManage && summary.sourceChannel !== 'BACKOFFICE_SALES' && summary.reservationId && ['READY', 'PARTIALLY_DISPATCHED'].includes(summary.status) && <button onClick={() => act('DISPATCH')} disabled={!dispatchLines.some((line) => Number(line.remaining_quantity_uom) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Send className="h-4 w-4"/>{summary.fulfillmentMode === 'PICKUP' ? 'Keluarkan barang' : summary.status === 'PARTIALLY_DISPATCHED' ? 'Lanjut kirim' : 'Kirim barang'}</button>}
+          {canManage && summary.sourceChannel !== 'BACKOFFICE_SALES' && summary.reservationId && ['READY', 'PARTIALLY_DISPATCHED'].includes(summary.status) && <button onClick={() => act('DISPATCH')} disabled={!dispatchLines.some((line) => Number(line.remaining_quantity_uom) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Send className="h-4 w-4"/>{summary.fulfillmentMode === 'PICKUP' ? 'Keluarkan barang' : summary.status === 'PARTIALLY_DISPATCHED' ? 'Lanjutkan pengiriman' : 'Mulai pengiriman'}</button>}
           {canManage && summary.sourceChannel !== 'BACKOFFICE_SALES' && summary.status === 'DISPATCHED' && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>{summary.fulfillmentMode === 'PICKUP' ? 'Sudah diserahkan' : 'Tandai diterima'}</button>}
-          {canManage && summary.sourceChannel === 'BACKOFFICE_SALES' && summary.operationsReady && ['READY', 'PARTIALLY_SHIPPED'].includes(summary.status) && <button onClick={() => act('DISPATCH')} disabled={!dispatchLines.some((line) => Number(line.remaining_quantity_uom) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Send className="h-4 w-4"/>{summary.status === 'PARTIALLY_SHIPPED' ? 'Lanjut kirim ke Transit' : 'Kirim ke Transit'}</button>}
+          {canManage && summary.sourceChannel === 'BACKOFFICE_SALES' && summary.operationsReady && ['READY', 'PARTIALLY_SHIPPED'].includes(summary.status) && <button onClick={() => act('DISPATCH')} disabled={!dispatchLines.some((line) => Number(line.remaining_quantity_uom) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 font-black text-white disabled:bg-slate-300"><Send className="h-4 w-4"/>{summary.status === 'PARTIALLY_SHIPPED' ? 'Lanjutkan pengiriman' : 'Mulai pengiriman'}</button>}
           {canManage && summary.sourceChannel === 'BACKOFFICE_SALES' && summary.receiptReady && <button onClick={() => act('DELIVER')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-black text-white"><CheckCircle2 className="h-4 w-4"/>Konfirmasi diterima</button>}
         </div>
       </>}
@@ -776,7 +802,7 @@ function ActionDialog({ session, summary, lines, productUoms, action, companyDat
       setBusy(false)
     }
   }
-  const title = action === 'DISPATCH' ? 'Kirim pesanan sekarang?'
+  const title = action === 'DISPATCH' ? 'Mulai pengiriman sekarang?'
     : action === 'DELIVER' && summary.fulfillmentMode === 'PICKUP'
       ? 'Barang sudah diserahkan?'
       : action === 'DELIVER' ? 'Pesanan sudah diterima?' : 'Batalkan Surat Jalan?'

@@ -200,7 +200,8 @@ Posting opname membuat Penyesuaian Stok kanonis hanya untuk Product berstatus
    Kosongkan keduanya atau pilih **Semua tanggal** untuk melihat seluruh periode.
 3. Buka detail, lalu pilih **Cetak** atau **Unduh PDF**.
 4. Untuk dokumen yang terhubung dengan Order baru, masukkan kuantitas yang
-   benar-benar diberangkatkan lalu pilih **Dispatch**. Dispatch dapat parsial.
+   benar-benar diberangkatkan lalu pilih **Mulai pengiriman**. Pengiriman dapat
+   parsial melalui detail dokumen.
 5. Periksa bahwa `On Hand`, FIFO, Movement, `Reserved Out`, dan jumlah tersisa
    berubah sesuai kuantitas Dispatch.
 6. Pilih **Konfirmasi diterima** setelah penerima menerima barang. Tindakan ini
@@ -233,15 +234,20 @@ dalam `GAGAL-DIUNDUH.txt` tanpa membatalkan PDF lain yang berhasil.
 Untuk memperbarui status beberapa Surat Jalan sekaligus:
 
 1. centang hanya dokumen **Pengiriman** dengan status yang sama;
-2. pilih **Kirim terpilih** untuk dokumen **Siap dikirim**. Seluruh sisa barang
-   pada setiap dokumen akan dikirim; gunakan detail satuan bila perlu partial;
-3. pilih **Tandai terkirim** untuk dokumen **Dalam perjalanan**;
+2. satu tombol mengikuti tahap pilihan: **Mulai pengiriman** untuk dokumen
+   **Siap dikirim**, lalu **Konfirmasi diterima** untuk dokumen **Dalam
+   perjalanan**;
+3. seluruh sisa barang pada setiap dokumen Siap dikirim akan diberangkatkan;
+   gunakan detail satuan bila perlu partial;
 4. periksa hasil tiap dokumen. Dokumen gagal tidak diubah dan dapat diproses
    kembali melalui detail setelah penyebabnya diperbaiki.
 
+Bulk **Konfirmasi diterima** hanya untuk penerimaan penuh tanpa selisih. Jika
+barang kurang, lebih, atau salah, buka detail Surat Jalan dan catat selisihnya.
 Dokumen Pickup, Dikirim sebagian, atau pilihan dengan status campuran tidak
-dapat diproses secara bulk. Proses berjalan satu per satu agar Reservation,
-On Hand, FIFO, Movement, dan Finance setiap Surat Jalan tetap konsisten.
+dapat dilanjutkan secara bulk. Checkbox tetap dapat dipakai untuk **Unduh PDF
+Terpilih**. Proses status berjalan satu per satu agar Reservation, On Hand,
+FIFO, Movement, dan Finance setiap Surat Jalan tetap konsisten.
 
 Template cetak tidak menampilkan nama perusahaan pada header. Bagian tanda
 tangan terdiri dari **Warehouse**, **Security**, **Driver**, dan **Customer**.

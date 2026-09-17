@@ -1,5 +1,24 @@
 # MADS — Management Distribution System
 
+## 2026-09-17 - Surat Jalan progressive bulk LOCAL READY
+
+Checkbox hasil filter kini berlaku untuk Surat Jalan POS dan Backoffice Sales.
+Satu tombol progresif mengikuti status: **Mulai pengiriman** lalu **Konfirmasi
+diterima**; penerimaan bulk hanya clean receipt, sedangkan selisih tetap melalui
+detail. Endpoint canonical, Stock/FIFO/Finance writer dan schema tidak diubah.
+Lint, TypeScript, production build, dan source-contract test PASS; deployment
+serta authenticated UAT masih manual.
+[Runbook](docs/runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md).
+
+## 2026-09-17 - SMS trial order exact reversal LOCAL READY
+
+Paket Production terkunci untuk `DRF-20260829-000155` membatalkan transaksi
+trial tanpa menghapus Delivery/Reservation/original Stock Movement history.
+Dua shortage masing-masing `40` dibalik dengan movement append-only, demand dan
+shared Stock Request direkonsiliasi, serta Finance Event HOLD dibatalkan tanpa
+Journal. Preflight, database rollout, authenticated smoke, dan UAT masih manual.
+[Runbook](docs/runbooks/SMS_TRIAL_ORDER_EXACT_REVERSAL_2026-09-17.md).
+
 ## 2026-09-16 - Sales cutover Pricelist bridge PRODUCTION DATABASE LIVE
 
 Forward migration `20260916120000` memperbaiki kegagalan Apply Retail → Office

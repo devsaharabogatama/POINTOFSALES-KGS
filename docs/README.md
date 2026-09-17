@@ -1,5 +1,12 @@
 # Router Dokumen KGS POS
 
+## 2026-09-17 - SMS trial order exact reversal
+
+[Runbook](runbooks/SMS_TRIAL_ORDER_EXACT_REVERSAL_2026-09-17.md). Paket exact-ID
+untuk membatalkan `DRF-20260829-000155` tanpa delete histori; Stock reversal,
+procurement reconciliation, dan cancel Finance HOLD bersifat transactional dan
+fail-closed. Status `LOCAL READY`; Production gates dan smoke masih manual.
+
 ## 2026-09-16 - Retail to Office Pricelist bridge
 
 [Impact](audits/SALES_CUTOVER_PRICELIST_BRIDGE_IMPACT_2026-09-16.md) dan
@@ -466,8 +473,9 @@ Order Reservation/Dispatch:
   Delivered Not Invoiced. Implementasi wajib dimulai pada Supabase/client lokal
   terisolasi; status discovery, belum runtime.
 - [`runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md`](runbooks/INVENTORY_DELIVERY_BULK_STATUS_UI.md)
-  — bulk `READY -> DISPATCHED -> DELIVERED` atas checkbox Inventory dengan
-  runtime canonical per Surat Jalan dan tanpa direct table update.
+  — satu tombol bulk progresif `Siap dikirim -> Dalam perjalanan -> Diterima`
+  untuk POS dan Backoffice Sales, memakai runtime canonical sesuai sumber Surat
+  Jalan dan tanpa direct table update.
 - [`runbooks/SALES_ORDER_REVISION_ROLLOUT.md`](runbooks/SALES_ORDER_REVISION_ROLLOUT.md)
   — replacement Draft atomik untuk koreksi Order sebelum Dispatch, dengan
   Invoice/SJ baru dan histori source tetap immutable.
