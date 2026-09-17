@@ -26,6 +26,7 @@ function friendly(value?:string){
     MASTER_VERSION_CONFLICT:"Dokumen berubah di tab lain. Muat ulang.",
     PURCHASE_UOM_REQUIRES_INTEGER:"Satuan ini wajib bilangan bulat.",
     NEGATIVE_STOCK_AUTHORIZATION_REQUIRED:"Penerimaan belum dapat diposting karena guard stok minus menolak movement masuk. Ini bukan kekurangan izin user; minta administrator memastikan forward-fix inbound recovery sudah terpasang.",
+    GOODS_RECEIPT_OWNER_SCOPE_INVALID:"Dokumen penerimaan masih terikat ke operator sebelumnya. Ini bukan izin Gudang tambahan; minta administrator memastikan forward-fix pergantian operator Receipt sudah terpasang.",
   };
   return userFacingError(value,map,"Operasi Penerimaan Barang belum berhasil.");
 }
