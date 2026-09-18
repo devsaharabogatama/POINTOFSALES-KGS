@@ -14260,3 +14260,25 @@ Eksekusi hanya setelah backup dan maintenance window.
   to a clear date/effective-receivable message instead of `LOCATION_INVALID`.
 - No runtime, schema, Receipt, allocation, Journal, COA, Stock, FIFO, or
   Production data was changed by this diagnosis.
+
+# Update 2026-09-18 — Retur & Refund UI refinement
+
+- User meminta seluruh UI Retur & Refund dirapikan mengikuti pola visual SO/PO.
+- `BackofficeSalesReturnView` sekarang memiliki header modul, filter, tabel
+  dokumen, badge sumber Retail/Backoffice, status barang/proses terpisah,
+  ringkasan detail, tabel barang, panel koreksi, Credit Note/Refund, dan riwayat
+  yang konsisten.
+- `CustomerReturnReceiptView` sekarang memakai daftar tabel dan modal penerimaan
+  terstruktur dengan qty otomatis tetap editable, Gudang dan disposition per
+  baris, serta ringkasan qty.
+- Impact map: direct impact hanya presentation dua komponen client; downstream
+  API/payload/RPC, permission, Stock, FIFO, Finance, audit, retry, optimistic
+  version, dan compatibility dokumen lama tidak berubah.
+- Evidence: targeted ESLint `PASS`; Next.js production build + TypeScript + 87
+  static pages `PASS`.
+- Status `CLIENT LOCAL READY`. Browser visual automation gagal dimulai karena
+  runtime tool menolak metadata sandbox (`missing sandboxPolicy`), sehingga
+  authenticated visual smoke dan UAT tetap manual setelah deploy.
+- Next safe step: deploy client lalu smoke daftar/detail/Draft Retur/Penerimaan
+  Gudang/Credit Note/Refund pada role Sales, Gudang, dan Finance. Jangan
+  menjalankan ulang migration Return yang sudah live.

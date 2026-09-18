@@ -2966,3 +2966,11 @@ Paket local-ready menyiapkan exact mapping dan reklasifikasi append-only Custome
 Receipt bank untuk KMS, SMS, dan LSM, sekaligus memperbaiki serialisasi timezone
 form Finance Master. Production rollout belum dijalankan oleh agent. Ikuti
 [`docs/runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md`](docs/runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md).
+
+## Retur & Refund UI refinement (2026-09-18)
+
+Workspace Retur & Refund dan Penerimaan Retur Customer sudah dirapikan mengikuti
+pola visual SO/PO tanpa mengubah kontrak API, business flow, Stock, FIFO, atau
+Finance. ESLint dan production build `PASS`; status client `LOCAL READY`,
+sedangkan deploy, authenticated visual smoke, dan UAT masih terpisah. Detail:
+[`docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md`](docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).

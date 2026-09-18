@@ -1112,3 +1112,9 @@ drift, not transaction count differences. Production SQL execution is manual.
 records reconciled migration delta, canonical SQL E2E, preservation evidence and
 remaining fresh-snapshot/authenticated UI/UAT gates. This is not a production
 deployment authorization or claim of full production readiness.
+
+Retur & Refund UI refinement 2026-09-18 berstatus `CLIENT LOCAL READY`: daftar,
+detail, koreksi, refund, activity log, dan Penerimaan Retur Customer sudah
+mengikuti hierarki visual SO/PO. Tidak ada database/runtime change. Evidence dan
+smoke gate ada di
+[runbook Retur & Refund](runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).

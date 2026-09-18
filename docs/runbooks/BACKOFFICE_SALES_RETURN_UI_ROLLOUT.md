@@ -39,3 +39,23 @@ dijalankan ulang setelah ledger terpasang.
 
 Jika read-model gagal setelah install, gunakan migration forward-fix baru.
 Jangan menghapus histori atau dokumen final Step 1-4.
+
+## UI refinement 2026-09-18
+
+Status client: `LOCAL READY`.
+
+- Workspace Retur & Refund sekarang mengikuti pola visual Quotation/SO dan
+  RO/PO: header modul, filter terpisah, daftar tabel, badge sumber/status,
+  ringkasan dokumen, tabel barang, koreksi tagihan, Credit Note/Refund, dan
+  activity log memiliki hierarki yang konsisten.
+- Penerimaan Retur Customer di Inventory memakai daftar tabel dan modal
+  penerimaan terstruktur. Qty tetap otomatis mengikuti sisa Retur tetapi masih
+  dapat diedit; Gudang dan tindakan `RESTOCK`/`DESTROY` tetap per baris.
+- Tidak ada perubahan endpoint, payload mutation, RPC, permission, Stock,
+  FIFO, Invoice, Payment, Journal, atau data historis.
+- Evidence lokal: targeted ESLint dua komponen `PASS`; Next.js production build
+  beserta TypeScript dan 87 static pages `PASS`.
+- Authenticated visual smoke belum `PASS`: browser automation agent tertahan
+  oleh runtime tool (`missing sandboxPolicy`). Sesudah client di-deploy, cek
+  daftar, detail, Draft Retur, penerimaan Gudang, Credit Note, Refund, serta
+  viewport sempit sebelum menandai `CLIENT DEPLOYED`/`SMOKE PASS`.
