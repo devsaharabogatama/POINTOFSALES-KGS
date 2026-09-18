@@ -14313,3 +14313,96 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Next safe step: deploy client lalu smoke daftar/detail/Draft Retur/Penerimaan
   Gudang/Credit Note/Refund pada role Sales, Gudang, dan Finance. Jangan
   menjalankan ulang migration Return yang sudah live.
+
+# 2026-09-18 - KMS/SMS/LSM FULL PROCUREMENT CLEANUP PREFLIGHT
+
+- User explicitly scoped a one-time cleanup to KMS, SMS, and LSM: every active
+  RO and every active PO, including MANUAL and DAILY_REPLENISHMENT documents.
+  Posted Receipt quantity must be reversed through canonical Purchase Return
+  before PO cancellation. No history, audit, Stock Movement, FIFO, Finance, or
+  document row may be deleted/reset.
+- Runtime audit confirms automatic replenishment is not raw On Hand only. It
+  starts from negative `product_stocks.stock_qty`, then subtracts remaining
+  active Supplier Order coverage, active exact Stock Request coverage, and
+  unallocated Draft daily-RO coverage. Therefore retaining any of those can
+  make the replacement PO smaller than the raw negative On Hand.
+- Added SELECT-only
+  `supabase/diagnostics/purchase_three_company_full_cleanup_preflight.sql`.
+  It inventories the exact Company/mode scope, all active RO/PO regardless of
+  origin, Posted Receipt minus Posted Return quantities, Bill/Payment links,
+  exact Purchase Return FIFO availability, active Stock Request coverage and
+  Sales lineage, current-day scheduler reuse state, and raw negative On Hand.
+- Same-day boundary: an existing `GENERATED`/`NO_DEMAND` scheduler run is reused;
+  an existing canceled daily batch also occupies the Company/business-date
+  uniqueness key. Any same-day replacement requires a separately designed,
+  audited forward operation rather than deleting scheduler/batch history.
+- Status: `READ-ONLY PREFLIGHT LOCAL READY`. No Production query or mutation was
+  executed. Next safe step is to run the complete preflight in Production and
+  retain every result set; build the guarded execution operation only from that
+  evidence. Stop on FIFO shortage, active Bill/Payment, Sales-linked Stock
+  Request coverage, or same-day scheduler reuse until its exact handling is
+  reconciled.
+- First Production paste retained only the final Supabase result grid:
+  `negative_on_hand_raw_target` reported 62 negative Product/Warehouse rows and
+  raw replenishment total 60,498 base units (KMS 13,542; LSM 22,196; SMS 24,760).
+  That is demand evidence only and cannot prove cleanup safety.
+- Added single-statement consolidated replacement
+  `supabase/diagnostics/purchase_three_company_full_cleanup_preflight_consolidated.sql`
+  so all seven gates are returned in one result grid. The original multi-result
+  file is marked superseded; no Production mutation has been authorized or run.
+- Consolidated Production result: all three Company identities/default receiving
+  Warehouses are valid, but all are currently `AUTO_RO` (not requested
+  `AUTO_PO`). There are zero active daily RO batches and no scheduler run for
+  the current Company-local date.
+- There are 53 active Supplier Orders, all `MANUAL`; 52 have zero net receipt
+  and no Bill/Payment evidence and are canonical cancellation candidates. One
+  KMS order `PO-20260825-0000000015` is `RECEIVED` with net 202 base units,
+  one Posted Receipt, zero Bill and zero Payment.
+- The KMS received order cannot be canonically returned now: all four source
+  GOOD FIFO allocations (100, 20, 40 and 42 base units) have zero remaining
+  source-batch quantity. A forced return would fabricate a physical return and
+  break exact FIFO/cost lineage. This `RECEIVED` order is not included in active
+  PO coverage by the replenishment candidate resolver, so retaining it as
+  historical does not reduce a new automatic PO.
+- Active Stock Request coverage totals 88,878 base units; 47 open documents are
+  reported as coverage and Sales-linked demand exists. This exceeds the raw
+  negative On Hand target of 60,498 and is the actual reason an automatic PO
+  would currently be reduced/fully covered after ordinary PO cancellation.
+- User rejected the unrequested `AUTO_PO` switch. The approved boundary keeps
+  all three Company settings on `AUTO_RO`: retain the consumed KMS PO as
+  historical `RECEIVED`, cancel the other 52 active POs canonically, and close
+  all 95 old active Stock Request headers while preserving Sales
+  documents/lineage. One header has no active line and carries no quantity.
+- Local-ready guarded operation:
+  `supabase/operations/cleanup_kms_sms_lsm_active_procurement_20260918.sql`.
+  It is pinned to the supplied Production counts/digests, runs at REPEATABLE
+  READ, uses canonical PO cancellation and Stock Request close functions, and
+  compares 22 protected Stock/FIFO/Finance/Sales/lineage snapshots before commit.
+  Any drift or protected mutation rolls the entire operation back.
+- Read-only postflight:
+  `supabase/diagnostics/purchase_three_company_full_cleanup_postflight.sql`.
+  Existing preflights were corrected so `AUTO_RO` is the required preserved
+  mode, not `AUTO_PO`.
+- Status: `LOCAL READY`; no Production mutation was executed by the agent.
+  Next safe step is manual full-file operation in Supabase SQL Editor, retain
+  its three PASS rows, run the postflight, then allow the next 23:59 AUTO_RO
+  scheduler. The automatic document will be one daily RO; user confirmation
+  creates PO.
+- First guarded Production execution stopped before mutation with
+  `CLEANUP_SCOPE_DRIFT`: the operation saw 95 active Stock Request headers while
+  the original preflight exposed only 94. PostgreSQL rolled the transaction
+  back, so no PO/Request/Stock/Finance change committed. Added SELECT-only
+  `supabase/diagnostics/purchase_three_company_cleanup_scope_drift.sql` to show
+  the recent request identity, Sales/PO/Receipt lineage, and safety boundary.
+  Diagnosis proved all 95 headers are `SUBMITTED`/`ORDERED`; the mismatch came
+  from the preflight's inner join omitting one header without an active line,
+  not from a new transaction. Preflight now uses a left join, and the operation
+  is pinned to the exact 95-row digest `a29857add5540f988baa5807e863c2a2`.
+- Production cleanup and postflight are now `DATABASE LIVE / POSTFLIGHT PASS`:
+  52 Supplier Orders canceled, 95 Stock Request headers closed, zero active
+  PO/Stock Request/daily-RO coverage, and retained KMS PO
+  `PO-20260825-0000000015` remains `RECEIVED` with net 202. All three Company
+  modes remain `AUTO_RO`. Candidate parity is exact against current negative
+  On Hand: 62 Product/Warehouse rows totaling 60,498 base units. Next pending
+  gate is scheduler/runtime smoke at the next Company-local 23:59 cutoff,
+  followed by user confirmation of the generated daily RO into PO.

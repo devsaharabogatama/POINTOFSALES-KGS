@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - KMS/SMS/LSM controlled Purchase cleanup
+
+[Runbook](runbooks/KMS_SMS_LSM_PROCUREMENT_CLEANUP_2026-09-18.md). Paket
+operasi satu kali membatalkan 52 PO tanpa net Receipt dan menutup 95 header Stock
+Request lama melalui runtime canonical, mempertahankan satu PO KMS `RECEIVED`,
+serta menjaga mode `AUTO_RO`. Operation dipagari exact Production digest dan
+full-row Stock/Finance comparison; status `DATABASE LIVE / POSTFLIGHT PASS`.
+
 ## 2026-09-18 - Invoice Return commercial status
 
 [Runbook](runbooks/SALES_INVOICE_RETURN_COMMERCIAL_STATUS_ROLLOUT.md). Invoice

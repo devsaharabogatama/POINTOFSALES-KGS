@@ -2985,3 +2985,12 @@ pola visual SO/PO tanpa mengubah kontrak API, business flow, Stock, FIFO, atau
 Finance. ESLint dan production build `PASS`; status client `LOCAL READY`,
 sedangkan deploy, authenticated visual smoke, dan UAT masih terpisah. Detail:
 [`docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md`](docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).
+
+## 2026-09-18 - KMS/SMS/LSM Purchase cleanup DATABASE LIVE
+
+Controlled Production cleanup membatalkan 52 PO tanpa net Receipt dan menutup
+95 header Stock Request lama secara canonical tanpa mengubah Stock/FIFO,
+Finance, Sales, atau histori Posted. Satu PO KMS `RECEIVED` dengan net 202 tetap
+dipertahankan. Postflight seluruhnya PASS; mode ketiga Company tetap `AUTO_RO`,
+dan kandidat RO berikutnya sama dengan On Hand negatif aktual (62 baris,
+60.498 base unit). Scheduler/runtime smoke pada cutoff 23.59 masih menunggu.
