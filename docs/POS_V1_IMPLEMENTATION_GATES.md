@@ -3095,3 +3095,22 @@ Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
 - Gate belum ditutup sampai preflight, migration, postflight, client deploy,
   authenticated E2E, multi-Company, retry/stale-version, Retail regression dan
   UAT seluruhnya PASS menurut runbook Step 5.
+
+## 2026-09-18 - Retained Retail Return financial compatibility
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS; CLIENT/SMOKE/UAT PENDING`.
+
+- Retur final Retail yang dipertahankan saat cutover memakai Invoice Retail
+  asli sebagai satu-satunya target koreksi; tidak dibuat SO/Invoice Office palsu.
+- Credit Note mengurangi AR dahulu dan mencatat excess sebagai Customer Refund
+  Liability. Refund/Reversal tetap memakai runtime Finance Backoffice canonical
+  tanpa POS atau Cashier Session.
+- Sale, Invoice snapshot, Payment, Customer Receipt, native Retail Return,
+  Receipt/disposition, Stock/FIFO, dan jurnal historis tetap immutable.
+- Dispatcher mempertahankan exact runtime Retur Backoffice native.
+- Gate: preflight -> migration `20260918150000` -> rollback-only behavior ->
+  postflight -> client deploy -> authenticated retained/native regression smoke.
+- User mengonfirmasi preflight terkoreksi dan migration Production berhasil.
+  Behavioral rollback-only dan postflight kemudian dikonfirmasi seluruhnya
+  PASS. Gate aktif sekarang client deploy, lalu authenticated retained/native
+  regression smoke; jangan menjalankan ulang migration yang sudah sukses.

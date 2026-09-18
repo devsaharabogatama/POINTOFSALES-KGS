@@ -1,6 +1,45 @@
 # Active Development Handoff — KGS POS
 
-## 2026-09-18 — P0 retained Retail Return compatibility audit
+## 2026-09-18 - Retained Retail Credit Note/Refund bridge DB VERIFIED
+
+- Root cause kasus `RTN-20260918-0000000016` terbukti berada pada allocator
+  native yang mencari `backoffice_sales_order_lines` untuk Return dengan
+  `sales_order_line_id=NULL` dan lineage `retail_sales_detail_id`.
+- Paket additive `20260918150000` menambah exact Retail Invoice lineage pada
+  allocation/Credit Note/Refund, dispatcher ke core Retained Retail, AR-first
+  posting, canonical Refund/Reversal source assignment, dan integrasi AR Aging/
+  Customer Statement. Signature publik tetap kompatibel dan jalur native
+  didelegasikan ke core lama.
+- Client memilih `Invoice Retail Asli` untuk Retur `RETAINED_RETAIL`; Retur
+  Backoffice native tetap menampilkan tujuan Uninvoiced/Draft/Posted lama.
+- Source Retail, Customer Receipt, native Retail Return, Receipt/DESTROY,
+  Stock/FIFO dan jurnal historis tidak dimutasi atau di-backfill.
+- File baru: impact audit, preflight, migration, rollback-only behavior,
+  postflight, dan rollout runbook. Manifest/README/gate diperbarui.
+- Evidence lokal saat handoff: scoped ESLint PASS, TypeScript PASS, production
+  build PASS (87 halaman), SQL delimiter/identifier scan PASS, checksum manifest
+  cocok, dan scoped diff check bersih selain warning line-ending. PostgreSQL
+  runtime, database rollout, client deploy, authenticated smoke dan UAT masih
+  pending dan tidak boleh disebut PASS.
+- Preflight sekarang memverifikasi dependency ledger, constraint lama, collision,
+  dan exact runtime anchor AR/Customer Statement sebelum migration boleh jalan.
+  Postflight memverifikasi dispatcher native, trigger, permission dan lineage.
+- Production preflight pertama berhenti aman pada `ar_open_item` dan
+  `ar_outstanding`. Audit membuktikan runtime aktif memakai ekspresi
+  unqualified `original_receivable-allocated_amount`, sedangkan guard lokal
+  keliru mengharapkan prefix alias `invoice.`. Kedua fragment kompatibel itu
+  masing-masing tepat satu kali. Preflight dan migration yang belum diterapkan
+  dikoreksi ke exact runtime aktif; pemeriksaan cardinality tetap dipertahankan.
+- User kemudian mengonfirmasi preflight terkoreksi, migration
+  `20260918150000`, behavior rollback-only, dan postflight seluruhnya berhasil
+  di Production. Behavioral mencakup exact Retail Invoice allocation, balanced
+  AR-first Credit Note, Refund/Reversal lineage, retry, stale version, serta
+  immutability Retail/Stock; seluruh fixture di-rollback.
+- Next safe step: commit/push client dan paket rollout, tunggu deployment, lalu
+  jalankan authenticated retained/native regression smoke menurut runbook.
+  Jangan menjalankan ulang migration.
+
+## Prior P0 retained Retail Return compatibility audit
 
 - User classified the missing Return action for final Retail documents retained
   after Office cutover as a defect, not additional feature scope.
@@ -14194,3 +14233,30 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Files: database preflight/migration/rollback-only behavior/postflight, impact
   audit, and rollout runbook. Status remains `LOCAL READY`; Production SQL,
   client deploy, authenticated smoke, and UAT have not been run by the agent.
+# 2026-09-18 - CUSTOMER RECEIPT HISTORICAL DATE DIAGNOSIS (READ-ONLY)
+
+- User paused Retained Retail Return work and reported Customer Receipt invoice
+  `INV-20260829-0000000144` is rejected for receipt date `2026-08-31` with UI
+  code `LOCATION_INVALID`, while a September receipt date succeeds.
+- Call-chain audit proves `LOCATION_INVALID` is a false translation:
+  `throwDatabaseError()` uses substring matching, so raw
+  `CUSTOMER_RECEIPT_ALLOCATION_INVALID` matches its embedded suffix
+  `LOCATION_INVALID`.
+- The active workspace builds `openInvoices` as of Company **today**, while
+  `save_customer_receipt_allocated_draft` validates Retail eligibility and
+  dispatched receivable as of the user-selected `p_receipt_date`. This creates
+  a read/write as-of mismatch for historical receipts.
+- Added SELECT-only
+  `supabase/diagnostics/customer_receipt_historical_date_eligibility_diagnosis.sql`
+  to classify the exact Production invoice, Dispatch effective dates,
+  receivable at 31 August, existing posted allocations, and the save boundary.
+- Production output confirmed `BLOCKED_RECEIVABLE_NOT_YET_EFFECTIVE` for the
+  exact invoice: attempted Receipt date `2026-08-31`, zero receivable on that
+  date, and the only Dispatch financial effect becomes effective on
+  `2026-09-03` for Rp5.635.800. The server rejection is therefore correct.
+- User explicitly deferred the UI correction until Retained Retail Return work
+  is complete. Follow-up scope is limited to: make Customer Receipt invoice
+  choices reflect the selected receipt date, and map the raw allocation error
+  to a clear date/effective-receivable message instead of `LOCATION_INVALID`.
+- No runtime, schema, Receipt, allocation, Journal, COA, Stock, FIFO, or
+  Production data was changed by this diagnosis.

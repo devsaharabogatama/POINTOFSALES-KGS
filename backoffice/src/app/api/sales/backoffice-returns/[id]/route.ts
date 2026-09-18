@@ -18,9 +18,12 @@ export async function GET(request: Request, { params }: Context) {
     if (activityResult.error) throwBackofficeReturnError(activityResult.error);
     let reconciliation = null; let invoices = null;
     if ((capabilities["finance.customer_credit_notes"] as string[]).includes("VIEW")) {
+      const retainedRetail = detail.data?.data?.sourceKind === "RETAINED_RETAIL";
       const [reconciliationResult, invoiceResult] = await Promise.all([
         caller.client.rpc("get_backoffice_sales_return_invoice_reconciliation", { p_return_id: returnId }),
-        caller.client.rpc("get_backoffice_sales_invoice_workspace", { p_sales_order_id: detail.data?.data?.salesOrderId, p_status: null, p_search: null, p_limit: 100 }),
+        retainedRetail
+          ? caller.client.rpc("get_retained_retail_return_invoice_workspace", { p_return_id: returnId })
+          : caller.client.rpc("get_backoffice_sales_invoice_workspace", { p_sales_order_id: detail.data?.data?.salesOrderId, p_status: null, p_search: null, p_limit: 100 }),
       ]);
       if (reconciliationResult.error) throwBackofficeReturnError(reconciliationResult.error);
       if (invoiceResult.error) throwBackofficeReturnError(invoiceResult.error);

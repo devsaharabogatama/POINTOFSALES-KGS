@@ -12,8 +12,8 @@ export async function GET(request: Request, { params }: Context) {
     const refunds = await caller.client.rpc("get_backoffice_sales_credit_note_refunds", { p_credit_note_id: creditNoteId });
     if (refunds.error && !refunds.error.message?.includes("CUSTOM_PERMISSION_DENIED")) throwBackofficeReturnError(refunds.error);
     let paymentContext = null;
-    if (!refunds.error && note.data?.data?.sourceInvoiceId) {
-      const payment = await caller.client.rpc("get_backoffice_sales_invoice_payment_context", { p_invoice_id: note.data.data.sourceInvoiceId });
+    if (!refunds.error) {
+      const payment = await caller.client.rpc("get_backoffice_sales_credit_note_payment_context", { p_credit_note_id: creditNoteId });
       if (payment.error) throwBackofficeReturnError(payment.error); paymentContext = payment.data;
     }
     return Response.json({ ...note.data, refunds: refunds.error ? null : refunds.data, paymentContext });

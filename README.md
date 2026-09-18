@@ -1,5 +1,17 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - Retained Retail Credit Note/Refund bridge DATABASE LIVE
+
+Fix lokal menutup error `query returned no rows` ketika Retur **Asal Retail**
+yang sudah diterima masuk ke koreksi tagihan. Allocation sekarang memakai
+Invoice Retail asli, Credit Note mengurangi AR lebih dahulu, dan excess tetap
+masuk ke flow Refund Backoffice canonical tanpa POS/Cashier Session. Sale,
+Invoice, pembayaran, Receipt/DESTROY, Stock/FIFO, dan jurnal historis tidak
+ditulis ulang; Retur Backoffice native tetap memakai runtime lama. Migration
+Production, behavior rollback-only, dan postflight telah berhasil menurut
+konfirmasi user; client deploy, authenticated smoke, dan UAT masih manual. Lihat
+[runbook](docs/runbooks/RETAINED_RETAIL_CREDIT_NOTE_REFUND_BRIDGE_ROLLOUT.md).
+
 ## 2026-09-18 - P0 retained Retail Return compatibility defect
 
 Retained final Retail sales are readable from Office, but their Return/Receipt/
@@ -7,13 +19,13 @@ Credit Note/Refund continuation is not yet operational from Backoffice. Treat
 Sales-process cutover as incomplete for this case until the additive repair has
 passed database rollout, authenticated smoke and UAT. See
 `docs/audits/RETAINED_RETAIL_BACKOFFICE_RETURN_COMPATIBILITY_IMPACT_2026-09-18.md`.
-The source labels and Production qualification are ready, and the guarded
-commercial bridge `20260918120000` is database-live with user-confirmed behavior
-and postflight PASS. The physical Receipt bridge `20260918130000` is local-ready
-with an explicit `LEGACY_AGGREGATE_COST` lineage and a fail-closed physical
-Product guard. Its database rollout, Credit Note/Refund compatibility, client
-activation, authenticated smoke and UAT are still pending, so the complete flow
-is not live yet.
+The source labels and Production qualification are ready. The guarded commercial
+bridge `20260918120000` and physical Receipt bridge `20260918130000` are
+database-live with user-confirmed behavior/postflight PASS. The remaining
+Credit Note/Refund bridge `20260918150000` is database-live with user-confirmed
+behavior/postflight PASS; client activation, authenticated smoke and UAT are
+still pending, so the
+complete retained-Retail flow is not live yet.
 
 ## 2026-09-18 - Invoice source-order navigation CLIENT LOCAL READY
 

@@ -1,5 +1,14 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Retained Retail Credit Note/Refund bridge
+
+[Runbook](runbooks/RETAINED_RETAIL_CREDIT_NOTE_REFUND_BRIDGE_ROLLOUT.md) dan
+[impact audit](audits/RETAINED_RETAIL_CREDIT_NOTE_REFUND_BRIDGE_IMPACT_2026-09-18.md).
+Bridge database-live mengarahkan koreksi Retur `RETAINED_RETAIL` ke Invoice Retail
+asli, Credit Note AR-first, dan Refund canonical tanpa memutasi transaksi Retail
+atau jalur Retur Backoffice native. Behavior dan postflight telah dikonfirmasi
+PASS; rollout client, smoke, dan UAT masih pending.
+
 ## 2026-09-18 - Customer Receipt BANK BCA reclassification
 
 [Runbook](runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md) dan
