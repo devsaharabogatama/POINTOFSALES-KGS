@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
+import { userFacingError } from '@/lib/user-facing-error'
 
 type ReturnStatus = 'DRAFT' | 'POSTED' | 'CANCELED'
 type ReturnDocument = {
@@ -128,7 +129,7 @@ function friendlyError(code?: string) {
     CUSTOM_PERMISSION_DENIED: 'Pembatasan akses user tidak mengizinkan tindakan Return ini.',
     FORBIDDEN: 'Anda tidak diizinkan mengakses approval Return.',
   }
-  return messages[code ?? ''] ?? code ?? 'Operasi Return gagal.'
+  return userFacingError(code, messages, 'Operasi Return belum berhasil.')
 }
 
 export function SalesReturnApprovalView({

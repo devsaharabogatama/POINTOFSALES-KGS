@@ -5,6 +5,8 @@ export type NavigationViewId =
   | 'products'
   | 'bundles'
   | 'sales-returns'
+  | 'backoffice-sales-returns'
+  | 'customer-return-receipts'
   | 'backoffice-sales-orders'
   | 'sales-documents'
   | 'delivery-documents'
@@ -135,6 +137,8 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'pricelists', label: 'Pricelist', description: 'Harga jual final per kelompok dan periode.', iconKey: 'tags', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'bundles', label: 'Bundle', description: 'Paket penjualan dan komponen stoknya.', iconKey: 'boxes', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'sales-returns', label: 'Approval Return', description: 'Review dan posting retur penjualan.', iconKey: 'rotate', roles: SALES_RETURN_APPROVER_ROLES, capabilities: ['VIEW'] },
+  { id: 'backoffice-sales-returns', label: 'Retur & Refund', description: 'Retur barang, Credit Note, dan refund Customer Backoffice.', iconKey: 'rotate', roles: SALES_ROLES, requiredAnyFeature: ['backoffice_delivered_qty_sales_enabled'], capabilities: ['VIEW'] },
+  { id: 'customer-return-receipts', label: 'Penerimaan Retur Customer', description: 'Terima fisik retur Customer dan tentukan disposition stok.', iconKey: 'package-plus', roles: [...INVENTORY_ROLES, 'FINANCE', 'SALES', 'SALES_ADMIN'], requiredAnyFeature: ['backoffice_delivered_qty_sales_enabled'], capabilities: ['VIEW'] },
   { id: 'backoffice-sales-orders', label: 'Quotation & Sales Order', description: 'Quotation dan Sales Order Backoffice sebelum pemenuhan.', iconKey: 'clipboard-pen', roles: SALES_ROLES, requiredAnyFeature: ['backoffice_delivered_qty_sales_enabled'], capabilities: ['VIEW'] },
   { id: 'sales-documents', label: 'Invoice Penjualan', description: 'Dokumen final Invoice dan cetak ulang.', iconKey: 'receipt', roles: SALES_ROLES, capabilities: ['VIEW'] },
   { id: 'delivery-documents', label: 'Surat Jalan', description: 'Persiapan, cetak, dan status pengiriman barang.', iconKey: 'truck', roles: INVENTORY_ROLES, capabilities: ['VIEW'] },
@@ -156,10 +160,10 @@ const itemDefinitions: ItemDefinition[] = [
 ]
 
 const moduleDefinitions: ModuleDefinition[] = [
-  { id: 'inventory', name: 'Inventory', description: 'Produk, gudang, saldo aktual, mutasi, transfer, opname, Surat Jalan, dan konfigurasi stok.', iconKey: 'boxes', color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'delivery-documents', 'products', 'opening-stock', 'minimum-stock', 'masters'] },
+  { id: 'inventory', name: 'Inventory', description: 'Produk, gudang, saldo aktual, mutasi, transfer, opname, Surat Jalan, dan konfigurasi stok.', iconKey: 'boxes', color: 'bg-blue-600', views: ['stock-real', 'stock-movements', 'stock-transfers', 'stock-adjustments', 'stock-opnames', 'delivery-documents', 'customer-return-receipts', 'products', 'opening-stock', 'minimum-stock', 'masters'] },
   { id: 'contacts', name: 'Kontak', description: 'Pelanggan, supplier, dan user Company.', iconKey: 'contact', color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
   { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
-  { id: 'sales', name: 'Sales', description: 'Quotation, Sales Order, Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['backoffice-sales-orders', 'sales-documents', 'pricelists', 'bundles', 'sales-returns'] },
+  { id: 'sales', name: 'Sales', description: 'Quotation, Sales Order, Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['backoffice-sales-orders', 'sales-documents', 'backoffice-sales-returns', 'pricelists', 'bundles', 'sales-returns'] },
   { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Health operasional, Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['platform-health', 'companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },

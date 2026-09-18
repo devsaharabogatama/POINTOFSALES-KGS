@@ -1,5 +1,298 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-17 - BACKOFFICE REFUND REVERSAL GUARD FORWARD-FIX LOCAL READY
+
+- Behavioral Step 4 mencapai `SOURCE_LINKED_REVERSAL` lalu gagal dengan
+  `REVERSAL_LINE_SOURCE_MISMATCH`. Seluruh fixture dirollback; bukan kegagalan
+  posting Refund atau kebutuhan data test.
+- Root cause: guard line Finance canonical hanya menerima jurnal sumber
+  `MANUAL`/`OPENING_BALANCE` untuk `journal_type=REVERSAL`, sedangkan Refund
+  source-owned menghasilkan `AUTOMATIC` atau `PRIOR_PERIOD_ADJUSTMENT`.
+- Forward migration `20260917151000` membuka jalur hanya bila jurnal reversal
+  dan jurnal sumber sama-sama memakai system event
+  `BACKOFFICE_CUSTOMER_REFUND`; sumber wajib posted, jenisnya Automatic/Prior
+  Period, akun dan line number harus sama, dan trigger membalik debit/kredit
+  persis. Jalur Manual/Opening serta seluruh event selain Refund tidak berubah.
+- Migration `20260917150000` yang sudah live tidak dijalankan ulang. Urutan
+  aman: reversal-fix preflight, migration `151000`, behavioral yang sama,
+  reversal-fix postflight, lalu full postflight.
+- Local static verification PASS: satu Function/satu terminator, guard dollar
+  tag dan transaction boundary seimbang, checksum manifest cocok, scope event
+  Refund + boundary Manual/Opening terdeteksi, serta `git diff --check` bersih
+  selain warning line-ending. PostgreSQL lokal tidak tersedia; status belum
+  DATABASE LIVE/BEHAVIOR PASS/SMOKE/UAT.
+
+## 2026-09-17 - BACKOFFICE RETURN STEP 4/5 REFUND LOCAL READY
+
+- Migration `20260917150000` menambah Refund Finance source-linked hanya dari
+  `CUSTOMER_REFUND_LIABILITY` Credit Note posted. Cash mengkredit akun Kas dan
+  Transfer mengkredit akun Bank dari Payment Method; tidak ada POS atau
+  Cashier Session pada call chain.
+- Partial Refund, cumulative cap, proof policy, Company/store scope, accounting
+  period, exact retry, source lock, immutable operation/audit dan balanced
+  Journal ditegakkan server-side.
+- Refund posted tidak diedit/dibatalkan. RPC reversal membuat dokumen baru dan
+  membalik persis Journal sumber; histori final tetap utuh.
+- Invoice payment context dan Customer Statement menampilkan net Refund dan
+  reversal. Stock/FIFO, Return Receipt, SO/DO, Invoice/Credit Note/Customer
+  Receipt posted, Retur Retail dan POS tidak dimutasi.
+- Paket: SELECT-only preflight, guarded migration, rollback-only behavioral,
+  SELECT-only postflight dan runbook. Local static verification PASS untuk
+  pasangan 10 deklarasi/terminator Function, seluruh dollar-tag/transaction
+  boundary, checksum migration-manifest, scoped `git diff --check`, serta
+  kontrak postflight operation/audit/Event/Journal dan batas tanpa Cashier
+  Session. PostgreSQL lokal tidak tersedia, sehingga runtime SQL tetap manual;
+  database rollout/authenticated smoke/UAT pending.
+- Next safe step: jalankan paket manual Step 4 sampai PASS. Step 5 UI/E2E baru
+  dimulai setelah gate database Step 4 ditutup user.
+
+## 2026-09-17 - GENERATED RECEIPT OPERATOR HANDOFF LOCAL READY
+
+- Step 4/5 Refund kembali dipause karena Production Goods Receipt mengembalikan
+  `GOODS_RECEIPT_OWNER_SCOPE_INVALID`.
+- Root cause: generated Receipt menyimpan pembuat PO sebagai `received_by`; RPC
+  hanya mengizinkan aktor itu melanjutkan setelah line tersedia, walaupun user
+  Gudang lain mempunyai capability sah.
+- Migration `20260917141000` menambah helper claim Draft transactional dan
+  mengganti wrapper Save/Post generated Receipt. Operator aktual menggantikan
+  `received_by`, optimistic version naik, dan perubahan masuk audit sebelum
+  canonical Save/Post diteruskan.
+- Company/source PO/Gudang/status/version/capability/idempotency tetap dijaga.
+  Install tidak memutasi Receipt final, Stock/FIFO, Bill, Payment atau Finance.
+- Paket preflight, migration, rollback-only behavioral, postflight dan runbook
+  tersedia. Local scoped ESLint PASS; database rollout dan authenticated smoke
+  menunggu user.
+
+## 2026-09-17 - NEGATIVE STOCK INBOUND RECOVERY LOCAL READY
+
+- First Production postflight reported `inbound_recovery_guard_contract=FAIL`
+  although both authorization-preservation checks passed. This was a
+  diagnostic false negative: `pg_get_functiondef` rendered
+  `NEW.qty_change<0`, while the assertion expected spaces around `<`. The
+  postflight now normalizes whitespace/case before checking the outbound-only
+  guard. Migration/runtime are unchanged and migration must not be rerun.
+- Root cause Production: trigger `trg_g4_guard_negative_sale_movement` memeriksa
+  seluruh movement dengan saldo akhir negatif. Akibatnya Goods Receipt positif
+  yang memperbaiki `-100` menjadi `-80` salah diminta mempunyai Sale
+  authorization.
+- Forward migration `20260917140000` membatasi authorization guard pada
+  `qty_change < 0` dan menyelaraskan constraint agar `qty_change > 0` boleh
+  berakhir negatif. Retail/Backoffice outbound authorization, Transfer, dan
+  exact Sales reversal tetap dipertahankan.
+- Tidak ada backfill atau mutation Stock/FIFO/PO/Receipt/Finance saat migration.
+  UI Goods Receipt sekarang menjelaskan bahwa kode lama adalah guard runtime,
+  bukan permission user tambahan.
+- Paket: SELECT-only preflight, guarded migration, SELECT-only postflight,
+  rollback-only behavior, dan runbook. Manual Production rollout serta
+  authenticated retry Goods Receipt masih pending.
+
+## 2026-09-17 - BACKOFFICE RETURN STEP 4/5 DECISION GATE CLOSED; DEVELOPMENT PAUSED
+
+- User menetapkan metode Refund memakai Payment Method aktif yang sama dengan
+  penerimaan Customer, termasuk Cash dan Transfer Bank.
+- Finance boleh membuat sekaligus mem-post Refund; separation of duties tidak
+  diwajibkan. Partial Refund diperbolehkan, dan bukti mengikuti `proof_mode`
+  Payment Method.
+- Refund posted immutable; koreksi hanya melalui reversal source-linked.
+- Ini hanya pencatatan keputusan. Belum ada migration, schema/RPC, posting
+  Finance, UI, test, atau perubahan runtime Step 4. Development dipause atas
+  instruksi user.
+- Next safe step saat user melanjutkan: impact audit Step 4 terhadap refund
+  liability, Cash/Bank settlement, accounting period, journal, permission,
+  idempotency, concurrency, reversal, dan compatibility data Step 3 sebelum
+  implementasi apa pun.
+
+## 2026-09-17 - BACKOFFICE RETURN STEP 3/5 DATABASE LIVE + TEST PASS; ERROR COPY CLIENT LOCAL READY
+
+- User mengonfirmasi behavioral dan closing postflight Step 3 seluruhnya PASS
+  setelah koreksi postflight memakai kolom canonical
+  `system_events.required_account_functions`. Status database adalah user-run
+  `DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS`; authenticated UI smoke dan UAT
+  belum diklaim.
+- Audit error menemukan penerjemah lokal terfragmentasi dan fallback raw
+  underscore code. `backoffice/src/lib/user-facing-error.ts` sekarang memberi
+  pesan sebab + tindakan, mempertahankan kode diagnosis, dan dipakai oleh Sales
+  Order, Invoice, Return approval, Finance operations, Sales process cutover,
+  serta Module Settings. Tidak ada server error code, HTTP status, permission,
+  schema, Stock/FIFO, Invoice/Payment/Finance mutation atau business rule yang
+  berubah.
+- Evidence client: scoped ESLint PASS, `git diff --check` PASS (hanya warning
+  line-ending), dan production `next build` PASS 85/85 route generation.
+
+- User menutup decision gate: Finance mengalokasikan received Return secara
+  explicit ke `UNINVOICED`, `DRAFT_INVOICE`, atau `POSTED_INVOICE`; source
+  Invoice tidak ditebak server.
+- Migration `20260917130000` menambah ledger post-Invoice return, marker Draft
+  Invoice reconfirm, schedule credited amount, Credit Note/line/allocation/
+  operation/audit foundation dan permission Finance.
+- Migration `20260917131000` menambah Draft adjustment, Customer Credit Note per
+  source Invoice, source-snapshot proportional value, editable source-capped
+  delivery fee, closed-period adjustment, balanced Journal, AR-first settlement
+  dan excess Customer Refund Liability.
+- Payment posted tidak direwrite. AR aging, payment context dan receivable
+  schedule membaca Credit Note. Step 2 Stock/FIFO, Retur Retail, DO/SJ,
+  Supplier flow dan Cashier Session tidak diubah.
+- Behavioral rollback-only mencakup one SO split ke Posted/Draft/un-invoiced,
+  physical receipt, exact allocation, partial payment yang membagi AR + refund
+  liability, balanced journal, exact retry dan stale version.
+- Final local audit mempertahankan pembulatan UOM canonical pada constraint line
+  Credit Note dan menaikkan `master_version` saat Draft Credit Note menerima
+  allocation tambahan; postflight memverifikasi optimistic-version contract.
+- Local static checks: dollar tags/transaction boundaries/identifier length dan
+  scoped diff-check PASS. PostgreSQL runtime belum tersedia pada agent.
+- First user run of Step 3 behavior returned only `42P01 relation "Posted"
+  does not exist` without `QUERY`/`CONTEXT`; local source has no `Posted`
+  relation. The test is now one `DO` statement (no separate trailing PASS
+  `SELECT`) with an internal rollback subtransaction and stable
+  `TEST_PHASE_FAILED [phase]`; every assertion remains active and fixtures do
+  not persist. Root runtime must be fixed from phase evidence; do not suppress
+  an actual runtime error.
+- First Step 3 postflight execution exposed an actual diagnostic defect:
+  `system_events.primary_account_functions` does not exist. Canonical schema
+  uses `required_account_functions`; the postflight now checks that exact
+  column while preserving the CUSTOMER_RECEIVABLE event assertion.
+- Manual order ada di
+  `docs/runbooks/BACKOFFICE_SALES_RETURN_CREDIT_NOTE_ROLLOUT.md`. Stop pada SQL
+  error, `BLOCKER`, atau `FAIL`. Database/test sudah PASS per user; status belum
+  authenticated UI smoke/UAT.
+- Cancel/reallocation Credit Note belum dibuka karena policy koreksinya belum
+  disetujui. Draft Invoice pengganti tetap manual. Refund payment adalah Step 4.
+- Next safe step: authenticated smoke Step 3 pada Invoice posted/draft/partial
+  payment, lalu decision gate Refund Step 4. Jangan menganggap build sebagai UAT.
+
+## 2026-09-17 - BACKOFFICE RETURN STEP 2/5 DATABASE LIVE + TEST PASS
+
+- User confirmed migration chain `120000`/`121000`/`122000`, behavioral test,
+  and closing postflight completed. All 14 non-`INFO` checks PASS: ledgers,
+  two immutable guards, five canonical `ENABLE ALWAYS` triggers, RLS, permission,
+  FIFO/Return aggregate/movement/source allocation reconciliation and Finance
+  zero-effect boundary. Runtime inventory remains zero; this is not authenticated
+  operational smoke. Authenticated Warehouse smoke and UAT remain pending.
+
+- Behavioral user menemukan audit Customer Return Receipt masih dapat dimutasi.
+  Assertion tidak dihapus. Forward migration `20260917121000` memasang ulang
+  guard canonical dan seluruh lima immutable trigger dengan `ENABLE ALWAYS`;
+  test kini juga mewajibkan tepat satu audit row sebelum mencoba mutation.
+- Postflight forward-fix sempat gagal parse `syntax error at end of input`.
+  Contract guard/trigger ditulis ulang memakai CTE eksplisit dan file lengkap
+  kini `PARSE_PASS statements=1` dengan parser PostgreSQL; seluruh check tetap ada.
+- Behavioral berikutnya membuktikan ledger `121000` belum menghasilkan penolakan
+  audit yang efektif. Migration lama tidak diedit untuk rerun. Forward-fix baru
+  `20260917122000` memberi line/FIFO/operation/audit guard reject-only terpisah
+  dari conditional Receipt-finalization guard; test tetap melakukan mutation,
+  memeriksa exact runtime trigger terlebih dahulu, dan melempar ulang error tak terduga.
+- Exact current postflight was executed through local PostgreSQL-compatible
+  PGlite parsing/planning: parsing completed and resolution stopped only at the
+  intentionally absent empty-engine relation `private.kgs_schema_migrations`.
+  Supabase `syntax error at end of input LINE 0` therefore indicates empty or
+  truncated editor input, not a syntax token in the checked-in file. BEGIN/END
+  full-file sentinels were added; use raw clipboard copy into a fresh editor tab.
+- User menetapkan `DESTROY` cukup wajib catatan; tidak ada foto dan tidak ada
+  approval kedua. Disposition tetap per line dan satu Product boleh di-split.
+- Migration `20260917120000` menambah Customer Return Receipt Inventory,
+  receipt line, allocation FIFO asal, operation/audit immutable, permission
+  Warehouse, aggregate quantity Return, optimistic version dan exact retry.
+- `RESTOCK` membuat batch FIFO baru memakai cost Customer Receipt asal dan satu
+  movement `SALES_RETURN`; `DESTROY` menyimpan receipt + write-off allocation
+  atomik tetapi tidak menambah On Hand.
+- Direct impact: Return master aggregate, Product Stock/Batch/Movement hanya
+  saat Warehouse POST. Retur Retail, Supplier Receipt, Reservation/DO, Invoice,
+  Credit Note, Payment/Refund, Cashier Session, Financial Event dan Journal tidak
+  diubah oleh Step 2.
+- Paket manual: preflight → migration → postflight → rollback-only behavior →
+  postflight ulang sesuai
+  `docs/runbooks/BACKOFFICE_SALES_RETURN_CUSTOMER_RECEIPT_ROLLOUT.md`.
+- Evidence lokal: scoped `git diff --check` PASS dan static transaction/function
+  boundary diperiksa. PostgreSQL runtime belum tersedia pada agent; manual SQL,
+  authenticated smoke dan UAT masih pending. Production tidak disentuh.
+- Next safe step setelah semua output non-INFO PASS: tutup decision gate
+  Invoice replacement, tax/diskon/ongkir/rounding dan closed-period sebelum
+  Step 3/5 Invoice reconciliation/Credit Note. Jangan mulai Refund Step 4.
+
+## 2026-09-17 - BACKOFFICE RETURN STEP 1/5 LOCAL READY
+
+- User menetapkan operator Draft: Owner/Admin/Store Manager/Sales/Sales Admin;
+  approver komersial: Owner/Admin/Store Manager/Sales Admin/Finance. Finance
+  tidak menjadi operator Draft.
+- Return boleh dimulai setelah quantity diterima Customer untuk Invoice belum
+  ada, Draft, atau posted. Draft Invoice final mencetak nilai bersih; Invoice
+  posted tetap immutable dan nantinya dikoreksi dengan Credit Note source-linked.
+- Partial Customer Return Receipt boleh memicu koreksi parsial sebesar quantity
+  aktual. Disposition nantinya per line dan boleh split satu Product.
+- Migration `20260917110000` menambah Return master/line/operation/audit,
+  permission ENFORCED, Draft/Submit/Approve/Cancel RPC, optimistic version,
+  exact retry, dan concurrent quantity hold saat Submit.
+- Direct impact hanya commercial Return. Tidak ada mutation Stock/FIFO,
+  accepted quantity, Invoice/Credit Note, Payment/Refund, Cashier Session,
+  Financial Event, atau Journal.
+- Paket manual: preflight → migration → postflight → rollback-only behavior →
+  postflight ulang sesuai
+  `docs/runbooks/BACKOFFICE_SALES_RETURN_COMMERCIAL_FOUNDATION_ROLLOUT.md`.
+- Status: LOCAL READY. PostgreSQL runtime, database rollout, authenticated smoke,
+  dan UAT belum dijalankan agent. Next safe step hanya setelah seluruh output
+  non-INFO PASS; kemudian tutup gate destruction evidence sebelum Step 2.
+
+## 2026-09-17 - BACKOFFICE RETURN IMPACT AUDIT COMPLETE
+
+- Audit membuktikan Retail `post_sales_return` menggabungkan open cashier
+  session, approval, Stock/FIFO, refund dan Financial Event. Jangan menambahkan
+  cabang Backoffice ke runtime itu.
+- Backoffice mempunyai accepted quantity dan Invoice allocation sendiri; satu SO
+  dapat mempunyai beberapa Invoice. Customer Credit Note category/mapping ada,
+  tetapi canonical Credit Note document runtime belum ditemukan.
+- Rencana lima step dan risiko lengkap dicatat di
+  `docs/audits/BACKOFFICE_SALES_RETURN_REFUND_IMPACT_2026-09-17.md`.
+- Empat keputusan Step 1 sudah ditutup user; implementasinya berada pada paket
+  `20260917110000`. Production tetap tidak disentuh.
+
+## 2026-09-17 - MULTI-ROLE DEFERRED / RETURN DEVELOPMENT RESUMED
+
+- User menunda multi-role per Company. Tidak boleh mengubah membership,
+  permission resolver, hierarchy, atau User & Akses pada rangkaian Return.
+- Kandidat desain dicatat di `docs/ROLE_AND_CAPABILITY_SPEC.md`: Primary Role +
+  Additional Roles, union capability lalu restriction; maker-checker masih
+  decision gate.
+- Fokus aktif kembali ke Backoffice Sales Retur & Refund. Wajib audit execution
+  path Retail Return, accepted delivery, Invoice/Credit Note, Gudang dan Finance
+  sebelum schema/runtime dibuat.
+
+## 2026-09-17 - ROLE SPECIFICATION AND RETURN FINANCIAL BOUNDARY
+
+- Status: `DOCUMENTATION ONLY`; tidak ada perubahan runtime, schema, permission,
+  data, deployment, Stock, Payment, atau Finance journal.
+- Ditambahkan `docs/ROLE_AND_CAPABILITY_SPEC.md` berdasarkan permission catalog,
+  resolver, UI capability gate, dan RPC aktif.
+- Temuan: Finance canonical hanya `VIEW` pada `sales.backoffice_orders`. Case
+  Finance dapat membuat Draft tetapi tidak dapat konfirmasi harus diaudit pada
+  role Company/effective capability; kombinasi tersebut bukan baseline Finance.
+- Runtime sekarang memberi `SALES` dan `SALES_ADMIN` capability Sales yang sama.
+  Jangan membuat perbedaan approval tanpa keputusan user dan migration khusus.
+- Process notes/manual mengunci empat boundary Return yang disetujui. Role
+  Return/Refund, metode refund, tax/ongkir/diskon/rounding, partial commercial
+  handling, dan destruction approval masih decision gate.
+- Verification: source inspection dan Markdown diff only. Tidak ada SQL/client
+  test karena execution path tidak diubah.
+- Next safe step: audit satu akun bermasalah lewat User & Akses atau read-only
+  permission inventory. Jangan mengubah catalog sebelum role aktual dan target
+  kewenangan dikonfirmasi user.
+
+## 2026-09-17 — BACKOFFICE SALES RETURN & REFUND DESIGN APPROVED
+
+- User menyetujui satu fitur Sales **Retur & Refund**, sementara SO/Invoice hanya
+  menampilkan indikator dan link.
+- Setelah barang diterima Customer, aksi cancel SO berubah menjadi **Buat
+  Retur**. Refund bukan efek otomatis dari tombol tersebut.
+- Inventory memakai satu area penerimaan dengan tab/jenis dokumen terpisah:
+  Supplier dan Retur Customer. Gudang menetapkan disposition **Masuk stok** atau
+  **Dihancurkan**.
+- Invoice posted tidak diedit. Credit Note mengurangi piutang; uang hanya
+  direfund sebesar kelebihan pembayaran setelah koreksi.
+- Catatan lengkap dan open decisions ada di
+  `docs/BACKOFFICE_SALES_RETURN_REFUND_PROCESS_NOTES.md`.
+- Status design-only: tidak ada schema, migration, runtime, UI, atau Production
+  mutation pada step ini. Next safe step adalah menutup pertanyaan flow sebelum
+  membuat impact/preflight foundation.
+
 ## 2026-09-17 — SURAT JALAN PROGRESSIVE BULK LOCAL READY
 
 - Root cause checkbox hasil filter: UI lama mengecualikan dan men-disable setiap
@@ -13674,3 +13967,21 @@ Eksekusi hanya setelah backup dan maintenance window.
 - Next safe step: smoke salah satu fixture PO dari Edit -> dokumen Receipt pada
   menu Penerimaan Barang -> Create Bill;
   stop dan audit bila runtime mengembalikan blocker, jangan patch berbasis tebakan.
+# 2026-09-18 - BACKOFFICE RETURN STEP 5/5 CLIENT + READ MODELS LOCAL READY
+
+- Step 5 menyambungkan Sales Retur & Refund, Inventory Penerimaan Retur
+  Customer, link SO, activity, Credit Note, partial Refund dan source-linked
+  reversal setelah user mengonfirmasi Step 4 PASS.
+- Migration `20260918100000` hanya menambah read-model. Workspace Gudang memakai
+  `inventory.customer_return_receipts`; link SO dan activity memakai permission
+  Sales canonical. Tidak ada backfill atau mutation Stock/FIFO, Invoice,
+  Payment, Finance, Retail Return, POS, atau Cashier Session.
+- Mutation client tetap melalui RPC Step 1-4 dengan operation UUID dan
+  optimistic master version. Error input Credit Note/Refund menghasilkan 400.
+- Evidence lokal: targeted ESLint PASS; TypeScript PASS; static contract PASS;
+  production build PASS dengan 87 static pages. SQL runtime belum dijalankan.
+- Manual gate: preflight -> migration -> postflight -> client deploy ->
+  authenticated multi-role/multi-Company/retry/stale-version/Retail regression
+  smoke sesuai `docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md`.
+- Status: `LOCAL READY`; belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`,
+  atau `UAT PASS`.

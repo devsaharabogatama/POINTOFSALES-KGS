@@ -14,11 +14,14 @@ export async function GET(request: Request, { params }: Context) {
     const caller = await requireCaller(request);
     await requireActiveCompany(caller);
     const { id } = await params;
-    const { data, error } = await caller.client.rpc("get_backoffice_sales_order", {
-      p_order_id: uuidValue(id, "BACKOFFICE_SALES_ORDER_ID_INVALID"),
-    });
+    const orderId = uuidValue(id, "BACKOFFICE_SALES_ORDER_ID_INVALID");
+    const [{ data, error }, links] = await Promise.all([
+      caller.client.rpc("get_backoffice_sales_order", { p_order_id: orderId }),
+      caller.client.rpc("get_backoffice_sales_return_links", { p_sales_order_id: orderId }),
+    ]);
     if (error) throwBackofficeSalesOrderError(error);
-    return Response.json(data);
+    if (links.error) throwBackofficeSalesOrderError(links.error);
+    return Response.json({ ...data, data: { ...data?.data, returns: links.data?.data ?? [] } });
   } catch (error) {
     return apiError(error);
   }

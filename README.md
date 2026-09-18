@@ -1,5 +1,116 @@
 # MADS — Management Distribution System
 
+## 2026-09-17 - Backoffice Customer Refund reversal guard fix LOCAL READY
+
+Forward-fix `20260917151000` membuka reversal jurnal Automatic/Prior Period
+hanya untuk system event `BACKOFFICE_CUSTOMER_REFUND`. Jalur Manual/Opening dan
+semua event Finance selain Refund tetap memakai batas canonical sebelumnya.
+Migration dasar tidak dijalankan ulang; database/test/smoke fix masih pending.
+[Runbook](docs/runbooks/BACKOFFICE_SALES_CUSTOMER_REFUND_ROLLOUT.md).
+
+## 2026-09-17 - Generated Goods Receipt operator handoff LOCAL READY
+
+Forward-fix menghapus ownership user lama pada Receipt otomatis tanpa membuka
+authorization: user Gudang tetap wajib capability `EDIT_DRAFT`/`POST`, sementara
+operator aktual dicatat sebagai `received_by` beserta audit. Company, PO,
+Gudang, optimistic version, idempotency, Stock/FIFO dan Finance tetap dijaga.
+[Runbook](docs/runbooks/GENERATED_GOODS_RECEIPT_OPERATOR_HANDOFF_FIX.md).
+
+## 2026-09-17 - Negative Stock Inbound Recovery LOCAL READY
+
+Forward-fix memperbaiki guard yang salah meminta otorisasi penjualan ketika
+Goods Receipt positif mengurangi stok minus tetapi saldo akhirnya masih negatif.
+Inbound positif diizinkan; outbound yang berakhir minus tetap wajib otorisasi
+Gudang canonical. Tidak ada backfill atau perubahan transaksi historis.
+[Runbook](docs/runbooks/NEGATIVE_STOCK_INBOUND_RECOVERY_FIX.md).
+
+## 2026-09-17 - Backoffice Return Step 4/5 LOCAL READY
+
+Refund settlement Finance sekarang local-ready: partial Cash/Transfer membayar
+liability Credit Note tanpa POS/Cashier Session, bukti mengikuti Payment Method,
+Journal balance dan Statement tetap source-linked, serta koreksi Refund posted
+memakai immutable reversal. Migration, behavioral, postflight dan runbook sudah
+tersedia; database rollout, authenticated smoke, UAT dan UI Step 5 masih pending.
+[Runbook](docs/runbooks/BACKOFFICE_SALES_CUSTOMER_REFUND_ROLLOUT.md).
+
+## 2026-09-17 - Backoffice Return Step 3/5 DATABASE LIVE + TEST PASS
+
+Paket Invoice reconciliation dan Customer Credit Note sudah disiapkan lokal.
+Finance membagi quantity Retur yang telah diterima ke belum ditagih, Draft
+Invoice, atau Posted Invoice secara eksplisit. Draft Invoice disesuaikan dan
+wajib dikonfirmasi ulang; Posted Invoice tetap immutable dan dikoreksi dengan
+Credit Note source-linked. Posting mengurangi AR terlebih dahulu dan mencatat
+kelebihan sebagai Customer Refund Liability tanpa membayar Refund otomatis.
+Stock/FIFO Step 2, Retur Retail dan Customer Receipt posted tidak ditulis ulang.
+Migration, behavioral rollback-only, dan postflight sudah user-confirmed PASS
+pada database target yang dijalankan user. Authenticated UI smoke dan UAT masih
+manual. Client juga memakai penerjemah error bersama pada Sales Order, Invoice,
+Return, Finance, cutover, dan pengaturan modul agar blocker menjelaskan tindakan
+berikutnya tanpa mengubah kode server atau business rule.
+[Runbook](docs/runbooks/BACKOFFICE_SALES_RETURN_CREDIT_NOTE_ROLLOUT.md).
+
+## 2026-09-17 - Backoffice Return Step 2/5 DATABASE LIVE + TEST PASS
+
+Penerimaan Retur Customer sudah disiapkan sebagai dokumen Inventory terpisah:
+Gudang mem-post quantity aktual dan memilih **Masuk stok** atau **Dihancurkan**
+per line. Dihancurkan wajib catatan tanpa foto/approval kedua; hanya Masuk stok
+menambah On Hand, dengan cost FIFO dari Customer Receipt asal. Invoice, Credit
+Note, Refund dan Finance tetap belum disentuh. Migration `120000`, `121000`,
+dan `122000`, behavioral rollback-only, serta closing postflight sudah
+user-confirmed PASS; authenticated smoke dan UAT masih manual.
+[Runbook](docs/runbooks/BACKOFFICE_SALES_RETURN_CUSTOMER_RECEIPT_ROLLOUT.md).
+Behavioral pertama menemukan audit Receipt belum immutable efektif; assertion
+dipertahankan dan forward-fix `20260917121000` memasang ulang guard canonical
+serta `ENABLE ALWAYS` seluruh trigger histori sebelum behavioral dijalankan ulang.
+Karena runtime yang sudah ber-ledger tetap gagal pada audit mutation, forward-fix
+baru `20260917122000` memisahkan guard finalisasi Receipt dari guard reject-only
+line/FIFO/operation/audit. Migration lama tidak dijalankan ulang. Closing
+postflight membuktikan lima trigger `ENABLE ALWAYS`, dua guard canonical,
+RLS/permission, FIFO/movement dan reconciliation seluruhnya PASS.
+
+## 2026-09-17 - Backoffice Return Step 1/5 LOCAL READY
+
+Fondasi komersial Return Backoffice sudah disiapkan: Draft, Submit, approval
+Sales Admin/Finance, cancel sebelum receipt, optimistic version, exact retry,
+quantity hold saat Submit, dan audit immutable. Tahap ini sengaja tidak
+menyentuh Stock/FIFO, Invoice/Credit Note, Refund, Cashier Session, Financial
+Event, atau Journal. Database rollout, authenticated smoke, dan UAT masih
+manual. [Runbook](docs/runbooks/BACKOFFICE_SALES_RETURN_COMMERCIAL_FOUNDATION_ROLLOUT.md).
+
+## 2026-09-17 - Backoffice Return impact audit complete
+
+Retail Return existing tidak diubah dan tidak dipakai sebagai shortcut untuk
+Backoffice. Impact audit memisahkan commercial Return, Customer Return Receipt,
+Credit Note, Refund, lalu UI/E2E menjadi lima step. Empat business decision gate
+sudah ditutup sebelum migration pertama dibuat; Step 2 database-live/test PASS
+dan Step 3 Credit Note kini local-ready.
+
+## 2026-09-17 - Multi-role deferred
+
+Multi-role dalam satu Company dicatat sebagai pengembangan tertunda. Runtime
+tetap memakai satu role per Company; tidak ada perubahan membership atau
+permission. Fokus aktif kembali ke desain/implementasi Backoffice Sales Retur &
+Refund setelah impact audit dan decision gate selesai.
+
+## 2026-09-17 - Role specification and Return financial boundary documented
+
+Runtime permission tidak diubah. Baseline role/capability dan troubleshooting
+effective access sekarang terdokumentasi di
+`docs/ROLE_AND_CAPABILITY_SPEC.md`. Empat boundary awal Backoffice Sales Return
+dikunci pada process notes: Credit Note setelah penerimaan aktual Gudang,
+destruction tetap mempunyai receipt + write-off lineage, alokasi per Invoice,
+dan Draft Invoice wajib dikonfirmasi user. Catatan ini menjadi dasar Step 1;
+schema/client Step 2–5 belum dimulai.
+
+## 2026-09-17 - Backoffice Retur & Refund DESIGN APPROVED
+
+Grouping flow disetujui: Sales memiliki satu fitur **Retur & Refund**;
+Inventory memisahkan **Dari Supplier** dan **Retur Customer**; Gudang menentukan
+barang **Masuk stok** atau **Dihancurkan**; Invoice posted dikoreksi dengan
+Credit Note dan refund hanya atas kelebihan pembayaran. Step 1 commercial
+foundation kini local-ready; UI serta efek Stock/Finance belum dibuat.
+[Process notes](docs/BACKOFFICE_SALES_RETURN_REFUND_PROCESS_NOTES.md).
+
 ## 2026-09-17 - Surat Jalan progressive bulk LOCAL READY
 
 Checkbox hasil filter kini berlaku untuk Surat Jalan POS dan Backoffice Sales.
@@ -2776,3 +2887,10 @@ sedangkan cost source/batch plan baru masih nol. Status saat ini **runtime
 installed / authenticated operational smoke pending**; belum boleh dianggap
 closure FIFO–GL sampai ada Dispatch minus → Goods Receipt → Supplier Invoice
 variance yang benar-benar diproses melalui controlled queue.
+# 2026-09-18 — Backoffice Sales Return Step 5/5 local ready
+
+UI Retur & Refund Backoffice, Penerimaan Retur Customer, link SO, activity log,
+Credit Note, partial Refund dan source-linked reversal sudah `LOCAL READY`.
+Read-model Inventory memakai permission Gudang sendiri; Retail/POS/Cashier
+Session tidak diubah. Rollout database, client, smoke dan UAT mengikuti
+[runbook](docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).

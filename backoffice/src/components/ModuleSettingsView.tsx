@@ -8,6 +8,7 @@ import { OfflinePosSettings } from '@/components/OfflinePosSettings'
 import { NegativeStockSettings } from '@/components/NegativeStockSettings'
 import { PosTerminalUiSettings } from '@/components/PosTerminalUiSettings'
 import { SalesProcessCutoverSettings } from '@/components/SalesProcessCutoverSettings'
+import { userFacingError } from '@/lib/user-facing-error'
 
 type Feature = {
   feature_code: string; feature_name: string; module_code: string
@@ -51,7 +52,7 @@ function friendlyError(code?: string) {
     PURCHASE_RECEIPT_WAREHOUSE_INVALID: 'Gudang penerimaan harus aktif dan diizinkan menerima pembelian.',
     MASTER_VERSION_CONFLICT: 'Pengaturan berubah di tab lain. Muat ulang lalu coba kembali.',
   }
-  return messages[code ?? ''] ?? code ?? 'Operasi pengaturan modul gagal.'
+  return userFacingError(code, messages, 'Operasi pengaturan modul belum berhasil.')
 }
 
 export function ModuleSettingsView({ session, companyId, companyName, isSuperAdmin, notify }: {

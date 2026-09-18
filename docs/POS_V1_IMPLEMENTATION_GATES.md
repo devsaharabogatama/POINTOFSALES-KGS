@@ -2977,3 +2977,108 @@ Status: `LOCAL READY; MANUAL ISOLATED-DEVELOPMENT SQL + AUTHENTICATED SMOKE PEND
   PASS dengan 83 static pages. SQL belum dijalankan oleh agent.
 - Gate berikut: user menjalankan preflight → migration → rollback-only behavior
   → postflight, lalu smoke sesuai runbook pada `fkywtxucmyjvpwdiqpix`.
+## 2026-09-17 — Backoffice Sales Return Step 1/5
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Commercial Return hanya Draft → Submitted → Approved atau Canceled sebelum
+  Customer Return Receipt.
+- Operator: Owner/Admin/Store Manager/Sales/Sales Admin. Approver:
+  Owner/Admin/Store Manager/Sales Admin/Finance.
+- Quantity baru menjadi hold pada Submit dan divalidasi ulang secara serialized;
+  Draft tidak mengurangi accepted quantity maupun mengunci Return lain.
+- Zero-effect boundary: tidak ada Stock/FIFO, Invoice/Credit Note, Refund,
+  Cashier Session, Financial Event, atau Journal mutation.
+- Gate: preflight, migration `20260917110000`, postflight, rollback-only
+  behavioral test, postflight ulang, lalu authenticated role smoke.
+
+## 2026-09-17 — Backoffice Sales Return Step 2/5
+
+Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT USER-CONFIRMED PASS; AUTHENTICATED SMOKE/UAT PENDING`.
+
+- Customer Return Receipt adalah dokumen Inventory terpisah dari Supplier
+  Receipt dan Retur Retail.
+- Hanya quantity aktual yang di-post Gudang yang mengubah boundary fisik.
+- Disposition per line: `RESTOCK` menambah On Hand/FIFO, sedangkan `DESTROY`
+  wajib catatan dan menyimpan receipt + write-off lineage tanpa menambah On Hand.
+- Foto dan approval kedua untuk `DESTROY` tidak diwajibkan sesuai keputusan user.
+- Permission `inventory.customer_return_receipts` memberi POST kepada
+  Owner/Admin/Store Manager/Warehouse Admin; Finance/Sales hanya VIEW sesuai
+  baseline tracing.
+- Exact retry, optimistic version, cross-Company denial, immutable receipt/audit,
+  partial receipt dan split disposition wajib dibuktikan behavior rollback-only.
+- Zero-effect boundary: Invoice/Credit Note, Payment/Refund, Financial Event dan
+  Journal tidak berubah pada Step 2.
+- Gate: preflight → migration `20260917120000` → immutable forward-fix
+  `20260917121000` → reject-only history guard `20260917122000` → postflight → behavioral →
+  postflight ulang → authenticated Warehouse smoke.
+- User-confirmed closing output: seluruh non-`INFO` PASS; runtime inventory nol
+  adalah inventory, bukan behavioral proof atau blocker. Authenticated smoke
+  dengan transaksi Return Receipt nyata tetap pending.
+
+## 2026-09-17 - Backoffice Sales Return Step 3/5
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Finance wajib memilih explicit `UNINVOICED`, `DRAFT_INVOICE`, atau
+  `POSTED_INVOICE` untuk setiap quantity yang sudah diterima Gudang; tidak ada
+  auto-guess Invoice.
+- Draft Invoice dipotong proporsional, schedule/DP/tax canonical direbuild, dan
+  diberi marker wajib reconfirm sebelum posting.
+- Posted Invoice tetap immutable dan menghasilkan satu Draft Credit Note per
+  Invoice sumber. Product/discount/tax memakai snapshot sumber; ongkir default
+  nol dan editable sebelum posting dengan source cap.
+- Posting Credit Note membuat Financial Event dan Journal seimbang, mengurangi
+  AR terlebih dahulu, lalu mencatat excess sebagai Customer Refund Liability.
+  Tidak ada pembayaran Refund pada Step 3.
+- AR aging, Invoice payment context dan receivable schedule menjadi credit-aware;
+  Customer Receipt posted tidak ditulis ulang.
+- Draft replacement Invoice tetap manual. Cancel/reallocation Credit Note belum
+  dibuka tanpa business decision tambahan.
+- Gate: preflight -> migration `20260917130000` -> migration `20260917131000`
+  -> rollback-only behavioral -> postflight -> authenticated Finance smoke.
+- Task berikut setelah Step 3: audit seluruh warning/error UI dan perjelas sebab
+  blocker serta tindakan user, tanpa mengubah business rule.
+
+## 2026-09-17 - Backoffice Sales Return Step 4/5
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Refund hanya membayar `CUSTOMER_REFUND_LIABILITY` dari Credit Note posted.
+- Finance dapat mem-post Cash/Transfer secara langsung dan partial; tidak ada
+  POS atau Cashier Session pada flow Backoffice ini.
+- Payment Method, store scope, `proof_mode`, periode, tenant, permission,
+  cumulative cap, exact retry dan concurrency lock divalidasi server-side.
+- Journal Refund: debit liability dan kredit Kas/Bank. Refund posted immutable;
+  reversal source-linked membalik Journal sumber dan membuka kembali status
+  `REFUND_PENDING` bila liability tersisa.
+- Customer Statement dan Invoice payment context menampilkan net Refund tanpa
+  menulis ulang Invoice/Credit Note/Customer Receipt final.
+- Behavioral pertama menemukan guard Finance canonical hanya menerima sumber
+  Manual/Opening untuk Journal reversal. Forward-fix `20260917151000` membuka
+  Automatic/Prior Period hanya ketika sumber dan reversal sama-sama memakai
+  event `BACKOFFICE_CUSTOMER_REFUND`; boundary event lain tetap tertutup.
+- Gate setelah migration dasar live: reversal-fix preflight -> migration
+  `20260917151000` -> rollback-only behavioral -> reversal-fix postflight ->
+  full postflight -> authenticated Finance smoke. UI terpadu tetap Step 5/5.
+## 2026-09-17 - Generated Goods Receipt operator handoff
+
+Status: `LOCAL READY; MANUAL DATABASE ROLLOUT AND AUTHENTICATED SMOKE PENDING`.
+
+- Direct impact terbatas pada wrapper Save/Post Receipt otomatis dan audit
+  operator Draft.
+- Capability `purchase.goods_receipts` tetap server-authoritative; tidak ada
+  perluasan role atau bypass Company/Gudang.
+- Install tidak mengubah Receipt final, line, Stock/FIFO, Bill, Payment atau
+  Finance. Save Draft tetap zero-effect dan Post tetap memakai runtime canonical.
+- Gate: preflight → migration `20260917141000` → rollback-only behavior →
+  postflight → authenticated retry dokumen Production yang sebelumnya gagal.
+## 2026-09-18 - Backoffice Sales Return Step 5/5
+
+- Client dan read-model berstatus `LOCAL READY` setelah ESLint, TypeScript,
+  static contract test, dan production build 87 pages PASS.
+- Migration `20260918100000` read-only/additive; mutation tetap melalui runtime
+  transactional Step 1-4. Retur Retail dan POS/Cashier Session tidak berubah.
+- Gate belum ditutup sampai preflight, migration, postflight, client deploy,
+  authenticated E2E, multi-Company, retry/stale-version, Retail regression dan
+  UAT seluruhnya PASS menurut runbook Step 5.

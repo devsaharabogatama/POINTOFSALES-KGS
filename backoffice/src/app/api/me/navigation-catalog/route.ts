@@ -50,6 +50,8 @@ export async function GET(request: Request) {
       supplierInvoicePermissionResult,
       supplierPaymentPermissionResult,
       customerReceiptPermissionResult,
+      backofficeReturnPermissionResult,
+      customerReturnReceiptPermissionResult,
       financeProcessUiPolicy,
     ] = await Promise.all([
       caller.client
@@ -154,6 +156,16 @@ export async function GET(request: Request) {
         p_target_user_id: caller.user.id,
         p_permission_key: "finance.customer_receipts",
       }),
+      caller.client.rpc("resolve_user_permission", {
+        p_company_id: companyId,
+        p_target_user_id: caller.user.id,
+        p_permission_key: "sales.backoffice_returns",
+      }),
+      caller.client.rpc("resolve_user_permission", {
+        p_company_id: companyId,
+        p_target_user_id: caller.user.id,
+        p_permission_key: "inventory.customer_return_receipts",
+      }),
       getFinanceProcessUiPolicy(companyId),
     ]);
     if (profileResult.error) throw profileResult.error;
@@ -223,6 +235,12 @@ export async function GET(request: Request) {
           ),
           "customer-receipts": permissionCapabilities(
             customerReceiptPermissionResult,
+          ),
+          "backoffice-sales-returns": permissionCapabilities(
+            backofficeReturnPermissionResult,
+          ),
+          "customer-return-receipts": permissionCapabilities(
+            customerReturnReceiptPermissionResult,
           ),
         },
       }),

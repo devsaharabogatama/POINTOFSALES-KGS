@@ -70,6 +70,8 @@ import { StockAdjustmentView } from "@/components/StockAdjustmentView";
 import { StockOpnameView } from "@/components/StockOpnameView";
 import { BundleMasterView } from "@/components/BundleMasterView";
 import { SalesReturnApprovalView } from "@/components/SalesReturnApprovalView";
+import { BackofficeSalesReturnView } from "@/components/BackofficeSalesReturnView";
+import { CustomerReturnReceiptView } from "@/components/CustomerReturnReceiptView";
 import { SalesDocumentView } from "@/components/SalesDocumentView";
 import { BackofficeSalesOrderView } from "@/components/BackofficeSalesOrderView";
 import { DeliveryDocumentView } from "@/components/DeliveryDocumentView";
@@ -213,6 +215,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const consumedOrderLink = useRef("");
   const [supplierInvoiceLaunch, setSupplierInvoiceLaunch] = useState<SupplierInvoiceLaunch | null>(null);
+  const [salesReturnLaunch, setSalesReturnLaunch] = useState<{ salesOrderId?: string; returnId?: string } | null>(null);
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [navigationModules, setNavigationModules] = useState<
@@ -622,6 +625,7 @@ export default function Home() {
         return;
       }
       if (nextView !== "supplier-invoices") setSupplierInvoiceLaunch(null);
+      if (nextView !== "backoffice-sales-returns") setSalesReturnLaunch(null);
       setViewHistory((current) => [...current, activeView].slice(-20));
       setActiveView(nextView);
     },
@@ -918,6 +922,17 @@ export default function Home() {
             />
           )}
 
+          {activeView === "backoffice-sales-returns" && (
+            <BackofficeSalesReturnView
+              key={`${activeCompanyId}-${salesReturnLaunch?.returnId ?? salesReturnLaunch?.salesOrderId ?? "list"}`}
+              session={session}
+              companyId={activeCompanyId}
+              initialSalesOrderId={salesReturnLaunch?.salesOrderId}
+              initialReturnId={salesReturnLaunch?.returnId}
+              notify={setNotice}
+            />
+          )}
+
           {activeView === "sales-documents" && (
             <SalesDocumentView
               key={activeCompanyId}
@@ -943,6 +958,10 @@ export default function Home() {
               canManage={backofficeSalesOrderNavigation?.capabilities.includes("MANAGE") ?? false}
               notify={setNotice}
               openProcessSettings={() => navigateTo("module-settings")}
+              openSalesReturn={(salesOrderId, returnId) => {
+                setSalesReturnLaunch({ salesOrderId, returnId });
+                navigateTo("backoffice-sales-returns");
+              }}
             />
           )}
 
@@ -1129,6 +1148,15 @@ export default function Home() {
               canCreate={canCreateGoodsReceipt || canEditGoodsReceipt}
               canPost={canPostGoodsReceipt}
               canCancel={canCancelGoodsReceipt}
+              notify={setNotice}
+            />
+          )}
+
+          {activeView === "customer-return-receipts" && (
+            <CustomerReturnReceiptView
+              key={activeCompanyId}
+              session={session}
+              companyId={activeCompanyId}
               notify={setNotice}
             />
           )}

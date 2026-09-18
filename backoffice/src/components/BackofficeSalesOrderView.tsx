@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, FilePenLine, FileText, History, Loader2, Plus, RefreshCw, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, FilePenLine, FileText, History, Loader2, Plus, RefreshCw, RotateCcw, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { BackofficeSalesInvoiceView } from "@/components/BackofficeSalesInvoiceView";
 import { OfficeRetailHistoryDetail } from '@/components/OfficeRetailHistoryDetail';
 import { filterRetailHistory, retailStatusLabel, type RetailHistory } from '@/lib/office-retail-history';
+import { userFacingError } from '@/lib/user-facing-error';
 
 type Status = "DRAFT" | "SENT" | "CONFIRMED" | "CANCELED";
 type FulfillmentStatus = "QUOTATION" | "CONFIRMED" | "PREPARING" | "PARTIALLY_SHIPPED" | "IN_TRANSIT" | "COMPLETED" | "CANCELED";
 type DocumentKind = "QUOTATION" | "SALES_ORDER";
 type DateBasis = "ORDER_DATE" | "DELIVERY_DATE" | "DUE_DATE";
 type InvoiceStatus = "NOT_READY" | "READY" | "DRAFT" | "PARTIALLY_INVOICED" | "INVOICED";
+type ReturnLink = { returnId: string; returnNo: string; status: string; totalRequestedBaseQty: number; totalReceivedBaseQty: number; updatedAt: string };
 type Store = { id: string; code: string; name: string };
 type Warehouse = { id: string; code: string; name: string; storeId: string | null };
 type Customer = { id: string; code: string; name: string; defaultPricelistId: string | null; creditTermDays: number | null; phone?: string | null; email?: string | null; address?: string | null };
@@ -26,6 +28,7 @@ type Order = {
   notes: string | null; subtotal: number; discountTotal: number; globalDiscount: number; taxTotal: number; deliveryFeeAmount: number; deliveryFeeInvoiceDisplayMode: string; grandTotalBeforeRounding: number; roundingDirection: string; roundingIncrement: number; roundingAdjustment: number; grandTotal: number; masterVersion: number;
   revisionCount: number; lastRevisedAt: string | null; lastRevisedBy: string | null; updatedAt: string; sentAt: string | null; confirmedAt: string | null; canceledAt: string | null; cancelReason: string | null; activity?: { action: string; reason: string | null; actorId: string; actorName: string | null; createdAt: string; relatedDocumentId?: string; relatedDocumentNo?: string; relatedDocumentType?: string }[]; lines: OrderLine[];
   invoiceStatus: InvoiceStatus; draftInvoiceId: string | null; activeInvoiceCount: number; postedInvoiceCount: number;
+  returns?: ReturnLink[];
 };
 type FormLine = { key: string; productUomId: string; quantity: string; canonicalUnitPrice?: number; overrideUnitPrice: string | null; lineDiscountType: "" | "AMOUNT" | "PERCENT"; lineDiscountInput: string; taxLabel?: string; taxRatePercent?: number | null };
 type FormState = { storeId: string; warehouseId: string; customerId: string; selectedPricelistId: string; orderDate: string; plannedDeliveryDate: string; isTempo: boolean; dueDate: string; notes: string; revisionReason: string; globalDiscount: string; deliveryFeeAmount: string; roundingDirection: "NONE" | "DOWN" | "UP"; lines: FormLine[] };
@@ -60,7 +63,10 @@ function today() { return new Date().toLocaleDateString("en-CA"); }
 function money(value: number) { return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value); }
 function dateText(value: string | null) { return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${value}T12:00:00`)) : "-"; }
 function dateTimeText(value: string | null) { return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-"; }
-function errorText(code: string) { return friendly[code] ?? code.replaceAll("_", " "); }
+function errorText(code: string) { return userFacingError(code, friendly, "Operasi Sales Order belum berhasil."); }
+function returnStatusLabel(status: string) {
+  return ({ DRAFT: "Draft", SUBMITTED: "Menunggu persetujuan", APPROVED: "Menunggu barang", PARTIALLY_RECEIVED: "Diterima sebagian", RECEIVED: "Menunggu koreksi", CREDIT_PENDING: "Credit Note Draft", REFUND_PENDING: "Menunggu refund", COMPLETED: "Selesai", CANCELED: "Dibatalkan" } as Record<string, string>)[status] ?? status.replaceAll("_", " ");
+}
 function activityLabel(action: string) {
   return ({ CREATE: "Quotation dibuat", UPDATE: "Quotation diperbarui", SEND: "Quotation dikirim", CONFIRM: "Dikonfirmasi menjadi Sales Order", REVISE: "Sales Order direvisi", CANCEL: "Dokumen dibatalkan", CUTOVER_RECOVERY: "Dipindahkan dari proses Retail" } as Record<string, string>)[action] ?? action.replaceAll("_", " ");
 }
@@ -71,7 +77,7 @@ function newForm(workspace: Workspace): FormState {
   return { storeId: selected?.storeId ?? (workspace.stores.length === 1 ? workspace.stores[0].id : ""), warehouseId: selected?.id ?? "", customerId: "", selectedPricelistId: "", orderDate: value, plannedDeliveryDate: value, isTempo: false, dueDate: "", notes: "", revisionReason: "", globalDiscount: "0", deliveryFeeAmount: "0", roundingDirection: "NONE", lines: [] };
 }
 
-export function BackofficeSalesOrderView({ session, companyId, companyName, canCreate, canEdit, canManage, notify, openProcessSettings }: { session: Session; companyId: string; companyName: string; canCreate: boolean; canEdit: boolean; canManage: boolean; notify: (message: string) => void; openProcessSettings: () => void }) {
+export function BackofficeSalesOrderView({ session, companyId, companyName, canCreate, canEdit, canManage, notify, openProcessSettings, openSalesReturn }: { session: Session; companyId: string; companyName: string; canCreate: boolean; canEdit: boolean; canManage: boolean; notify: (message: string) => void; openProcessSettings: () => void; openSalesReturn: (salesOrderId: string, returnId?: string) => void }) {
   const consumedOrderLink = useRef("");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -150,7 +156,7 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
 
   if (invoiceMode) return <BackofficeSalesInvoiceView session={session} initialSalesOrderId={!invoiceMode.list && !invoiceMode.invoiceId ? invoiceMode.salesOrderId ?? null : null} initialInvoiceId={invoiceMode.invoiceId ?? null} initialListSalesOrderId={invoiceMode.list ? invoiceMode.salesOrderId ?? null : null} canCreate={canCreate} canEdit={canEdit} canManage={canManage} companyName={companyName} notify={notify} back={() => { setInvoiceMode(null); void load(); }} />;
   if (editing !== undefined && workspace) return <OrderEditor session={session} workspace={workspace} order={editing} close={() => setEditing(undefined)} saved={async (order) => { setEditing(undefined); await load(); setSelected(await readOrder(order.id)); }} />;
-  if (selected && workspace) return <OrderDetail openSource={(id) => { setSelected(null); void openHistory({ id }); }} session={session} order={selected} workspace={workspace} canCreate={canCreate} canEdit={canEdit} canManage={canManage} close={() => setSelected(null)} edit={() => { setEditing(selected); setSelected(null); }} createInvoice={() => setInvoiceMode({ salesOrderId: selected.id })} transition={transition} refresh={async () => setSelected(await readOrder(selected.id))} error={error} />;
+  if (selected && workspace) return <OrderDetail openSource={(id) => { setSelected(null); void openHistory({ id }); }} session={session} order={selected} workspace={workspace} canCreate={canCreate} canEdit={canEdit} canManage={canManage} close={() => setSelected(null)} edit={() => { setEditing(selected); setSelected(null); }} createInvoice={() => setInvoiceMode({ salesOrderId: selected.id })} createReturn={() => openSalesReturn(selected.id)} openReturn={(returnId) => openSalesReturn(selected.id, returnId)} transition={transition} refresh={async () => setSelected(await readOrder(selected.id))} error={error} />;
 
   const visibleHistory = filterRetailHistory(history, { companyId, kind: documentKind,
     search, fulfillment: documentKind === 'SALES_ORDER' ? fulfillmentStatus : '',
@@ -268,13 +274,14 @@ function OrderEditor({ session, workspace, order, close, saved }: { session: Ses
   </div>;
 }
 
-function OrderDetail({ openSource, session, order, workspace, canCreate, canEdit, canManage, close, edit, createInvoice, transition, refresh, error }: { openSource: (id: string) => void; session: Session; order: Order; workspace: Workspace; canCreate: boolean; canEdit: boolean; canManage: boolean; close: () => void; edit: () => void; createInvoice: () => void; transition: (order: Order, action: "SEND" | "CONFIRM" | "CANCEL") => Promise<void>; refresh: () => Promise<void>; error: string }) {
+function OrderDetail({ openSource, session, order, workspace, canCreate, canEdit, canManage, close, edit, createInvoice, createReturn, openReturn, transition, refresh, error }: { openSource: (id: string) => void; session: Session; order: Order; workspace: Workspace; canCreate: boolean; canEdit: boolean; canManage: boolean; close: () => void; edit: () => void; createInvoice: () => void; createReturn: () => void; openReturn: (returnId: string) => void; transition: (order: Order, action: "SEND" | "CONFIRM" | "CANCEL") => Promise<void>; refresh: () => Promise<void>; error: string }) {
   const [activeTab, setActiveTab] = useState<DocumentTab>("lines");
   const [showActivity, setShowActivity] = useState(true);
   const warehouse = workspace.warehouses.find((item) => item.id === order.warehouseId); const store = workspace.stores.find((item) => item.id === order.storeId);
   const pricelistName = order.lines[0]?.pricingSnapshot?.pricelistName ?? workspace.pricelists?.find((item) => item.id === order.pricelistId)?.name ?? "Harga dasar Product";
   const pricelistSource = order.lines[0]?.pricingSnapshot?.pricingSelectionSource === "BACKOFFICE_EXPLICIT" ? "Dipilih pada dokumen" : "Otomatis dari Customer / Global";
-  const actions = <>{order.status === "CONFIRMED" && order.fulfillmentStatus === "COMPLETED" && canCreate && <button onClick={createInvoice} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><FileText className="h-4 w-4" />Buat Invoice</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canEdit && <button onClick={edit} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 font-bold"><FilePenLine className="h-4 w-4" />{order.status === "CONFIRMED" ? "Revisi SO" : "Edit"}</button>}{(order.status === "DRAFT" || order.status === "SENT") && canManage && <button onClick={() => void transition(order, "CONFIRM")} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><ShoppingCart className="h-4 w-4" />Konfirmasi menjadi SO</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canManage && <button onClick={() => void transition(order, "CANCEL")} className="rounded-xl border border-rose-200 px-4 py-2 font-bold text-rose-700">{order.status === "CONFIRMED" ? "Batalkan SO" : "Batalkan"}</button>}</>;
+  const latestReturn = order.returns?.[0];
+  const actions = <>{order.status === "CONFIRMED" && order.fulfillmentStatus === "COMPLETED" && canCreate && <><button onClick={createInvoice} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><FileText className="h-4 w-4" />Buat Invoice</button>{latestReturn ? <button onClick={() => openReturn(latestReturn.returnId)} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 font-bold text-emerald-800"><RotateCcw className="h-4 w-4" />{latestReturn.returnNo} · {returnStatusLabel(latestReturn.status)}</button> : <button onClick={createReturn} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 font-bold text-emerald-800"><RotateCcw className="h-4 w-4" />Buat Retur</button>}</>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canEdit && <button onClick={edit} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 font-bold"><FilePenLine className="h-4 w-4" />{order.status === "CONFIRMED" ? "Revisi SO" : "Edit"}</button>}{(order.status === "DRAFT" || order.status === "SENT") && canManage && <button onClick={() => void transition(order, "CONFIRM")} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white"><ShoppingCart className="h-4 w-4" />Konfirmasi menjadi SO</button>}{((order.status === "DRAFT" || order.status === "SENT") || (order.status === "CONFIRMED" && (order.fulfillmentStatus === "CONFIRMED" || order.fulfillmentStatus === "PREPARING") && order.activeInvoiceCount === 0)) && canManage && <button onClick={() => void transition(order, "CANCEL")} className="rounded-xl border border-rose-200 px-4 py-2 font-bold text-rose-700">{order.status === "CONFIRMED" ? "Batalkan SO" : "Batalkan"}</button>}</>;
   return <div className="space-y-3"><DocumentHeader title={order.orderNo ?? order.quotationNo} subtitle={order.orderNo ? `Sales Order · asal ${order.quotationNo}` : "Quotation"} status={order.status} fulfillmentStatus={order.fulfillmentStatus} back={close} actions={actions} />
     {error && <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</div>}{order.cancelReason && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">Alasan pembatalan: {order.cancelReason}</div>}
     <section className="overflow-hidden border border-slate-200 bg-white shadow-sm">

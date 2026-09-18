@@ -59,12 +59,28 @@ Peran standar meliputi:
 | Company Owner | Kendali tertinggi pada perusahaan dan persetujuan final tertentu. |
 | Company Admin | Administrasi perusahaan, master, pengguna, dan operasi. |
 | Store Manager | Operasi serta persetujuan dalam cakupan toko yang ditugaskan. |
+| Sales | Membuat, mengedit, dan memproses dokumen pada modul Sales. |
+| Sales Admin | Saat ini memiliki baseline modul Sales yang sama dengan Sales; pemisahan maker/approver belum diterapkan. |
 | Warehouse Admin | Operasi persediaan dan pembelian yang diizinkan. |
 | Finance | Kas, Expense, piutang/utang, dokumen keuangan, dan proses persetujuan. |
 | Accounting | Jurnal, laporan, rekonsiliasi, dan akses baca yang relevan. |
 | Cashier | Operasi POS dalam toko, terminal, gudang, dan sesi yang ditugaskan. |
 
-Administrator dapat memberikan pembatasan khusus per submodul. Preset yang umum adalah **Lihat Saja**, **Operasional**, dan **Tanpa Akses**. Pembatasan khusus hanya dapat mempersempit kewenangan dasar; tidak dapat memperluas cakupan perusahaan atau toko.
+Administrator dapat memberikan pembatasan khusus per submodul. **Mengikuti
+role** memakai baseline role; **Lihat Saja** menyisakan VIEW; **Operasional**
+menyisakan VIEW serta kemampuan membuat/mengedit Draft yang sudah dimiliki role,
+tetapi melepas konfirmasi, approval, dan posting; **Tanpa Akses** menutup
+submodul. Pembatasan khusus hanya dapat mempersempit kewenangan dasar; tidak
+dapat menambah hak baru atau memperluas cakupan perusahaan/toko.
+
+Contoh penting: Finance canonical hanya dapat melihat Quotation/SO Backoffice.
+Pembuatan/edit Draft dan konfirmasi menjadi SO adalah kewenangan Owner/Admin,
+Store Manager, Sales, dan Sales Admin. Jika akun yang disebut “Finance” dapat
+membuat Draft tetapi tidak dapat konfirmasi, periksa role Company dan effective
+capability pada **User & Akses**; jangan menyimpulkan hak dari nama akun.
+
+Matriks tindakan lengkap tersedia pada
+[Role dan Capability KGS POS](ROLE_AND_CAPABILITY_SPEC.md).
 
 Jika menu tidak tampil, periksa perusahaan aktif, status keanggotaan, peran, penugasan toko, status modul perusahaan, dan pembatasan khusus pengguna.
 
@@ -856,6 +872,22 @@ Inventory GL, COGS, dan event/jurnal biaya.
 Untuk Order baru, kuantitas yang dapat diretur dibatasi oleh kuantitas yang
 benar-benar sudah Dispatch, bukan jumlah Order awal. Posting mengembalikan FIFO
 sumber yang sesuai dan membuat event refund tepat satu kali.
+
+Untuk Backoffice Sales, fondasi komersial Draft/Submit/Approve/Cancel dan
+runtime Penerimaan Retur Customer sudah disiapkan lokal, tetapi UI serta rollout
+database masih pending. Sales/Sales Admin dapat membuat Draft; approval
+dilakukan Sales Admin atau Finance. Setelah approval, Gudang mem-post quantity
+aktual per line sebagai **Masuk stok** atau **Dihancurkan**. Satu Product boleh
+dipecah ke dua hasil tersebut. **Dihancurkan** wajib catatan, tanpa foto dan
+tanpa approval kedua; hanya **Masuk stok** yang menambah On Hand. Boundary berikutnya tetap:
+Credit Note baru mengikuti quantity tersebut; Invoice Draft disesuaikan tetapi
+tetap dikonfirmasi user; Invoice posted tidak ditulis ulang; dan refund hanya
+dibuat jika Credit Note menghasilkan kelebihan pembayaran. Disposition
+**Dihancurkan** tetap mencatat penerimaan barang rusak dan write-off yang
+terhubung. Satu SO dapat menjadi Return master, tetapi setiap Invoice posted
+mempunyai Credit Note sendiri.
+
+Lihat [catatan proses Backoffice Sales Return & Refund](BACKOFFICE_SALES_RETURN_REFUND_PROCESS_NOTES.md).
 
 ### Retur pembelian
 

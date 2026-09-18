@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { userFacingError } from "@/lib/user-facing-error";
 import {
   BarChart3,
   BookOpen,
@@ -358,9 +359,7 @@ async function downloadFinanceExport(
 }
 
 function friendly(code: string | undefined) {
-  if (!code) return "Operasi Finance gagal.";
-  const exact = Object.keys(friendlyErrors).find((key) => code.includes(key));
-  return exact ? friendlyErrors[exact] : code;
+  return userFacingError(code, friendlyErrors, "Operasi Finance belum berhasil.");
 }
 
 async function readApiJson<T>(response: Response): Promise<T> {

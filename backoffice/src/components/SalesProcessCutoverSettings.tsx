@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { userFacingError } from '@/lib/user-facing-error'
 import {
   ArrowRight,
   CalendarClock,
@@ -160,7 +161,7 @@ function modeLabel(mode?: ProcessMode) {
 }
 
 function friendlyError(code?: string) {
-  return errorLabels[code ?? ''] ?? (code ? codeLabel(code) : 'Operasi pergantian proses gagal.')
+  return userFacingError(code, errorLabels, 'Operasi pergantian proses belum berhasil.')
 }
 
 function codeLabel(code: string) {

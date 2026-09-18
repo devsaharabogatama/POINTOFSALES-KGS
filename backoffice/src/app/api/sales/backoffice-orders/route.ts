@@ -18,7 +18,8 @@ export async function GET(request: Request) {
     const dateFrom = url.searchParams.get("dateFrom") || null;
     const dateTo = url.searchParams.get("dateTo") || null;
     const search = url.searchParams.get("search") || null;
-    const { data, error } = await caller.client.rpc("get_backoffice_sales_orders_v3", {
+    const [{ data, error }, links] = await Promise.all([
+      caller.client.rpc("get_backoffice_sales_orders_v3", {
       p_document_kind: documentKind,
       p_fulfillment_status: fulfillmentStatus,
       p_invoice_status: invoiceStatus,
@@ -27,9 +28,23 @@ export async function GET(request: Request) {
       p_date_to: dateTo,
       p_search: search,
       p_limit: 100,
-    });
+      }),
+      caller.client.rpc("get_backoffice_sales_return_links", { p_sales_order_id: null }),
+    ]);
     if (error) throwBackofficeSalesOrderError(error);
-    return Response.json(data);
+    if (links.error) throwBackofficeSalesOrderError(links.error);
+    const linksByOrder = new Map<string, unknown[]>();
+    for (const link of links.data?.data ?? []) {
+      const salesOrderId = String(link.salesOrderId ?? "");
+      linksByOrder.set(salesOrderId, [...(linksByOrder.get(salesOrderId) ?? []), link]);
+    }
+    return Response.json({
+      ...data,
+      data: (data?.data ?? []).map((order: { id: string }) => ({
+        ...order,
+        returns: linksByOrder.get(order.id) ?? [],
+      })),
+    });
   } catch (error) {
     return apiError(error);
   }

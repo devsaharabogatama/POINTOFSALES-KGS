@@ -13,6 +13,10 @@ export async function GET(request: Request, { params }: Context) {
       p_invoice_id: invoiceId,
     });
     if (error) throwBackofficeInvoiceError(error);
+    const returnLinks = await caller.client.rpc("get_backoffice_sales_return_links", {
+      p_sales_order_id: data?.data?.salesOrderId,
+    });
+    if (returnLinks.error) throwBackofficeInvoiceError(returnLinks.error);
     const { data: permission, error: permissionError } = await caller.client.rpc("resolve_user_permission", {
       p_company_id: companyId, p_target_user_id: caller.user.id,
       p_permission_key: "finance.customer_receipts",
@@ -27,7 +31,7 @@ export async function GET(request: Request, { params }: Context) {
       if (payment.error) throwBackofficeInvoiceError(payment.error);
       paymentContext = payment.data;
     }
-    return Response.json({ ...data, paymentContext });
+    return Response.json({ ...data, paymentContext, returnLinks: returnLinks.data?.data ?? [] });
   } catch (error) { return apiError(error); }
 }
 

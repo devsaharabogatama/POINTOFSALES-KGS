@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { ArrowLeft, Banknote, Download, ExternalLink, FileText, Loader2, Printer, X } from "lucide-react";
 import { downloadSalesInvoicePdf, printSalesInvoiceDocument } from "@/lib/sales-document-print";
+import { userFacingError } from "@/lib/user-facing-error";
 
 type SourceLine = { id: string; sourceKind: "SALES_ORDER" | "ACCEPTED_OVERAGE"; salesOrderLineId?: string; discrepancyLineId?: string; lineNo: number; productCode: string; productName: string; uomCode: string; uomName: string; orderedQty: number; acceptedQty: number; invoicedQty: number; draftAllocatedQty: number; toInvoiceQty: number; baseQtyPerUom: number; unitPrice: number; discountAmount: number; approvedDiscountAmount?: number; approvedTaxAmount?: number; taxApplied: boolean; taxName: string | null; taxRatePercent: number | null };
 type SourceOrder = { id: string; salesOrderNo: string; quotationNo: string; status: string; fulfillmentStatus: string; orderDate: string; plannedDeliveryDate: string; isTempo: boolean; dueDate: string | null; customerSnapshot: { code?: string; name?: string; address?: string }; currencyCode: string; deliveryFeeAmount: number; deliveryFeeRemaining: number; totalToInvoiceBaseQty: number; lines: SourceLine[]; acceptedOverageLines: SourceLine[] };
@@ -30,7 +31,7 @@ const friendly: Record<string, string> = {
 function authHeaders(session: Session, json = false) { return { Authorization: `Bearer ${session.access_token}`, ...(json ? { "Content-Type": "application/json" } : {}) }; }
 function money(value: number) { return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value); }
 function dateText(value: string | null) { return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${value}T12:00:00`)) : "-"; }
-function errorText(code: string) { return friendly[code] ?? code.replaceAll("_", " "); }
+function errorText(code: string) { return userFacingError(code, friendly, "Operasi Invoice belum berhasil."); }
 async function jsonResponse(response: Response) { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(errorText(typeof body.error === "string" ? body.error : "OPERASI_GAGAL")); return body; }
 function dateOnly(value: string) { return value.slice(0, 10); }
 function draftFromSource(source: SourceOrder, companyDate: string): Draft | null {
