@@ -17,6 +17,13 @@ export async function GET(request: Request, { params }: Context) {
       p_sales_order_id: data?.data?.salesOrderId,
     });
     if (returnLinks.error) throwBackofficeInvoiceError(returnLinks.error);
+    const commercialRpc = await caller.client.rpc("get_sales_invoice_commercial_statuses");
+    const commercialMissing = commercialRpc.error?.code === "PGRST202"
+      || Boolean(commercialRpc.error?.message?.includes("get_sales_invoice_commercial_statuses"));
+    if (commercialRpc.error && !commercialMissing) throwBackofficeInvoiceError(commercialRpc.error);
+    const commercialPayload = commercialRpc.data as { data?: Array<Record<string, unknown>> } | null;
+    const commercial = (commercialPayload?.data ?? []).find((row) =>
+      row.sourceKind === "BACKOFFICE" && row.sourceId === invoiceId) ?? {};
     const { data: permission, error: permissionError } = await caller.client.rpc("resolve_user_permission", {
       p_company_id: companyId, p_target_user_id: caller.user.id,
       p_permission_key: "finance.customer_receipts",
@@ -31,7 +38,8 @@ export async function GET(request: Request, { params }: Context) {
       if (payment.error) throwBackofficeInvoiceError(payment.error);
       paymentContext = payment.data;
     }
-    return Response.json({ ...data, paymentContext, returnLinks: returnLinks.data?.data ?? [] });
+    return Response.json({ ...data, data: { ...(data?.data ?? {}), ...commercial }, paymentContext,
+      returnLinks: returnLinks.data?.data ?? [] });
   } catch (error) { return apiError(error); }
 }
 

@@ -3114,3 +3114,17 @@ Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS; CLIENT/SMOKE/UAT PENDING`.
   Behavioral rollback-only dan postflight kemudian dikonfirmasi seluruhnya
   PASS. Gate aktif sekarang client deploy, lalu authenticated retained/native
   regression smoke; jangan menjalankan ulang migration yang sudah sukses.
+
+## 2026-09-18 - Invoice Return commercial status
+
+Status: `LOCAL READY; MANUAL DATABASE/CLIENT/SMOKE/UAT PENDING`.
+
+- Invoice sumber tetap immutable. Status UI diturunkan dari Invoice, Retur, dan
+  Credit Note menjadi Active, Return in progress, Partial Return, Full Return,
+  atau Canceled.
+- Read RPC additive tetap Company-scoped dan memerlukan VIEW Retail Sales
+  Document atau Backoffice Sales Order. Tidak ada mutation Stock/FIFO, AR,
+  Payment, Journal, Invoice, Retur, atau Credit Note.
+- Gate: preflight -> migration `20260918160000` -> rollback-only behavior ->
+  postflight -> deploy client -> authenticated Retail/Backoffice list/detail/
+  filter smoke -> UAT. PASS dengan zero runtime row bukan bukti smoke.

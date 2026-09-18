@@ -1,5 +1,36 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-18 - Invoice Return commercial status LOCAL READY
+
+- Root cause screenshot user terbukti pada read path: Invoice Retail/Backoffice
+  hanya membaca status sumber, sedangkan Retur/Credit Note sengaja tidak
+  memutasi Invoice historis. Akibatnya Retur selesai tetap diberi label `Aktif`.
+- Migration additive `20260918160000` menambah read-only RPC status komersial.
+  Canceled sumber tetap `Dibatalkan`; Retur aktif tanpa Credit Note posted
+  menjadi `Retur diproses`; Credit Note parsial/penuh menjadi `Diretur sebagian`
+  atau `Diretur penuh`.
+- RPC menerima VIEW dari jalur `sales.sales_documents` atau
+  `sales.backoffice_orders`, tetap active-Company scoped, dan tidak memperluas
+  mutation permission. Client menggabungkan status ke daftar/detail Retail dan
+  Backoffice serta menambah filter yang sama.
+- Tidak ada mutation/backfill Invoice, Retur, Credit Note, Refund, Payment, AR,
+  Journal, Stock/FIFO, Cashier Session, atau histori.
+- Evidence lokal: targeted ESLint `PASS`; `tsc --noEmit` `PASS`; Next.js
+  production build `PASS` dengan 87 halaman; scoped diff check bersih selain
+  warning line-ending. PostgreSQL runtime belum dijalankan.
+- Eksekusi migration pertama berhenti pada ledger insert karena file lokal
+  memakai nama kolom generik `name/checksum/applied_by`, sedangkan kontrak repo
+  yang aktif adalah `version/migration_name/notes`. Seluruh DDL sebelumnya ada
+  dalam `BEGIN`, sehingga error me-rollback function. Ledger insert dikoreksi
+  mengikuti migration `20260918150000` dan `NOTIFY pgrst` ditambahkan; migration
+  `160000` harus dijalankan ulang penuh dari awal, bukan dilanjutkan dari baris
+  yang gagal.
+- Manual gate: preflight -> migration -> rollback-only behavior -> postflight ->
+  deploy client -> authenticated smoke sesuai
+  `docs/runbooks/SALES_INVOICE_RETURN_COMMERCIAL_STATUS_ROLLOUT.md`.
+- Status belum boleh disebut `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`,
+  atau `UAT PASS` sebelum bukti manual masing-masing tersedia.
+
 ## 2026-09-18 - Retained Retail Credit Note/Refund bridge DB VERIFIED
 
 - Root cause kasus `RTN-20260918-0000000016` terbukti berada pada allocator

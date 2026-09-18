@@ -30,6 +30,20 @@ function isOptionalActivityRpcMissing(error: { code?: string; message?: string }
     || Boolean(error?.message?.includes('get_sales_document_activity'))
 }
 
+function isOptionalCommercialStatusRpcMissing(error: { code?: string; message?: string } | null) {
+  return error?.code === 'PGRST202'
+    || Boolean(error?.message?.includes('get_sales_invoice_commercial_statuses'))
+}
+
+type CommercialStatus = Record<string, unknown> & { sourceKind?: string; sourceId?: string }
+
+function commercialStatusMap(data: unknown, sourceKind: 'RETAIL' | 'BACKOFFICE') {
+  const payload = data as { data?: unknown[] } | null
+  const rows = Array.isArray(payload?.data) ? payload.data as CommercialStatus[] : []
+  return new Map(rows.filter((row) => row.sourceKind === sourceKind && row.sourceId)
+    .map((row) => [row.sourceId as string, row]))
+}
+
 export async function GET(request: Request) {
   const operation = new URL(request.url).searchParams.get('operation')?.toUpperCase()
   if (operation === 'EXPORT') return handleSalesDocumentExport(request)
@@ -40,39 +54,49 @@ export async function GET(request: Request) {
     const salesIdParam = new URL(request.url).searchParams.get('salesId')
     if (salesIdParam) {
       const salesId = uuidValue(salesIdParam)
-      const [invoiceRpc, revisionRpc, activityRpc] = await Promise.all([
+      const [invoiceRpc, revisionRpc, activityRpc, commercialRpc] = await Promise.all([
         caller.client.rpc('get_sales_invoice_document', {
           p_sales_id: salesId,
         }),
         caller.client.rpc('get_sales_order_revision_links'),
         caller.client.rpc('get_sales_document_activity'),
+        caller.client.rpc('get_sales_invoice_commercial_statuses'),
       ])
       if (invoiceRpc.error) rpcFailure(invoiceRpc.error.message)
       if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
       if (activityRpc.error && !isOptionalActivityRpcMissing(activityRpc.error)) {
         rpcFailure(activityRpc.error.message)
       }
+      if (commercialRpc.error && !isOptionalCommercialStatusRpcMissing(commercialRpc.error)) {
+        rpcFailure(commercialRpc.error.message)
+      }
       const links = Array.isArray(revisionRpc.data)
         ? revisionRpc.data as Array<Record<string, unknown>> : []
       const activities = Array.isArray(activityRpc.data)
         ? activityRpc.data as Array<Record<string, unknown>> : []
+      const commercial = commercialStatusMap(commercialRpc.data, 'RETAIL').get(salesId)
       const revision = links.find((item) =>
         item.sourceSalesId === salesId || item.replacementSalesId === salesId)
       return Response.json({ companyId, invoice: {
         ...(invoiceRpc.data as Record<string, unknown>),
+        ...(commercial ?? {}),
         revision: revision ?? null,
         activity: activities.find((item) => item.salesId === salesId) ?? null,
       } })
     }
-    const [documentRpc, revisionRpc, activityRpc] = await Promise.all([
+    const [documentRpc, revisionRpc, activityRpc, commercialRpc] = await Promise.all([
       caller.client.rpc('get_sales_documents'),
       caller.client.rpc('get_sales_order_revision_links'),
       caller.client.rpc('get_sales_document_activity'),
+      caller.client.rpc('get_sales_invoice_commercial_statuses'),
     ])
     if (documentRpc.error) throw documentRpc.error
     if (revisionRpc.error) rpcFailure(revisionRpc.error.message)
     if (activityRpc.error && !isOptionalActivityRpcMissing(activityRpc.error)) {
       rpcFailure(activityRpc.error.message)
+    }
+    if (commercialRpc.error && !isOptionalCommercialStatusRpcMissing(commercialRpc.error)) {
+      rpcFailure(commercialRpc.error.message)
     }
     const payload = documentRpc.data as { data?: unknown[] } | null
     const links = Array.isArray(revisionRpc.data)
@@ -81,8 +105,10 @@ export async function GET(request: Request) {
       ? activityRpc.data as Array<Record<string, unknown>> : []
     const rows = Array.isArray(payload?.data)
       ? payload.data as Array<Record<string, unknown>> : []
+    const commercial = commercialStatusMap(commercialRpc.data, 'RETAIL')
     return Response.json({ companyId, data: rows.map((row) => ({
       ...row,
+      ...(typeof row.salesId === 'string' ? commercial.get(row.salesId) ?? {} : {}),
       revision: links.find((item) =>
         item.sourceSalesId === row.salesId || item.replacementSalesId === row.salesId) ?? null,
       activity: activities.find((item) => item.salesId === row.salesId) ?? null,

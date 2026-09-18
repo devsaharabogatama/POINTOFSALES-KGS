@@ -15,12 +15,24 @@ export async function GET(request: Request) {
       p_limit: 100,
     });
     if (error) throwBackofficeInvoiceError(error);
+    const commercialRpc = await caller.client.rpc("get_sales_invoice_commercial_statuses");
+    const commercialMissing = commercialRpc.error?.code === "PGRST202"
+      || Boolean(commercialRpc.error?.message?.includes("get_sales_invoice_commercial_statuses"));
+    if (commercialRpc.error && !commercialMissing) throwBackofficeInvoiceError(commercialRpc.error);
+    const commercialPayload = commercialRpc.data as { data?: Array<Record<string, unknown>> } | null;
+    const commercial = new Map((commercialPayload?.data ?? [])
+      .filter((row) => row.sourceKind === "BACKOFFICE" && typeof row.sourceId === "string")
+      .map((row) => [row.sourceId as string, row]));
+    const workspace = data as { invoices?: Array<Record<string, unknown>> } | null;
+    const enriched = workspace ? { ...workspace, invoices: (workspace.invoices ?? []).map((invoice) => ({
+      ...invoice, ...(typeof invoice.id === "string" ? commercial.get(invoice.id) ?? {} : {}),
+    })) } : data;
     const { data: permission } = await caller.client.rpc("resolve_user_permission", {
       p_company_id: companyId, p_target_user_id: caller.user.id,
       p_permission_key: "finance.journals_reports",
     });
     const capabilities = Array.isArray(permission?.effectiveCapabilities) ? permission.effectiveCapabilities : [];
-    return Response.json({ ...data, permissions: { canPost: capabilities.includes("POST") } });
+    return Response.json({ ...enriched, permissions: { canPost: capabilities.includes("POST") } });
   } catch (error) { return apiError(error); }
 }
 

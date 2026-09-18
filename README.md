@@ -1,5 +1,16 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - Invoice Return commercial status LOCAL READY
+
+Root cause Invoice sumber Retur yang masih tampil `Aktif` sudah ditutup pada
+read-model dan client. Invoice asli tetap immutable untuk audit; status tampilan
+sekarang diturunkan dari Retur/Credit Note menjadi `Retur diproses`, `Diretur
+sebagian`, atau `Diretur penuh`, dengan `Dibatalkan` tetap khusus dokumen sumber
+yang canceled. Tidak ada mutation Invoice, AR, Journal, Payment, Stock, FIFO,
+atau histori. Lint, TypeScript, dan production build 87 halaman `PASS`; rollout
+database, deploy client, authenticated smoke, dan UAT masih manual. Lihat
+[runbook](docs/runbooks/SALES_INVOICE_RETURN_COMMERCIAL_STATUS_ROLLOUT.md).
+
 ## 2026-09-18 - Retained Retail Credit Note/Refund bridge DATABASE LIVE
 
 Fix lokal menutup error `query returned no rows` ketika Retur **Asal Retail**

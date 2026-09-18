@@ -59,3 +59,10 @@ Status client: `LOCAL READY`.
   oleh runtime tool (`missing sandboxPolicy`). Sesudah client di-deploy, cek
   daftar, detail, Draft Retur, penerimaan Gudang, Credit Note, Refund, serta
   viewport sempit sebelum menandai `CLIENT DEPLOYED`/`SMOKE PASS`.
+
+## Status Invoice sumber setelah Retur
+
+Status Invoice pada daftar/detail tidak lagi hanya membaca status dokumen asli.
+Rollout additive terpisah membaca Retur dan Credit Note tanpa memutasi histori;
+ikuti [runbook status komersial Invoice](SALES_INVOICE_RETURN_COMMERCIAL_STATUS_ROLLOUT.md)
+sebelum smoke status `Retur diproses`, `Diretur sebagian`, dan `Diretur penuh`.

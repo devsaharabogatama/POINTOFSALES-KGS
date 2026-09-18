@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Invoice Return commercial status
+
+[Runbook](runbooks/SALES_INVOICE_RETURN_COMMERCIAL_STATUS_ROLLOUT.md). Invoice
+sumber tidak dimutasi oleh Retur, tetapi daftar/detail Invoice sekarang membaca
+Retur dan Credit Note untuk menampilkan status komersial `Retur diproses`,
+`Diretur sebagian`, atau `Diretur penuh`. Paket database/client `LOCAL READY`;
+rollout, smoke, dan UAT masih pending.
+
 ## 2026-09-18 - Retained Retail Credit Note/Refund bridge
 
 [Runbook](runbooks/RETAINED_RETAIL_CREDIT_NOTE_REFUND_BRIDGE_ROLLOUT.md) dan
