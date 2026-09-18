@@ -50,6 +50,25 @@ export function parseReturnDraft(body: JsonObject) {
   };
 }
 
+export function parseRetainedRetailReturnDraft(body: JsonObject) {
+  if (typeof body.reason !== "string" || !body.reason.trim() || !Array.isArray(body.lines) || !body.lines.length) {
+    throw new ApiRouteError("BACKOFFICE_SALES_RETURN_PAYLOAD_INVALID", 400);
+  }
+  return {
+    reason: body.reason.trim().slice(0, 500),
+    notes: typeof body.notes === "string" ? body.notes.trim().slice(0, 2000) || null : null,
+    lines: body.lines.map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ApiRouteError("BACKOFFICE_SALES_RETURN_LINE_INVALID", 400);
+      const line = raw as JsonObject;
+      return {
+        retailSalesDetailId: requiredUuid(line, "retailSalesDetailId"),
+        quantityUom: positiveNumber(line.quantityUom, "BACKOFFICE_SALES_RETURN_LINE_INVALID"),
+        reason: typeof line.reason === "string" ? line.reason.trim().slice(0, 500) || null : null,
+      };
+    }),
+  };
+}
+
 export function parseReturnReceipt(body: JsonObject) {
   if (!Array.isArray(body.lines) || !body.lines.length) throw new ApiRouteError("BACKOFFICE_SALES_RETURN_RECEIPT_INPUT_REQUIRED", 400);
   return body.lines.map((raw) => {
@@ -88,11 +107,14 @@ export function throwBackofficeReturnError(error: { code?: string; message?: str
   const message = error?.message ?? "";
   const codes = [
     "CUSTOM_PERMISSION_DENIED", "BACKOFFICE_SALES_RETURN_NOT_FOUND", "BACKOFFICE_SALES_RETURN_SOURCE_NOT_FOUND",
+    "RETAINED_RETAIL_RETURN_SOURCE_NOT_FOUND", "RETAINED_RETAIL_RETURN_SOURCE_ALREADY_CONVERTED",
     "BACKOFFICE_SALES_RETURN_PAYLOAD_INVALID", "BACKOFFICE_SALES_RETURN_LINE_INVALID", "BACKOFFICE_SALES_RETURN_QUANTITY_EXCEEDS_RETURNABLE",
     "BACKOFFICE_SALES_RETURN_NOT_DRAFT", "BACKOFFICE_SALES_RETURN_SUBMIT_STATE_INVALID", "BACKOFFICE_SALES_RETURN_APPROVE_STATE_INVALID",
     "BACKOFFICE_SALES_RETURN_CANCEL_STATE_INVALID", "BACKOFFICE_SALES_RETURN_RECEIPT_INPUT_REQUIRED", "BACKOFFICE_SALES_RETURN_RECEIPT_LINE_INVALID",
     "BACKOFFICE_SALES_RETURN_RECEIPT_STATE_INVALID", "BACKOFFICE_SALES_RETURN_ALREADY_FULLY_RECEIVED", "BACKOFFICE_SALES_RETURN_RECEIPT_QUANTITY_EXCEEDS_APPROVED",
-    "BACKOFFICE_SALES_RETURN_RECEIPT_WAREHOUSE_INVALID", "BACKOFFICE_SALES_RETURN_SOURCE_FIFO_EXHAUSTED", "RETURN_INVOICE_ALLOCATION_REQUIRED",
+    "BACKOFFICE_SALES_RETURN_RECEIPT_WAREHOUSE_INVALID", "BACKOFFICE_SALES_RETURN_SOURCE_FIFO_EXHAUSTED",
+    "RETAINED_RETAIL_RETURN_LEGACY_COST_LINEAGE_INVALID", "RETAINED_RETAIL_RETURN_PHYSICAL_PRODUCT_MISMATCH",
+    "RETURN_INVOICE_ALLOCATION_REQUIRED",
     "RETURN_INVOICE_ALLOCATION_LINE_INVALID", "RETURN_INVOICE_ALLOCATION_TYPE_INVALID", "RETURN_RECEIPT_QUANTITY_ALREADY_ALLOCATED",
     "UNINVOICED_RETURN_QUANTITY_NOT_AVAILABLE", "RETURN_SOURCE_INVOICE_LINE_INVALID", "DRAFT_INVOICE_REQUIRED", "POSTED_INVOICE_REQUIRED",
     "DRAFT_INVOICE_RETURN_QUANTITY_EXCEEDS_LINE", "CREDIT_NOTE_NOT_FOUND", "CREDIT_NOTE_NOT_EDITABLE", "CREDIT_NOTE_NOT_POSTABLE",

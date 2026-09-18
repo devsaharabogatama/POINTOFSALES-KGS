@@ -215,7 +215,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const consumedOrderLink = useRef("");
   const [supplierInvoiceLaunch, setSupplierInvoiceLaunch] = useState<SupplierInvoiceLaunch | null>(null);
-  const [salesReturnLaunch, setSalesReturnLaunch] = useState<{ salesOrderId?: string; returnId?: string } | null>(null);
+  const [salesReturnLaunch, setSalesReturnLaunch] = useState<{ salesOrderId?: string; retailSalesId?: string; returnId?: string } | null>(null);
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [navigationModules, setNavigationModules] = useState<
@@ -927,10 +927,11 @@ export default function Home() {
 
           {activeView === "backoffice-sales-returns" && (
             <BackofficeSalesReturnView
-              key={`${activeCompanyId}-${salesReturnLaunch?.returnId ?? salesReturnLaunch?.salesOrderId ?? "list"}`}
+              key={`${activeCompanyId}-${salesReturnLaunch?.returnId ?? salesReturnLaunch?.retailSalesId ?? salesReturnLaunch?.salesOrderId ?? "list"}`}
               session={session}
               companyId={activeCompanyId}
               initialSalesOrderId={salesReturnLaunch?.salesOrderId}
+              initialRetailSalesId={salesReturnLaunch?.retailSalesId}
               initialReturnId={salesReturnLaunch?.returnId}
               notify={setNotice}
             />
@@ -963,6 +964,10 @@ export default function Home() {
               openProcessSettings={() => navigateTo("module-settings")}
               openSalesReturn={(salesOrderId, returnId) => {
                 setSalesReturnLaunch({ salesOrderId, returnId });
+                navigateTo("backoffice-sales-returns");
+              }}
+              openRetainedRetailReturn={(retailSalesId) => {
+                setSalesReturnLaunch({ retailSalesId });
                 navigateTo("backoffice-sales-returns");
               }}
             />
