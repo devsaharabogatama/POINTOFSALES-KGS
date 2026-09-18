@@ -552,6 +552,12 @@ export default function Home() {
   const paymentMethodNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "payment-methods");
+  const financeMasterNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "finance-masters");
+  const taxRuleNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "tax-rules");
   const canManageCustomerIdentity =
     customerNavigation?.capabilities.includes("MANAGE") ?? false;
   const canManageCustomerCredit =
@@ -588,10 +594,7 @@ export default function Home() {
   const canManagePaymentMethod =
     paymentMethodNavigation?.capabilities.includes("MANAGE") ?? false;
   const canManageFinanceMaster =
-    context?.isSuperAdmin ||
-    ["COMPANY_OWNER", "COMPANY_ADMIN", "FINANCE", "ACCOUNTING"].includes(
-      activeCompany?.roleCode ?? "",
-    );
+    financeMasterNavigation?.capabilities.includes("MANAGE") ?? false;
   const financeNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "finance");
@@ -1230,7 +1233,7 @@ export default function Home() {
               key={activeCompanyId}
               session={session}
               companyId={activeCompanyId}
-              canManage={Boolean(canManageFinanceMaster)}
+              canManage={taxRuleNavigation?.capabilities.includes("MANAGE") ?? false}
               notify={setNotice}
             />
           )}

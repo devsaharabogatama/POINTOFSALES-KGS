@@ -99,6 +99,54 @@ type ModuleDefinition = Omit<NavigationCatalogModule, 'items'> & {
   views: NavigationViewId[]
 }
 
+// A navigation item that represents an ACP permission must resolve its
+// capabilities from the database. Keeping this map beside the catalog avoids
+// silently falling back to VIEW when a new menu is added to the API by hand.
+type PermissionBackedNavigationViewId = Exclude<
+  NavigationViewId,
+  'platform-health' | 'companies' | 'platform-pos'
+>
+
+export const NAVIGATION_PERMISSION_KEYS: Record<PermissionBackedNavigationViewId, string> = {
+  'data-exchange': 'data.exchange',
+  masters: 'inventory.master_data',
+  products: 'inventory.products',
+  bundles: 'sales.bundles',
+  'sales-returns': 'sales.sales_returns',
+  'backoffice-sales-returns': 'sales.backoffice_returns',
+  'customer-return-receipts': 'inventory.customer_return_receipts',
+  'backoffice-sales-orders': 'sales.backoffice_orders',
+  'sales-documents': 'sales.sales_documents',
+  'delivery-documents': 'inventory.delivery_documents',
+  'expense-approvals': 'finance.expenses',
+  'cash-deposits': 'finance.cash_deposits',
+  'deposit-variances': 'finance.deposit_variances',
+  'customer-balances': 'finance.customer_balances',
+  'customer-receipts': 'finance.customer_receipts',
+  'supplier-invoices': 'finance.supplier_invoices',
+  'supplier-payments': 'finance.supplier_payments',
+  'stock-real': 'inventory.stock_real',
+  'stock-movements': 'inventory.stock_movements',
+  'stock-transfers': 'inventory.stock_transfers',
+  'stock-adjustments': 'inventory.stock_adjustments',
+  'stock-opnames': 'inventory.stock_opnames',
+  'opening-stock': 'inventory.opening_stock',
+  'minimum-stock': 'inventory.minimum_stock',
+  suppliers: 'contacts.suppliers',
+  'supplier-orders': 'purchase.supplier_orders',
+  'goods-receipts': 'purchase.goods_receipts',
+  'purchase-returns': 'purchase.purchase_returns',
+  customers: 'contacts.customers',
+  pricelists: 'sales.pricelists',
+  'payment-methods': 'finance.payment_methods',
+  'finance-masters': 'finance.master_data',
+  'tax-rules': 'finance.tax_rules',
+  finance: 'finance.journals_reports',
+  staff: 'contacts.staff_access',
+  'company-branding': 'platform.company_branding',
+  'module-settings': 'platform.module_settings',
+}
+
 export const INVENTORY_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'STORE_MANAGER', 'WAREHOUSE_ADMIN']
 export const STOCK_REAL_ROLES = [...INVENTORY_ROLES, 'FINANCE', 'ACCOUNTING']
 export const STOCK_TRANSFER_OPERATOR_ROLES = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'WAREHOUSE_ADMIN']

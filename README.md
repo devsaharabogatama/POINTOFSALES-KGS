@@ -1,5 +1,25 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - Permission authority correction DATABASE LIVE
+
+Navigation permission sekarang dibaca dari profil ACP lengkap, bukan daftar
+manual yang dapat melewatkan submodul seperti `finance.payment_methods`.
+Forward migration `20260918110000` menetapkan Platform Super Admin penuh lintas
+Company dan Company Owner penuh hanya di Company miliknya, tanpa membypass
+feature entitlement atau guard transaksi. Migration, behavior test, dan
+postflight telah dikonfirmasi user `PASS`; deploy client, authenticated smoke,
+dan UAT masih pending. Lihat
+`docs/runbooks/PRIVILEGED_COMPANY_PERMISSION_AUTHORITY_ROLLOUT.md`.
+
+## 2026-09-18 - Finance Customer Receipt modal CLIENT LOCAL READY
+
+Form **Penerimaan baru** dan Edit Draft sekarang tampil sebagai modal, dengan
+error tetap terlihat di dalam form dan proteksi penutupan ketika penyimpanan
+berjalan. Metode pembayaran tetap berasal dari master `payment_methods` Company
+aktif melalui RPC Finance; API, posting, jurnal, permission, dan data tidak
+berubah. Tidak ada migration. Authenticated visual smoke masih manual.
+[Runbook](docs/runbooks/FINANCE_CUSTOMER_RECEIPT_MODAL_UI.md).
+
 ## 2026-09-18 - Searchable master dropdown Backoffice/PWA LOCAL READY
 
 Dropdown dengan minimal 10 pilihan sekarang dibuka sebagai combobox yang dapat

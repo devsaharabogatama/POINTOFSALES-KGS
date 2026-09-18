@@ -1,5 +1,29 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-18 - PRIVILEGED COMPANY PERMISSION AUTHORITY DATABASE LIVE
+
+- Root cause tombol **Tambah Metode** hilang terbukti berada pada endpoint
+  navigation: `finance.payment_methods` dan banyak permission lain tidak pernah
+  di-resolve, sehingga UI memakai fallback statis `VIEW`.
+- Navigation sekarang memanggil satu `list_user_permission_profile` dan
+  memetakan seluruh menu permission-backed melalui
+  `NAVIGATION_PERMISSION_KEYS`; permission yang tidak ada fail-closed.
+- Forward migration `20260918110000` memberi Platform Super Admin seluruh
+  capability supported lintas Company dan Company Owner seluruh capability
+  supported hanya pada Company membership aktif. Override Owner existing direset
+  dengan audit immutable dan restriction baru ditolak; `platform.companies` serta entitlement tetap
+  Super-Admin-only.
+- Tidak ada transaksi, membership, role, Stock/FIFO, Payment,
+  Journal, atau histori yang diubah/dihapus. Guard domain tetap berlaku.
+- Local verification: scoped ESLint PASS, TypeScript/production build PASS
+  dengan 87 static pages, navigation map compile-time complete, SQL delimiter/
+  transaction scan serta manifest checksum PASS.
+- User mengonfirmasi migration, rollback-only behavior, dan postflight `PASS`.
+  Status: `DATABASE LIVE`; target client belum dideploy oleh agent.
+- Gate tersisa: client deploy -> authenticated Super Admin/Owner/cross-Company/
+  restricted-role smoke sesuai runbook -> UAT. Status belum `CLIENT DEPLOYED`,
+  `SMOKE PASS`, atau `UAT PASS`.
+
 ## 2026-09-17 - BACKOFFICE REFUND REVERSAL GUARD FORWARD-FIX LOCAL READY
 
 - Behavioral Step 4 mencapai `SOURCE_LINKED_REVERSAL` lalu gagal dengan
@@ -14018,3 +14042,21 @@ Eksekusi hanya setelah backup dan maintenance window.
   Authenticated visual smoke sesuai runbook masih wajib setelah deployment.
 - Tidak ada migration, database mutation, API/RPC, Stock, FIFO, Payment,
   Cashier Session, Finance, atau permission change.
+
+# Update 2026-09-18 — Finance Customer Receipt modal
+
+- User meminta tombol **Penerimaan baru** langsung membuka popup karena form
+  inline sebelumnya muncul jauh di bawah laporan dan mudah tidak terlihat.
+- `backoffice/src/components/CustomerReceiptView.tsx` sekarang memakai modal
+  untuk create dan edit Draft; backdrop, tombol silang, dan `Escape` menutup
+  modal selama request tidak berjalan. Error validasi tampil di dalam modal.
+- Audit call chain membuktikan metode pembayaran bukan hardcode: endpoint
+  memanggil `get_finance_customer_receipts()`, lalu RPC membaca master
+  `public.payment_methods` Company aktif dengan settlement route
+  `CASH_DRAWER`/`DIRECT_BANK`. UI hanya menerjemahkan route menjadi Kas/Bank.
+- Tidak ada perubahan API/RPC/schema, alokasi Invoice, Customer Balance,
+  permission, optimistic version, Journal, audit, atau data historis.
+- Evidence: targeted ESLint PASS; TypeScript PASS; production build PASS dengan
+  87 static pages.
+- Status `CLIENT LOCAL READY`; deploy dan authenticated visual smoke create,
+  validation, save Draft, serta reopen Edit masih manual.

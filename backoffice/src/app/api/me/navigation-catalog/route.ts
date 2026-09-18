@@ -3,7 +3,10 @@ import {
   requireActiveCompany,
   requireCaller,
 } from "@/lib/server-auth";
-import { buildNavigationCatalog } from "@/lib/navigation-catalog";
+import {
+  buildNavigationCatalog,
+  NAVIGATION_PERMISSION_KEYS,
+} from "@/lib/navigation-catalog";
 import type { NavigationViewId } from "@/lib/navigation-catalog";
 import { getFinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
 
@@ -12,17 +15,17 @@ type PermissionResult = {
   error: { message?: string } | null;
 };
 
-function permissionCapabilities(result: PermissionResult): string[] {
+type PermissionProfileItem = {
+  permissionKey?: string;
+  effectiveCapabilities?: string[];
+};
+
+function permissionProfile(result: PermissionResult): PermissionProfileItem[] {
   if (result.error) {
-    // Navigation must fail closed per permission, not collapse the entire app
-    // when client code reaches a database whose additive permission migration
-    // has not been applied yet.
-    if (result.error.message?.includes("PERMISSION_KEY_NOT_FOUND")) return [];
     throw result.error;
   }
-  return (
-    result.data as { effectiveCapabilities?: string[] } | null
-  )?.effectiveCapabilities ?? [];
+  const items = (result.data as { items?: unknown } | null)?.items;
+  return Array.isArray(items) ? (items as PermissionProfileItem[]) : [];
 }
 
 export async function GET(request: Request) {
@@ -33,25 +36,7 @@ export async function GET(request: Request) {
       profileResult,
       membershipResult,
       featureResult,
-      masterPermissionResult,
-      productPermissionResult,
-      stockRealPermissionResult,
-      stockMovementPermissionResult,
-      stockTransferPermissionResult,
-      customerPermissionResult,
-      supplierPermissionResult,
-      supplierOrderPermissionResult,
-      goodsReceiptPermissionResult,
-      purchaseReturnPermissionResult,
-      backofficeSalesOrderPermissionResult,
-      salesDocumentPermissionResult,
-      deliveryDocumentPermissionResult,
-      pricelistPermissionResult,
-      supplierInvoicePermissionResult,
-      supplierPaymentPermissionResult,
-      customerReceiptPermissionResult,
-      backofficeReturnPermissionResult,
-      customerReturnReceiptPermissionResult,
+      permissionProfileResult,
       financeProcessUiPolicy,
     ] = await Promise.all([
       caller.client
@@ -71,100 +56,9 @@ export async function GET(request: Request) {
         .select("feature_code")
         .eq("company_id", companyId)
         .eq("is_enabled", true),
-      caller.client.rpc("resolve_user_permission", {
+      caller.client.rpc("list_user_permission_profile", {
         p_company_id: companyId,
         p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.master_data",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.products",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.stock_real",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.stock_movements",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.stock_transfers",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "contacts.customers",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "contacts.suppliers",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "purchase.supplier_orders",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "purchase.goods_receipts",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "purchase.purchase_returns",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "sales.backoffice_orders",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "sales.sales_documents",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.delivery_documents",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "sales.pricelists",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "finance.supplier_invoices",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "finance.supplier_payments",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "finance.customer_receipts",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "sales.backoffice_returns",
-      }),
-      caller.client.rpc("resolve_user_permission", {
-        p_company_id: companyId,
-        p_target_user_id: caller.user.id,
-        p_permission_key: "inventory.customer_return_receipts",
       }),
       getFinanceProcessUiPolicy(companyId),
     ]);
@@ -176,6 +70,24 @@ export async function GET(request: Request) {
       ? "SUPER_ADMIN"
       : membershipResult.data?.role_code;
     if (!roleCode) throw new Error("COMPANY_ACCESS_DENIED");
+
+    const capabilitiesByPermissionKey = new Map(
+      permissionProfile(permissionProfileResult)
+        .filter((item) => typeof item.permissionKey === "string")
+        .map((item) => [
+          item.permissionKey as string,
+          Array.isArray(item.effectiveCapabilities)
+            ? item.effectiveCapabilities
+            : [],
+        ]),
+    );
+    const effectiveCapabilities = Object.fromEntries(
+      (Object.entries(NAVIGATION_PERMISSION_KEYS) as [NavigationViewId, string][])
+        .map(([viewId, permissionKey]) => [
+          viewId,
+          capabilitiesByPermissionKey.get(permissionKey) ?? [],
+        ]),
+    ) as Partial<Record<NavigationViewId, string[]>>;
 
     const hiddenViewIds = new Set<NavigationViewId>();
     if (!financeProcessUiPolicy.showRetailCashDeposits) {
@@ -196,53 +108,7 @@ export async function GET(request: Request) {
         enabledFeatures: new Set(
           (featureResult.data ?? []).map((row) => row.feature_code),
         ),
-        effectiveCapabilities: {
-          masters: permissionCapabilities(masterPermissionResult),
-          products: permissionCapabilities(productPermissionResult),
-          "stock-real": permissionCapabilities(stockRealPermissionResult),
-          "stock-movements": permissionCapabilities(
-            stockMovementPermissionResult,
-          ),
-          "stock-transfers": permissionCapabilities(
-            stockTransferPermissionResult,
-          ),
-          customers: permissionCapabilities(customerPermissionResult),
-          suppliers: permissionCapabilities(supplierPermissionResult),
-          "supplier-orders": permissionCapabilities(
-            supplierOrderPermissionResult,
-          ),
-          "goods-receipts": permissionCapabilities(
-            goodsReceiptPermissionResult,
-          ),
-          "purchase-returns": permissionCapabilities(
-            purchaseReturnPermissionResult,
-          ),
-          "backoffice-sales-orders": (featureResult.data ?? []).some(
-            (row) => row.feature_code === "backoffice_delivered_qty_sales_enabled",
-          ) ? permissionCapabilities(backofficeSalesOrderPermissionResult) : [],
-          "sales-documents": permissionCapabilities(
-            salesDocumentPermissionResult,
-          ),
-          "delivery-documents": permissionCapabilities(
-            deliveryDocumentPermissionResult,
-          ),
-          pricelists: permissionCapabilities(pricelistPermissionResult),
-          "supplier-payments": permissionCapabilities(
-            supplierPaymentPermissionResult,
-          ),
-          "supplier-invoices": permissionCapabilities(
-            supplierInvoicePermissionResult,
-          ),
-          "customer-receipts": permissionCapabilities(
-            customerReceiptPermissionResult,
-          ),
-          "backoffice-sales-returns": permissionCapabilities(
-            backofficeReturnPermissionResult,
-          ),
-          "customer-return-receipts": permissionCapabilities(
-            customerReturnReceiptPermissionResult,
-          ),
-        },
+        effectiveCapabilities,
       }),
     });
   } catch (error) {

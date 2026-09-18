@@ -1,5 +1,20 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Privileged Company permission authority
+
+[Runbook](runbooks/PRIVILEGED_COMPANY_PERMISSION_AUTHORITY_ROLLOUT.md). Fix
+Navigation sekarang membaca seluruh profil permission server,
+memulihkan capability `MANAGE` Metode Pembayaran, dan menetapkan Super Admin
+penuh lintas Company serta Company Owner penuh hanya pada Company miliknya.
+Migration, behavior test, dan postflight telah dikonfirmasi user `PASS`;
+client deploy, authenticated smoke, dan UAT masih pending.
+
+## 2026-09-18 - Finance Customer Receipt modal
+
+[Runbook](runbooks/FINANCE_CUSTOMER_RECEIPT_MODAL_UI.md). Form create/edit Draft
+Penerimaan Customer sekarang berupa modal. Payment Method tetap dibaca dari
+master Company aktif; tidak ada perubahan API, RPC, database, atau Finance.
+
 ## 2026-09-18 - Searchable master dropdown Backoffice/PWA
 
 [Runbook](runbooks/SEARCHABLE_MASTER_DROPDOWN_ROLLOUT.md). Dropdown panjang
