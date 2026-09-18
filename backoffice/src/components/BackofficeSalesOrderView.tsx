@@ -79,6 +79,7 @@ function newForm(workspace: Workspace): FormState {
 
 export function BackofficeSalesOrderView({ session, companyId, companyName, canCreate, canEdit, canManage, notify, openProcessSettings, openSalesReturn }: { session: Session; companyId: string; companyName: string; canCreate: boolean; canEdit: boolean; canManage: boolean; notify: (message: string) => void; openProcessSettings: () => void; openSalesReturn: (salesOrderId: string, returnId?: string) => void }) {
   const consumedOrderLink = useRef("");
+  const consumedRetailHistoryLink = useRef("");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [history, setHistory] = useState<RetailHistory[]>([]);
@@ -141,6 +142,26 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
     return () => { active = false; consumedOrderLink.current = ""; };
   }, [companyId, readOrder]);
 
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const retailSalesId = query.get("retailSalesId");
+    if (!retailSalesId || query.get("companyId") !== companyId || consumedRetailHistoryLink.current === retailSalesId) return;
+    consumedRetailHistoryLink.current = retailSalesId;
+    let active = true;
+    void fetch(`/api/sales/backoffice-orders/history?salesId=${encodeURIComponent(retailSalesId)}`, {
+      headers: authHeaders(session), cache: "no-store",
+    }).then(jsonResponse).then((body) => {
+      if (!active) return;
+      if (body.companyId !== companyId) throw new Error("Company dokumen tidak sesuai. Muat ulang.");
+      const row = (body.data as RetailHistory[])[0];
+      if (!row || row.companyId !== companyId) throw new Error("Order sumber Retail tidak ditemukan atau tidak dapat diakses.");
+      setSelectedHistory(row); setDocumentKind(row.kind);
+      for (const key of ["view", "retailSalesId", "companyId"]) query.delete(key);
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${query.size ? `?${query}` : ""}${window.location.hash}`);
+    }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Order sumber Retail gagal dimuat."); });
+    return () => { active = false; consumedRetailHistoryLink.current = ""; };
+  }, [companyId, session]);
+
   async function transition(order: Order, action: "SEND" | "CONFIRM" | "CANCEL") {
     const reason = action === "CANCEL" ? window.prompt("Alasan pembatalan")?.trim() : undefined;
     if (action === "CANCEL" && !reason) return;
@@ -154,7 +175,7 @@ export function BackofficeSalesOrderView({ session, companyId, companyName, canC
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Operasi gagal."); }
   }
 
-  if (invoiceMode) return <BackofficeSalesInvoiceView session={session} initialSalesOrderId={!invoiceMode.list && !invoiceMode.invoiceId ? invoiceMode.salesOrderId ?? null : null} initialInvoiceId={invoiceMode.invoiceId ?? null} initialListSalesOrderId={invoiceMode.list ? invoiceMode.salesOrderId ?? null : null} canCreate={canCreate} canEdit={canEdit} canManage={canManage} companyName={companyName} notify={notify} back={() => { setInvoiceMode(null); void load(); }} />;
+  if (invoiceMode) return <BackofficeSalesInvoiceView session={session} companyId={companyId} initialSalesOrderId={!invoiceMode.list && !invoiceMode.invoiceId ? invoiceMode.salesOrderId ?? null : null} initialInvoiceId={invoiceMode.invoiceId ?? null} initialListSalesOrderId={invoiceMode.list ? invoiceMode.salesOrderId ?? null : null} canCreate={canCreate} canEdit={canEdit} canManage={canManage} companyName={companyName} notify={notify} back={() => { setInvoiceMode(null); void load(); }} />;
   if (editing !== undefined && workspace) return <OrderEditor session={session} workspace={workspace} order={editing} close={() => setEditing(undefined)} saved={async (order) => { setEditing(undefined); await load(); setSelected(await readOrder(order.id)); }} />;
   if (selected && workspace) return <OrderDetail openSource={(id) => { setSelected(null); void openHistory({ id }); }} session={session} order={selected} workspace={workspace} canCreate={canCreate} canEdit={canEdit} canManage={canManage} close={() => setSelected(null)} edit={() => { setEditing(selected); setSelected(null); }} createInvoice={() => setInvoiceMode({ salesOrderId: selected.id })} createReturn={() => openSalesReturn(selected.id)} openReturn={(returnId) => openSalesReturn(selected.id, returnId)} transition={transition} refresh={async () => setSelected(await readOrder(selected.id))} error={error} />;
 

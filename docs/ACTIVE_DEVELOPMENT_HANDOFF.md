@@ -1,5 +1,23 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-18 - SALES INVOICE SOURCE ORDER LINK CLIENT LOCAL READY
+
+- Invoice Penjualan unified sekarang menampilkan link sumber pada daftar dan
+  detail: Backoffice menuju SO canonical; Retail/ONLINE menuju histori order
+  Retail existing memakai parameter terpisah `retailSalesId`.
+- Router root mengenali deep-link SO maupun Retail. Halaman tujuan memvalidasi
+  `companyId` dan hasil RPC sebelum menampilkan dokumen.
+- Tidak ada schema/migration/backfill atau mutation status, Retur, Stock/FIFO,
+  reservation, payment, Journal, permission, dan cancel policy.
+- File: `backoffice/src/components/SalesDocumentView.tsx`,
+  `BackofficeSalesInvoiceView.tsx`, `BackofficeSalesOrderView.tsx`, dan
+  `backoffice/src/app/page.tsx`.
+- Evidence: scoped ESLint PASS; `npx tsc --noEmit` PASS; `npm run build` PASS
+  dengan 87 static pages.
+- Status belum `CLIENT DEPLOYED`, `SMOKE PASS`, atau `UAT PASS`. Next safe
+  step: deploy client lalu authenticated smoke link Retail dan Backoffice pada
+  Company yang sama serta negative cross-Company.
+
 ## 2026-09-18 - PRIVILEGED COMPANY PERMISSION AUTHORITY DATABASE LIVE
 
 - Root cause tombol **Tambah Metode** hilang terbukti berada pada endpoint

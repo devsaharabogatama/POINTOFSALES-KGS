@@ -1,5 +1,11 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Invoice source-order navigation
+
+[Runbook](runbooks/SALES_INVOICE_SOURCE_ORDER_LINK.md). Invoice Retail/ONLINE
+membuka histori order Retail sumber dan Invoice Backoffice membuka SO asal.
+Perubahan hanya pada UI/router, tanpa migration atau mutation transaksi.
+
 ## 2026-09-18 - Privileged Company permission authority
 
 [Runbook](runbooks/PRIVILEGED_COMPANY_PERMISSION_AUTHORITY_ROLLOUT.md). Fix

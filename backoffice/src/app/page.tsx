@@ -639,9 +639,9 @@ export default function Home() {
     if (!session || !activeCompanyId || navigationModules.length === 0) return;
     const timer = window.setTimeout(() => {
       const query = new URLSearchParams(window.location.search);
-      const orderId = query.get("orderId");
-      if (query.get("view") !== "backoffice-sales-orders" || !orderId) return;
-      const key = `${activeCompanyId}:${orderId}`;
+      const sourceDocumentId = query.get("orderId") ?? query.get("retailSalesId");
+      if (query.get("view") !== "backoffice-sales-orders" || !sourceDocumentId) return;
+      const key = `${activeCompanyId}:${sourceDocumentId}`;
       if (consumedOrderLink.current === key) return;
       consumedOrderLink.current = key;
       if (query.get("companyId") !== activeCompanyId) {

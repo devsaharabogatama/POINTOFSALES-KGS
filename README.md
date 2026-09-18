@@ -1,5 +1,15 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - Invoice source-order navigation CLIENT LOCAL READY
+
+Invoice Penjualan Retail/ONLINE sekarang memiliki link ke histori order Retail
+sumber, sedangkan Invoice Backoffice memiliki link ke SO asal. Navigasi tetap
+Company-scoped dan hanya memakai read path existing; tidak ada perubahan
+database, status, Retur, Stock/FIFO, Payment, atau Finance. Scoped lint,
+TypeScript, dan production build 87 halaman PASS; deploy dan authenticated
+visual smoke masih pending. Lihat
+`docs/runbooks/SALES_INVOICE_SOURCE_ORDER_LINK.md`.
+
 ## 2026-09-18 - Permission authority correction DATABASE LIVE
 
 Navigation permission sekarang dibaca dari profil ACP lengkap, bukan daftar
