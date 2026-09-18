@@ -1,5 +1,64 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-18 — P0 retained Retail Return compatibility audit
+
+- User classified the missing Return action for final Retail documents retained
+  after Office cutover as a defect, not additional feature scope.
+- Root cause is proven: Office history is read-only; native Backoffice Return is
+  FK-bound to Backoffice SO/Invoice; Retail Return requires an open Cashier
+  Session and has a different Stock/refund lifecycle.
+- Approved repair boundary: retained Retail sources must follow the existing
+  Backoffice request -> approval -> Warehouse receipt/disposition -> Credit Note
+  -> excess-payment Refund flow without Company mode switch, Cashier Session,
+  fabricated Office documents, historical replay or duplicate Stock/Finance.
+- Full impact/edge-case matrix is recorded in
+  `docs/audits/RETAINED_RETAIL_BACKOFFICE_RETURN_COMPATIBILITY_IMPACT_2026-09-18.md`.
+- Status is `PREFLIGHT LOCAL READY`; the impact audit, visible `Asal Retail` /
+  `Backoffice` source labels, and SELECT-only Production preflight have been
+  created locally. No database mutation has been created or applied yet;
+  Production remains unchanged.
+- Pending manual gate: run
+  `supabase/diagnostics/retained_retail_backoffice_return_preflight.sql` as one
+  complete query on Production and retain its complete one-result output.
+- Production preflight result: 219 eligible sources / 601 returnable lines, all
+  219 have an Invoice, all are currently unpaid, but all 601 lines lack
+  `sale_fifo_allocations`. Migration is blocked until the SELECT-only
+  `retained_retail_return_fifo_lineage_diagnosis.sql` proves whether historical
+  cost survives per line, per Financial Event, or nowhere. Do not use zero or
+  current cost as an implicit fallback.
+- Diagnosis result: all 601 lines retain Stock Requirements; 598 have positive
+  line cost and three have historical zero cost. Line cost and Finance Event
+  cost reconcile exactly at Rp911,631,400. User approved the explicit
+  `LEGACY_AGGREGATE_COST` policy. The remaining manual gate is the SELECT-only
+  `retained_retail_return_legacy_cost_qualification.sql`, which proves bundle /
+  requirement cost assignment and outbound Movement quantity reconciliation.
+- Qualification result supplied by the user: both contracts PASS. All 601 lines
+  have exactly one assignable requirement; assigned and source cost both total
+  Rp911,631,400; all 601 outbound Movement groups reconcile at 55,280 base qty;
+  the three historical zero-cost lines remain explicitly zero.
+- Commercial bridge package is `DATABASE LIVE`: preflight,
+  `20260918120000_retained_retail_backoffice_return_commercial_bridge.sql`,
+  rollback-only behavior, and postflight were run by the user on Production.
+  User-supplied Step 4 output has all contracts and reconciliations PASS;
+  runtime inventory is zero and is not treated as behavior proof. API route and
+  client launch from retained Retail history remain `CLIENT LOCAL READY`.
+- Physical Receipt bridge package `20260918130000` is `LOCAL READY`. It dispatches
+  retained Retail sources to a separate core, leaves native Backoffice exact-FIFO
+  behavior unchanged, records `LEGACY_AGGREGATE_COST`, and mutates Stock only for
+  `RESTOCK`; `DESTROY` creates no usable stock. It does not write Finance,
+  Invoice, Payment, Retail Return, POS, or Cashier Session.
+- Receipt preflight now blocks any line whose sole physical Stock Requirement
+  points at a Product different from the commercial Product. Runtime repeats the
+  same fail-closed check, so bundle/component stock is never guessed.
+- Evidence for the Receipt package: TypeScript PASS, targeted ESLint PASS,
+  production build PASS with 87 static pages, and `git diff --check` PASS apart
+  from existing line-ending warnings. PostgreSQL runtime remains pending user
+  execution.
+- Next safe step: run the Receipt preflight as one complete file. Continue with
+  migration -> rollback-only behavior -> postflight only if every contract is
+  PASS. Do not deploy the client or begin Credit Note/Refund compatibility while
+  this gate remains incomplete.
+
 ## 2026-09-18 - SALES INVOICE SOURCE ORDER LINK CLIENT LOCAL READY
 
 - Invoice Penjualan unified sekarang menampilkan link sumber pada daftar dan
@@ -14078,3 +14137,60 @@ Eksekusi hanya setelah backup dan maintenance window.
   87 static pages.
 - Status `CLIENT LOCAL READY`; deploy dan authenticated visual smoke create,
   validation, save Draft, serta reopen Edit masih manual.
+
+## 2026-09-18 - CUSTOMER RECEIPT COA POSTING DIAGNOSIS
+
+- User reports Customer Receipt can no longer be submitted after changing its
+  COA mapping. No runtime, COA, Receipt, Event, or Journal mutation has been
+  authorized or applied.
+- Audited call chain: `post_customer_receipt_unified` delegates to the canonical
+  posting runtime, which resolves two date-effective functions for
+  `SALE_PAYMENT`: `BANK`/`CASH_DRAWER` and `CUSTOMER_RECEIVABLE`.
+- Added SELECT-only
+  `supabase/diagnostics/customer_receipt_coa_posting_diagnosis.sql`. It reports
+  every Draft receipt's category cardinality, exact rule/fallback cardinality,
+  effective-date coverage, chosen account, active/postable state, and compatible
+  account type.
+- Status: diagnosis pending Production output and exact UI error. Do not alter
+  mappings until the failing branch is proven.
+- First output proves all five Companies currently resolve `BANK` and
+  `CUSTOMER_RECEIVABLE` through their original Company fallbacks. For KMS,
+  `BANK` still resolves to account `1130 Bank`; `exactRuleIds` is empty. The
+  user's newly saved mapping is therefore not effective in the runtime scope
+  checked (wrong category/function/Company, Draft status, or non-covering
+  effective period remains to be classified).
+- Added SELECT-only
+  `supabase/diagnostics/customer_receipt_coa_mapping_change_diagnosis.sql` to
+  expose every relevant Rule/Fallback version, category, status, effective
+  period, account, creation time, and current effectiveness.
+- Second Production output classifies the mapping defect. KMS, LSM, and SMS each
+  have a new ACTIVE `SALE_PAYMENT` + `BANK` rule pointing to `BANK BCA`, but all
+  three show `effective_now=false`. The rows were created around 09:41-09:42 UTC
+  while `effective_from` was stored as 16:40-16:42 UTC: exactly the UTC+7 browser
+  offset. `FinanceMasterView` sends a timezone-less `datetime-local` value and
+  the server parses it as UTC, so the intended local activation is shifted seven
+  hours into the future.
+- At the diagnostic instant (10:48 UTC), Customer Receipt therefore still
+  resolved `BANK` through the old Company fallback (`1130 Bank`), not the new
+  `BANK BCA` mapping. `CUSTOMER_RECEIVABLE` remained valid and unambiguous.
+- This proves the new COA mapping is not yet effective, but does **not** by itself
+  prove the reported submit failure: both required fallback accounts are active,
+  postable, and resolvable. The exact failed action/error or failing Draft
+  Receipt still must be captured before changing posting runtime.
+- Safe correction scope, once authorized: fix `datetime-local` serialization at
+  the Finance Master client/API boundary and handle the already-created future
+  rule with a guarded data correction only after proving it has no journal
+  history. Preserve event-date accounting; do not silently make a new mapping
+  retroactive to older Receipt dates.
+- User authorized historical correction for KMS, SMS, and LSM and confirmed no
+  accounting period has been closed. Scope is `DIRECT_BANK` only; Cash remains
+  unchanged. Existing `BANK BCA` accounts from Production trace are reused.
+- Added local-ready package `20260918140000`: a non-overlapping historical exact
+  `SALE_PAYMENT/BANK -> BANK BCA` interval plus one append-only, source-linked,
+  balanced reclassification journal per already-posted bank Receipt. Original
+  Receipt, Event, allocation, AR, and source Journal remain immutable.
+- `FinanceMasterView` now converts browser-local `datetime-local` values to ISO
+  instants before saving Rule/Fallback, preventing the proven UTC+7 shift.
+- Files: database preflight/migration/rollback-only behavior/postflight, impact
+  audit, and rollout runbook. Status remains `LOCAL READY`; Production SQL,
+  client deploy, authenticated smoke, and UAT have not been run by the agent.

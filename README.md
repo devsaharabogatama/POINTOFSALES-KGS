@@ -1,5 +1,20 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - P0 retained Retail Return compatibility defect
+
+Retained final Retail sales are readable from Office, but their Return/Receipt/
+Credit Note/Refund continuation is not yet operational from Backoffice. Treat
+Sales-process cutover as incomplete for this case until the additive repair has
+passed database rollout, authenticated smoke and UAT. See
+`docs/audits/RETAINED_RETAIL_BACKOFFICE_RETURN_COMPATIBILITY_IMPACT_2026-09-18.md`.
+The source labels and Production qualification are ready, and the guarded
+commercial bridge `20260918120000` is database-live with user-confirmed behavior
+and postflight PASS. The physical Receipt bridge `20260918130000` is local-ready
+with an explicit `LEGACY_AGGREGATE_COST` lineage and a fail-closed physical
+Product guard. Its database rollout, Credit Note/Refund compatibility, client
+activation, authenticated smoke and UAT are still pending, so the complete flow
+is not live yet.
+
 ## 2026-09-18 - Invoice source-order navigation CLIENT LOCAL READY
 
 Invoice Penjualan Retail/ONLINE sekarang memiliki link ke histori order Retail
@@ -2933,3 +2948,9 @@ Credit Note, partial Refund dan source-linked reversal sudah `LOCAL READY`.
 Read-model Inventory memakai permission Gudang sendiri; Retail/POS/Cashier
 Session tidak diubah. Rollout database, client, smoke dan UAT mengikuti
 [runbook](docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).
+# Customer Receipt BANK BCA correction (2026-09-18)
+
+Paket local-ready menyiapkan exact mapping dan reklasifikasi append-only Customer
+Receipt bank untuk KMS, SMS, dan LSM, sekaligus memperbaiki serialisasi timezone
+form Finance Master. Production rollout belum dijalankan oleh agent. Ikuti
+[`docs/runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md`](docs/runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md).

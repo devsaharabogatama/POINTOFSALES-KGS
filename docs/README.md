@@ -1,5 +1,29 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Customer Receipt BANK BCA reclassification
+
+[Runbook](runbooks/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION.md) dan
+[impact audit](audits/CUSTOMER_RECEIPT_BANK_BCA_RECLASSIFICATION_IMPACT_2026-09-18.md).
+KMS, SMS, dan LSM diarahkan ke exact mapping `SALE_PAYMENT/BANK -> BANK BCA`;
+jurnal Receipt bank historis dikoreksi append-only tanpa mengubah jurnal sumber.
+Paket database dan fix timezone Finance Master berstatus `LOCAL READY`; rollout,
+authenticated smoke, dan UAT masih manual.
+
+## 2026-09-18 - P0 retained Retail Return compatibility defect
+
+[Impact audit](audits/RETAINED_RETAIL_BACKOFFICE_RETURN_COMPATIBILITY_IMPACT_2026-09-18.md).
+Final Retail documents retained during Sales-process cutover are visible from
+Office but cannot yet enter the approved Backoffice Return/Receipt/Credit Note/
+Refund lifecycle without the legacy Cashier Session path. This is a cutover
+compatibility defect, not a new feature. The
+[SELECT-only Production preflight](../supabase/diagnostics/retained_retail_backoffice_return_preflight.sql)
+and source labels are local-ready. Production FIFO/cost qualification passed,
+and commercial bridge `20260918120000` is database-live with user-confirmed
+behavior and postflight PASS. Physical Receipt bridge `20260918130000` is
+local-ready and fail-closed for commercial/physical Product mismatch. Its
+database rollout, Credit Note/Refund compatibility, client activation,
+Production smoke and UAT remain incomplete.
+
 ## 2026-09-18 - Invoice source-order navigation
 
 [Runbook](runbooks/SALES_INVOICE_SOURCE_ORDER_LINK.md). Invoice Retail/ONLINE

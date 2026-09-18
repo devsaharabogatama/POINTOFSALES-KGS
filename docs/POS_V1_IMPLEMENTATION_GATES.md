@@ -1617,6 +1617,19 @@ G6 tetap belum dibuka.
 
 ## 8. G6 — Finance Core, Posting, Reconciliation, dan Report
 
+### Customer Receipt BANK BCA historical correction (2026-09-18)
+
+- Production trace proved KMS/SMS/LSM exact `SALE_PAYMENT/BANK` rules pointed to
+  `BANK BCA` but were shifted seven hours into the future by timezone-less
+  `datetime-local` serialization.
+- Local-ready corrective package `20260918140000` fills only the historical
+  exact-rule interval and creates balanced append-only reclassification journals
+  for existing `DIRECT_BANK` Receipts. Source journals remain immutable; Cash,
+  AR, Invoice, POS, Stock/FIFO, Purchase, and Payment Method are unchanged.
+- Client serialization fix sends ISO instants for Finance Rule/Fallback dates.
+  Preflight, migration, rollback-only behavior, postflight, authenticated smoke,
+  and UAT remain manual; this entry is not a `DATABASE LIVE` claim.
+
 ### Deliverable
 
 - COA hierarchy/configuration, account function, Transaction Category mapping version;
