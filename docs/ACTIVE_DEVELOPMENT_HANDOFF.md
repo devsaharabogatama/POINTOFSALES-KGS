@@ -13985,3 +13985,36 @@ Eksekusi hanya setelah backup dan maintenance window.
   smoke sesuai `docs/runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md`.
 - Status: `LOCAL READY`; belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`,
   atau `UAT PASS`.
+# Update 2026-09-18 — Panduan user Retur & Refund Backoffice
+
+- Menambahkan `docs/BACKOFFICE_SALES_RETURN_REFUND_USER_GUIDE.md` sebagai
+  panduan operasional yang siap disalin ke Google Chat.
+- Panduan mengikuti flow Backoffice yang disetujui: SO -> Retur -> approval ->
+  Penerimaan Retur Customer -> koreksi Invoice/Credit Note -> Refund bila ada
+  kelebihan pembayaran.
+- Tidak ada perubahan kode, schema, permission, status rollout, atau database.
+# Update 2026-09-18 — Rekap status keseluruhan proyek
+
+- Menambahkan `docs/PROJECT_STATUS_RECAP_2026-09-18.md` sebagai snapshot status
+  evidence-based untuk rencana awal POS v1 dan scope tambahan Office, Purchase,
+  Finance, serta Retur & Refund.
+- Status dipisahkan menjadi implementasi, database, client, smoke, dan UAT.
+  Dokumen tidak menganggap migration/build PASS sebagai UAT PASS.
+- Gate terdekat yang dicatat: versi Production, Office E2E, Return/Refund E2E,
+  Purchase Manual/AUTO scheduler, Retail regression, dan role/multi-Company.
+- Tidak ada perubahan kode, schema, database, deployment, atau business rule.
+# Update 2026-09-18 — Searchable master dropdown Backoffice/PWA
+
+- Keputusan user: hanya daftar master/pilihan panjang yang perlu searchable;
+  dropdown kurang dari 10 pilihan tetap native.
+- Menambahkan progressive `SearchableSelectEnhancer` pada root Backoffice dan
+  PWA. Existing native select/value/onChange tetap digunakan sehingga tidak ada
+  perubahan payload atau business rule.
+- Search label case-insensitive, mouse/touch, Arrow Up/Down, Enter, Escape,
+  outside-click, viewport reposition, dan perubahan option didukung.
+- Evidence: targeted lint kedua client PASS; TypeScript kedua client PASS;
+  Backoffice build 87 halaman PASS; PWA production/PWA build PASS.
+- Browser visual automation tidak dapat tersambung pada sesi agent ini.
+  Authenticated visual smoke sesuai runbook masih wajib setelah deployment.
+- Tidak ada migration, database mutation, API/RPC, Stock, FIFO, Payment,
+  Cashier Session, Finance, atau permission change.

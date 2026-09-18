@@ -1,5 +1,14 @@
 # MADS — Management Distribution System
 
+## 2026-09-18 - Searchable master dropdown Backoffice/PWA LOCAL READY
+
+Dropdown dengan minimal 10 pilihan sekarang dibuka sebagai combobox yang dapat
+dicari case-insensitive pada Backoffice dan PWA. Elemen `select`, value, serta
+handler lama tetap menjadi authority; dropdown kecil tetap native. Tidak ada
+perubahan API, database, permission, transaksi, Stock, Payment, atau Finance.
+Lint, TypeScript, dan production build kedua client PASS; deployment serta
+authenticated visual smoke masih manual. [Runbook](docs/runbooks/SEARCHABLE_MASTER_DROPDOWN_ROLLOUT.md).
+
 ## 2026-09-17 - Backoffice Customer Refund reversal guard fix LOCAL READY
 
 Forward-fix `20260917151000` membuka reversal jurnal Automatic/Prior Period

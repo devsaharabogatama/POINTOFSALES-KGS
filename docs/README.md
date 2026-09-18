@@ -1,5 +1,24 @@
 # Router Dokumen KGS POS
 
+## 2026-09-18 - Searchable master dropdown Backoffice/PWA
+
+[Runbook](runbooks/SEARCHABLE_MASTER_DROPDOWN_ROLLOUT.md). Dropdown panjang
+memakai combobox pencarian case-insensitive secara global di kedua client;
+dropdown kurang dari 10 pilihan tetap native. Client local-ready, deployment
+dan authenticated visual smoke masih pending.
+
+## 2026-09-18 - Rekap status keseluruhan proyek
+
+[Rekap status proyek](PROJECT_STATUS_RECAP_2026-09-18.md) memisahkan rencana
+awal POS v1, perluasan Office/Purchase/Retur, pekerjaan yang sudah tersedia,
+gate rollout/smoke/UAT yang belum ditutup, dan scope yang tetap deferred.
+
+## 2026-09-18 - Panduan user Retur & Refund Backoffice
+
+[Panduan user](BACKOFFICE_SALES_RETURN_REFUND_USER_GUIDE.md) berisi langkah
+operasional yang dapat dibagikan kepada Sales, Gudang, dan Finance: pembuatan
+Retur, persetujuan, penerimaan fisik, Credit Note, Refund, serta arti status.
+
 ## 2026-09-18 - Backoffice Sales Return Step 5/5 local ready
 
 [Runbook](runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md). Workspace Sales Retur
