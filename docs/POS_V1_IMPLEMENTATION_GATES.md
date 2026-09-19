@@ -3139,3 +3139,18 @@ Status: `LOCAL READY; MANUAL DATABASE/CLIENT/SMOKE/UAT PENDING`.
 - Runtime Stock/FIFO dan Finance tidak dimutasi oleh read-model ini. Status
   `LOCAL READY`; database rollout, client deploy, authenticated smoke, dan UAT
   masih pending.
+
+## 2026-09-19 - Customer Receipt Credit Note outstanding alignment
+
+- Root cause: Invoice UI telah membaca nilai bersih Credit Note, tetapi workspace
+  Penerimaan Customer dan Save Draft masih memakai nilai Invoice bruto dikurangi
+  pembayaran. Post Backoffice sudah memakai helper net; Post retained Retail
+  belum mempunyai Credit Note recheck.
+- Target contract untuk kedua source adalah `original receivable - posted Credit
+  Note AR reduction - posted Customer Receipt` dengan effective date dokumen.
+- Migration `20260919110000` menyelaraskan read, Save, dan Post. Draft lama tidak
+  dimutasi; bila melampaui outstanding terbaru, Post menolak dan user mengeditnya.
+- Tidak mengubah Invoice, Credit Note, Return Receipt, Refund, Journal, Stock,
+  FIFO, Customer Balance, atau histori pembayaran.
+- Status `LOCAL READY`; database rollout, client deploy, authenticated mixed-source
+  smoke, dan UAT belum dijalankan.

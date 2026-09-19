@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-19 - Customer Receipt outstanding after Customer Return
+
+[Runbook](runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md).
+Penerimaan Customer sekarang memakai nilai Invoice awal dikurangi Credit Note
+posted dan pembayaran posted pada kandidat, Save Draft, serta Post recheck.
+Paket database/client berstatus `LOCAL READY`; rollout dan authenticated smoke
+masih manual.
+
 ## 2026-09-19 - Sales Return net commercial presentation
 
 [Runbook](runbooks/SALES_RETURN_NET_COMMERCIAL_PRESENTATION_ROLLOUT.md). SO,

@@ -1,5 +1,23 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-19 - Customer Receipt net-after-return LOCAL READY
+
+- Root cause terkonfirmasi pada runtime `get_finance_customer_receipts` dan
+  `save_customer_receipt_allocated_draft`: keduanya belum mengurangi Credit Note
+  posted, walaupun Invoice detail/payment context sudah benar.
+- Migration `20260919110000` menyelaraskan kandidat, batas Save, dan Post recheck
+  untuk Invoice Backoffice serta retained Retail dengan formula original minus
+  AR reduction Credit Note minus pembayaran posted.
+- UI Penerimaan Customer memperlihatkan nilai awal, koreksi retur, pembayaran,
+  dan sisa piutang. Invoice bersisa nol tidak lagi ditawarkan.
+- Tidak ada mutation/backfill transaksi historis, Stock/FIFO, Return Receipt,
+  Credit Note, Refund, Payment, Financial Event, atau Journal.
+- Evidence lokal: TypeScript PASS, targeted ESLint PASS, production build PASS
+  (87 pages), dan diff check PASS selain warning line-ending Windows. Runtime
+  PostgreSQL belum dijalankan. Urutan manual ada di
+  `docs/runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md`.
+- Status `LOCAL READY`; database/client/smoke/UAT tetap harus dicatat terpisah.
+
 ## 2026-09-18 - Invoice Return commercial status LOCAL READY
 
 - Root cause screenshot user terbukti pada read path: Invoice Retail/Backoffice

@@ -3000,3 +3000,10 @@ Additive read-model dan client untuk Qty Retur, disposition Stock, Credit Note,
 dan nilai bersih SO/Invoice berstatus `LOCAL READY`. Dokumen sumber dan posting
 Stock/Finance tetap immutable; Production rollout dan smoke masih manual. Lihat
 `docs/runbooks/SALES_RETURN_NET_COMMERCIAL_PRESENTATION_ROLLOUT.md`.
+
+# 2026-09-19 - Customer Receipt net outstanding after Return
+
+Finance Penerimaan Customer diselaraskan dengan Credit Note posted pada kandidat,
+Save Draft, dan Post recheck untuk source Backoffice maupun retained Retail.
+Perubahan additive berstatus `LOCAL READY`; Production rollout dan smoke mengikuti
+`docs/runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md`.
