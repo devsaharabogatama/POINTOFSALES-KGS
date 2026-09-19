@@ -254,7 +254,7 @@ export function PurchaseReturnApprovalView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<"ALL" | "DRAFT" | "POSTED" | "CANCELED">(
-    "DRAFT",
+    "ALL",
   );
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<Document | null>(null);
@@ -561,12 +561,13 @@ export function PurchaseReturnApprovalView({
             const type = action.type;
             setAction(null);
             setDetail(null);
+            if (type === "post") setStatus("POSTED");
             await refresh();
             notify(
               type === "approve"
                 ? "Retur Pembelian disetujui dan siap diposting."
                 : type === "post"
-                  ? "Retur Pembelian diposting; stok, FIFO, tagihan Supplier, dan Finance sudah diperbarui."
+                  ? "Retur Pembelian diposting dan tetap tampil pada status Sudah diposting. Jika seluruh penerimaan sudah diretur, buka PO sumber lalu pilih Batalkan PO untuk menutup dokumennya."
                   : type === "reject"
                     ? "Retur Pembelian ditolak."
                     : "Retur Pembelian dibatalkan.",

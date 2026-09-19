@@ -1,5 +1,108 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-19 - Supplier Return Post channel-routing fix LOCAL READY
+
+- Authenticated Production smoke pada `PR-20260919-0000000022` masih menampilkan
+  `PURCHASE_RETURN_FIFO_NOT_AVAILABLE` meskipun `20260919143000`, focused
+  behavior, dan postflight PASS.
+- Root cause terverifikasi pada call chain client: route
+  `/api/purchase/returns/[id]/post` memilih RPC dari
+  `get_purchase_returns().data[].source_channel`, sedangkan read model ACP lama
+  tidak memproyeksikan kolom tersebut. Nilai kosong jatuh ke fallback
+  `post_purchase_return()` POS, bukan `post_backoffice_purchase_return()`.
+- Additive migration `20260919144000` hanya menambahkan `source_channel` pada
+  read model. Route client sekarang fail-closed dengan
+  `PURCHASE_RETURN_CHANNEL_INVALID` jika discriminator hilang/tidak valid.
+- Paket baru: exact nonzero read-only preflight, guarded migration,
+  authenticated rollback-only routing behavior, dan closing postflight.
+- Evidence lokal: targeted ESLint PASS; Next production build/TypeScript PASS
+  (87 halaman); seluruh file SQL kurang dari 3 KB, tidak memakai PL/pgSQL
+  `SELECT ... INTO`, delimiter lengkap, dan scoped `git diff --check` PASS.
+- Status: `LOCAL READY`; database migration `20260919144000`, routing behavior,
+  postflight, client deploy, exact Production retry, smoke, dan UAT belum
+  dijalankan/dikonfirmasi.
+
+## 2026-09-19 - Supplier Return exhausted-FIFO negative-stock fix DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS
+
+- User mengonfirmasi focused rollback-only behavior
+  `backoffice_purchase_return_negative_stock_behavior` PASS dengan delapan
+  skenario: exhausted source FIFO tetap returnable, On Hand negatif tanpa
+  mengambil batch lain, source-linked shortage, exact retry, over-return
+  rejection, replenishment reconciliation, balanced PPV, dan rollback fixture.
+- User mengonfirmasi closing postflight seluruhnya PASS: Finance catalog,
+  migration ledger, negative movement constraint, permission boundary, PPV dan
+  shortage reconciliation, relations, removed FIFO gate, runtime routines, dan
+  triggers. Runtime inventory nol berstatus INFO dan tidak dipakai sebagai
+  behavioral proof.
+
+- User mengonfirmasi migration `20260919143000` berhasil di Production setelah
+  preflight seluruhnya PASS. Behavioral test pertama gagal pada parse sebelum
+  transaksi berjalan: Supabase Dashboard salah membaca PL/pgSQL
+  `SELECT ... INTO` sebagai tabel baru lalu menyisipkan `ALTER TABLE ... ENABLE
+  ROW LEVEL SECURITY` di tengah blok `$test$`, sehingga delimiter penutup tidak
+  pernah dikirim. Tidak ada fixture write dari attempt tersebut.
+- Behavioral test sekarang tidak mempunyai satu pun `SELECT ... INTO`; seluruh
+  query result memakai scalar/composite assignment agar aman ditempel penuh di
+  SQL Editor. Static gate: delimiter `$test$` tepat dua, `BEGIN`/`ROLLBACK`
+  masing-masing satu, injected-RLS marker nol, dan `git diff --check` PASS.
+- Attempt berikutnya membuktikan Dashboard masih memotong E2E gabungan yang
+  panjang tepat setelah assignment `v_version`, kemudian menambahkan metadata
+  `source: dashboard`; delimiter penutup kembali tidak ikut terkirim. Ini masih
+  parse-time failure dan tidak menjalankan fixture. Regression forward fix kini
+  dipisah menjadi
+  `supabase/tests/backoffice_purchase_return_negative_stock_behavior.sql`
+  (kurang dari 18 KB, tanpa `SELECT ... INTO`, delimiter/transaction lengkap).
+  E2E gabungan yang panjang tidak boleh dipakai untuk gate SQL Editor ini.
+
+- Production migration attempt pertama berhenti atomic sebelum `COMMIT` pada
+  `WORKSPACE_PATCH_FAILED: FIFO blocker remains`; tidak ada schema/data/ledger
+  yang berubah. Root cause berada pada regex penggantian literal error yang
+  terlalu spesifik. Patch sekarang menonaktifkan tepat satu kondisi FIFO lama,
+  mengganti kode blocker dengan plain deterministic replacement, dan preflight
+  mempunyai `workspace_patch_dry_run` agar transformasi yang sama dibuktikan
+  read-only sebelum migration.
+- Updated preflight pertama kemudian membuktikan seluruh anchor fungsional cocok
+  tetapi `policyChanged=false`; penyebabnya replacement label policy masih
+  bergantung format spasi `pg_get_functiondef`. Tidak ada write karena preflight
+  read-only. Replacement kini memakai substring unik `EXACT_SOURCE_BATCH`
+  secara langsung dan migration memverifikasi anchor itu ada sebelum mengubahnya.
+- User menolak aturan lama yang memblokir Retur Supplier ketika exact source
+  FIFO nol. Root cause terverifikasi pada workspace, Save Draft, dan Post:
+  runtime membatasi hak retur dengan `product_batches.qty_remaining` dan On
+  Hand positif, padahal Receipt sudah sah tetapi langsung terserap menutup stok
+  minus.
+- Kontrak user: exact PO/GR dan historical cost tetap sumber; quantity dibatasi
+  received minus Retur Posted; jangan mengambil batch lain; Retur boleh membuat
+  On Hand negatif pada Warehouse yang sudah mengizinkannya; AUTO RO membaca
+  kekurangan tersebut; replenishment berikutnya menutup shortage dan selisih
+  cost masuk `PURCHASE_PRICE_VARIANCE`, bukan COGS.
+- Additive migration `20260919143000` menambahkan source-linked shortage,
+  replenishment allocation, dan PPV adjustment; mem-patch hanya tiga runtime
+  Backoffice Return serta memperluas guard/constraint Stock Movement. Runtime
+  rekonsiliasi negative Stock POS dan Backoffice existing dipertahankan; jalur
+  POS/PWA Purchase Return tidak berubah.
+- Behavior test membuat sendiri PO/GR/Bill/Payment dan satu FIFO batch lain,
+  menghabiskan source FIFO, mem-post dua Return sampai Stock -7 tanpa menyentuh
+  batch lain tersebut, menerima replenishment dengan biaya berbeda, lalu
+  memverifikasi shortage closed, PPV Rp10, jurnal seimbang,
+  idempotency, stale version, over-return, Supplier Payment net guard, PO cancel,
+  dan POS compatibility; seluruh fixture rollback.
+- Evidence lokal: targeted ESLint `PASS` dengan hanya tiga warning hook existing;
+  Next production build/TypeScript `PASS` (87 halaman); anchor regex source
+  terverifikasi 1 Draft, 1 FIFO blocker branch, 4 workspace caps, dan 1 Post
+  Stock block. PostgreSQL runtime belum tersedia secara lokal, sehingga manual
+  preflight/migration/behavior/postflight tetap wajib.
+- Paket: preflight
+  `supabase/diagnostics/backoffice_purchase_return_negative_stock_preflight.sql`,
+  migration `20260919143000_backoffice_purchase_return_negative_stock_runtime.sql`,
+  behavior `supabase/tests/backoffice_purchase_return_negative_stock_behavior.sql`, dan
+  postflight
+  `supabase/diagnostics/backoffice_purchase_return_negative_stock_postflight.sql`.
+- Status: `DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS`; client deploy,
+  authenticated smoke, dan UAT forward fix belum dikonfirmasi.
+  Next safe step mengikuti
+  `docs/runbooks/BACKOFFICE_PURCHASE_RETURN_NEGATIVE_STOCK_FORWARD_FIX.md`.
+
 ## 2026-09-19 - Backoffice Supplier Return end-to-end DATABASE LIVE
 
 - Production preflight execution pertama menemukan salah nama relation
@@ -38,8 +141,9 @@
   authenticated smoke dan UAT belum dilakukan.
 - Known boundary: settlement transfer/offset Piutang Refund Supplier adalah
   langkah Finance terpisah; tidak ada auto-refund atau mutation Supplier Payment
-  Posted. Exact PO `PO-20260825-0000000015` tetap harus diblok sampai FIFO yang
-  sudah habis ditelusuri; jangan forced Return.
+  Posted. Pernyataan lama bahwa exact PO `PO-20260825-0000000015` harus diblok
+  karena FIFO nol telah dikoreksi oleh forward fix di atas: FIFO nol merupakan
+  hasil sah penutupan stok minus dan bukan alasan menolak hak retur komersial.
 
 ## 2026-09-19 - Retained Credit Note AR split correction LOCAL READY
 
@@ -14656,3 +14760,18 @@ Eksekusi hanya setelah backup dan maintenance window.
   `BEGIN`/`ROLLBACK`, removal of opaque `INTO STRICT` fixture dependencies, and
   `git diff --check` PASS. PostgreSQL runtime is unavailable locally, so
   status remains `LOCAL READY`, not `DATABASE LIVE` or `SMOKE PASS`.
+
+# 2026-09-19 - PURCHASE RETURN POST-VISIBILITY UX LOCAL READY
+
+- Root cause of the reported "missing" Supplier Return: the document remains
+  stored as `POSTED`, but `PurchaseReturnApprovalView` defaulted the list to
+  `DRAFT`; its successful Post refresh therefore hid the just-posted document.
+- The list now defaults to `ALL`, switches explicitly to `POSTED` after a
+  successful Post, and tells the user to cancel the source PO when the full
+  Receipt has been returned. No schema, Stock, FIFO, AP, Finance, scheduler, or
+  cancellation runtime changed.
+- Scheduler call-chain audit confirms `RECEIVED` PO is excluded from open
+  procurement coverage. Only `DRAFT`, `CONFIRMED`, and `PARTIALLY_RECEIVED` PO
+  reduce the midnight AUTO_RO candidate; the returned negative On Hand remains
+  eligible even before the historical PO is explicitly canceled.
+- Status: `LOCAL READY`; client deployment and Production UI smoke are pending.
