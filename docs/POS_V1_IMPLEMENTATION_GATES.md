@@ -3128,3 +3128,14 @@ Status: `LOCAL READY; MANUAL DATABASE/CLIENT/SMOKE/UAT PENDING`.
 - Gate: preflight -> migration `20260918160000` -> rollback-only behavior ->
   postflight -> deploy client -> authenticated Retail/Backoffice list/detail/
   filter smoke -> UAT. PASS dengan zero runtime row bukan bukti smoke.
+## 2026-09-19 - Sales Return net commercial presentation
+
+- SO dan Invoice sumber tetap immutable; barang Retur tidak dihapus dari
+  dokumen historis.
+- Read-model additive menghitung Qty kembali dan disposition dari Customer
+  Return Receipt aktual, serta nilai koreksi hanya dari Credit Note `POSTED`.
+- UI membedakan total awal, Credit Note, nilai bersih, Qty awal/kembali/bersih,
+  dan status menunggu Finance agar user tidak menghitung tagihan manual.
+- Runtime Stock/FIFO dan Finance tidak dimutasi oleh read-model ini. Status
+  `LOCAL READY`; database rollout, client deploy, authenticated smoke, dan UAT
+  masih pending.

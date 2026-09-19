@@ -1,5 +1,13 @@
 # Router Dokumen KGS POS
 
+## 2026-09-19 - Sales Return net commercial presentation
+
+[Runbook](runbooks/SALES_RETURN_NET_COMMERCIAL_PRESENTATION_ROLLOUT.md). SO,
+histori Order Retail, dan Invoice tetap immutable tetapi kini menampilkan Qty
+kembali/bersih, disposition Stock, Credit Note posted, serta nilai bersih.
+Read-model dan client berstatus `LOCAL READY`; rollout database, deploy client,
+authenticated smoke, dan UAT masih manual.
+
 ## 2026-09-18 - KMS/SMS/LSM controlled Purchase cleanup
 
 [Runbook](runbooks/KMS_SMS_LSM_PROCUREMENT_CLEANUP_2026-09-18.md). Paket

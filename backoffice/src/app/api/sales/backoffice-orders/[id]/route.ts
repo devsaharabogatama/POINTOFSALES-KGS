@@ -6,6 +6,7 @@ import {
   parseBackofficeSalesOrderPayload,
   throwBackofficeSalesOrderError,
 } from "@/lib/backoffice-sales-order";
+import { salesReturnAdjustmentMap } from "@/lib/sales-return-commercial";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -15,13 +16,19 @@ export async function GET(request: Request, { params }: Context) {
     await requireActiveCompany(caller);
     const { id } = await params;
     const orderId = uuidValue(id, "BACKOFFICE_SALES_ORDER_ID_INVALID");
-    const [{ data, error }, links] = await Promise.all([
+    const [{ data, error }, links, adjustments] = await Promise.all([
       caller.client.rpc("get_backoffice_sales_order", { p_order_id: orderId }),
       caller.client.rpc("get_backoffice_sales_return_links", { p_sales_order_id: orderId }),
+      caller.client.rpc("get_sales_return_commercial_adjustments"),
     ]);
     if (error) throwBackofficeSalesOrderError(error);
     if (links.error) throwBackofficeSalesOrderError(links.error);
-    return Response.json({ ...data, data: { ...data?.data, returns: links.data?.data ?? [] } });
+    const adjustmentMissing = adjustments.error?.code === "PGRST202"
+      || Boolean(adjustments.error?.message?.includes("get_sales_return_commercial_adjustments"));
+    if (adjustments.error && !adjustmentMissing) throwBackofficeSalesOrderError(adjustments.error);
+    const adjustment = salesReturnAdjustmentMap(adjustments.data).get(`BACKOFFICE:${orderId}`) ?? null;
+    return Response.json({ ...data, data: { ...data?.data,
+      returns: links.data?.data ?? [], returnAdjustment: adjustment } });
   } catch (error) {
     return apiError(error);
   }

@@ -2994,3 +2994,9 @@ Finance, Sales, atau histori Posted. Satu PO KMS `RECEIVED` dengan net 202 tetap
 dipertahankan. Postflight seluruhnya PASS; mode ketiga Company tetap `AUTO_RO`,
 dan kandidat RO berikutnya sama dengan On Hand negatif aktual (62 baris,
 60.498 base unit). Scheduler/runtime smoke pada cutoff 23.59 masih menunggu.
+# 2026-09-19 - Sales Return net commercial presentation
+
+Additive read-model dan client untuk Qty Retur, disposition Stock, Credit Note,
+dan nilai bersih SO/Invoice berstatus `LOCAL READY`. Dokumen sumber dan posting
+Stock/Finance tetap immutable; Production rollout dan smoke masih manual. Lihat
+`docs/runbooks/SALES_RETURN_NET_COMMERCIAL_PRESENTATION_ROLLOUT.md`.

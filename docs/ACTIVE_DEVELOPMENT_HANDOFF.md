@@ -14406,3 +14406,26 @@ Eksekusi hanya setelah backup dan maintenance window.
   On Hand: 62 Product/Warehouse rows totaling 60,498 base units. Next pending
   gate is scheduler/runtime smoke at the next Company-local 23:59 cutoff,
   followed by user confirmation of the generated daily RO into PO.
+# 2026-09-19 - SALES RETURN NET COMMERCIAL PRESENTATION LOCAL READY
+
+- User menemukan SO/Invoice hanya menampilkan label Retur tetapi tetap
+  memperlihatkan qty dan nominal asli tanpa nilai bersih.
+- Source SO/Invoice tetap immutable sesuai approved flow. Migration
+  `20260919100000` menambah read-model `STABLE` untuk quantity aktual Customer
+  Return Receipt, `RESTOCK`/`DESTROY`, baris Credit Note posted, dan total kredit
+  per sumber Backoffice maupun Retained Retail.
+- UI daftar/detail SO, histori Retail, dan Invoice menampilkan total awal,
+  Credit Note posted, nilai bersih, serta Qty awal/kembali/bersih. Receipt fisik
+  tanpa Credit Note tidak mengurangi nominal secara tebakan.
+- Tidak ada mutation/backfill terhadap SO, Invoice, Return, Receipt, Stock/FIFO,
+  Payment, Credit Note, Financial Event, atau Journal.
+- Stock contract diaudit: `RESTOCK` mempunyai source-linked Stock Movement dan
+  menambah stock; `DESTROY` tidak mempunyai movement penambah stock.
+- Evidence lokal: targeted ESLint PASS, TypeScript PASS, production build PASS
+  dengan 87 static pages. Verifikasi visual browser lokal belum dapat dijalankan
+  karena koneksi browser sesi tidak tersedia; jangan mengubah status smoke/UAT
+  berdasarkan build saja.
+- Manual gate: preflight -> migration -> rollback-only behavior -> postflight ->
+  deploy client -> authenticated smoke Backoffice + retained Retail. Status
+  `LOCAL READY`, belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, atau
+  `UAT PASS`.

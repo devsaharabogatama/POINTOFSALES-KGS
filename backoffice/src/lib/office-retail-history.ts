@@ -1,3 +1,5 @@
+import type { SalesReturnCommercialAdjustment } from './sales-return-commercial'
+
 export type RetailHistory = {
   id: string; companyId: string; documentNo: string; invoiceNo: string | null;
   invoiceSnapshotId: string | null; status: string; documentStatus: string;
@@ -7,6 +9,9 @@ export type RetailHistory = {
   deliveryDate: string | null; dueDate: string | null; customerName: string | null;
   storeName: string | null; total: number; notes: string | null;
   targetId: string | null; targetNo: string | null;
+  commercialStatus?: 'ACTIVE' | 'RETURN_IN_PROGRESS' | 'PARTIALLY_RETURNED' | 'RETURNED' | 'CANCELED';
+  creditedAmount?: number; returnNo?: string | null; creditNoteNo?: string | null;
+  returnAdjustment?: SalesReturnCommercialAdjustment | null;
   lines: { id: string; productName: string | null; quantity: number; unitPrice: number; total: number }[];
 }
 export function retailStatusLabel(row: RetailHistory) {
