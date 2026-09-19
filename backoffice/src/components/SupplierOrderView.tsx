@@ -20,6 +20,7 @@ import {
   Download,
   Loader2,
   RefreshCcw,
+  RotateCcw,
   Save,
   Search,
   Send,
@@ -95,6 +96,15 @@ type OrderLine = {
   receipt_progress: "NOT_RECEIVED" | "PARTIAL" | "COMPLETE";
   posted_receipt_count: number;
   last_received_at: string | null;
+};
+type ReturnReadiness = {
+  canCancel: boolean;
+  netReceivedBaseQty: number | string;
+  draftReturnRows: number;
+  draftBillRows: number;
+  invalidPostedReturnFinanceRows: number;
+  supplierRefundReceivable: number | string;
+  blockers: string[];
 };
 type SupplierOrderActivity = {
   id: number | string;
@@ -339,6 +349,12 @@ function friendly(code?: string) {
     SUPPLIER_ORDER_NOT_CANCELABLE: "Status PO ini tidak dapat dibatalkan.",
     SUPPLIER_ORDER_RETURN_REQUIRED_BEFORE_CANCEL:
       "Barang yang sudah diterima wajib diretur seluruhnya sebelum PO dibatalkan.",
+    SUPPLIER_ORDER_DRAFT_RETURN_REQUIRES_COMPLETION:
+      "Masih ada Draft Retur untuk PO ini. Selesaikan atau batalkan Draft Retur terlebih dahulu.",
+    SUPPLIER_ORDER_DRAFT_BILL_REQUIRES_CANCEL:
+      "Masih ada Draft Bill untuk PO ini. Selesaikan atau batalkan Draft Bill terlebih dahulu.",
+    SUPPLIER_ORDER_RETURN_FINANCE_RECONCILIATION_REQUIRED:
+      "Koreksi stok dan Finance retur belum rekonsiliasi. Periksa dokumen Retur sebelum membatalkan PO.",
     PURCHASE_PO_PRE_RECEIPT_REVISION_NOT_ALLOWED:
       "PO ini tidak dapat direvisi pada status sekarang.",
     PURCHASE_PO_RECEIPT_ALREADY_STARTED:
@@ -436,6 +452,8 @@ export function SupplierOrderView({
   canEdit,
   canOpenSupplierInvoices,
   openSupplierInvoices,
+  canOpenPurchaseReturns,
+  openPurchaseReturn,
   notify,
 }: {
   session: Session;
@@ -451,6 +469,8 @@ export function SupplierOrderView({
     supplierId: string | null;
     create: boolean;
   }) => void;
+  canOpenPurchaseReturns: boolean;
+  openPurchaseReturn: (supplierOrderId: string) => void;
   notify: (value: string) => void;
 }) {
   const [payload, setPayload] = useState<Payload>({}),
@@ -474,6 +494,8 @@ export function SupplierOrderView({
   const [dateBasis, setDateBasis] = useState<"DOCUMENT" | "EXPECTED">("DOCUMENT");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [returnReadiness, setReturnReadiness] = useState<ReturnReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
   const load = useCallback(async () => {
     const response = await fetch("/api/purchase/supplier-orders", {
       headers: headers(session),
@@ -582,6 +604,36 @@ export function SupplierOrderView({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- workspace data follows the active Company
     void refresh();
   }, [companyId, refresh]);
+  useEffect(() => {
+    if (!cancelTarget || cancelTarget.kind !== "PO") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear readiness when dialog target changes
+      setReturnReadiness(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear loading flag with target
+      setReadinessLoading(false);
+      return;
+    }
+    let canceled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- begin async readiness fetch for selected PO
+    setReadinessLoading(true);
+    fetch(`/api/purchase/supplier-orders/${cancelTarget.document.id}/return-readiness`, {
+      headers: headers(session),
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as { data?: ReturnReadiness; error?: string };
+        if (!response.ok) throw new Error(friendly(body.error));
+        if (!canceled) setReturnReadiness(body.data ?? null);
+      })
+      .catch((reason) => {
+        if (!canceled)
+          setError(reason instanceof Error ? reason.message : "Gagal memeriksa kesiapan pembatalan PO.");
+      })
+      .finally(() => {
+        if (!canceled) setReadinessLoading(false);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [cancelTarget, session]);
   const stores = useMemo(
     () => new Map((payload.stores ?? []).map((v) => [v.id, v.store_name])),
     [payload.stores],
@@ -849,12 +901,14 @@ export function SupplierOrderView({
       canEdit={canEdit}
       canCancel={canCancel}
       canOpenSupplierInvoices={canOpenSupplierInvoices}
+      canOpenPurchaseReturns={canOpenPurchaseReturns}
       close={() => setSelectedPurchaseOrder(null)}
       openBill={() => openSupplierInvoices({
         invoiceIds: currentSummary.bills.map((bill) => bill.id),
         supplierId: currentOrder.supplier_id,
         create: currentSummary.billStatus === "READY",
       })}
+      openReturn={() => openPurchaseReturn(currentOrder.id)}
       cancel={() => {
         setSelectedPurchaseOrder(null);
         setCancelTarget({ kind: "PO", document: currentOrder });
@@ -1237,6 +1291,8 @@ export function SupplierOrderView({
       {cancelTarget && <CancelPurchaseModal
         label={cancelTarget.kind === "RO" ? cancelTarget.document.batch_no : cancelTarget.document.order_no}
         busy={loading}
+        readiness={cancelTarget.kind === "PO" ? returnReadiness : null}
+        readinessLoading={cancelTarget.kind === "PO" && readinessLoading}
         close={() => setCancelTarget(null)}
         submit={cancelDocument}
       />}
@@ -1282,7 +1338,7 @@ type PurchaseOrderEditLine = {
 
 function PurchaseOrderDocument({ order, lines, suppliers, uoms, warehouses,
   defaultWarehouseId, activity, billSummary, session, canEdit, canCancel,
-  canOpenSupplierInvoices, close, openBill,
+  canOpenSupplierInvoices, canOpenPurchaseReturns, close, openBill, openReturn,
   cancel, complete }: {
   order: OrderDoc;
   lines: OrderLine[];
@@ -1296,8 +1352,10 @@ function PurchaseOrderDocument({ order, lines, suppliers, uoms, warehouses,
   canEdit: boolean;
   canCancel: boolean;
   canOpenSupplierInvoices: boolean;
+  canOpenPurchaseReturns: boolean;
   close: () => void;
   openBill: () => void;
+  openReturn: () => void;
   cancel: () => void;
   complete: (message: string) => Promise<void>;
 }) {
@@ -1324,6 +1382,9 @@ function PurchaseOrderDocument({ order, lines, suppliers, uoms, warehouses,
     && lines.every((line) => line.posted_receipt_count === 0);
   const canOpenBill = canOpenSupplierInvoices
     && (billSummary.billStatus === "READY" || billSummary.bills.length > 0);
+  const canOpenReturn = canOpenPurchaseReturns && lines.some(
+    (line) => line.posted_receipt_count > 0,
+  ) && ["PARTIALLY_RECEIVED", "RECEIVED"].includes(order.status);
   const supplierName = suppliers.find((item) => item.id === order.supplier_id)?.supplierName
     ?? (order.supplier_id ? "Supplier" : "Supplier belum ditentukan");
   const estimatedTotal = draftLines.reduce((total, line) =>
@@ -1379,6 +1440,7 @@ function PurchaseOrderDocument({ order, lines, suppliers, uoms, warehouses,
       <div className="flex flex-wrap justify-end gap-2">
         {canRevise && !editing && <button onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 font-bold"><FilePenLine className="h-4 w-4"/>Edit PO</button>}
         {canOpenBill && !editing && <button onClick={openBill} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-bold text-white"><FilePlus2 className="h-4 w-4"/>{billSummary.bills.length ? "Lihat Bill" : "Buat Bill"}</button>}
+        {canOpenReturn && !editing && <button onClick={openReturn} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 font-bold text-amber-800"><RotateCcw className="h-4 w-4"/>Retur ke Supplier</button>}
         {canCancel && !editing && ["DRAFT","CONFIRMED","PARTIALLY_RECEIVED","RECEIVED"].includes(order.status) && <button onClick={cancel} className="rounded-xl border border-rose-300 px-4 py-2.5 font-bold text-rose-700">Batalkan PO</button>}
       </div>
     </header>
@@ -1527,10 +1589,11 @@ function DailyRoModal({ batch, lines, suppliers, relations, uoms, warehouses, se
   return <div className="fixed inset-0 z-[80] bg-black/60 p-3 sm:p-6"><section role="dialog" aria-modal="true" className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white"><header className="flex items-start gap-3 border-b p-5"><div className="flex-1"><p className="text-xs font-bold uppercase tracking-wider text-emerald-600">Konfirmasi Request Order</p><h2 className="mt-1 text-xl font-black">{batch.batch_no}</h2><p className="mt-1 text-sm text-slate-500">Qty, Supplier, satuan, harga, dan Gudang masih dapat disesuaikan sebelum menjadi PO.</p></div><button onClick={close} disabled={busy} className="rounded-xl border p-2"><X className="h-5 w-5"/></button></header><div className="flex-1 overflow-y-auto p-5">{error && <div className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</div>}<div className="space-y-5">{lines.map((line) => <article key={line.id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-black">{line.product_sku_snapshot} · {line.product_name_snapshot}</h3><p className="text-sm text-slate-500">Usulan {quantity(line.requested_base_qty)} {line.base_uom_name_snapshot} dari {line.warehouse_name_snapshot}</p></div><button onClick={() => split(line)} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-black text-emerald-700">Bagi ke Supplier lain</button></div><div className="mt-4 space-y-3">{drafts.filter((item) => item.lineId === line.id).map((draft, index) => { const productRelations = relations.filter((item) => item.productId === line.product_id); const productUoms = uoms.filter((item) => item.productId === line.product_id); return <div key={draft.key} className="grid gap-3 rounded-xl bg-slate-50 p-3 md:grid-cols-5"><Field label="Supplier"><select className="field" value={draft.relationId} onChange={(event) => chooseRelation(draft, event.target.value)}><option value="">Belum ditentukan</option>{productRelations.map((relation) => <option key={relation.id} value={relation.id}>{supplierById.get(relation.supplierId) ?? "Supplier"}{relation.preferred ? " · prioritas" : ""}</option>)}</select></Field><Field label="Satuan"><select className="field" value={draft.uomId} onChange={(event) => update(draft.key, { uomId: event.target.value })} disabled={!draft.relationId}><option value={line.base_uom_id}>{line.base_uom_name_snapshot}</option>{productUoms.filter((uom) => uom.uomId !== line.base_uom_id && productRelations.some((relation) => relation.id === draft.relationId && relation.purchaseUomId === uom.uomId)).map((uom) => <option key={uom.uomId} value={uom.uomId}>{uom.uomName}</option>)}</select></Field><Field label="Qty"><input className="field" type="number" min="0" step="any" value={draft.quantity} onChange={(event) => update(draft.key, { quantity: event.target.value })}/></Field><Field label="Harga"><input className="field" type="number" min="0" step="any" value={draft.price} onChange={(event) => update(draft.key, { price: event.target.value })}/></Field><Field label="Gudang terima"><select className="field" value={draft.warehouseId} onChange={(event) => update(draft.key, { warehouseId: event.target.value })}><option value="">Pilih Gudang</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field>{index > 0 && <button onClick={() => setDrafts((current) => current.filter((item) => item.key !== draft.key))} className="text-left text-xs font-black text-rose-700">Hapus pembagian</button>}</div>; })}</div></article>)}</div></div><footer className="flex justify-end gap-3 border-t p-4"><button onClick={close} disabled={busy} className="rounded-xl border px-4 py-3 font-bold">Kembali</button><button onClick={() => void submit()} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 font-black text-white disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}Konfirmasi jadi PO</button></footer></section></div>;
 }
 
-function CancelPurchaseModal({ label, busy, close, submit }: { label: string; busy: boolean; close: () => void; submit: (reason: string) => Promise<void> }) {
+function CancelPurchaseModal({ label, busy, readiness, readinessLoading, close, submit }: { label: string; busy: boolean; readiness: ReturnReadiness | null; readinessLoading: boolean; close: () => void; submit: (reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("");
   useEscapeClose(() => { if (!busy) close(); });
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/60 p-4"><section role="dialog" aria-modal="true" className="w-full max-w-xl rounded-2xl bg-white p-6"><h2 className="text-xl font-black">Batalkan {label}?</h2><p className="mt-2 text-sm text-slate-500">PO yang sudah menerima barang hanya dapat dibatalkan setelah seluruh barang diretur dan return sudah diposting.</p><label className="mt-5 block text-sm font-bold">Catatan pembatalan (opsional)<textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 p-3 font-normal"/></label><div className="mt-5 flex justify-end gap-3"><button onClick={close} disabled={busy} className="rounded-xl border px-4 py-3 font-bold">Kembali</button><button onClick={() => void submit(reason)} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-3 font-black text-white disabled:opacity-50"><Ban className="h-4 w-4"/>Batalkan dokumen</button></div></section></div>;
+  const blocked = Boolean(readiness && !readiness.canCancel);
+  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/60 p-4"><section role="dialog" aria-modal="true" className="w-full max-w-xl rounded-2xl bg-white p-6"><h2 className="text-xl font-black">Batalkan {label}?</h2><p className="mt-2 text-sm text-slate-500">PO yang sudah menerima barang hanya dapat dibatalkan setelah seluruh barang diretur dan koreksi tagihannya selesai.</p>{readinessLoading && <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm font-semibold">Memeriksa penerimaan, retur, Bill, dan Finance…</div>}{readiness && <div className={`mt-4 rounded-xl border p-4 text-sm ${blocked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-black">{blocked ? "PO belum dapat dibatalkan" : "PO aman dibatalkan"}</p><p className="mt-1">Sisa penerimaan bersih: {quantity(readiness.netReceivedBaseQty)} base unit.</p>{readiness.draftReturnRows > 0 && <p>Selesaikan {readiness.draftReturnRows} Draft Retur.</p>}{readiness.draftBillRows > 0 && <p>Batalkan atau selesaikan {readiness.draftBillRows} Draft Bill.</p>}{readiness.invalidPostedReturnFinanceRows > 0 && <p>Rekonsiliasi Finance retur belum selesai.</p>}{Number(readiness.supplierRefundReceivable) > 0 && <p>Piutang refund Supplier tetap tercatat: {money(readiness.supplierRefundReceivable)}.</p>}</div>}<label className="mt-5 block text-sm font-bold">Catatan pembatalan (opsional)<textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 p-3 font-normal"/></label><div className="mt-5 flex justify-end gap-3"><button onClick={close} disabled={busy} className="rounded-xl border px-4 py-3 font-bold">Kembali</button><button onClick={() => void submit(reason)} disabled={busy || readinessLoading || blocked} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-3 font-black text-white disabled:opacity-50"><Ban className="h-4 w-4"/>Batalkan dokumen</button></div></section></div>;
 }
 function Empty({ text }: { text: string }) {
   return (

@@ -1,5 +1,110 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-19 - Backoffice Supplier Return end-to-end DATABASE LIVE
+
+- Production preflight execution pertama menemukan salah nama relation
+  `public.offline_submissions`. Preflight telah diperbaiki memakai kontrak
+  canonical `public.pos_offline_sale_submissions` dan hanya memblokir status
+  nonterminal `QUEUED`/`SYNCING`/`NEEDS_CONFIRMATION`. Migration/runtime tidak
+  dijalankan dan tidak berubah akibat error tersebut.
+- Behavioral execution pertama berhenti pada
+  `FINAL_SUPPLIER_ORDER_LINES_IMMUTABLE` karena fixture membuat header PO
+  langsung `CONFIRMED` sebelum memasukkan line. Fixture telah diselaraskan
+  dengan lifecycle canonical: header `DRAFT`, insert line, lalu transisi
+  `CONFIRMED`. Seluruh transaksi test gagal tersebut otomatis rollback;
+  migration/runtime Production tidak diubah.
+- Full Backoffice flow tersedia dari detail PO atau halaman Retur: source picker
+  exact Posted Goods Receipt/Warehouse/FIFO, Draft/Edit/Cancel tanpa Cashier,
+  Review/Approve, Post, Stock/FIFO Movement, AP allocation
+  `UNINVOICED_FIRST`, Supplier Credit, Piutang Refund Supplier, dan explainable
+  PO cancellation gate setelah net receipt nol.
+- Retail/PWA Purchase Return tetap memakai RPC dan aturan Cashier Session lama;
+  `source_channel` hanya memisahkan ownership dan dispatch posting.
+- Supplier Payment read/save/validate memakai saldo Bill net setelah Supplier
+  Credit. Validasi mengunci Invoice dan menghitung ulang, sehingga Payment Draft
+  yang dibuat sebelum Return tidak dapat diposting menjadi overpayment.
+- Evidence lokal: ESLint `PASS`; Next production build + TypeScript `PASS`
+  (87 halaman); SQL transaction/dollar-tag structural scan `PASS`; scoped diff
+  check tidak menemukan whitespace error.
+- Paket manual: preflight
+  `supabase/diagnostics/backoffice_purchase_return_e2e_preflight.sql`, migration
+  `20260919140000` -> `20260919141000` -> `20260919142000`, rollback-only test
+  `supabase/tests/backoffice_purchase_return_e2e_behavior.sql`, lalu postflight
+  `supabase/diagnostics/backoffice_purchase_return_e2e_postflight.sql`.
+- User mengonfirmasi Production preflight seluruhnya PASS, tiga migration
+  `20260919140000`/`141000`/`142000` sukses, corrected rollback-only behavior
+  PASS, dan postflight seluruhnya PASS/INFO dengan nol violation. Status:
+  `DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS`; client belum dideploy,
+  authenticated smoke dan UAT belum dilakukan.
+- Known boundary: settlement transfer/offset Piutang Refund Supplier adalah
+  langkah Finance terpisah; tidak ada auto-refund atau mutation Supplier Payment
+  Posted. Exact PO `PO-20260825-0000000015` tetap harus diblok sampai FIFO yang
+  sudah habis ditelusuri; jangan forced Return.
+
+## 2026-09-19 - Retained Credit Note AR split correction LOCAL READY
+
+- Screenshot dan call-chain membuktikan `CN-20260919-0000000012` salah membagi
+  Rp78.400 menjadi pengurang piutang Rp0 / Refund Liability Rp78.400, sehingga
+  Penerimaan Customer tetap menawarkan Rp5.428.520 walaupun Invoice UI sudah
+  menampilkan nilai net Rp5.350.120.
+- Root cause: runtime Credit Note retained Retail memakai
+  `sales_headers.sisa_piutang` legacy, sedangkan Penerimaan Customer memakai
+  receivable efektif hasil Dispatch.
+- Migration `20260919131000` mengganti anchor posting berikutnya ke canonical
+  dispatch-effective receivable, membalik Refund salah yang sudah POSTED melalui
+  dokumen/jurnal reversal source-linked, lalu memperbaiki exact Credit Note
+  dengan Journal koreksi append-only: debit Customer Refund Liability / kredit
+  Customer Receivable Rp78.400. Histori dan Journal sumber tidak dihapus atau
+  ditulis ulang.
+- Tidak ada perubahan Stock/FIFO, Retail Sale/Invoice/line, pembayaran, POS,
+  Cashier Session, atau jalur Credit Note native Backoffice.
+- Paket: preflight, guarded migration, rollback-only authenticated behavior,
+  generic retained Refund/partial-payment regression behavior, exact rollback-only
+  behavior, postflight, impact audit, dan runbook. Static contract scan dan
+  checksum lokal PASS; PostgreSQL Production belum dijalankan.
+- Status `LOCAL READY`. Next safe step mengikuti
+  `docs/runbooks/RETAINED_CREDIT_NOTE_AR_SPLIT_FIX.md`; jangan klaim DATABASE
+  LIVE/SMOKE/UAT sebelum output manual diterima.
+
+## 2026-09-19 - Invoice Data Exchange Retail + Backoffice LOCAL READY
+
+- Root cause terverifikasi: `export_sales_documents(date,date)` hanya membaca
+  `sales_invoice_snapshots` Retail, sedangkan Invoice Office tersimpan pada
+  `backoffice_sales_invoices`; karena itu transaksi Office terbaru tidak pernah
+  masuk XLSX.
+- Migration `20260919130000` membuat union read-only seluruh status Retail dan
+  Backoffice. Output menambah sumber, nomor dokumen, nomor Invoice/Draft/SO,
+  status, serta mempertahankan Product/UOM/Qty/harga/pajak per baris.
+- API workbook menambahkan kolom tersebut pada daftar dan detail; auto-filter
+  XLSX existing tetap mencakup seluruh header.
+- Tidak ada mutation/backfill Invoice, SO, Stock/FIFO, Payment, Finance,
+  Cashier Session, ataupun import.
+- Paket wajib terdiri dari preflight, guarded migration, rollback-only
+  behavioral test, postflight, impact audit, dan rollout runbook.
+- Evidence lokal: targeted ESLint `PASS`, TypeScript `PASS`, production build
+  `PASS` (87 halaman), SQL delimiter/forbidden-identifier scan `PASS`, dan
+  scoped diff check tanpa whitespace error. PostgreSQL runtime belum dijalankan.
+- Status `LOCAL READY`; manual database rollout, client deploy, authenticated
+  smoke, dan UAT belum dijalankan. Next safe step mengikuti
+  `docs/runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md`.
+
+## 2026-09-19 - SMS missing Customer Receipt Invoice diagnosis pending
+
+- User melaporkan Invoice Retail SMS `INV-20260904-0000000229` terlihat pada
+  Sales > Invoice Penjualan tetapi tidak tersedia pada form Penerimaan Customer.
+- Audit call chain membuktikan kedua layar mempunyai eligibility berbeda:
+  Invoice Penjualan menampilkan setiap `sales_invoice_snapshots` Company aktif,
+  sedangkan Penerimaan Customer hanya menerima Sale `is_tempo`, piutang yang
+  sudah efektif dari Posted legacy atau Dispatch, dan outstanding positif
+  setelah Credit Note serta Customer Receipt posted.
+- Ditambahkan diagnosis SELECT-only
+  `supabase/diagnostics/sms_customer_receipt_missing_invoice_20260904_0229.sql`
+  untuk mengklasifikasikan exact Invoice sebagai non-tempo, piutang belum
+  efektif, tanpa piutang, sudah lunas/dikreditkan, atau eligible.
+- Tidak ada perubahan runtime, Invoice, Receipt, Payment, Credit Note, AR,
+  Journal, Stock, atau data Production. Root cause exact menunggu output SQL;
+  jangan mengubah filter sebelum hasilnya tersedia.
+
 ## 2026-09-19 - Customer Receipt net-after-return LOCAL READY
 
 - Root cause terkonfirmasi pada runtime `get_finance_customer_receipts` dan
@@ -14447,3 +14552,107 @@ Eksekusi hanya setelah backup dan maintenance window.
   deploy client -> authenticated smoke Backoffice + retained Retail. Status
   `LOCAL READY`, belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, atau
   `UAT PASS`.
+
+# 2026-09-19 - MANUAL FINANCE JOURNAL LOCAL READY
+
+- User menyetujui implementasi Jurnal Entries manual dengan approval Company
+  default ON dan meminta paket aman untuk dipasang langsung di Production.
+- Impact audit mengunci bahwa perubahan hanya pada Finance canonical. POS,
+  Cashier Session, Payment, Stock/FIFO, Sales/Purchase, Return/Refund, queue
+  otomatis, dan transaksi lama tidak dimutasi.
+- Migration `20260919120000` menambah workflow manual terpisah dari status
+  canonical, permission `finance.manual_journals`, maker-checker, optimistic
+  version, exact retry, open-period/account/manual-posting recheck, audit, cancel
+  pre-posting, serta mempertahankan reversal existing.
+- UI Journal Entries menambah modal create/edit dengan line Debit/Kredit,
+  referensi dan bukti HTTPS opsional, total balance, Save Draft/Submit, approval,
+  cancel, dan policy approval. Company tanpa eligible COA diblok jelas.
+- Files: migration, SELECT-only preflight/postflight, authenticated rollback-only
+  behavior, impact audit, rollout runbook, API route, `FinanceOperationsView`,
+  dan `ManualJournalDialog`.
+- Evidence lokal: ESLint PASS, TypeScript PASS, production build PASS (87 static
+  pages), `git diff --check` PASS. PostgreSQL runtime belum tersedia lokal;
+  SQL wajib dibuktikan berurutan lewat Production preflight -> migration ->
+  behavior -> postflight sebelum client deploy.
+- Status: `LOCAL READY`; belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`,
+  atau `UAT PASS`.
+- Next safe step: jalankan runbook
+  `docs/runbooks/MANUAL_FINANCE_JOURNAL_ROLLOUT.md` dan berhenti pada output
+  `BLOCKER`/error pertama; jangan rerun migration yang sudah ber-ledger.
+
+# 2026-09-19 - SMS RETAIL INVOICE 0229 TEMPO CORRECTION LOCAL READY
+
+- Manual Journal tetap di-hold atas instruksi user; task ini tidak mengubah
+  paket Manual Journal.
+- Exact Production diagnosis sebelumnya membuktikan Invoice SMS
+  `INV-20260904-0000000229` adalah Retail non-Tempo, Delivered, total Rp350.000,
+  mempunyai Dispatch effect tetapi nol Piutang sehingga tidak muncul pada
+  Penerimaan Customer.
+- User menetapkan koreksi menjadi Tempo dengan jatuh tempo 22 September 2026.
+- Production preflight membuktikan source Dispatch Event masih `HOLD`, belum
+  mempunyai Journal, dan tepat satu verification request masih aktif. Karena
+  belum ada posting Finance, paket diperbaiki menjadi koreksi pre-posting.
+- Paket `20260919113000` kini exact/fail-closed: tepat satu pending Cash
+  payment intent Rp350.000 dibatalkan dengan audit dan original Cash Drawer IN
+  di-offset oleh satu OUT reversal pada exact source session yang sudah
+  `CLOSED`; `actual_cash`, `closing_cash_actual`, dan `closed_at` dipertahankan,
+  sementara `expected_cash`/`difference` direkonsiliasi dengan before/after
+  audit; Dispatch effect/Event yang
+  masih HOLD direklasifikasi dari Clearing ke Piutang; Invoice dijadikan Tempo
+  jatuh tempo 22 September. Payment, Receipt, dan Credit evidence wajib nol;
+  periode Dispatch 7 September wajib terbuka.
+- Implementasi mempertahankan Invoice snapshot, Delivery, Stock/FIFO, seluruh
+  posted Journal, dan transaksi lain. Tidak membuat prior-period adjustment
+  karena belum ada Journal sumber yang harus dikoreksi.
+- Files: preflight, migration, rollback-only authenticated behavior, postflight,
+  impact audit, dan rollout runbook.
+- Local evidence: exact identity/constants review, forbidden Stock/FIFO/source
+  mutation scan, exact DML inventory, balanced parentheses/quotes/dollar tags,
+  transaction structure, dan `git diff --check` PASS. PostgreSQL runtime tidak
+  tersedia lokal sehingga revisi SQL belum dijalankan. Status `LOCAL READY`,
+  bukan `DATABASE LIVE`, `SMOKE PASS`, atau `UAT PASS`.
+- Next safe step: jalankan ulang preflight revisi lengkap. `dispatch_finance_state`
+  wajib membuktikan satu Event HOLD/tanpa Journal dan `pending_payment_intent`
+  wajib membuktikan satu request PENDING Cash Rp350.000 dan tepat satu jalur
+  reversal session yang valid. Hanya lanjut
+  migration bila semua baris `PASS`; hentikan bila ada `BLOCKER` atau SQL error.
+- First revised preflight run stopped read-only with PostgreSQL `42P01` because
+  a comma join placed alias `allocation` outside the following JOIN scope.
+  Preflight and the matching postflight subqueries now use explicit
+  `JOIN`/`CROSS JOIN`; all four package files were rescanned for the same
+  pattern and delimiter/parenthesis balance. No Production row was mutated.
+- Next Production preflight proved the exact pending intent is `Tunai` via
+  `CASH_DRAWER`, with original IN movement
+  `d3f95c4c-5302-451b-a8a7-79a43db47e7d`; all other gates PASS. Package now
+  first showed the source session is `CLOSED` and there is no OPEN same-Store
+  session. Requiring an OPEN replacement session was therefore invalid for
+  this historical correction. The package now performs the Rp350.000 OUT
+  reversal on the exact source session, preserves actual/closing cash,
+  reconciles expected cash/difference, and writes immutable Cashier Session and
+  correction audits. It fails closed if the original movement or closed-session
+  reconciliation has drifted. Behavior and postflight verify the linked Drawer
+  reversal, closed-session reconciliation, audit, and AR result.
+
+# 2026-09-19 - RETAINED CREDIT/REFUND REGRESSION FIX LOCAL READY
+
+- Production execution of the old generic regression test stopped before any
+  behavior assertion with PostgreSQL `P0002 query returned no rows`. Root cause
+  was its `INTO STRICT` dependency on a pre-existing retained Retail Return that
+  was received, unallocated, and had no Credit Note. Normal processing had
+  consumed that transient pool, so the test was not repeatable.
+- `supabase/tests/retained_retail_credit_note_refund_bridge_behavior.sql` now
+  selects only an eligible delivered Tempo Retail source and builds its own
+  Return, approval, `DESTROY` receipt, invoice allocation, partial Customer
+  Receipt, Credit Note, Refund, and Refund reversal inside one transaction.
+  The script ends with `ROLLBACK`; generated business rows do not survive.
+- Source selection uses dispatch-effective receivable and existing posted
+  Receipt/Credit reductions, not legacy `sales_headers.sisa_piutang`. Test
+  quantity is capped so the generated partial-payment scenario necessarily
+  contains both an AR reduction and a real Refund Liability.
+- The regression test now requires migration `20260919131000`; running it
+  before the AR-first runtime fix produces an explicit precondition error.
+- Local evidence: manual call-chain review against retained Return receipt and
+  Credit/Refund runtime; balanced parentheses, quotes, `$test$` tags, one outer
+  `BEGIN`/`ROLLBACK`, removal of opaque `INTO STRICT` fixture dependencies, and
+  `git diff --check` PASS. PostgreSQL runtime is unavailable locally, so
+  status remains `LOCAL READY`, not `DATABASE LIVE` or `SMOKE PASS`.

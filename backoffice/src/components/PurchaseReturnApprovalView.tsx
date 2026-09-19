@@ -6,7 +6,9 @@ import {
   Ban,
   CheckCircle2,
   Eye,
+  FilePenLine,
   Loader2,
+  Plus,
   RefreshCcw,
   Search,
   X,
@@ -41,6 +43,7 @@ type Document = {
   master_version: number | string;
   created_at: string;
   financial_event_id: string | null;
+  source_channel?: "POS" | "BACKOFFICE";
 };
 type Line = {
   id: string;
@@ -71,7 +74,95 @@ type Payload = {
   stores?: Lookup[];
   warehouses?: Lookup[];
   actors?: Lookup[];
+  workspace?: Workspace;
+  finance?: {
+    allocationPolicy?: string;
+    creditNotes?: CreditNote[];
+    journals?: ReturnJournal[];
+  };
   error?: string;
+};
+type WorkspaceReceipt = {
+  id: string;
+  receipt_no: string;
+  supplier_order_id: string;
+  order_no: string;
+  supplier_id: string;
+  supplier_name: string;
+  store_id: string;
+  store_name: string;
+  received_at: string;
+  supplier_delivery_no: string | null;
+  return_warehouse_count: number;
+  returnable_base_qty: number | string;
+  blocker_code: string | null;
+};
+type WorkspaceSourceLine = {
+  receipt_id: string;
+  supplier_order_id: string;
+  receipt_line_id: string;
+  condition_allocation_id: string;
+  product_batch_id: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  product_id: string;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  base_uom_id: string;
+  base_uom_name_snapshot: string;
+  source_condition: "GOOD" | "DAMAGED";
+  source_base_qty: number | string;
+  posted_return_base_qty: number | string;
+  fifo_remaining_base_qty: number | string;
+  returnable_base_qty: number | string;
+  provisional_base_unit_cost: number | string;
+  returnable_provisional_value: number | string;
+  blocker_code: string | null;
+};
+type WorkspaceUom = {
+  productId: string;
+  uomId: string;
+  uomName: string;
+  factorToBase: number | string;
+  allowDecimal: boolean;
+  decimalPrecision: number;
+};
+type WorkspaceDraftLine = Line & {
+  source_condition_allocation_id: string;
+  return_uom_id: string;
+  client_line_key: string;
+};
+type Workspace = {
+  workspaceVersion?: number;
+  policy?: {
+    financeAllocation?: string;
+    documentBoundary?: string;
+    fifoBoundary?: string;
+  };
+  receipts?: WorkspaceReceipt[];
+  sourceLines?: WorkspaceSourceLine[];
+  productUoms?: WorkspaceUom[];
+  drafts?: Document[];
+  draftLines?: WorkspaceDraftLine[];
+};
+type CreditNote = {
+  id: string;
+  purchase_return_id: string;
+  credit_note_no: string;
+  credit_note_date: string;
+  provisional_value: number | string;
+  actual_value: number | string;
+  recoverable_tax_value: number | string;
+  nonrecoverable_tax_value: number | string;
+  ap_final_reduction: number | string;
+  supplier_refund_receivable: number | string;
+};
+type ReturnJournal = {
+  documentId: string;
+  journalId: string | null;
+  journalNo: string | null;
+  accountingDate: string | null;
+  status: string | null;
 };
 type Action = "approve" | "reject" | "post" | "cancel";
 const authHeaders = (session: Session) => ({
@@ -97,16 +188,34 @@ function friendly(code?: string) {
     PURCHASE_RETURN_NOT_REVIEWABLE: "Dokumen tidak lagi dapat direview.",
     PURCHASE_RETURN_APPROVER_REQUIRED:
       "Role atau cakupan Store Anda tidak diizinkan.",
+    PURCHASE_RETURN_STORE_SCOPE_INVALID:
+      "Store sumber penerimaan berada di luar cakupan akses Anda.",
     REJECTION_REASON_REQUIRED: "Alasan penolakan wajib diisi.",
     APPROVED_PURCHASE_RETURN_REQUIRED:
       "Retur harus disetujui sebelum diposting.",
     PURCHASE_RETURN_QUANTITY_CHANGED_DURING_POST:
       "Jumlah yang tersedia berubah. Periksa ulang dokumen.",
-    PURCHASE_RETURN_FIFO_NOT_AVAILABLE:
-      "Stok dari penerimaan asal sudah tidak mencukupi.",
     PURCHASE_RETURN_STOCK_NOT_AVAILABLE: "Stok gudang sudah tidak mencukupi.",
     PURCHASE_RETURN_AP_ADJUSTMENT_EXCEEDS_SOURCE:
       "Nilai retur melebihi provisional AP penerimaan.",
+    PURCHASE_RETURN_FIFO_NOT_AVAILABLE:
+      "Stok FIFO dari penerimaan asal sudah terpakai. Telusuri pergerakan stok sumber sebelum membuat retur.",
+    PURCHASE_RETURN_SOURCE_FULLY_RETURNED:
+      "Seluruh jumlah dari penerimaan ini sudah diretur.",
+    ACTIVE_PURCHASE_RETURN_DRAFT_ALREADY_EXISTS:
+      "Sudah ada Draft Retur untuk penerimaan dan gudang ini. Buka Draft tersebut untuk melanjutkan.",
+    PURCHASE_RETURN_QUANTITY_EXCEEDS_AVAILABLE:
+      "Qty retur melebihi stok FIFO sumber yang masih tersedia.",
+    ACTIVE_RETURN_PRODUCT_UOM_NOT_FOUND:
+      "Satuan retur tidak aktif atau bukan milik barang tersebut.",
+    RETURN_UOM_REQUIRES_INTEGER:
+      "Satuan yang dipilih hanya menerima jumlah bilangan bulat.",
+    PURCHASE_RETURN_QUANTITY_INVALID:
+      "Qty retur wajib lebih besar dari nol.",
+    PURCHASE_RETURN_INVOICE_ALLOCATION_GAP:
+      "Alokasi tagihan Supplier tidak cukup untuk menjelaskan Qty retur. Muat ulang dan periksa Faktur Supplier terkait.",
+    POSTABLE_ACCOUNTING_PERIOD_NOT_FOUND:
+      "Tidak ada periode akuntansi terbuka untuk tanggal retur ini.",
     MASTER_VERSION_CONFLICT: "Dokumen berubah di perangkat lain. Muat ulang.",
     CANCEL_REASON_REQUIRED: "Alasan pembatalan wajib diisi.",
     FORBIDDEN: "Anda tidak diizinkan mengakses Retur Pembelian.",
@@ -120,6 +229,9 @@ export function PurchaseReturnApprovalView({
   canReview,
   canPost,
   canCancel,
+  canCreate,
+  canEdit,
+  initialSupplierOrderId,
   notify,
 }: {
   session: Session;
@@ -127,6 +239,9 @@ export function PurchaseReturnApprovalView({
   canReview: boolean;
   canPost: boolean;
   canCancel: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  initialSupplierOrderId?: string | null;
   notify: (message: string) => void;
 }) {
   const [payload, setPayload] = useState<Payload>({});
@@ -141,14 +256,20 @@ export function PurchaseReturnApprovalView({
     type: Action;
     document: Document;
   } | null>(null);
+  const [editor, setEditor] = useState<Document | "NEW" | null>(
+    initialSupplierOrderId && canCreate ? "NEW" : null,
+  );
   const load = useCallback(async () => {
-    const response = await fetch("/api/purchase/returns", {
+    const query = initialSupplierOrderId
+      ? `?supplierOrderId=${encodeURIComponent(initialSupplierOrderId)}`
+      : "";
+    const response = await fetch(`/api/purchase/returns${query}`, {
       headers: authHeaders(session),
     });
     const result = (await response.json()) as Payload;
     if (!response.ok) throw new Error(friendly(result.error));
     setPayload(result);
-  }, [session]);
+  }, [initialSupplierOrderId, session]);
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -261,16 +382,26 @@ export function PurchaseReturnApprovalView({
               AP dikurangi.
             </p>
           </div>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black"
-          >
-            <RefreshCcw
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            />
-            Muat ulang
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {canCreate && (
+              <button
+                onClick={() => setEditor("NEW")}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white"
+              >
+                <Plus className="h-4 w-4" /> Retur Baru
+              </button>
+            )}
+            <button
+              onClick={refresh}
+              disabled={loading}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black"
+            >
+              <RefreshCcw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
+              Muat ulang
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Summary
@@ -397,11 +528,22 @@ export function PurchaseReturnApprovalView({
           store={storeById.get(detail.store_id)}
           warehouse={warehouseById.get(detail.source_warehouse_id)}
           actors={actorById}
+          creditNote={(payload.finance?.creditNotes ?? []).find(
+            (row) => row.purchase_return_id === detail.id,
+          )}
+          journal={(payload.finance?.journals ?? []).find(
+            (row) => row.documentId === detail.id,
+          )}
           canReview={canReview}
           canPost={canPost}
           canCancel={canCancel}
+          canEdit={canEdit}
           close={() => setDetail(null)}
           act={(type) => setAction({ type, document: detail })}
+          edit={() => {
+            setDetail(null);
+            setEditor(detail);
+          }}
         />
       )}{" "}
       {action && (
@@ -418,11 +560,25 @@ export function PurchaseReturnApprovalView({
               type === "approve"
                 ? "Retur Pembelian disetujui dan siap diposting."
                 : type === "post"
-                  ? "Retur Pembelian diposting; stok dan provisional AP sudah diperbarui."
+                  ? "Retur Pembelian diposting; stok, FIFO, tagihan Supplier, dan Finance sudah diperbarui."
                   : type === "reject"
                     ? "Retur Pembelian ditolak."
                     : "Retur Pembelian dibatalkan.",
             );
+          }}
+        />
+      )}
+      {editor && (
+        <ReturnEditor
+          session={session}
+          workspace={payload.workspace ?? {}}
+          document={editor === "NEW" ? null : editor}
+          initialSupplierOrderId={initialSupplierOrderId ?? null}
+          close={() => setEditor(null)}
+          complete={async (message) => {
+            setEditor(null);
+            await refresh();
+            notify(message);
           }}
         />
       )}
@@ -486,11 +642,15 @@ function Detail({
   store,
   warehouse,
   actors,
+  creditNote,
+  journal,
   canReview,
   canPost,
   canCancel,
+  canEdit,
   close,
   act,
+  edit,
 }: {
   document: Document;
   lines: Line[];
@@ -499,11 +659,15 @@ function Detail({
   store?: string;
   warehouse?: string;
   actors: Map<string, string>;
+  creditNote?: CreditNote;
+  journal?: ReturnJournal;
   canReview: boolean;
   canPost: boolean;
   canCancel: boolean;
+  canEdit: boolean;
   close: () => void;
   act: (type: Action) => void;
+  edit: () => void;
 }) {
   useEscapeClose(close);
   return (
@@ -607,6 +771,43 @@ function Detail({
             </p>
           </div>
         </div>
+        {document.status === "POSTED" && (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+              Koreksi tagihan Supplier
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Info
+                label="Credit Note Supplier"
+                value={creditNote?.credit_note_no ?? "Tidak diperlukan (belum ditagih)"}
+              />
+              <Info
+                label="Pengurang utang"
+                value={rupiah(creditNote?.ap_final_reduction ?? 0)}
+              />
+              <Info
+                label="Piutang refund Supplier"
+                value={rupiah(creditNote?.supplier_refund_receivable ?? 0)}
+              />
+              <Info
+                label="Jurnal"
+                value={journal?.journalNo ?? "Jurnal tidak ditemukan"}
+              />
+              <Info
+                label="Tanggal akuntansi"
+                value={journal?.accountingDate ?? "-"}
+              />
+              <Info label="Status jurnal" value={journal?.status ?? "-"} />
+            </div>
+            {creditNote && Number(creditNote.supplier_refund_receivable) > 0 && (
+              <p className="mt-3 text-sm font-semibold text-amber-800">
+                Nilai yang sudah dibayar dicatat sebagai Piutang Refund Supplier.
+                Penerimaan transfer atau offset berikutnya diproses dari Finance,
+                bukan dengan mengubah pembayaran lama.
+              </p>
+            )}
+          </div>
+        )}
         {document.notes && (
           <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm">
             <strong>Catatan:</strong> {document.notes}
@@ -625,6 +826,17 @@ function Detail({
           >
             Tutup
           </button>
+          {canEdit &&
+            document.source_channel === "BACKOFFICE" &&
+            document.status === "DRAFT" &&
+            document.review_status === "PENDING" && (
+              <button
+                onClick={edit}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 px-5 font-black text-emerald-700"
+              >
+                <FilePenLine className="h-4 w-4" /> Edit Draft
+              </button>
+            )}
           {canReview &&
             document.status === "DRAFT" &&
             document.review_status === "PENDING" && (
@@ -834,4 +1046,406 @@ function ActionDialog({
       </section>
     </div>
   );
+}
+
+type EditorLine = {
+  clientLineKey: string;
+  include: boolean;
+  uomId: string;
+  quantity: string;
+};
+
+function ReturnEditor({
+  session,
+  workspace,
+  document,
+  initialSupplierOrderId,
+  close,
+  complete,
+}: {
+  session: Session;
+  workspace: Workspace;
+  document: Document | null;
+  initialSupplierOrderId: string | null;
+  close: () => void;
+  complete: (message: string) => Promise<void>;
+}) {
+  useEscapeClose(close);
+  const receipts = workspace.receipts ?? [];
+  const sourceLines = workspace.sourceLines ?? [];
+  const uoms = workspace.productUoms ?? [];
+  const [receiptId, setReceiptId] = useState(document?.source_receipt_id ?? "");
+  const [warehouseId, setWarehouseId] = useState(
+    document?.source_warehouse_id ?? "",
+  );
+  const [returnDate, setReturnDate] = useState(
+    document?.return_date ?? new Date().toISOString().slice(0, 10),
+  );
+  const [reason, setReason] = useState(document?.return_reason ?? "");
+  const [supplierDocumentNo, setSupplierDocumentNo] = useState(
+    document?.supplier_document_no ?? "",
+  );
+  const [notes, setNotes] = useState(document?.notes ?? "");
+  const [draft, setDraft] = useState<Record<string, EditorLine>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const selectedReceipt = receipts.find((row) => row.id === receiptId);
+  const warehouses = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const line of sourceLines) {
+      if (line.receipt_id === receiptId)
+        unique.set(line.warehouse_id, line.warehouse_name);
+    }
+    return [...unique].map(([id, name]) => ({ id, name }));
+  }, [receiptId, sourceLines]);
+  const visibleLines = useMemo(
+    () =>
+      sourceLines.filter(
+        (line) =>
+          line.receipt_id === receiptId && line.warehouse_id === warehouseId,
+      ),
+    [receiptId, sourceLines, warehouseId],
+  );
+
+  useEffect(() => {
+    if (receiptId || receipts.length === 0) return;
+    const preferred =
+      receipts.find(
+        (row) =>
+          (!initialSupplierOrderId ||
+            row.supplier_order_id === initialSupplierOrderId) &&
+          !row.blocker_code &&
+          Number(row.returnable_base_qty) > 0,
+      ) ?? receipts[0];
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initialize editor from async workspace
+    setReceiptId(preferred.id);
+  }, [initialSupplierOrderId, receiptId, receipts]);
+  useEffect(() => {
+    if (warehouseId || warehouses.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initialize dependent warehouse selection
+    setWarehouseId(warehouses[0].id);
+  }, [warehouseId, warehouses]);
+  useEffect(() => {
+    if (!receiptId || !warehouseId || visibleLines.length === 0) return;
+    const existing = (workspace.draftLines ?? []).filter(
+      (line) => line.document_id === document?.id,
+    );
+    const next: Record<string, EditorLine> = {};
+    for (const line of visibleLines) {
+      const saved = existing.find(
+        (item) =>
+          item.source_condition_allocation_id === line.condition_allocation_id,
+      );
+      next[line.condition_allocation_id] = {
+        clientLineKey: saved?.client_line_key ?? crypto.randomUUID(),
+        include: Boolean(saved) || Number(line.returnable_base_qty) > 0,
+        uomId: saved?.return_uom_id ?? line.base_uom_id,
+        quantity: saved
+          ? String(saved.return_qty)
+          : String(line.returnable_base_qty),
+      };
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate line editor after source selection
+    setDraft(next);
+  }, [document?.id, receiptId, visibleLines, warehouseId, workspace.draftLines]);
+
+  function changeReceipt(value: string) {
+    setReceiptId(value);
+    setWarehouseId("");
+    setDraft({});
+    setError("");
+  }
+  function changeWarehouse(value: string) {
+    setWarehouseId(value);
+    setDraft({});
+    setError("");
+  }
+  function updateLine(id: string, patch: Partial<EditorLine>) {
+    setDraft((current) => ({
+      ...current,
+      [id]: { ...current[id], ...patch },
+    }));
+  }
+  async function save() {
+    const chosen = visibleLines
+      .map((line) => ({ line, form: draft[line.condition_allocation_id] }))
+      .filter((item) => item.form?.include);
+    if (!receiptId || !warehouseId)
+      return setError("Pilih Goods Receipt dan gudang sumber retur.");
+    if (!reason.trim()) return setError("Alasan retur wajib diisi.");
+    if (selectedReceipt?.blocker_code)
+      return setError(friendly(selectedReceipt.blocker_code));
+    if (chosen.length === 0)
+      return setError("Pilih minimal satu barang yang akan diretur.");
+    for (const { line, form } of chosen) {
+      const uom = uoms.find(
+        (item) => item.productId === line.product_id && item.uomId === form.uomId,
+      );
+      const baseQty = Number(form.quantity) * Number(uom?.factorToBase ?? 0);
+      if (!uom || !Number.isFinite(baseQty) || baseQty <= 0)
+        return setError(`Qty ${line.product_name_snapshot} tidak valid.`);
+      if (baseQty > Number(line.returnable_base_qty) + 0.000001)
+        return setError(
+          `Qty ${line.product_name_snapshot} melebihi FIFO sumber yang tersedia.`,
+        );
+      if (!uom.allowDecimal && Number(form.quantity) % 1 !== 0)
+        return setError(`${uom.uomName} harus memakai bilangan bulat.`);
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/purchase/returns", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session),
+        },
+        body: JSON.stringify({
+          documentId: document?.id ?? null,
+          masterVersion: document ? Number(document.master_version) : null,
+          operationId: crypto.randomUUID(),
+          sourceReceiptId: receiptId,
+          sourceWarehouseId: warehouseId,
+          returnDate,
+          returnReason: reason,
+          supplierDocumentNo: supplierDocumentNo || null,
+          notes: notes || null,
+          lines: chosen.map(({ line, form }) => ({
+            clientLineKey: form.clientLineKey,
+            sourceConditionAllocationId: line.condition_allocation_id,
+            returnUomId: form.uomId,
+            returnQty: Number(form.quantity),
+          })),
+        }),
+      });
+      const result = (await response.json()) as {
+        data?: { returnNo?: string };
+        error?: string;
+      };
+      if (!response.ok) throw new Error(friendly(result.error));
+      await complete(
+        `${result.data?.returnNo ?? document?.return_no ?? "Draft Retur"} berhasil disimpan dan menunggu review.`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Draft Retur gagal disimpan.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/65 p-4">
+      <section className="mx-auto my-5 max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between border-b border-slate-200 p-6">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">
+              Purchase · Supplier Return
+            </p>
+            <h2 className="mt-2 text-2xl font-black">
+              {document ? `Edit ${document.return_no}` : "Retur Pembelian Baru"}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Satu dokumen hanya untuk satu Goods Receipt dan satu gudang sumber.
+            </p>
+          </div>
+          <button onClick={close} disabled={busy} className="rounded-xl bg-slate-100 p-2">
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="space-y-5 p-6">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            Koreksi Finance memakai urutan <strong>belum ditagih lebih dulu</strong>.
+            Kelebihannya mengurangi utang Supplier atau menjadi piutang refund bila Bill sudah dibayar.
+          </div>
+          {error && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+              {error}
+            </div>
+          )}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <label className="text-sm font-black">
+              Goods Receipt
+              <select
+                value={receiptId}
+                onChange={(event) => changeReceipt(event.target.value)}
+                disabled={Boolean(document)}
+                className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
+              >
+                <option value="">Pilih penerimaan</option>
+                {receipts.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.receipt_no} · {row.order_no} · {row.supplier_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-black">
+              Gudang sumber
+              <select
+                value={warehouseId}
+                onChange={(event) => changeWarehouse(event.target.value)}
+                disabled={Boolean(document)}
+                className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
+              >
+                <option value="">Pilih gudang</option>
+                {warehouses.map((row) => (
+                  <option key={row.id} value={row.id}>{row.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-black">
+              Tanggal retur
+              <input
+                type="date"
+                value={returnDate}
+                onChange={(event) => setReturnDate(event.target.value)}
+                className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3"
+              />
+            </label>
+          </div>
+          {selectedReceipt && (
+            <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm md:grid-cols-4">
+              <Info label="Purchase Order" value={selectedReceipt.order_no} />
+              <Info label="Supplier" value={selectedReceipt.supplier_name} />
+              <Info label="Store" value={selectedReceipt.store_name} />
+              <Info
+                label="FIFO tersedia"
+                value={qty(selectedReceipt.returnable_base_qty)}
+              />
+            </div>
+          )}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="p-4">Pilih</th>
+                  <th className="p-4">Barang</th>
+                  <th className="p-4">Kondisi</th>
+                  <th className="p-4 text-right">Diterima</th>
+                  <th className="p-4 text-right">Sudah retur</th>
+                  <th className="p-4 text-right">FIFO tersedia</th>
+                  <th className="p-4">Satuan</th>
+                  <th className="p-4 text-right">Qty retur</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visibleLines.map((line) => {
+                  const form = draft[line.condition_allocation_id];
+                  const productUoms = uoms.filter(
+                    (item) => item.productId === line.product_id,
+                  );
+                  return (
+                    <tr key={line.condition_allocation_id}>
+                      <td className="p-4">
+                        <input
+                          type="checkbox"
+                          checked={form?.include ?? false}
+                          disabled={Boolean(line.blocker_code)}
+                          onChange={(event) =>
+                            updateLine(line.condition_allocation_id, {
+                              include: event.target.checked,
+                            })
+                          }
+                        />
+                      </td>
+                      <td className="p-4">
+                        <strong>{line.product_name_snapshot}</strong>
+                        <span className="block text-xs text-slate-500">
+                          {line.product_sku_snapshot}
+                        </span>
+                        {line.blocker_code && (
+                          <span className="mt-1 block text-xs font-bold text-rose-700">
+                            {friendly(line.blocker_code)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        {line.source_condition === "GOOD" ? "Baik" : "Rusak"}
+                      </td>
+                      <td className="p-4 text-right">{qty(line.source_base_qty)}</td>
+                      <td className="p-4 text-right">{qty(line.posted_return_base_qty)}</td>
+                      <td className="p-4 text-right font-black">
+                        {qty(line.returnable_base_qty)} {line.base_uom_name_snapshot}
+                      </td>
+                      <td className="p-4">
+                        <select
+                          value={form?.uomId ?? line.base_uom_id}
+                          onChange={(event) =>
+                            updateLine(line.condition_allocation_id, {
+                              uomId: event.target.value,
+                              quantity: "",
+                            })
+                          }
+                          className="min-h-10 rounded-lg border border-slate-300 px-2"
+                        >
+                          {productUoms.map((uom) => (
+                            <option key={uom.uomId} value={uom.uomId}>
+                              {uom.uomName}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-4 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={form?.quantity ?? ""}
+                          onChange={(event) =>
+                            updateLine(line.condition_allocation_id, {
+                              quantity: event.target.value,
+                            })
+                          }
+                          className="w-32 rounded-lg border border-slate-300 p-2 text-right"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleLines.length === 0 && (
+                  <tr><td colSpan={8} className="p-10 text-center text-slate-500">
+                    Pilih Goods Receipt dan gudang untuk menampilkan barang.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <label className="text-sm font-black">
+              Alasan retur
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)}
+                maxLength={500} rows={3} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" />
+            </label>
+            <label className="text-sm font-black">
+              Nomor dokumen Supplier (opsional)
+              <input value={supplierDocumentNo}
+                onChange={(event) => setSupplierDocumentNo(event.target.value)}
+                maxLength={200} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3 font-normal" />
+            </label>
+            <label className="text-sm font-black">
+              Catatan (opsional)
+              <textarea value={notes} onChange={(event) => setNotes(event.target.value)}
+                maxLength={1000} rows={3} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" />
+            </label>
+          </div>
+        </div>
+        <footer className="flex justify-end gap-3 border-t border-slate-200 p-5">
+          <button onClick={close} disabled={busy} className="min-h-11 rounded-xl border border-slate-300 px-5 font-black">
+            Batal
+          </button>
+          <button onClick={() => void save()} disabled={busy}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:opacity-50">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SaveIcon />}
+            Simpan Draft
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function SaveIcon() {
+  return <CheckCircle2 className="h-4 w-4" />;
 }

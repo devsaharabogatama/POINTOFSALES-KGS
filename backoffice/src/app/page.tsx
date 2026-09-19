@@ -102,6 +102,10 @@ type SupplierInvoiceLaunch = {
   create: boolean;
   token: string;
 };
+type PurchaseReturnLaunch = {
+  supplierOrderId: string | null;
+  token: string;
+};
 
 type CompanyContext = {
   id: string;
@@ -215,6 +219,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const consumedOrderLink = useRef("");
   const [supplierInvoiceLaunch, setSupplierInvoiceLaunch] = useState<SupplierInvoiceLaunch | null>(null);
+  const [purchaseReturnLaunch, setPurchaseReturnLaunch] = useState<PurchaseReturnLaunch | null>(null);
   const [salesReturnLaunch, setSalesReturnLaunch] = useState<{ salesOrderId?: string; retailSalesId?: string; returnId?: string } | null>(null);
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
@@ -513,6 +518,10 @@ export default function Home() {
     purchaseReturnNavigation?.capabilities.includes("POST") ?? false;
   const canCancelPurchaseReturn =
     purchaseReturnNavigation?.capabilities.includes("CANCEL_FINAL") ?? false;
+  const canCreatePurchaseReturn =
+    purchaseReturnNavigation?.capabilities.includes("CREATE_DRAFT") ?? false;
+  const canEditPurchaseReturn =
+    purchaseReturnNavigation?.capabilities.includes("EDIT_DRAFT") ?? false;
   const deliveryDocumentNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "delivery-documents");
@@ -1140,9 +1149,17 @@ export default function Home() {
               canCancel={canCancelSupplierOrder}
               canEdit={supplierOrderNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
               canOpenSupplierInvoices={Boolean(supplierInvoiceNavigation)}
+              canOpenPurchaseReturns={Boolean(purchaseReturnNavigation)}
               openSupplierInvoices={(input) => {
                 setSupplierInvoiceLaunch({ ...input, token: crypto.randomUUID() });
                 navigateTo("supplier-invoices");
+              }}
+              openPurchaseReturn={(supplierOrderId) => {
+                setPurchaseReturnLaunch({
+                  supplierOrderId,
+                  token: crypto.randomUUID(),
+                });
+                navigateTo("purchase-returns");
               }}
               notify={setNotice}
             />
@@ -1171,12 +1188,15 @@ export default function Home() {
 
           {activeView === "purchase-returns" && (
             <PurchaseReturnApprovalView
-              key={activeCompanyId}
+              key={`${activeCompanyId}-${purchaseReturnLaunch?.token ?? "direct"}`}
               session={session}
               companyId={activeCompanyId}
               canReview={canReviewPurchaseReturn}
               canPost={canPostPurchaseReturn}
               canCancel={canCancelPurchaseReturn}
+              canCreate={canCreatePurchaseReturn}
+              canEdit={canEditPurchaseReturn}
+              initialSupplierOrderId={purchaseReturnLaunch?.supplierOrderId ?? null}
               notify={setNotice}
             />
           )}

@@ -80,6 +80,7 @@ type ValidatedInvoice = {
   matching_status: string
   created_at: string
   paid_amount: number
+  supplier_credit_amount: number
   remaining_balance: number
 }
 
@@ -903,6 +904,7 @@ export default function SupplierPaymentView({
                         <th className="py-2.5 px-3">Tgl Faktur</th>
                         <th className="py-2.5 px-3 text-right">Grand Total</th>
                         <th className="py-2.5 px-3 text-right">Sudah Dibayar</th>
+                        <th className="py-2.5 px-3 text-right">Credit Retur</th>
                         <th className="py-2.5 px-3 text-right">Sisa Hutang (AP)</th>
                         <th className="py-2.5 px-3 text-right w-44">Nominal Alokasi (IDR)</th>
                       </tr>
@@ -936,6 +938,9 @@ export default function SupplierPaymentView({
                             </td>
                             <td className="py-2.5 px-3 text-right text-slate-500">
                               {formatRupiah(inv.paid_amount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-emerald-700">
+                              {formatRupiah(inv.supplier_credit_amount || 0)}
                             </td>
                             <td className="py-2.5 px-3 text-right font-bold text-amber-700">
                               {formatRupiah(inv.remaining_balance)}

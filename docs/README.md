@@ -1,5 +1,39 @@
 # Router Dokumen KGS POS
 
+## 2026-09-19 - Backoffice Supplier Return end-to-end
+
+[Workplan](runbooks/BACKOFFICE_PURCHASE_RETURN_END_TO_END_WORKPLAN.md) dan
+[runbook rollout](runbooks/BACKOFFICE_PURCHASE_RETURN_E2E_ROLLOUT.md).
+Flow Backoffice dari PO/Posted Goods Receipt sampai Return Posted, exact
+Stock/FIFO, AP `UNINVOICED_FIRST`, Supplier Credit, Piutang Refund Supplier,
+net Supplier Payment, dan PO cancellation gate berstatus `DATABASE LIVE` dengan
+behavior rollback-only serta postflight user-confirmed `PASS`. Client,
+authenticated smoke, dan UAT belum dijalankan.
+
+## 2026-09-19 - Retained Credit Note AR split correction
+
+[Runbook](runbooks/RETAINED_CREDIT_NOTE_AR_SPLIT_FIX.md) dan
+[impact audit](audits/RETAINED_CREDIT_NOTE_AR_SPLIT_FIX_IMPACT_2026-09-19.md).
+Memperbaiki pembagian AR/refund Credit Note retained Retail dengan receivable
+efektif Dispatch dan menyiapkan reklasifikasi append-only exact Credit Note /
+Invoice Rp78.400 beserta source-linked reversal untuk Refund salah yang sudah
+POSTED.
+Paket berstatus `LOCAL READY`; Production migration, behavior, postflight,
+authenticated smoke, dan UAT masih manual.
+
+## 2026-09-19 - SMS Retail Invoice 0229 Tempo correction
+
+[Runbook](runbooks/SMS_RETAIL_INVOICE_0229_TEMPO_CORRECTION.md) dan
+[impact audit](audits/SMS_RETAIL_INVOICE_0229_TEMPO_CORRECTION_IMPACT_2026-09-19.md).
+Paket exact correction mengubah salah input termin satu Invoice SMS menjadi
+Tempo jatuh tempo 22 September 2026, membatalkan payment intent Tunai yang
+masih pending dengan audit dan Cash Drawer reversal Rp350.000 pada sesi asal
+yang sudah `CLOSED`; actual/closing cash dipertahankan dan hanya expected cash
+serta difference yang direkonsiliasi. Paket juga mereklasifikasi Dispatch Event yang belum
+diposting dari Clearing ke Piutang Rp350.000. Tidak ada jurnal koreksi duplikat;
+Stock/FIFO, Delivery, dan Invoice snapshot tidak berubah. Status `LOCAL READY`; preflight,
+migration, behavior, postflight, smoke, dan UAT Production masih manual.
+
 ## 2026-09-19 - Customer Receipt outstanding after Customer Return
 
 [Runbook](runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md).
@@ -1150,3 +1184,21 @@ detail, koreksi, refund, activity log, dan Penerimaan Retur Customer sudah
 mengikuti hierarki visual SO/PO. Tidak ada database/runtime change. Evidence dan
 smoke gate ada di
 [runbook Retur & Refund](runbooks/BACKOFFICE_SALES_RETURN_UI_ROLLOUT.md).
+
+## 2026-09-19 - Manual Finance Journal
+
+[Runbook](runbooks/MANUAL_FINANCE_JOURNAL_ROLLOUT.md) dan
+[impact audit](audits/MANUAL_FINANCE_JOURNAL_IMPACT_2026-09-19.md). Journal
+Entries memiliki modal draft/submit dengan approval per Company default aktif,
+maker-checker, COA manual-posting boundary, balanced posting, exact retry,
+audit, cancel pre-posting, dan reversal existing. Paket berstatus `LOCAL READY`;
+Production rollout, client deploy, authenticated smoke, dan UAT masih manual.
+
+## 2026-09-19 - Invoice Data Exchange Retail + Backoffice
+
+[Runbook](runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md) dan
+[impact audit](audits/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_IMPACT_2026-09-19.md).
+Export XLSX Invoice Penjualan kini disiapkan untuk mencakup seluruh status
+Retail dan Backoffice dalam satu file, dengan sumber/status/nomor SO yang dapat
+difilter serta detail Product/UOM/Qty tetap lengkap. Status `LOCAL READY`;
+database rollout, client deploy, authenticated smoke, dan UAT masih manual.

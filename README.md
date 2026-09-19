@@ -1,5 +1,46 @@
 # MADS — Management Distribution System
 
+## 2026-09-19 - Backoffice Supplier Return end-to-end DATABASE LIVE
+
+Retur Supplier sekarang dapat dimulai dari detail PO atau halaman Retur
+Pembelian tanpa Cashier Session: pilih exact Posted Goods Receipt/FIFO, simpan
+Draft, review, post, koreksi Stock/FIFO, alokasikan AP dengan aturan
+`UNINVOICED_FIRST`, terbitkan Supplier Credit, dan catat kelebihan pembayaran
+sebagai Piutang Refund Supplier. Supplier Payment membaca saldo Bill net dan
+mengecek ulang saat validasi agar Draft lama tidak menyebabkan overpayment.
+PO baru dapat dibatalkan setelah net receipt nol dan dependency aman. Jalur
+Retur Purchase POS/PWA existing tidak diubah. Tiga migration Production,
+behavior rollback-only, dan postflight telah user-confirmed `PASS`; client,
+authenticated smoke, dan UAT belum dijalankan. Ikuti
+[runbook](docs/runbooks/BACKOFFICE_PURCHASE_RETURN_E2E_ROLLOUT.md).
+
+## 2026-09-19 - Retained Credit Note AR split correction LOCAL READY
+
+Credit Note retained Retail sekarang menghitung pengurang piutang dari
+receivable efektif hasil pengiriman, bukan `sisa_piutang` legacy. Paket juga
+menyiapkan koreksi append-only untuk exact `CN-20260919-0000000012` pada
+`INV-20260904-0000000236`:
+Refund Liability Rp78.400 direklasifikasi menjadi pengurang piutang Rp78.400,
+sehingga `INV-20260904-0000000236` ditawarkan pada Penerimaan Customer sebesar
+Rp5.350.120. Refund salah yang sudah POSTED dibalik append-only; tidak dihapus.
+Journal asli dan transaksi Retail, Stock/FIFO, Customer Receipt, POS, serta
+Cashier Session tidak ditulis ulang. Rollout Production dan smoke masih manual;
+ikuti [runbook](docs/runbooks/RETAINED_CREDIT_NOTE_AR_SPLIT_FIX.md).
+
+## 2026-09-19 - SMS Retail Invoice 0229 Tempo correction LOCAL READY
+
+Exact correction package mengubah salah input termin
+`INV-20260904-0000000229` menjadi Tempo jatuh tempo 22 September 2026 dan
+mengoreksi Dispatch Event yang masih `HOLD` dari Clearing ke Piutang serta
+membatalkan payment intent Tunai yang masih `PENDING` dengan audit dan Cash
+Drawer reversal Rp350.000 pada sesi asal yang sudah `CLOSED`. Nilai kas aktual
+dan closing tidak diubah; expected cash dan difference direkonsiliasi serta
+diaudit. Belum
+ada jurnal sumber sehingga tidak dibuat jurnal koreksi duplikat. Stock/FIFO,
+Delivery, dan Invoice snapshot tidak berubah. Production preflight,
+migration, behavior, postflight, smoke, dan UAT masih manual. Ikuti
+`docs/runbooks/SMS_RETAIL_INVOICE_0229_TEMPO_CORRECTION.md`.
+
 ## 2026-09-18 - Invoice Return commercial status LOCAL READY
 
 Root cause Invoice sumber Retur yang masih tampil `Aktif` sudah ditutup pada
@@ -3007,3 +3048,22 @@ Finance Penerimaan Customer diselaraskan dengan Credit Note posted pada kandidat
 Save Draft, dan Post recheck untuk source Backoffice maupun retained Retail.
 Perubahan additive berstatus `LOCAL READY`; Production rollout dan smoke mengikuti
 `docs/runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md`.
+
+# 2026-09-19 - Manual Finance Journal LOCAL READY
+
+Tab Journal Entries sekarang mempunyai modal Jurnal Entry Baru, draft/submit,
+approval per Company default ON, maker-checker, guarded COA/periode/balance,
+cancel sebelum posting, dan reversal canonical setelah posting. Jurnal otomatis,
+POS, Stock/FIFO, Payment, Return/Refund, serta data transaksi lama tidak diubah.
+Lint, TypeScript, dan production build 87 halaman PASS; database Production,
+deploy client, authenticated smoke, dan UAT belum dijalankan agent. Lihat
+[runbook](docs/runbooks/MANUAL_FINANCE_JOURNAL_ROLLOUT.md).
+
+# 2026-09-19 - Invoice Data Exchange Retail + Backoffice LOCAL READY
+
+Export Invoice Penjualan disiapkan untuk menggabungkan sumber Retail dan
+Backoffice beserta seluruh status, nomor dokumen/Draft/SO, dan detail
+Product/UOM/Qty yang dapat difilter pada XLSX. Perubahan hanya pada read-only
+RPC dan formatter workbook; transaksi, Stock/FIFO, Payment, Finance, dan import
+tidak berubah. Database rollout, client deploy, smoke, dan UAT masih manual.
+Lihat [runbook](docs/runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md).

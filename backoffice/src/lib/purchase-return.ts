@@ -1,6 +1,7 @@
 import { ApiRouteError } from "@/lib/server-auth";
 import {
   enumValue,
+  optionalText,
   requiredText,
   requiredVersion,
   uuidValue,
@@ -8,6 +9,57 @@ import {
 
 type JsonObject = Record<string, unknown>;
 type DatabaseError = { message?: string } | null;
+
+function uuid(body: JsonObject, key: string) {
+  const value = body[key];
+  if (typeof value !== "string")
+    throw new ApiRouteError(`${key.toUpperCase()}_REQUIRED`, 400);
+  return uuidValue(value, `${key.toUpperCase()}_INVALID`);
+}
+
+export function parseBackofficePurchaseReturnDraft(body: JsonObject) {
+  if (!Array.isArray(body.lines) || body.lines.length === 0)
+    throw new ApiRouteError("PURCHASE_RETURN_LINES_REQUIRED", 400);
+  const documentId =
+    body.documentId === null || body.documentId === undefined
+      ? null
+      : uuid(body, "documentId");
+  const returnDate = requiredText(body, "returnDate", { maxLength: 10 });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDate))
+    throw new ApiRouteError("RETURN_DATE_INVALID", 400);
+  return {
+    documentId,
+    masterVersion: documentId ? requiredVersion(body) : null,
+    operationId: uuid(body, "operationId"),
+    sourceReceiptId: uuid(body, "sourceReceiptId"),
+    sourceWarehouseId: uuid(body, "sourceWarehouseId"),
+    returnDate,
+    returnReason: requiredText(body, "returnReason", { maxLength: 500 }),
+    supplierDocumentNo:
+      optionalText(body, "supplierDocumentNo", { maxLength: 200 }) ?? null,
+    notes: optionalText(body, "notes", { maxLength: 1000 }) ?? null,
+    lines: body.lines.map((raw, index) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        throw new ApiRouteError(
+          `PURCHASE_RETURN_LINE_${index + 1}_INVALID`,
+          400,
+        );
+      const line = raw as JsonObject;
+      const returnQty = Number(line.returnQty);
+      if (!Number.isFinite(returnQty) || returnQty <= 0)
+        throw new ApiRouteError("PURCHASE_RETURN_QUANTITY_INVALID", 400);
+      return {
+        clientLineKey: uuid(line, "clientLineKey"),
+        sourceConditionAllocationId: uuid(
+          line,
+          "sourceConditionAllocationId",
+        ),
+        returnUomId: uuid(line, "returnUomId"),
+        returnQty,
+      };
+    }),
+  };
+}
 
 export function parsePurchaseReturnReview(body: JsonObject) {
   const decision = enumValue(
@@ -58,6 +110,21 @@ export function throwPurchaseReturnRpcError(error: DatabaseError): never {
     "PURCHASE_RETURN_STOCK_NOT_AVAILABLE",
     "SOURCE_AP_PROVISIONAL_NOT_FOUND",
     "PURCHASE_RETURN_AP_ADJUSTMENT_EXCEEDS_SOURCE",
+    "PURCHASE_RETURN_PROVISIONAL_VALUE_RECONCILIATION_FAILED",
+    "PURCHASE_RETURN_INVOICE_ALLOCATION_GAP",
+    "PURCHASE_RETURN_JOURNAL_UNBALANCED",
+    "PURCHASE_RETURN_JOURNAL_RECONCILIATION_FAILED",
+    "POSTABLE_ACCOUNTING_PERIOD_NOT_FOUND",
+    "SUPPLIER_ASSIGNMENT_REQUIRED",
+    "PURCHASE_RETURN_STORE_SCOPE_INVALID",
+    "ACTIVE_PURCHASE_RETURN_DRAFT_ALREADY_EXISTS",
+    "PURCHASE_RETURN_DRAFT_IDEMPOTENCY_CONFLICT",
+    "PURCHASE_RETURN_CHANNEL_INVALID",
+    "PURCHASE_RETURN_QUANTITY_EXCEEDS_AVAILABLE",
+    "RETURNABLE_RECEIPT_ALLOCATION_NOT_FOUND",
+    "ACTIVE_RETURN_PRODUCT_UOM_NOT_FOUND",
+    "RETURN_UOM_REQUIRES_INTEGER",
+    "PURCHASE_RETURN_QUANTITY_INVALID",
     "PURCHASE_RETURN_IDEMPOTENCY_CONFLICT",
     "ONLY_DRAFT_PURCHASE_RETURN_CANCELABLE",
     "PURCHASE_RETURN_CANCEL_NOT_ALLOWED",
