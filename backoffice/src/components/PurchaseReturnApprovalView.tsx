@@ -195,17 +195,23 @@ function friendly(code?: string) {
       "Retur harus disetujui sebelum diposting.",
     PURCHASE_RETURN_QUANTITY_CHANGED_DURING_POST:
       "Jumlah yang tersedia berubah. Periksa ulang dokumen.",
-    PURCHASE_RETURN_STOCK_NOT_AVAILABLE: "Stok gudang sudah tidak mencukupi.",
+    PURCHASE_RETURN_STOCK_NOT_AVAILABLE: "Baris stok barang di gudang tidak ditemukan.",
+    PURCHASE_RETURN_STOCK_ROW_NOT_FOUND:
+      "Baris stok barang di gudang tidak ditemukan. Muat ulang master stok sebelum melanjutkan.",
+    PURCHASE_RETURN_SOURCE_BATCH_NOT_FOUND:
+      "Jejak batch dari Goods Receipt asal tidak ditemukan.",
+    NEGATIVE_STOCK_REQUIRES_WAREHOUSE_OPT_IN:
+      "Retur ini membuat stok minus, tetapi izin stok minus pada gudang sumber belum aktif.",
     PURCHASE_RETURN_AP_ADJUSTMENT_EXCEEDS_SOURCE:
       "Nilai retur melebihi provisional AP penerimaan.",
     PURCHASE_RETURN_FIFO_NOT_AVAILABLE:
-      "Stok FIFO dari penerimaan asal sudah terpakai. Telusuri pergerakan stok sumber sebelum membuat retur.",
+      "Runtime Retur belum memakai perbaikan stok-minus terbaru. Hubungi administrator untuk memasang migration yang diperlukan.",
     PURCHASE_RETURN_SOURCE_FULLY_RETURNED:
       "Seluruh jumlah dari penerimaan ini sudah diretur.",
     ACTIVE_PURCHASE_RETURN_DRAFT_ALREADY_EXISTS:
       "Sudah ada Draft Retur untuk penerimaan dan gudang ini. Buka Draft tersebut untuk melanjutkan.",
     PURCHASE_RETURN_QUANTITY_EXCEEDS_AVAILABLE:
-      "Qty retur melebihi stok FIFO sumber yang masih tersedia.",
+      "Qty retur melebihi jumlah penerimaan asal yang belum pernah diretur.",
     ACTIVE_RETURN_PRODUCT_UOM_NOT_FOUND:
       "Satuan retur tidak aktif atau bukan milik barang tersebut.",
     RETURN_UOM_REQUIRES_INTEGER:
@@ -1186,7 +1192,7 @@ function ReturnEditor({
         return setError(`Qty ${line.product_name_snapshot} tidak valid.`);
       if (baseQty > Number(line.returnable_base_qty) + 0.000001)
         return setError(
-          `Qty ${line.product_name_snapshot} melebihi FIFO sumber yang tersedia.`,
+          `Qty ${line.product_name_snapshot} melebihi sisa penerimaan yang belum diretur.`,
         );
       if (!uom.allowDecimal && Number(form.quantity) % 1 !== 0)
         return setError(`${uom.uomName} harus memakai bilangan bulat.`);
@@ -1256,8 +1262,10 @@ function ReturnEditor({
         </header>
         <div className="space-y-5 p-6">
           <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-            Koreksi Finance memakai urutan <strong>belum ditagih lebih dulu</strong>.
-            Kelebihannya mengurangi utang Supplier atau menjadi piutang refund bila Bill sudah dibayar.
+            Retur tetap dapat diposting ketika FIFO penerimaan sudah terserap untuk
+            menutup stok minus. Stok akan kembali berkurang, sedangkan koreksi Finance
+            tetap mengikuti Goods Receipt dan tagihan Supplier asal dengan urutan
+            bagian yang belum ditagih lebih dahulu.
           </div>
           {error && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
@@ -1311,7 +1319,7 @@ function ReturnEditor({
               <Info label="Supplier" value={selectedReceipt.supplier_name} />
               <Info label="Store" value={selectedReceipt.store_name} />
               <Info
-                label="FIFO tersedia"
+                label="Sisa dapat diretur"
                 value={qty(selectedReceipt.returnable_base_qty)}
               />
             </div>
@@ -1325,7 +1333,7 @@ function ReturnEditor({
                   <th className="p-4">Kondisi</th>
                   <th className="p-4 text-right">Diterima</th>
                   <th className="p-4 text-right">Sudah retur</th>
-                  <th className="p-4 text-right">FIFO tersedia</th>
+                  <th className="p-4 text-right">Sisa dapat diretur</th>
                   <th className="p-4">Satuan</th>
                   <th className="p-4 text-right">Qty retur</th>
                 </tr>

@@ -1,6 +1,6 @@
 # Backoffice Purchase Return End-to-End Rollout
 
-**Status paket:** DATABASE LIVE; behavior dan postflight PASS.  
+**Status paket:** DATABASE LIVE through `20260919143000`; focused negative-stock behavior/postflight PASS.
 **Target:** Production Supabase + Backoffice client.  
 **Prinsip:** berhenti pada error/`BLOCKER`/`FAIL` pertama; jangan melompati file,
 mengubah ledger manual, atau menjalankan migration yang sudah berhasil dua kali.
@@ -24,12 +24,13 @@ mengubah ledger manual, atau menjalankan migration yang sudah berhasil dua kali.
 
 ## Authenticated Smoke
 
-Gunakan PO uji yang benar-benar mempunyai Posted Goods Receipt dan FIFO sumber
-masih tersedia.
+Gunakan PO uji yang benar-benar mempunyai Posted Goods Receipt. FIFO sumber
+boleh masih tersedia atau sudah habis karena menutup stok minus.
 
 1. Buka detail PO, klik `Retur ke Supplier`.
-2. Pastikan Goods Receipt, Gudang, barang, kondisi, FIFO tersedia, UOM, dan Qty
-   tampil. Qty default boleh diedit dan tidak boleh melewati FIFO sumber.
+2. Pastikan Goods Receipt, Gudang, barang, kondisi, sisa quantity Receipt yang
+   belum diretur, UOM, dan Qty tampil. Qty tidak boleh melewati quantity sumber
+   yang belum diretur; FIFO sumber nol bukan blocker setelah forward fix.
 3. Simpan Draft, muat ulang, edit Draft, lalu pastikan versi terbaru tersimpan.
 4. Approve dan Post. Pastikan:
    - stok dan exact source FIFO berkurang satu kali;

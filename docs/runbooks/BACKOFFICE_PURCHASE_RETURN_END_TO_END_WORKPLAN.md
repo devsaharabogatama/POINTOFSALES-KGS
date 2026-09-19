@@ -1,6 +1,6 @@
 # Backoffice Purchase Return End-to-End Workplan
 
-**Status:** LOCAL READY  
+**Status:** DATABASE LIVE through `20260919143000`; negative-stock behavior/postflight PASS
 **Tanggal:** 2026-09-19  
 **Requirement:** PUR-004, PUR-003, STK-002, STK-005, FIN-001, FIN-004  
 **Gate:** G5/G6 compatibility correction  
@@ -49,7 +49,8 @@ tenant-scoped, transactional, idempotent, concurrency-safe, dan audited.
 - jalur Retur Pembelian Retail/PWA dan aturan Cashier Session existing;
 - Sales Return/Customer Return;
 - menghapus atau mengedit dokumen Posted;
-- forced Return ketika exact source FIFO sudah tidak tersedia;
+- mengambil FIFO dari batch lain untuk menutup Retur ketika batch Receipt asal
+  sudah terserap oleh stok minus;
 - auto-cancel PO tanpa tindakan eksplisit user;
 - auto-refund Supplier atau mengubah pembayaran Posted tanpa source correction.
 
@@ -136,7 +137,8 @@ tenant-scoped, transactional, idempotent, concurrency-safe, dan audited.
 - [x] 12. Tambahkan PO cancellation readiness dan dependency explanation.
 - [x] 13. Buat postflight read-only.
 - [x] 14. Buat rollback-only behavior/regression: partial, full, multi-Receipt
-      isolation contract, prior Return, insufficient FIFO, invoice state,
+      isolation contract, prior Return, exhausted source FIFO/negative Stock,
+      invoice state,
       retry, stale version, cross-Company, Retail compatibility, dan cancel PO.
 - [x] 15. Jalankan lint, typecheck/build, SQL structural checks, dan diff review.
 - [x] 16. Perbarui source-of-truth, root README, dan active handoff.
@@ -154,16 +156,21 @@ yang boleh dipaksa lolos. Evidence Production terdahulu menunjukkan:
 - empat exact source GOOD FIFO allocation berjumlah 100, 20, 40, dan 42 base
   units mempunyai `qty_remaining = 0`.
 
-Akibatnya, canonical Purchase Return harus menolak Return sampai pergerakan yang
-menghabiskan FIFO tersebut ditelusuri. Implementasi ini harus menampilkan
-blocker yang jelas; implementasi tidak boleh menambah stok, mengganti batch,
-atau membuat forced Return hanya agar PO dapat dibatalkan.
+Evidence ini sekarang dipahami sebagai hasil normal rekonsiliasi stok minus:
+Receipt sudah menutup kekurangan lama sehingga batch sumber bernilai nol,
+sementara hak retur komersial terhadap exact Receipt masih ada. Forward fix
+`20260919143000` mengizinkan Retur sebesar quantity Receipt yang belum pernah
+diretur, mengurangi On Hand hingga negatif, dan mencatat shortage source-linked
+tanpa mengambil FIFO batch lain. Receipt berikutnya menutup shortage tersebut;
+selisih biaya aktual terhadap biaya historis Receipt asal dicatat ke
+`PURCHASE_PRICE_VARIANCE`, bukan COGS. Warehouse tetap wajib mempunyai otorisasi
+stok minus yang sudah disetujui.
 
 ## Status Delivery
 
 - Local design: **COMPLETE**
-- Local verification: **PASS** (lint, TypeScript/build, structural SQL, scoped diff)
-- Database live: **YES** (user-confirmed migration + behavior/postflight PASS)
+- Local verification: **PASS** untuk base flow dan static forward-fix gate; focused Production behavior **PASS**
+- Database live: **YES through `20260919143000`**
 - Client deployed: **NO**
 - Authenticated smoke: **NO**
 - UAT: **NO**
