@@ -34,6 +34,46 @@ export type CashierSession = {
   masterVersion: number
 }
 
+export type CashierSessionSummaryLine = {
+  id: string
+  productName: string
+  productSku: string
+  uomName: string
+  quantity: number
+  unitPrice: number
+  discount: number
+  lineTotal: number
+}
+
+export type CashierSessionSummaryPayment = {
+  key: string
+  paymentMethodId: string | null
+  paymentMethodName: string | null
+  paymentMethodType: string | null
+  settlementRoute: string | null
+  amount: number
+}
+
+export type CashierSessionSummaryTransaction = {
+  salesId: string
+  documentNo: string
+  orderNo: string
+  customerName: string
+  transactionAt: string
+  plannedOrderDate: string | null
+  documentStatus: string
+  orderRuntimeStatus: string
+  isTempo: boolean
+  grandTotal: number
+  lines: CashierSessionSummaryLine[]
+  payments: CashierSessionSummaryPayment[]
+}
+
+export type CashierSessionSummary = {
+  sessionId: string
+  transactions: CashierSessionSummaryTransaction[]
+}
+
 export type ProductOption = {
   productId: string
   productUomId: string
@@ -926,6 +966,151 @@ export async function closeCashierSession(
   })
   throwIfError(error)
   return data as DbRow
+}
+
+export async function loadCashierSessionSummary(
+  cashierSessionId: string,
+): Promise<CashierSessionSummary> {
+  const { data: headers, error: headerError } = await supabase
+    .from('sales_headers')
+    .select(
+      'id,invoice_no,draft_no,customer_id,transaction_date,planned_order_date,document_status,order_runtime_status,is_tempo,grand_total,grand_total_after_rounding,payload_snapshot,created_at',
+    )
+    .eq('session_id', cashierSessionId)
+    .order('created_at', { ascending: false })
+  throwIfError(headerError)
+
+  const rows = (headers ?? []) as DbRow[]
+  const salesIds = rows.map((row) => String(row.id))
+  const customerIds = [...new Set(
+    rows.map((row) => String(row.customer_id ?? '')).filter(Boolean),
+  )]
+
+  const [detailsResult, customersResult, legacyPaymentsResult] = await Promise.all([
+    salesIds.length
+      ? supabase
+          .from('sales_details')
+          .select(
+            'id,sales_id,product_name_snapshot,product_sku_snapshot,sale_uom_name_snapshot,qty,resolved_unit_price,discount_amount,line_total,subtotal',
+          )
+          .in('sales_id', salesIds)
+      : Promise.resolve({ data: [], error: null }),
+    customerIds.length
+      ? supabase
+          .from('customers')
+          .select('id,name')
+          .in('id', customerIds)
+      : Promise.resolve({ data: [], error: null }),
+    salesIds.length
+      ? supabase
+          .from('sales_payments')
+          .select(
+            'id,sales_id,payment_method,payment_method_id,payment_method_name_snapshot,payment_method_type_snapshot,settlement_route_snapshot,amount,is_reversal',
+          )
+          .in('sales_id', salesIds)
+          .eq('is_reversal', false)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  throwIfError(detailsResult.error)
+  throwIfError(customersResult.error)
+  throwIfError(legacyPaymentsResult.error)
+
+  const customerNameById = new Map(
+    ((customersResult.data ?? []) as DbRow[]).map((row) => [
+      String(row.id),
+      String(row.name ?? 'Customer'),
+    ]),
+  )
+  const detailsBySale = new Map<string, CashierSessionSummaryLine[]>()
+  for (const row of (detailsResult.data ?? []) as DbRow[]) {
+    const salesId = String(row.sales_id)
+    const list = detailsBySale.get(salesId) ?? []
+    list.push({
+      id: String(row.id),
+      productName: String(row.product_name_snapshot ?? 'Produk'),
+      productSku: String(row.product_sku_snapshot ?? ''),
+      uomName: String(row.sale_uom_name_snapshot ?? ''),
+      quantity: numberValue(row.qty),
+      unitPrice: numberValue(row.resolved_unit_price),
+      discount: numberValue(row.discount_amount),
+      lineTotal: numberValue(row.line_total ?? row.subtotal),
+    })
+    detailsBySale.set(salesId, list)
+  }
+
+  const legacyPaymentsBySale = new Map<string, CashierSessionSummaryPayment[]>()
+  for (const row of (legacyPaymentsResult.data ?? []) as DbRow[]) {
+    const salesId = String(row.sales_id)
+    const list = legacyPaymentsBySale.get(salesId) ?? []
+    list.push({
+      key: String(row.id),
+      paymentMethodId: row.payment_method_id
+        ? String(row.payment_method_id)
+        : null,
+      paymentMethodName: String(
+        row.payment_method_name_snapshot ?? row.payment_method ?? 'Pembayaran',
+      ),
+      paymentMethodType: row.payment_method_type_snapshot
+        ? String(row.payment_method_type_snapshot)
+        : null,
+      settlementRoute: row.settlement_route_snapshot
+        ? String(row.settlement_route_snapshot)
+        : null,
+      amount: numberValue(row.amount),
+    })
+    legacyPaymentsBySale.set(salesId, list)
+  }
+
+  return {
+    sessionId: cashierSessionId,
+    transactions: rows.map((row) => {
+      const salesId = String(row.id)
+      const snapshot = row.payload_snapshot && typeof row.payload_snapshot === 'object'
+        ? row.payload_snapshot as DbRow
+        : {}
+      const rawPayments = Array.isArray(snapshot.payments)
+        ? snapshot.payments as DbRow[]
+        : []
+      const snapshotPayments = rawPayments
+        .map((payment, index) => ({
+          key: String(payment.clientPaymentKey ?? `${salesId}:${index}`),
+          paymentMethodId: payment.paymentMethodId
+            ? String(payment.paymentMethodId)
+            : null,
+          paymentMethodName: payment.paymentMethodName
+            ? String(payment.paymentMethodName)
+            : null,
+          paymentMethodType: payment.paymentMethodType
+            ? String(payment.paymentMethodType)
+            : null,
+          settlementRoute: payment.settlementRoute
+            ? String(payment.settlementRoute)
+            : null,
+          amount: numberValue(payment.amount),
+        }))
+        .filter((payment) => payment.amount > 0)
+      return {
+        salesId,
+        documentNo: String(row.invoice_no ?? salesId),
+        orderNo: String(row.draft_no ?? row.invoice_no ?? salesId),
+        customerName: customerNameById.get(String(row.customer_id ?? '')) ?? 'Customer',
+        transactionAt: String(row.transaction_date ?? row.created_at ?? ''),
+        plannedOrderDate: row.planned_order_date
+          ? String(row.planned_order_date)
+          : null,
+        documentStatus: String(row.document_status ?? ''),
+        orderRuntimeStatus: String(row.order_runtime_status ?? ''),
+        isTempo: Boolean(row.is_tempo),
+        grandTotal: numberValue(
+          row.grand_total_after_rounding ?? row.grand_total,
+        ),
+        lines: detailsBySale.get(salesId) ?? [],
+        payments: snapshotPayments.length
+          ? snapshotPayments
+          : legacyPaymentsBySale.get(salesId) ?? [],
+      }
+    }),
+  }
 }
 
 export async function loadNegativeStockReadiness(): Promise<NegativeStockReadiness> {

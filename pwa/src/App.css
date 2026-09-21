@@ -1204,6 +1204,25 @@ button {
   white-space: nowrap;
 }
 
+.pos-catalog-cart-price {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: #667382;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pos-catalog-cart-price strong {
+  flex: 0 0 auto;
+  color: #007f77;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .pos-catalog-cart-item .pos-cart-edit-button {
   min-width: 64px;
   min-height: 34px;
@@ -1512,6 +1531,471 @@ button {
   border-color: #d7dee7 !important;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.pos-checkout-inline {
+  display: contents;
+}
+
+.pos-checkout-launch {
+  display: flex;
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #cfd8e1;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 -8px 24px rgb(15 23 42 / 10%);
+  background: #ffffff;
+}
+
+.pos-checkout-launch span,
+.pos-checkout-launch strong {
+  display: block;
+}
+
+.pos-checkout-launch span {
+  color: #667382;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pos-checkout-launch strong {
+  margin-top: 2px;
+  color: #17202a;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.pos-checkout-launch button {
+  min-height: 44px;
+  padding: 0 18px;
+  color: #ffffff;
+  border: 0;
+  border-radius: 9px;
+  background: #008f86;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.pos-checkout-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 68%);
+}
+
+.pos-checkout-overlay.is-open {
+  display: flex;
+}
+
+.pos-checkout-overlay .pos-checkout {
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 36px);
+  margin: 0 !important;
+  overflow: hidden;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 30%);
+}
+
+.pos-checkout-overlay .pos-checkout-heading {
+  display: flex !important;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.pos-checkout-close {
+  display: grid;
+  width: 40px;
+  min-height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: #344252;
+  border: 1px solid #d7dee7;
+  border-radius: 10px;
+  background: #f4f7f9;
+}
+
+.pos-checkout-overlay .pos-checkout-form {
+  overflow-y: auto !important;
+}
+
+.pos-session-summary-overlay {
+  display: grid;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  place-items: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 68%);
+}
+
+.pos-session-summary-dialog {
+  display: flex;
+  width: min(1040px, 100%);
+  max-height: calc(100dvh - 36px);
+  flex-direction: column;
+  overflow: hidden;
+  color: #17202a;
+  border-radius: 20px;
+  background: #f5f7f9;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 30%);
+}
+
+.pos-session-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #dfe5eb;
+  background: #ffffff;
+}
+
+.pos-session-summary-header p,
+.pos-session-summary-header h2,
+.pos-session-summary-header span {
+  margin: 0;
+}
+
+.pos-session-summary-header p {
+  color: #008f86;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.pos-session-summary-header h2 {
+  margin-top: 3px;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.pos-session-summary-header span {
+  display: block;
+  margin-top: 3px;
+  color: #667382;
+  font-size: 12px;
+}
+
+.pos-session-summary-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pos-session-summary-header-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: #344252;
+  border: 1px solid #d7dee7;
+  border-radius: 9px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pos-session-summary-header-actions svg {
+  width: 17px;
+  height: 17px;
+}
+
+.pos-session-summary-error {
+  margin: 14px 18px 0;
+  padding: 11px 13px;
+  color: #b42318;
+  border: 1px solid #f0b8b3;
+  border-radius: 9px;
+  background: #fff1f0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pos-session-summary-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 18px 0;
+}
+
+.pos-session-summary-totals article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 9px;
+  padding: 13px 15px;
+  border: 1px solid #d7dee7;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.pos-session-summary-totals article > svg {
+  width: 21px;
+  height: 21px;
+  grid-row: 1 / span 3;
+  color: #008f86;
+}
+
+.pos-session-summary-totals span,
+.pos-session-summary-totals strong,
+.pos-session-summary-totals small {
+  display: block;
+}
+
+.pos-session-summary-totals span {
+  color: #667382;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pos-session-summary-totals strong {
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.pos-session-summary-totals small {
+  color: #7c8997;
+  font-size: 9px;
+}
+
+.pos-session-summary-totals .is-total {
+  color: #ffffff;
+  border-color: #0f172a;
+  background: #0f172a;
+}
+
+.pos-session-summary-totals .is-total span,
+.pos-session-summary-totals .is-total small {
+  color: #cbd5e1;
+}
+
+.pos-session-summary-totals .is-total svg {
+  color: #5eead4;
+}
+
+.pos-session-summary-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 12px 18px;
+  padding: 0 12px;
+  border: 1px solid #c6d0da;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.pos-session-summary-search svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #7c8997;
+}
+
+.pos-session-summary-search input {
+  width: 100%;
+  min-height: 44px;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.pos-session-summary-list {
+  min-height: 160px;
+  padding: 0 18px 18px;
+  overflow-y: auto;
+}
+
+.pos-session-summary-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  color: #7c8997;
+  border: 1px dashed #c6d0da;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.pos-session-summary-empty svg {
+  width: 28px;
+  height: 28px;
+}
+
+.pos-session-summary-empty p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pos-session-transaction {
+  overflow: hidden;
+  margin-top: 9px;
+  border: 1px solid #d7dee7;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.pos-session-transaction:first-child {
+  margin-top: 0;
+}
+
+.pos-session-transaction-head {
+  display: flex;
+  width: 100%;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  text-align: left;
+  color: #17202a;
+  border: 0;
+  background: #ffffff;
+}
+
+.pos-session-transaction-head > span:first-child strong,
+.pos-session-transaction-head > span:first-child small {
+  display: block;
+}
+
+.pos-session-transaction-head > span:first-child strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.pos-session-transaction-head > span:first-child small {
+  margin-top: 3px;
+  color: #667382;
+  font-size: 10px;
+}
+
+.pos-session-transaction-state {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.pos-session-transaction-state em {
+  padding: 4px 8px;
+  color: #075e59;
+  border-radius: 999px;
+  background: #dff8f3;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.pos-session-transaction-state strong {
+  min-width: 112px;
+  text-align: right;
+  font-size: 13px;
+}
+
+.pos-session-transaction-state svg {
+  width: 17px;
+  height: 17px;
+}
+
+.pos-session-transaction-detail {
+  padding: 0 14px 14px;
+  border-top: 1px solid #e3e8ee;
+}
+
+.pos-session-line-table > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(90px, .6fr) minmax(100px, .7fr) minmax(110px, .8fr);
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #edf0f3;
+  font-size: 11px;
+}
+
+.pos-session-line-table .is-heading {
+  color: #667382;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.pos-session-line-table strong,
+.pos-session-line-table small {
+  display: block;
+}
+
+.pos-session-line-table small {
+  margin-top: 2px;
+  color: #7c8997;
+  font-size: 9px;
+}
+
+.pos-session-payment-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f0f4f7;
+  font-size: 11px;
+}
+
+.pos-session-payment-list > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pos-session-document-note {
+  margin: 0;
+  color: #667382;
+  font-size: 10px;
+}
+
+.pos-session-document-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.pos-session-document-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+  color: #ffffff;
+  border: 0;
+  border-radius: 9px;
+  background: #008f86;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pos-session-document-actions button:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.pos-session-document-actions svg {
+  width: 16px;
+  height: 16px;
 }
 
 .pos-section-heading {
@@ -3864,6 +4348,72 @@ button {
 }
 
 @media (max-width: 759px) {
+  .pos-checkout-overlay,
+  .pos-session-summary-overlay {
+    padding: 0;
+  }
+
+  .pos-checkout-overlay .pos-checkout,
+  .pos-session-summary-dialog {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0 !important;
+  }
+
+  .pos-session-summary-header {
+    padding: 14px;
+  }
+
+  .pos-session-summary-header h2 {
+    font-size: 18px;
+  }
+
+  .pos-session-summary-header-actions button:first-child {
+    width: 40px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .pos-session-summary-totals {
+    grid-template-columns: 1fr;
+    padding: 12px 12px 0;
+  }
+
+  .pos-session-summary-search {
+    margin: 10px 12px;
+  }
+
+  .pos-session-summary-list {
+    padding: 0 12px 12px;
+  }
+
+  .pos-session-transaction-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pos-session-transaction-state {
+    width: 100%;
+  }
+
+  .pos-session-transaction-state strong {
+    margin-left: auto;
+  }
+
+  .pos-session-line-table {
+    overflow-x: auto;
+  }
+
+  .pos-session-line-table > div {
+    min-width: 620px;
+  }
+
+  .pos-session-document-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .pos-topbar {
     position: static;
   }

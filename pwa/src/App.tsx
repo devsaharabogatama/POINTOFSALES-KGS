@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Banknote,
   BanknoteArrowUp,
+  BarChart3,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -84,6 +85,7 @@ import {
   startSalesOrderRevision,
   type BootstrapData,
   type CashierSession,
+  type CashierSessionSummaryTransaction,
   type CatalogData,
   type CompanyOption,
   type ProductOption,
@@ -97,6 +99,7 @@ import {
   type SalesInvoiceDocument,
 } from './lib/pos'
 import { SalesOrderPanel } from './SalesOrderPanel'
+import { SessionSummaryModal } from './SessionSummaryModal'
 import {
   openSalesDeliveryPrint,
   openSalesInvoicePrint,
@@ -608,6 +611,8 @@ export default function App() {
   const [actionDialog, setActionDialog] = useState<ActionDialog | null>(null)
   const [actionDialogReason, setActionDialogReason] = useState('')
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
+  const [sessionSummaryOpen, setSessionSummaryOpen] = useState(false)
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
   const offlineBootstrapAttemptRef = useRef('')
   const pricePreviewRequestRef = useRef(0)
   const deliveryPolicyContextRef = useRef('')
@@ -617,7 +622,23 @@ export default function App() {
     window.localStorage.setItem('mads-pos-workspace-layout', workspaceLayout)
     setProductPickerOpen(false)
     setSearch('')
+    setCheckoutOpen(false)
   }, [workspaceLayout])
+
+  useEffect(() => {
+    if (!checkoutOpen && !sessionSummaryOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeTopModal = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || busy) return
+      if (!sessionSummaryOpen) setCheckoutOpen(false)
+    }
+    window.addEventListener('keydown', closeTopModal)
+    return () => {
+      window.removeEventListener('keydown', closeTopModal)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [busy, checkoutOpen, sessionSummaryOpen])
 
   useEffect(() => {
     function preventNumberWheelChange(event: WheelEvent) {
@@ -2800,6 +2821,47 @@ export default function App() {
     }
   }
 
+  async function handleOpenSessionTransaction(
+    transaction: CashierSessionSummaryTransaction,
+  ) {
+    if (!isOnline) {
+      throw new Error('Sambungkan POS ke internet untuk membuka dokumen asli.')
+    }
+
+    try {
+      setReceipt(null)
+      setConfirmedOrder(null)
+      setSalesDocuments(null)
+      try {
+        const finalReceipt = await loadReceipt(companyId, transaction.salesId)
+        setReceipt(finalReceipt)
+        try {
+          const [invoice, delivery] = await Promise.all([
+            loadSalesInvoiceDocument(transaction.salesId),
+            loadSalesDeliveryDocument(transaction.salesId),
+          ])
+          setSalesDocuments({ invoice, delivery })
+        } catch {
+          setSalesDocuments(null)
+        }
+      } catch {
+        const [invoice, delivery] = await Promise.all([
+          loadSalesInvoiceDocument(transaction.salesId),
+          loadSalesDeliveryDocument(transaction.salesId),
+        ])
+        setSalesDocuments({ invoice, delivery })
+        setConfirmedOrder({
+          orderNo: transaction.orderNo,
+          orderRuntimeStatus: transaction.orderRuntimeStatus,
+          plannedOrderDate: transaction.plannedOrderDate,
+        })
+      }
+      setSessionSummaryOpen(false)
+    } catch (reason) {
+      throw new Error(friendlyError(errorMessage(reason)))
+    }
+  }
+
   async function handlePostSale() {
     await postSaleWithNegativeReason()
   }
@@ -2995,6 +3057,7 @@ export default function App() {
     setDeliveryFeeInvoiceDisplayMode('SHOW_SEPARATE')
     setDeliveryDetailsOpen(false)
     setProductPickerOpen(false)
+    setCheckoutOpen(false)
     setSearch('')
     setClientTransactionId(crypto.randomUUID())
   }
@@ -3571,6 +3634,17 @@ export default function App() {
             {cashierSession && (
               <button
                 type="button"
+                onClick={() => setSessionSummaryOpen(true)}
+                className="pos-header-icon-action"
+                title="Buka ringkasan sesi"
+                aria-label="Buka ringkasan sesi"
+              >
+                <BarChart3 className="h-5 w-5" />
+              </button>
+            )}
+            {cashierSession && (
+              <button
+                type="button"
                 onClick={handleCloseSession}
                 disabled={busy}
                 className="pos-header-icon-action pos-close-session-trigger"
@@ -3980,6 +4054,15 @@ export default function App() {
                           <div className="pos-catalog-cart-row">
                             <div className="pos-catalog-cart-product">
                               <p title={item.product.name}>{item.product.name}</p>
+                              <p className="pos-catalog-cart-price">
+                                {money(effectiveUnitPrice)} / {item.product.uomName}
+                                <strong>
+                                  {money(
+                                    resolved?.lineTotal ??
+                                      effectiveUnitPrice * item.quantity,
+                                  )}
+                                </strong>
+                              </p>
                               {(overrideApplied ||
                                 (item.discountType &&
                                   item.discountInput > 0)) && (
@@ -4191,6 +4274,9 @@ export default function App() {
                           </strong>
                         </div>
                         <div className="pos-cart-item-notes">
+                          <span>
+                            {money(effectiveUnitPrice)} / {item.product.uomName}
+                          </span>
                           {item.discountType && item.discountInput > 0 && (
                             <span>
                               Diskon{' '}
@@ -4200,11 +4286,6 @@ export default function App() {
                             </span>
                           )}
                           {overrideApplied && <span>Harga diubah</span>}
-                          {!item.discountType && !overrideApplied && (
-                            <span>
-                              {money(effectiveUnitPrice)} / {item.product.uomName}
-                            </span>
-                          )}
                         </div>
                         <button
                           type="button"
@@ -4225,13 +4306,59 @@ export default function App() {
               </div>
             </section>
 
-            <aside className="pos-checkout rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:p-4">
+            {workspaceLayout === 'CATALOG' && (
+              <section className="pos-checkout-launch">
+                <div>
+                  <span>Total sementara</span>
+                  <strong>
+                    {draft || offlinePreview
+                      ? money(paymentDue)
+                      : money(fallbackSubtotal)}
+                  </strong>
+                </div>
+                <button type="button" onClick={() => setCheckoutOpen(true)}>
+                  Atur pembayaran
+                </button>
+              </section>
+            )}
+            <div
+              className={
+                workspaceLayout === 'CATALOG'
+                  ? `pos-checkout-overlay ${checkoutOpen ? 'is-open' : ''}`
+                  : 'pos-checkout-inline'
+              }
+              onMouseDown={(event) => {
+                if (
+                  workspaceLayout === 'CATALOG' &&
+                  event.currentTarget === event.target &&
+                  !busy
+                ) {
+                  setCheckoutOpen(false)
+                }
+              }}
+            >
+            <aside
+              className="pos-checkout rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:p-4"
+              role={workspaceLayout === 'CATALOG' ? 'dialog' : undefined}
+              aria-modal={workspaceLayout === 'CATALOG' ? true : undefined}
+              aria-label={workspaceLayout === 'CATALOG' ? 'Pembayaran dan penyelesaian' : undefined}
+            >
               <div className="pos-checkout-heading">
                 <div>
                   <p className="pos-eyebrow">Detail transaksi</p>
                   <h2>Pembayaran & penyelesaian</h2>
                 </div>
                 <span>{draft ? draft.draftNo : 'Transaksi baru'}</span>
+                {workspaceLayout === 'CATALOG' && (
+                  <button
+                    type="button"
+                    className="pos-checkout-close"
+                    onClick={() => setCheckoutOpen(false)}
+                    aria-label="Tutup pembayaran"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
               </div>
               <div className="pos-checkout-form space-y-3 border-t border-slate-800 pt-3">
                 <div className="pos-draft-meta-grid">
@@ -4890,6 +5017,7 @@ export default function App() {
               </div>
             </aside>
             </div>
+            </div>
           </div>
         )}
 
@@ -4939,6 +5067,15 @@ export default function App() {
             </footer>
           </section>
           </div>
+        )}
+
+        {sessionSummaryOpen && cashierSession && (
+          <SessionSummaryModal
+            cashierSession={cashierSession}
+            paymentMethods={catalog.paymentMethods}
+            close={() => setSessionSummaryOpen(false)}
+            openTransaction={handleOpenSessionTransaction}
+          />
         )}
       </main>
 

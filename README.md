@@ -1,5 +1,16 @@
 # MADS — Management Distribution System
 
+## 2026-09-21 - POS cart, checkout, and session summary LOCAL READY
+
+Retail POS sekarang menampilkan harga efektif di Cart Catalog dan Compact,
+memindahkan checkout Catalog ke modal, serta menyediakan Ringkasan Sesi aktif
+berisi total Cash/non-Cash, daftar transaksi, detail Product/quantity, dan akses
+ke dokumen canonical. Perubahan hanya pada client/read model PWA; checkout,
+Payment verification, Cash Drawer, Stock/FIFO, Finance, dan tutup sesi tidak
+diubah. Lint, production build, static mutation scan, dan local preview PASS.
+Status saat dicatat: `LOCAL READY`; deploy, authenticated smoke, dan UAT masih
+harus dibuktikan terpisah.
+
 ## 2026-09-19 - Supplier Return Post channel-routing fix LOCAL READY
 
 Production smoke `PR-20260919-0000000022` membuktikan API Post salah memilih

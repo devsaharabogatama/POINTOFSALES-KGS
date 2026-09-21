@@ -1,5 +1,35 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-21 - POS CART / CHECKOUT / SESSION SUMMARY UI LOCAL READY; CASH CHANGE AUDITED
+
+- User approved Retail POS UI refinements: visible Cart prices, one active-session
+  Summary modal, existing searchable-select behavior, and Catalog checkout modal.
+- `pwa/src/App.tsx`, `pwa/src/App.css`, `pwa/src/lib/pos.ts`, and new
+  `pwa/src/SessionSummaryModal.tsx` implement presentation/read-only changes.
+  The Summary is scoped to the active Cashier Session, shows Cash, every recorded
+  non-Cash leg, transactions and Product quantities, and makes no mutation.
+  Cash classification prefers the persisted payment snapshot before current
+  master data; canceled Orders remain visible but are excluded from totals.
+  `Buka dokumen` reuses existing canonical Receipt/Invoice readers and falls
+  back to the confirmed-Order document surface when no final Receipt exists.
+- Both Catalog and Compact carts always show effective unit price. Catalog
+  checkout is a modal with body-scroll locking, Escape/backdrop close, and is
+  reset after a completed/new transaction or layout change.
+- Existing `SearchableSelectEnhancer` was left unchanged because it is already
+  globally mounted and keeps the existing approved threshold rule.
+- Cash removal from manual Finance verification was **not** implemented. UI-only
+  filtering would strand pending Cash, block Session close, distort health/menu
+  counts, omit Finance Event/Journal and change cancellation behavior.
+- Impact contract:
+  `docs/audits/POS_SESSION_SUMMARY_AND_CASH_AUTO_SETTLEMENT_IMPACT_2026-09-21.md`.
+- Evidence: PWA oxlint PASS; TypeScript + Vite production build PASS;
+  `git diff --check` PASS; session Summary mutation scan found no direct write;
+  all 24 native PWA selects remain covered by the global enhancer; built asset
+  contains the new UI labels; local preview returned HTTP 200. Browser visual
+  smoke could not start because local sandbox metadata was rejected.
+- Status: UI `LOCAL READY`; Cash policy `AUDITED / NOT IMPLEMENTED`; no deploy or
+  Production/database mutation.
+
 ## PERMANENT EXECUTION CONTRACT - STATUS TRUTH AND TEST INTEGRITY
 
 - Ikuti `docs/AI_AGENT_CONTINUATION_PLAYBOOK.md` bagian **1A** pada setiap task.

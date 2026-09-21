@@ -107,6 +107,15 @@ Layout operasional dirancang tablet-first: katalog dan checkout menjadi dua
 panel pada lebar tablet, checkout sticky dengan scroll sendiri, touch target
 minimum 44 px, dan kembali satu kolom pada layar kecil.
 
+Penyempurnaan UI sesi berstatus `LOCAL READY`: harga efektif selalu terlihat di
+Cart Catalog maupun Compact; pembayaran mode Catalog dibuka sebagai modal; dan
+Ringkasan Sesi menampilkan total Cash/non-Cash, transaksi, Product/quantity,
+serta aksi ke dokumen Receipt/Invoice canonical. Seluruh select dengan minimal
+10 opsi tetap memakai enhancer pencarian global. Perubahan ini read-only selain
+state UI dan tidak mengubah checkout, Payment verification, Cash Drawer,
+Stock/FIFO, Finance, atau proses tutup sesi. Deploy, authenticated visual smoke,
+dan UAT tetap wajib sebelum status dinaikkan.
+
 ## Stress test checkout staging
 
 `npm.cmd run stress:g4-checkout` menguji Post concurrent pada satu Draft

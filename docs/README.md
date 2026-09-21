@@ -1,5 +1,23 @@
 # Router Dokumen KGS POS
 
+## 2026-09-21 - POS session UX and Cash auto-settlement audit
+
+- Cart unit price/line total in both layouts, Catalog checkout modal, and
+  active-session transaction Summary are locally implemented in the PWA.
+  The Summary separates Cash from all recorded non-Cash legs, excludes canceled
+  Orders from totals without hiding their history, shows Product quantities, and
+  opens the existing canonical Receipt/Invoice document path. The global
+  searchable-select enhancer remains active for every PWA select with at least
+  10 eligible options.
+- PWA lint, TypeScript/production build, static mutation scan, `diff --check`,
+  and local preview HTTP check pass. Status remains `LOCAL READY`; authenticated
+  visual smoke, client deploy, and UAT are not yet proven.
+- Cash removal from manual Finance verification is not a UI toggle. It crosses
+  Cash Drawer, Session close, cancellation, Dispatch advance, Finance Event/
+  Journal and health counters. See
+  [impact audit](audits/POS_SESSION_SUMMARY_AND_CASH_AUTO_SETTLEMENT_IMPACT_2026-09-21.md).
+- No Cash runtime/database change is installed by this UI package.
+
 ## 2026-09-19 - Backoffice Supplier Return end-to-end
 
 [Workplan](runbooks/BACKOFFICE_PURCHASE_RETURN_END_TO_END_WORKPLAN.md) dan
