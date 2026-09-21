@@ -10,8 +10,9 @@
   searchable-select enhancer remains active for every PWA select with at least
   10 eligible options.
 - PWA lint, TypeScript/production build, static mutation scan, `diff --check`,
-  and local preview HTTP check pass. Status remains `LOCAL READY`; authenticated
-  visual smoke, client deploy, and UAT are not yet proven.
+  and local preview HTTP check pass. Commit `e6adb15` is deployed to the
+  production alias; public HTTP and live-bundle label checks pass. Authenticated
+  visual smoke and UAT are not yet proven.
 - Cash removal from manual Finance verification is not a UI toggle. It crosses
   Cash Drawer, Session close, cancellation, Dispatch advance, Finance Event/
   Journal and health counters. See

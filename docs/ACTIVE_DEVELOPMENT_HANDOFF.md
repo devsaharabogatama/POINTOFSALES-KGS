@@ -1,6 +1,6 @@
 # Active Development Handoff — KGS POS
 
-## 2026-09-21 - POS CART / CHECKOUT / SESSION SUMMARY UI LOCAL READY; CASH CHANGE AUDITED
+## 2026-09-21 - POS CART / CHECKOUT / SESSION SUMMARY CLIENT DEPLOYED; CASH CHANGE AUDITED
 
 - User approved Retail POS UI refinements: visible Cart prices, one active-session
   Summary modal, existing searchable-select behavior, and Catalog checkout modal.
@@ -27,8 +27,13 @@
   all 24 native PWA selects remain covered by the global enhancer; built asset
   contains the new UI labels; local preview returned HTTP 200. Browser visual
   smoke could not start because local sandbox metadata was rejected.
-- Status: UI `LOCAL READY`; Cash policy `AUDITED / NOT IMPLEMENTED`; no deploy or
-  Production/database mutation.
+- Commit `e6adb15` is pushed to `origin/main`. Vercel deployment
+  `dpl_6tnDogoLXFTGFRzXGzJdUXsAQbQd` is `Ready` and aliased to
+  `https://kgs-pos-pwa.vercel.app`; public HTTP is 200 and the live bundle
+  contains the new UI labels.
+- Status: UI `CLIENT DEPLOYED / PUBLIC LOAD PASS`; Cash policy
+  `AUDITED / NOT IMPLEMENTED`; authenticated visual smoke and UAT remain
+  pending. No Production database mutation was made.
 
 ## PERMANENT EXECUTION CONTRACT - STATUS TRUTH AND TEST INTEGRITY
 
