@@ -1,5 +1,17 @@
 # Active Development Handoff — KGS POS
 
+## PERMANENT EXECUTION CONTRACT - STATUS TRUTH AND TEST INTEGRITY
+
+- Ikuti `docs/AI_AGENT_CONTINUATION_PLAYBOOK.md` bagian **1A** pada setiap task.
+- Jangan menyebut pekerjaan aman atau selesai sebelum membedakan `LOCAL READY`,
+  `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, dan `UAT PASS`.
+- Setiap gate gagal wajib dipertahankan sebagai evidence sampai root cause
+  ditemukan. Perubahan test harus diklasifikasikan dan tidak boleh melemahkan
+  invariant atau sekadar membuat output hijau.
+- PASS nol-row, migration ledger, lint/build, serta postflight struktur bukan
+  bukti behavioral. Klaim sebelumnya otomatis dicabut bila smoke/UAT menemukan
+  perilaku yang bertentangan.
+
 ## 2026-09-19 - Supplier Return Post channel-routing fix LOCAL READY
 
 - Authenticated Production smoke pada `PR-20260919-0000000022` masih menampilkan
@@ -14657,7 +14669,29 @@ Eksekusi hanya setelah backup dan maintenance window.
   `LOCAL READY`, belum `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, atau
   `UAT PASS`.
 
-# 2026-09-19 - MANUAL FINANCE JOURNAL LOCAL READY
+# 2026-09-21 - MANUAL FINANCE JOURNAL DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS
+
+- User mengonfirmasi migration `20260919120000` sudah dijalankan di Production.
+  Closing postflight PASS untuk ledger, delapan kolom, tujuh routine, guard
+  compatibility, dua trigger aktif, permission/default approval, legacy
+  reconciliation, dan balance reconciliation.
+- Runtime inventory seluruhnya nol dan hanya berstatus `INFO`. Kondisi ini wajar
+  untuk database yang belum mempunyai jurnal manual nyata dan tidak dipakai
+  sebagai behavioral proof.
+- User mengonfirmasi behavioral test `manual_finance_journal_behavior` PASS.
+  Fixture rollback-only membuktikan approval default ON, Finance maker
+  create/save/submit, exact retry, stale-version rejection, maker permission
+  boundary, self-approval rejection, Company Admin approval/posting,
+  approval-off direct posting, balanced Journal, posted-line immutability, dan
+  audit lifecycle. Seluruh fixture di-rollback.
+- Verifikasi client terbaru: targeted ESLint PASS; production build, TypeScript,
+  dan 87/87 static pages PASS.
+- Status saat ini: `DATABASE LIVE` dan `LOCAL CLIENT READY`; belum
+  `CLIENT DEPLOYED`, `SMOKE PASS`, `UAT PASS`, atau `SELESAI`.
+- Next safe step: commit/push paket yang tepat, tunggu deployment client, lalu
+  authenticated smoke maker/approver pada data nyata sesuai runbook.
+
+# 2026-09-19 - MANUAL FINANCE JOURNAL LOCAL IMPLEMENTATION RECORD
 
 - User menyetujui implementasi Jurnal Entries manual dengan approval Company
   default ON dan meminta paket aman untuk dipasang langsung di Production.

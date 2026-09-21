@@ -35,15 +35,29 @@ function nullableUuid(value: string | null, code: string): string | null {
   return value ? uuidValue(value, code) : null;
 }
 
+function nullableText(value: unknown, code: string, maxLength: number): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new ApiRouteError(code, 400);
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) throw new ApiRouteError(code, 400);
+  return normalized;
+}
+
 function rpcError(error: { code?: string; message?: string } | null): never {
   const message = error?.message ?? "FINANCE_OPERATION_FAILED";
-  if (error?.code === "42501" || message.includes("ROLE_REQUIRED")) {
+  if (
+    error?.code === "42501" ||
+    message.includes("ROLE_REQUIRED") ||
+    message.includes("CUSTOM_PERMISSION_DENIED") ||
+    message.includes("SELF_APPROVAL_FORBIDDEN")
+  ) {
     throw new ApiRouteError(message, 403);
   }
   if (
     message.includes("MASTER_VERSION_CONFLICT") ||
     message.includes("ALREADY_EXISTS") ||
     message.includes("ALREADY_REVERSED") ||
+    message.includes("IDEMPOTENCY_CONFLICT") ||
     message.includes("ACTIVE_FINANCE_POSTING_QUEUE_ALREADY_EXISTS")
   ) {
     throw new ApiRouteError(message, 409);
@@ -58,6 +72,10 @@ function rpcError(error: { code?: string; message?: string } | null): never {
     message.includes("_NOT_PREVIEWED") ||
     message.includes("_LOCKED") ||
     message.includes("_STALE") ||
+    message.includes("_NOT_ALLOWED") ||
+    message.includes("_IMMUTABLE") ||
+    message.includes("JOURNAL_UNBALANCED") ||
+    message.includes("MANUAL_POSTING_ACCOUNT_NOT_ALLOWED") ||
     message.includes("SOURCE_DOCUMENT_REVERSAL_REQUIRED") ||
     message.includes("HISTORICAL_SUBLEDGER_SNAPSHOT_UNAVAILABLE") ||
     message.includes("NO_SUPPORTED_HOLD_EVENTS")
@@ -186,7 +204,7 @@ export async function GET(request: Request) {
     let journalQuery = caller.client
       .from("finance_journals")
       .select(
-        "id,journal_no,display_no,journal_type,accounting_period_id,accounting_date,original_event_date,source_type,source_id,system_event_key,description,status,total_debit,total_credit,reversal_of_journal_id,master_version,created_at,posted_at",
+        "id,journal_no,display_no,journal_type,accounting_period_id,accounting_date,original_event_date,source_type,source_id,system_event_key,description,status,total_debit,total_credit,reversal_of_journal_id,master_version,created_at,posted_at,manual_workflow_status,manual_approval_required_snapshot,external_reference,evidence_url,submitted_by,submitted_at,approved_by,approved_at",
       )
       .eq("company_id", companyId);
     if (journalMonth) {
@@ -211,6 +229,7 @@ export async function GET(request: Request) {
       exceptions,
       accounts,
       policy,
+      manualJournalContext,
       financeProcessUiPolicy,
     ] =
       await Promise.all([
@@ -248,13 +267,14 @@ export async function GET(request: Request) {
         caller.client
           .from("chart_of_accounts")
           .select(
-            "id,account_code,account_name,account_type,is_active,is_postable",
+            "id,account_code,account_name,account_type,is_active,is_postable,allow_manual_posting",
           )
           .eq("company_id", companyId)
           .eq("is_postable", true)
           .order("account_code")
           .limit(1000),
         caller.client.rpc("get_finance_company_policy"),
+        caller.client.rpc("get_manual_finance_journal_context"),
         getFinanceProcessUiPolicy(companyId),
       ]);
     for (const result of [
@@ -265,6 +285,7 @@ export async function GET(request: Request) {
       exceptions,
       accounts,
       policy,
+      manualJournalContext,
     ]) {
       if (result.error) throwDatabaseError(result.error);
     }
@@ -318,6 +339,7 @@ export async function GET(request: Request) {
       exceptions: exceptions.data ?? [],
       accounts: accounts.data ?? [],
       policy: policy.data,
+      manualJournalContext: manualJournalContext.data,
       financeProcessUiPolicy,
     });
   } catch (error) {
@@ -404,6 +426,50 @@ export async function POST(request: Request) {
           String(body.idempotencyKey ?? ""),
           "IDEMPOTENCY_KEY_INVALID",
         ),
+      });
+    } else if (action === "SAVE_MANUAL_JOURNAL") {
+      if (!Array.isArray(body.lines)) {
+        throw new ApiRouteError("JOURNAL_LINES_INVALID", 400);
+      }
+      result = await caller.client.rpc("save_manual_finance_journal_draft", {
+        p_journal_id: body.journalId
+          ? uuidValue(String(body.journalId), "JOURNAL_ID_INVALID")
+          : null,
+        p_expected_master_version: body.journalId ? requiredVersion(body) : null,
+        p_operation_key: uuidValue(String(body.operationKey ?? ""), "OPERATION_KEY_INVALID"),
+        p_accounting_date: dateValue(body.accountingDate, "ACCOUNTING_DATE_INVALID"),
+        p_external_reference: nullableText(body.externalReference, "EXTERNAL_REFERENCE_INVALID", 200),
+        p_description: requiredText(body, "description", { maxLength: 1000 }),
+        p_evidence_url: nullableText(body.evidenceUrl, "EVIDENCE_URL_INVALID", 2000),
+        p_lines: body.lines,
+      });
+    } else if (action === "SUBMIT_MANUAL_JOURNAL") {
+      result = await caller.client.rpc("submit_manual_finance_journal", {
+        p_journal_id: uuidValue(String(body.journalId ?? ""), "JOURNAL_ID_INVALID"),
+        p_expected_master_version: requiredVersion(body),
+        p_operation_key: uuidValue(String(body.operationKey ?? ""), "OPERATION_KEY_INVALID"),
+      });
+    } else if (action === "APPROVE_MANUAL_JOURNAL") {
+      result = await caller.client.rpc("approve_manual_finance_journal", {
+        p_journal_id: uuidValue(String(body.journalId ?? ""), "JOURNAL_ID_INVALID"),
+        p_expected_master_version: requiredVersion(body),
+        p_operation_key: uuidValue(String(body.operationKey ?? ""), "OPERATION_KEY_INVALID"),
+      });
+    } else if (action === "CANCEL_MANUAL_JOURNAL") {
+      result = await caller.client.rpc("cancel_manual_finance_journal", {
+        p_journal_id: uuidValue(String(body.journalId ?? ""), "JOURNAL_ID_INVALID"),
+        p_expected_master_version: requiredVersion(body),
+        p_reason: requiredText(body, "reason", { maxLength: 1000 }),
+        p_operation_key: uuidValue(String(body.operationKey ?? ""), "OPERATION_KEY_INVALID"),
+      });
+    } else if (action === "SAVE_MANUAL_JOURNAL_POLICY") {
+      if (typeof body.approvalRequired !== "boolean") {
+        throw new ApiRouteError("MANUAL_JOURNAL_POLICY_INPUT_REQUIRED", 400);
+      }
+      result = await caller.client.rpc("save_manual_journal_approval_policy", {
+        p_expected_master_version: requiredVersion(body),
+        p_approval_required: body.approvalRequired,
+        p_operation_key: uuidValue(String(body.operationKey ?? ""), "OPERATION_KEY_INVALID"),
       });
     } else if (action === "PREVIEW_QUEUE") {
       result = await caller.client.rpc(

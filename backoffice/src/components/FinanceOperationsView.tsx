@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { userFacingError } from "@/lib/user-facing-error";
 import {
@@ -27,6 +27,10 @@ import {
 } from "lucide-react";
 import { useEscapeClose } from "@/lib/use-escape-close";
 import { SalesPaymentVerificationPanel } from "@/components/SalesPaymentVerificationPanel";
+import {
+  ManualJournalDialog,
+  type ManualJournalLineInput,
+} from "@/components/ManualJournalDialog";
 import type { FinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
 
 type Period = {
@@ -66,6 +70,14 @@ type Journal = {
   master_version: number | string;
   created_at: string;
   posted_at: string | null;
+  manual_workflow_status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "CANCELED" | null;
+  manual_approval_required_snapshot: boolean | null;
+  external_reference: string | null;
+  evidence_url: string | null;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
 };
 
 type JournalLine = {
@@ -139,6 +151,7 @@ type Account = {
   account_type: string;
   is_active: boolean;
   is_postable: boolean;
+  allow_manual_posting: boolean;
 };
 
 type Workspace = {
@@ -160,6 +173,11 @@ type Workspace = {
     periodCreationMode: "MANUAL" | "AUTOMATIC";
     postingMode: "CONTROLLED" | "AUTOMATIC";
     masterVersion: number | string;
+  };
+  manualJournalContext: {
+    approvalRequired: boolean;
+    policyMasterVersion: number | string;
+    capabilities: string[];
   };
   financeProcessUiPolicy: FinanceProcessUiPolicy;
 };
@@ -217,6 +235,7 @@ const statusLabels: Record<string, string> = {
   LOCKED: "Dikunci",
   REOPENED: "Dibuka kembali",
   DRAFT: "Draft",
+  PENDING_APPROVAL: "Menunggu persetujuan",
   POSTED: "Terposting",
   CANCELED: "Dibatalkan",
   PREVIEWED: "Sudah ditinjau",
@@ -279,6 +298,17 @@ const friendlyErrors: Record<string, string> = {
   HISTORICAL_SUBLEDGER_SNAPSHOT_UNAVAILABLE:
     "Rekonsiliasi saat ini hanya tersedia untuk tanggal hari ini.",
   INVALID_SESSION: "Sesi login kedaluwarsa. Silakan login kembali.",
+  ACCOUNTING_PERIOD_NOT_OPEN_FOR_MANUAL_JOURNAL:
+    "Tanggal jurnal belum memiliki periode akuntansi terbuka. Buka atau buat periodenya terlebih dahulu.",
+  MANUAL_POSTING_ACCOUNT_NOT_ALLOWED:
+    "Salah satu akun COA belum diizinkan untuk posting jurnal manual.",
+  MANUAL_JOURNAL_SELF_APPROVAL_FORBIDDEN:
+    "Pembuat jurnal tidak boleh menyetujui jurnalnya sendiri.",
+  MANUAL_JOURNAL_IDEMPOTENCY_CONFLICT:
+    "Permintaan yang sama sudah dipakai dengan isi berbeda. Muat ulang lalu coba kembali.",
+  PENDING_MANUAL_JOURNAL_IMMUTABLE:
+    "Jurnal yang menunggu persetujuan tidak dapat diedit. Batalkan pengajuan bila perlu diperbaiki.",
+  JOURNAL_UNBALANCED: "Total Debit dan Kredit harus sama dan lebih besar dari nol.",
 };
 
 function authHeaders(session: Session) {
@@ -418,6 +448,7 @@ export function FinanceOperationsView(props: Props) {
   const [expandedQueue, setExpandedQueue] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [journalMonth, setJournalMonth] = useState(currentMonth());
+  const [manualDialog, setManualDialog] = useState<{ journal: Journal | null } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -637,6 +668,15 @@ export function FinanceOperationsView(props: Props) {
           reversedIds={reversedIds}
           canReverse={props.canReverseJournal}
           reverse={(journal) => setDialog({ type: "REVERSE", journal })}
+          accounts={data?.accounts ?? []}
+          context={data?.manualJournalContext ?? null}
+          currentUserId={props.session.user.id}
+          create={() => setManualDialog({ journal: null })}
+          edit={(journal) => setManualDialog({ journal })}
+          saved={async (message) => {
+            props.notify(message);
+            await load();
+          }}
         />
       )}
       {tab === "periods" && (
@@ -690,6 +730,27 @@ export function FinanceOperationsView(props: Props) {
           close={() => setDialog(null)}
           complete={async (message) => {
             setDialog(null);
+            props.notify(message);
+            await load();
+          }}
+        />
+      )}
+      {manualDialog && data?.manualJournalContext && (
+        <ManualJournalDialog
+          session={props.session}
+          accounts={data.accounts}
+          journal={manualDialog.journal}
+          initialLines={manualDialog.journal
+            ? (journalLines.get(manualDialog.journal.id) ?? []).map((line) => ({
+                accountId: line.account_id,
+                description: line.description ?? "",
+                debit: Number(line.debit) ? String(line.debit) : "",
+                credit: Number(line.credit) ? String(line.credit) : "",
+              } satisfies ManualJournalLineInput))
+            : []}
+          approvalRequired={data.manualJournalContext.approvalRequired}
+          close={() => setManualDialog(null)}
+          saved={async (message) => {
             props.notify(message);
             await load();
           }}
@@ -1158,6 +1219,12 @@ function JournalPanel({
   reversedIds,
   canReverse,
   reverse,
+  accounts,
+  context,
+  currentUserId,
+  create,
+  edit,
+  saved,
 }: {
   session: Session;
   month: string;
@@ -1171,9 +1238,88 @@ function JournalPanel({
   reversedIds: Set<string | null>;
   canReverse: boolean;
   reverse: (journal: Journal) => void;
+  accounts: Account[];
+  context: Workspace["manualJournalContext"] | null;
+  currentUserId: string;
+  create: () => void;
+  edit: (journal: Journal) => void;
+  saved: (message: string) => Promise<void>;
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const manualOperationKeys = useRef(new Map<string, string>());
+  const capabilities = new Set(context?.capabilities ?? []);
+
+  function operationKeyFor(key: string) {
+    const current = manualOperationKeys.current.get(key);
+    if (current) return current;
+    const created = crypto.randomUUID();
+    manualOperationKeys.current.set(key, created);
+    return created;
+  }
+
+  async function manualAction(
+    action: "APPROVE_MANUAL_JOURNAL" | "CANCEL_MANUAL_JOURNAL",
+    journal: Journal,
+  ) {
+    const reason = action === "CANCEL_MANUAL_JOURNAL"
+      ? window.prompt("Alasan pembatalan jurnal manual (wajib):")?.trim()
+      : null;
+    if (action === "CANCEL_MANUAL_JOURNAL" && !reason) return;
+    setBusyAction(`${action}:${journal.id}`);
+    setActionError("");
+    try {
+      const response = await fetch("/api/finance/operations", {
+        method: "POST",
+        headers: { ...authHeaders(session), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          journalId: journal.id,
+          masterVersion: Number(journal.master_version),
+          operationKey: operationKeyFor(`${action}:${journal.id}`),
+          reason,
+        }),
+      });
+      const result = await readApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(friendly(result.error));
+      await saved(action === "APPROVE_MANUAL_JOURNAL"
+        ? "Jurnal manual berhasil disetujui dan diposting."
+        : "Jurnal manual berhasil dibatalkan.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Tindakan jurnal manual gagal.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function toggleApprovalPolicy() {
+    if (!context) return;
+    setBusyAction("POLICY");
+    setActionError("");
+    try {
+      const response = await fetch("/api/finance/operations", {
+        method: "POST",
+        headers: { ...authHeaders(session), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SAVE_MANUAL_JOURNAL_POLICY",
+          masterVersion: Number(context.policyMasterVersion),
+          approvalRequired: !context.approvalRequired,
+          operationKey: operationKeyFor(`POLICY:${context.policyMasterVersion}:${!context.approvalRequired}`),
+        }),
+      });
+      const result = await readApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(friendly(result.error));
+      await saved(!context.approvalRequired
+        ? "Approval jurnal manual diaktifkan."
+        : "Approval jurnal manual dinonaktifkan; submit berikutnya langsung posting.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Kebijakan approval gagal disimpan.");
+    } finally {
+      setBusyAction("");
+    }
+  }
   async function exportEntries() {
     setExporting(true);
     setExportError("");
@@ -1200,7 +1346,7 @@ function JournalPanel({
               debit dan kreditnya.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[150px_280px_auto]">
+          <div className="grid gap-3 sm:grid-cols-[150px_280px_auto_auto]">
             <label className="text-xs font-bold text-slate-500">
               Bulan
               <input
@@ -1231,13 +1377,32 @@ function JournalPanel({
               )}
               Export Excel
             </button>
+            {capabilities.has("CREATE_DRAFT") && (
+              <button
+                onClick={create}
+                disabled={!accounts.some((account) => account.is_active && account.allow_manual_posting)}
+                title={accounts.some((account) => account.is_active && account.allow_manual_posting) ? undefined : "Aktifkan izin posting manual pada minimal dua akun COA."}
+                className="min-h-10 self-end rounded-xl bg-violet-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Jurnal Entry Baru
+              </button>
+            )}
           </div>
         </div>
+        {context && capabilities.has("APPROVE") && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div><b>Approval jurnal manual: {context.approvalRequired ? "Aktif" : "Nonaktif"}</b><p className="mt-1 text-xs text-slate-500">Saat aktif, pembuat jurnal tidak dapat menyetujui jurnalnya sendiri.</p></div>
+            <button onClick={() => void toggleApprovalPolicy()} disabled={busyAction === "POLICY"} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black disabled:opacity-50">
+              {context.approvalRequired ? "Nonaktifkan" : "Aktifkan"}
+            </button>
+          </div>
+        )}
         {exportError && (
           <p className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700">
             {exportError}
           </p>
         )}
+        {actionError && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{actionError}</p>}
       </div>
       <div className="divide-y divide-slate-100">
         {journals.map((journal) => {
@@ -1280,7 +1445,7 @@ function JournalPanel({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Status value={journal.status} />
+                  <Status value={journal.manual_workflow_status ?? journal.status} />
                   {open ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -1312,21 +1477,28 @@ function JournalPanel({
                           </b>
                         </p>
                       )}
+                      {journal.external_reference && <p>Referensi: <b className="text-slate-700">{journal.external_reference}</b></p>}
+                      {journal.evidence_url && <p><a className="font-bold text-violet-700 underline" href={journal.evidence_url} target="_blank" rel="noreferrer">Buka bukti</a></p>}
                       {reversedIds.has(journal.id) && (
                         <p className="font-bold text-amber-700">
                           Jurnal ini sudah mempunyai pembalik.
                         </p>
                       )}
                     </div>
-                    {eligible && (
-                      <button
-                        onClick={() => reverse(journal)}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-black text-white"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                        Buat jurnal pembalik
-                      </button>
-                    )}
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {journal.journal_type === "MANUAL" && journal.manual_workflow_status === "DRAFT" && capabilities.has("EDIT_DRAFT") && (
+                        <button onClick={() => edit(journal)} className="min-h-10 rounded-xl border border-violet-600 px-4 text-sm font-black text-violet-700">Edit / Ajukan</button>
+                      )}
+                      {journal.journal_type === "MANUAL" && journal.manual_workflow_status === "PENDING_APPROVAL" && capabilities.has("APPROVE") && journal.submitted_by !== currentUserId && (
+                        <button onClick={() => void manualAction("APPROVE_MANUAL_JOURNAL", journal)} disabled={Boolean(busyAction)} className="min-h-10 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white disabled:opacity-50">Setujui & Posting</button>
+                      )}
+                      {journal.journal_type === "MANUAL" && ["DRAFT", "PENDING_APPROVAL"].includes(journal.manual_workflow_status ?? "") && capabilities.has("CANCEL_FINAL") && (
+                        <button onClick={() => void manualAction("CANCEL_MANUAL_JOURNAL", journal)} disabled={Boolean(busyAction)} className="min-h-10 rounded-xl border border-rose-600 px-4 text-sm font-black text-rose-700 disabled:opacity-50">Batalkan</button>
+                      )}
+                      {eligible && (
+                        <button onClick={() => reverse(journal)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-black text-white"><RotateCcw className="h-4 w-4" />Buat jurnal pembalik</button>
+                      )}
+                    </div>
                   </div>
                   <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                     <table className="w-full min-w-[760px] text-left text-sm">

@@ -1,5 +1,38 @@
 # MADS — Management Distribution System
 
+## 2026-09-19 - Supplier Return Post channel-routing fix LOCAL READY
+
+Production smoke `PR-20260919-0000000022` membuktikan API Post salah memilih
+RPC POS karena read model `get_purchase_returns()` tidak memproyeksikan
+`source_channel`. Forward fix `20260919144000` menambahkan discriminator itu;
+route client juga fail-closed bila channel hilang agar dokumen Backoffice tidak
+pernah lagi jatuh diam-diam ke runtime POS. Tidak ada Stock/FIFO/AP/Finance atau
+dokumen Posted yang diubah oleh migration ini. Preflight, migration,
+authenticated routing behavior, postflight, deploy client, dan retry exact
+Return Production masih harus dilakukan berurutan.
+
+## 2026-09-19 - Supplier Return exhausted-FIFO negative-stock fix DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS
+
+Audit menemukan blocker Retur Supplier berasal dari asumsi yang salah bahwa
+quantity Receipt hanya boleh diretur selama exact batch masih mempunyai FIFO.
+Pada proses KGS, Receipt dapat langsung terserap menutup stok minus. Forward fix
+`20260919143000` mempertahankan exact PO/GR dan biaya historis, mengizinkan On
+Hand kembali negatif tanpa mengambil batch lain, mencatat shortage source-linked,
+dan merekonsiliasi Receipt berikutnya dengan selisih biaya ke Purchase Price
+Variance (PPV), bukan COGS. Jalur POS/PWA, AP/Supplier Credit/Refund, dan histori
+Posted tidak diubah. User mengonfirmasi migration `20260919143000` berhasil di
+Production. Eksekusi behavior pertama tidak masuk ke transaksi karena Supabase
+Dashboard menyisipkan perintah RLS di dalam blok PL/pgSQL yang memakai
+`SELECT ... INTO`; attempt berikutnya membuktikan E2E gabungan juga dipotong
+karena panjang query. Regression forward fix sekarang dipisah menjadi file
+ringkas SQL-Editor-safe tanpa pola tersebut. User kemudian mengonfirmasi
+behavior tersebut `PASS`: exact FIFO yang habis tetap returnable, batch lain
+tidak tersentuh, On Hand kembali negatif, shortage source-linked, retry dan
+over-return terjaga, serta replenishment/PPV seimbang. Closing postflight juga
+seluruhnya PASS; inventory nol hanya merupakan keadaan runtime, bukan pengganti
+bukti behavior. Client smoke dan UAT tetap terpisah. Ikuti
+[runbook](docs/runbooks/BACKOFFICE_PURCHASE_RETURN_NEGATIVE_STOCK_FORWARD_FIX.md).
+
 ## 2026-09-19 - Backoffice Supplier Return end-to-end DATABASE LIVE
 
 Retur Supplier sekarang dapat dimulai dari detail PO atau halaman Retur
@@ -3049,14 +3082,15 @@ Save Draft, dan Post recheck untuk source Backoffice maupun retained Retail.
 Perubahan additive berstatus `LOCAL READY`; Production rollout dan smoke mengikuti
 `docs/runbooks/CUSTOMER_RECEIPT_CREDIT_NOTE_OUTSTANDING_ALIGNMENT.md`.
 
-# 2026-09-19 - Manual Finance Journal LOCAL READY
+# 2026-09-21 - Manual Finance Journal DATABASE LIVE + BEHAVIOR/POSTFLIGHT PASS
 
 Tab Journal Entries sekarang mempunyai modal Jurnal Entry Baru, draft/submit,
 approval per Company default ON, maker-checker, guarded COA/periode/balance,
 cancel sebelum posting, dan reversal canonical setelah posting. Jurnal otomatis,
 POS, Stock/FIFO, Payment, Return/Refund, serta data transaksi lama tidak diubah.
-Lint, TypeScript, dan production build 87 halaman PASS; database Production,
-deploy client, authenticated smoke, dan UAT belum dijalankan agent. Lihat
+Migration, rollback-only behavioral test, dan closing postflight Production
+sudah PASS. Targeted lint, TypeScript, dan production build 87 halaman juga
+PASS. Deploy client, authenticated smoke, dan UAT belum dilakukan. Lihat
 [runbook](docs/runbooks/MANUAL_FINANCE_JOURNAL_ROLLOUT.md).
 
 # 2026-09-19 - Invoice Data Exchange Retail + Backoffice LOCAL READY
