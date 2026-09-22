@@ -55,6 +55,20 @@ function statusLabel(value: string) {
   return labels[value] ?? (value || 'Tercatat')
 }
 
+function isCountedSessionTransaction(
+  transaction: CashierSessionSummaryTransaction,
+) {
+  return transaction.orderRuntimeStatus !== 'CANCELED' &&
+    transaction.documentStatus !== 'CANCELED' &&
+    transaction.orderRuntimeStatus !== 'DRAFT_INPUT'
+}
+
+function quantity(value: number) {
+  return new Intl.NumberFormat('id-ID', {
+    maximumFractionDigits: 3,
+  }).format(value)
+}
+
 export function SessionSummaryModal({
   cashierSession,
   paymentMethods,
@@ -72,6 +86,9 @@ export function SessionSummaryModal({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
+  const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PRODUCTS'>(
+    'TRANSACTIONS',
+  )
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [openingId, setOpeningId] = useState<string | null>(null)
 
@@ -109,10 +126,7 @@ export function SessionSummaryModal({
     let cash = 0
     let nonCash = 0
     for (const transaction of summary?.transactions ?? []) {
-      if (
-        transaction.orderRuntimeStatus === 'CANCELED' ||
-        transaction.documentStatus === 'CANCELED'
-      ) continue
+      if (!isCountedSessionTransaction(transaction)) continue
       for (const payment of transaction.payments) {
         const method = payment.paymentMethodId
           ? methodById.get(payment.paymentMethodId)
@@ -144,6 +158,47 @@ export function SessionSummaryModal({
       ].some((value) => value.toLocaleLowerCase('id-ID').includes(needle)),
     )
   }, [query, summary?.transactions])
+
+  const allSessionProducts = useMemo(() => {
+    const products = new Map<string, {
+      productId: string
+      productName: string
+      productSku: string
+      quantities: Map<string, number>
+    }>()
+    for (const transaction of summary?.transactions ?? []) {
+      if (!isCountedSessionTransaction(transaction)) continue
+      for (const line of transaction.lines) {
+        const product = products.get(line.productId) ?? {
+          productId: line.productId,
+          productName: line.productName,
+          productSku: line.productSku,
+          quantities: new Map<string, number>(),
+        }
+        const uomName = line.uomName || 'UNIT'
+        product.quantities.set(
+          uomName,
+          (product.quantities.get(uomName) ?? 0) + line.quantity,
+        )
+        products.set(line.productId, product)
+      }
+    }
+    return [...products.values()]
+      .sort((a, b) =>
+        a.productName.localeCompare(b.productName, 'id-ID') ||
+        a.productSku.localeCompare(b.productSku, 'id-ID'),
+      )
+  }, [summary?.transactions])
+
+  const sessionProducts = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('id-ID')
+    if (!needle) return allSessionProducts
+    return allSessionProducts.filter((product) => [
+      product.productName,
+      product.productSku,
+      ...product.quantities.keys(),
+    ].some((value) => value.toLocaleLowerCase('id-ID').includes(needle)))
+  }, [allSessionProducts, query])
 
   const openOriginal = async (transaction: CashierSessionSummaryTransaction) => {
     setOpeningId(transaction.salesId)
@@ -212,13 +267,44 @@ export function SessionSummaryModal({
           </article>
         </div>
 
+        <div className="pos-session-summary-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'TRANSACTIONS'}
+            className={activeTab === 'TRANSACTIONS' ? 'is-active' : ''}
+            onClick={() => {
+              setActiveTab('TRANSACTIONS')
+              setQuery('')
+            }}
+          >
+            Transaksi
+            <span>{summary?.transactions.length ?? 0}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'PRODUCTS'}
+            className={activeTab === 'PRODUCTS' ? 'is-active' : ''}
+            onClick={() => {
+              setActiveTab('PRODUCTS')
+              setQuery('')
+            }}
+          >
+            Produk keluar
+            <span>{allSessionProducts.length}</span>
+          </button>
+        </div>
+
         <label className="pos-session-summary-search">
           <Search />
           <input
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Cari nomor order, customer, SKU, atau produk..."
+            placeholder={activeTab === 'TRANSACTIONS'
+              ? 'Cari nomor order, customer, SKU, atau produk...'
+              : 'Cari nama produk, SKU, atau satuan...'}
           />
         </label>
 
@@ -228,6 +314,33 @@ export function SessionSummaryModal({
               <Loader2 className="animate-spin" />
               <p>Memuat transaksi sesi...</p>
             </div>
+          ) : activeTab === 'PRODUCTS' ? (
+            sessionProducts.length === 0 ? (
+              <div className="pos-session-summary-empty">
+                <Package />
+                <p>Tidak ada produk keluar yang cocok.</p>
+              </div>
+            ) : (
+              <div className="pos-session-product-list">
+                <div className="is-heading">
+                  <span>Produk</span>
+                  <span>Total qty sesi</span>
+                </div>
+                {sessionProducts.map((product) => (
+                  <div key={product.productId}>
+                    <span>
+                      <strong>{product.productName}</strong>
+                      <small>{product.productSku}</small>
+                    </span>
+                    <strong>
+                      {[...product.quantities.entries()]
+                        .map(([uomName, total]) => `${quantity(total)} ${uomName}`)
+                        .join(' + ')}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            )
           ) : transactions.length === 0 ? (
             <div className="pos-session-summary-empty">
               <Package />

@@ -117,6 +117,22 @@ Stock/FIFO, Finance, atau proses tutup sesi. Commit `e6adb15` sudah terpasang di
 alias production dan lolos HTTP/bundle-label check; authenticated visual smoke
 dan UAT tetap wajib sebelum status dinaikkan.
 
+Follow-up Cart 22 September berstatus `LOCAL READY`: `Harga satuan`, `Jumlah`,
+dan `Total barang` mempunyai ruang serta label terpisah; `Total akhir` kini
+merupakan footer Keranjang pada Catalog maupun Compact. Perubahan tidak mengganti
+perhitungan total atau mutation checkout dan belum di-deploy.
+
+Ringkasan Sesi tidak lagi membaca tabel `customers` langsung. Nama Customer
+diambil dari `get_pos_customer_references()` yang sesuai permission Kasir dan
+memerlukan sesi OPEN. Fix berstatus `LOCAL READY`; deploy dan authenticated
+Cashier smoke masih menunggu.
+
+Tab `Produk keluar` pada Ringkasan Sesi berstatus `LOCAL READY`. Tab ini
+menjumlahkan quantity per Product/UOM dari transaksi sesi selain Draft dan
+Canceled, mendukung pencarian Product/SKU/UOM, serta tidak menyatukan angka dari
+UOM berbeda. Padding Search dan layout mobile juga dirapikan. Tidak ada mutation
+Stock/FIFO atau perubahan proses tutup sesi.
+
 ## Stress test checkout staging
 
 `npm.cmd run stress:g4-checkout` menguji Post concurrent pada satu Draft

@@ -36,6 +36,7 @@ export type CashierSession = {
 
 export type CashierSessionSummaryLine = {
   id: string
+  productId: string
   productName: string
   productSku: string
   uomName: string
@@ -982,25 +983,17 @@ export async function loadCashierSessionSummary(
 
   const rows = (headers ?? []) as DbRow[]
   const salesIds = rows.map((row) => String(row.id))
-  const customerIds = [...new Set(
-    rows.map((row) => String(row.customer_id ?? '')).filter(Boolean),
-  )]
 
   const [detailsResult, customersResult, legacyPaymentsResult] = await Promise.all([
     salesIds.length
       ? supabase
           .from('sales_details')
           .select(
-            'id,sales_id,product_name_snapshot,product_sku_snapshot,sale_uom_name_snapshot,qty,resolved_unit_price,discount_amount,line_total,subtotal',
+            'id,sales_id,product_id,product_name_snapshot,product_sku_snapshot,sale_uom_name_snapshot,qty,resolved_unit_price,discount_amount,line_total,subtotal',
           )
           .in('sales_id', salesIds)
       : Promise.resolve({ data: [], error: null }),
-    customerIds.length
-      ? supabase
-          .from('customers')
-          .select('id,name')
-          .in('id', customerIds)
-      : Promise.resolve({ data: [], error: null }),
+    supabase.rpc('get_pos_customer_references'),
     salesIds.length
       ? supabase
           .from('sales_payments')
@@ -1027,6 +1020,7 @@ export async function loadCashierSessionSummary(
     const list = detailsBySale.get(salesId) ?? []
     list.push({
       id: String(row.id),
+      productId: String(row.product_id),
       productName: String(row.product_name_snapshot ?? 'Produk'),
       productSku: String(row.product_sku_snapshot ?? ''),
       uomName: String(row.sale_uom_name_snapshot ?? ''),

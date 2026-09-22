@@ -4,6 +4,27 @@
 **Status:** UI `CLIENT DEPLOYED / PUBLIC LOAD PASS`; Cash workflow `AUDITED / NOT IMPLEMENTED`
 **Scope:** Retail POS/PWA only. Backoffice Sales workflow is not changed.
 
+## UI follow-up 2026-09-22
+
+- Product name, unit price, quantity, and line total use separated labeled
+  regions so Catalog and Compact cards remain readable.
+- The final/estimated total is rendered by one shared sticky Cart footer in both
+  layouts. Catalog keeps the payment-modal launcher there; Compact keeps its
+  existing adjacent checkout panel.
+- The footer reads the existing `paymentDue` or `fallbackSubtotal`; no pricing,
+  checkout, Payment, Session, Stock/FIFO, or Finance mutation changed.
+- Status: `LOCAL READY`; client deploy and authenticated visual UAT pending.
+
+## Customer permission correction 2026-09-22
+
+- The first Production client used a direct `customers` read for Summary labels.
+  ACP-5A correctly rejected it for Cashier, causing the entire Summary load to
+  fail.
+- The consumer now uses canonical `get_pos_customer_references()` instead. The
+  RPC already enforces active Company and an OPEN session for the actor.
+- No Customer-table grant, RLS policy, schema, transaction row, or Finance/Stock
+  behavior changes. Authenticated Cashier smoke remains mandatory after deploy.
+
 ## Approved outcome
 
 1. Catalog Cart shows unit price and line total without opening Edit.

@@ -4054,15 +4054,23 @@ export default function App() {
                           <div className="pos-catalog-cart-row">
                             <div className="pos-catalog-cart-product">
                               <p title={item.product.name}>{item.product.name}</p>
-                              <p className="pos-catalog-cart-price">
-                                {money(effectiveUnitPrice)} / {item.product.uomName}
-                                <strong>
+                              <div className="pos-catalog-cart-price">
+                                <span>
+                                  <small>Harga satuan</small>
+                                  <strong>
+                                    {money(effectiveUnitPrice)} / {item.product.uomName}
+                                  </strong>
+                                </span>
+                                <span className="is-line-total">
+                                  <small>Total barang</small>
+                                  <strong>
                                   {money(
                                     resolved?.lineTotal ??
                                       effectiveUnitPrice * item.quantity,
                                   )}
-                                </strong>
-                              </p>
+                                  </strong>
+                                </span>
+                              </div>
                               {(overrideApplied ||
                                 (item.discountType &&
                                   item.discountInput > 0)) && (
@@ -4262,21 +4270,30 @@ export default function App() {
                             <p className="pos-cart-item-name" title={item.product.name}>
                               {item.product.name}
                             </p>
-                            <p className="pos-cart-item-quantity">
-                              {item.quantity} {item.product.uomName}
-                            </p>
+                            <div className="pos-cart-item-pricing">
+                              <span>
+                                <small>Harga satuan</small>
+                                <strong>
+                                  {money(effectiveUnitPrice)} / {item.product.uomName}
+                                </strong>
+                              </span>
+                              <span>
+                                <small>Jumlah</small>
+                                <strong>{item.quantity} {item.product.uomName}</strong>
+                              </span>
+                            </div>
                           </div>
-                          <strong className="pos-cart-item-total">
-                            {money(
-                              resolved?.lineTotal ??
-                                effectiveUnitPrice * item.quantity,
-                            )}
-                          </strong>
+                          <span className="pos-cart-item-total">
+                            <small>Total barang</small>
+                            <strong>
+                              {money(
+                                resolved?.lineTotal ??
+                                  effectiveUnitPrice * item.quantity,
+                              )}
+                            </strong>
+                          </span>
                         </div>
                         <div className="pos-cart-item-notes">
-                          <span>
-                            {money(effectiveUnitPrice)} / {item.product.uomName}
-                          </span>
                           {item.discountType && item.discountInput > 0 && (
                             <span>
                               Diskon{' '}
@@ -4304,23 +4321,28 @@ export default function App() {
                   })
                 )}
               </div>
-            </section>
-
-            {workspaceLayout === 'CATALOG' && (
-              <section className="pos-checkout-launch">
+              <footer className="pos-cart-total-footer">
                 <div>
-                  <span>Total sementara</span>
+                  <span>Total akhir</span>
                   <strong>
                     {draft || offlinePreview
                       ? money(paymentDue)
                       : money(fallbackSubtotal)}
                   </strong>
+                  <small>
+                    {draft || offlinePreview
+                      ? 'Total transaksi terkini'
+                      : 'Estimasi dari harga keranjang'}
+                  </small>
                 </div>
-                <button type="button" onClick={() => setCheckoutOpen(true)}>
-                  Atur pembayaran
-                </button>
-              </section>
-            )}
+                {workspaceLayout === 'CATALOG' && (
+                  <button type="button" onClick={() => setCheckoutOpen(true)}>
+                    Atur pembayaran
+                  </button>
+                )}
+              </footer>
+            </section>
+
             <div
               className={
                 workspaceLayout === 'CATALOG'
