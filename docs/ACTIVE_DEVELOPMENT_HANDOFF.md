@@ -15670,3 +15670,30 @@ belum scheduler postflight, belum CLIENT DEPLOYED, belum SMOKE/UAT PASS.
 - Status sekarang `DATABASE LIVE / POSTFLIGHT PASS / BEHAVIOR PASS / LSM
   ACTIVATED / SCHEDULER SMOKE PASS`. Ini belum membuktikan authenticated
   confirmation menjadi PO atau UAT pengguna; KMS/SMS tetap OFF.
+
+## 2026-09-24 - Backoffice Draft Invoice price-only editor and UOM display
+
+- Status: `LOCAL READY`; belum `CLIENT DEPLOYED`, authenticated `SMOKE PASS`,
+  atau `UAT PASS`.
+- User membuka scope hanya untuk Invoice Backoffice berstatus `DRAFT`. Detail
+  Draft sekarang mempunyai tombol **Edit Harga** yang membuka editor sempit:
+  harga Product reguler dapat diubah, sedangkan tanggal, jatuh tempo, Qty,
+  diskon, pajak, catatan, ongkir, dan baris accepted-overage terkunci.
+- Save tetap memakai endpoint dan RPC canonical
+  `save_backoffice_sales_invoice_draft`; tidak ada schema, migration, RPC,
+  Stock/FIFO, Payment, COA mapping, atau Finance posting baru. Server existing
+  tetap menghitung ulang tax/total/schedule dan posting Journal berikutnya
+  membaca nilai Invoice tersimpan.
+- Aksi **Edit Draft** existing dipertahankan untuk compatibility. Invoice
+  `POSTED` tetap tidak menampilkan kedua aksi edit dan tetap immutable.
+- Template Print/PDF, detail Invoice, dan editor Draft Backoffice sekarang
+  memakai `uomName`, dengan fallback `uomCode` hanya untuk payload legacy.
+  Invoice Retail tidak diubah.
+- File berubah: `backoffice/src/components/BackofficeSalesInvoiceView.tsx`.
+- Evidence lokal: targeted ESLint PASS; Next 16 production build, TypeScript,
+  dan 87 static pages PASS; `git diff --check` tidak menemukan whitespace
+  error (hanya warning line-ending pada dirty worktree existing).
+- Next safe step: deploy commit yang tepat lalu authenticated smoke pada satu
+  Draft Invoice: ubah harga, simpan, muat ulang, cek UOM name dan total; setelah
+  itu post hanya fixture/UAT yang disetujui dan cocokkan nilai Journal. Jangan
+  menguji dengan mengubah Invoice Production yang sudah `POSTED`.
