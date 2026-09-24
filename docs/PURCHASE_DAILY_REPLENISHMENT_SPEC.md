@@ -189,3 +189,37 @@ authenticated smoke, dan UAT dijelaskan pada
 - Revisi memakai optimistic `master_version`, immutable operation/audit,
   idempotent operation UUID, tenant/permission boundary, dan tidak mengubah
   Stock, FIFO, AP, Payment, Journal, Sales, atau POS.
+
+### Status Database/behavior pass, LSM activated: stale Draft roll-forward trial
+
+Paket `20260923110000` menyiapkan kebijakan Company default OFF untuk menutup
+secara audited AUTO_RO Draft tanggal lama sebelum scheduler membentuk snapshot
+hari berjalan. Trial pertama dibatasi ke LSM melalui activation terpisah; KMS
+dan SMS tetap memakai behavior existing.
+
+Freshness konfirmasi membandingkan immutable snapshot On Hand dan open Purchase
+dengan source terkini. `requested_base_qty` tetap editable sesuai kontrak RO;
+perubahan Qty manual bukan alasan stale. Transfer, Return, Receipt, Adjustment,
+atau perubahan coverage setelah generation membuat konfirmasi fail-closed dan
+menunggu roll-forward berikutnya. Tidak ada Stock/FIFO/Finance mutation dari
+roll-forward itu sendiri. Database rollout, aktivasi LSM, scheduler smoke, dan
+UAT belum dilakukan.
+
+### LSM Draft stock matching trial (local only)
+
+Paket lokal `20260924100000` menambahkan rekonsiliasi in-place sebelum Draft
+AUTO_RO dikonfirmasi menjadi PO. Coverage RO hanya menghitung RO lain yang masih
+`DRAFT`; setelah RO menjadi PO, baris RO tidak lagi dihitung dan digantikan oleh
+sisa PO aktif yang belum diterima dari lineage canonical. Current RO selalu
+dikeluarkan dari coverage dirinya sendiri.
+
+UI memakai tombol `Cocokkan Stok`, menampilkan perubahan hanya pada Product yang
+berbeda, serta memisahkan stok positif ke tab `Stok Lebih`/Carry Forward tanpa
+membuat PO. Qty tetap editable; bila berbeda dari rekomendasi, user wajib
+memberi acknowledgement kedua. Perubahan Stock atau coverage setelah match
+membuat confirmation stale dan mewajibkan rematch.
+
+Reconcile tidak menulis Stock, FIFO, Receipt, Finance, Bill, atau Payment.
+Migration default OFF; activation disiapkan hanya untuk LSM dan KMS/SMS tetap
+memakai flow lama. Status belum melewati Production database, client deploy,
+authenticated smoke, atau UAT.

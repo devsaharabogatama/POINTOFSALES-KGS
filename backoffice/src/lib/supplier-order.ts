@@ -122,9 +122,15 @@ export function throwSupplierOrderError(
     "PURCHASE_AUTO_RO_NOT_DRAFT",
     "PURCHASE_AUTO_RO_DRAFT_REQUIRED",
     "PURCHASE_AUTO_RO_HAS_ACTIVE_PO",
+    "PURCHASE_AUTO_RO_REFRESH_REQUIRED",
+    "PURCHASE_AUTO_RO_STOCK_MATCH_REQUIRED",
+    "PURCHASE_AUTO_RO_STOCK_MATCH_DISABLED",
+    "PURCHASE_AUTO_RO_STOCK_MATCH_HAS_PO",
+    "PURCHASE_AUTO_RO_VARIANCE_CONFIRMATION_REQUIRED",
     "PURCHASE_AUTO_RO_ALLOCATION_COVERAGE_INVALID",
     "PURCHASE_AUTO_RO_BATCH_LINE_NOT_FOUND",
     "PURCHASE_AUTO_RO_BATCH_LINE_VERSION_CONFLICT",
+    "PURCHASE_AUTO_RO_LINE_VERSION_CONFLICT",
     "PURCHASE_AUTO_RO_ALLOCATION_QUANTITY_INVALID",
     "PURCHASE_AUTO_RO_ALLOCATION_EXCEEDS_REQUESTED_QUANTITY",
     "PURCHASE_AUTO_RO_LINE_DESTINATION_MUST_BE_SINGLE",
@@ -208,6 +214,11 @@ export function parseDailyRoConfirmationBody(body: JsonObject) {
     throw new ApiRouteError("PURCHASE_AUTO_RO_ALLOCATIONS_REQUIRED", 400);
   return {
     masterVersion: requiredVersion(body),
+    stockMatchOperationId:
+      typeof body.stockMatchOperationId === "string"
+        ? uuidValue(body.stockMatchOperationId, "PURCHASE_AUTO_RO_STOCK_MATCH_OPERATION_INVALID")
+        : null,
+    acceptVariance: body.acceptVariance === true,
     idempotencyKey:
       typeof body.idempotencyKey === "string"
         ? uuidValue(body.idempotencyKey, "IDEMPOTENCY_KEY_INVALID")
@@ -242,5 +253,15 @@ export function parseDailyRoConfirmationBody(body: JsonObject) {
         ),
       };
     }),
+  };
+}
+
+export function parseDailyRoStockMatchBody(body: JsonObject) {
+  return {
+    masterVersion: requiredVersion(body),
+    idempotencyKey:
+      typeof body.idempotencyKey === "string"
+        ? uuidValue(body.idempotencyKey, "IDEMPOTENCY_KEY_INVALID")
+        : crypto.randomUUID(),
   };
 }

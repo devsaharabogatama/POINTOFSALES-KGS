@@ -1,5 +1,228 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-24 - LSM AUTO_RO STOCK MATCH LOCAL READY
+
+- User mengunci guard coverage: hanya RO `DRAFT` yang dihitung; setelah RO
+  menjadi PO, RO diabaikan dan hanya remaining PO belum diterima yang dihitung.
+  Current RO tidak menghitung dirinya sendiri; grain Company/Product/Warehouse
+  memakai base UOM.
+- Migration lokal `20260924100000_purchase_auto_ro_stock_match.sql` menambahkan
+  preview/rematch transactional in-place, fingerprint stale guard, explicit
+  Qty variance acknowledgement, immutable operation/audit, dan flag Company
+  default OFF. Rematch tidak memutasi Stock/FIFO/Receipt/Finance.
+- Backoffice lokal menambahkan API dan UI `Cocokkan Stok`, daftar selisih per
+  Product, tab `Stok Lebih` Carry Forward, dan dialog konfirmasi kedua untuk Qty
+  yang menyimpang. KMS/SMS fallback ke modal lama selama flag OFF.
+- Paket rollout lengkap: preflight, migration, postflight, rollback-only
+  behavior, exact LSM activation/deactivation, activation postflight, impact,
+  dan runbook. Lint target PASS tanpa error (dua warning existing), TypeScript
+  `--noEmit` PASS, dan production build 87 halaman PASS. Static SQL boundary
+  scan juga menemukan seluruh dollar-quote/transaction berpasangan; SQL belum
+  dijalankan pada Production.
+- Status dipisahkan: `LOCAL READY`; `DATABASE LIVE`, `CLIENT DEPLOYED`,
+  `SMOKE PASS`, dan `UAT PASS` semuanya masih pending. Next safe step adalah
+  menjalankan preflight saja dan meninjau semua output sebelum migration.
+- Production preflight dan installation postflight kemudian seluruhnya PASS;
+  migration `20260924100000` kini `DATABASE LIVE` tetapi policy seluruh Company
+  masih OFF. Behavioral attempt pertama berhenti dan rollback pada fixture test:
+  dua AUTO_RO transient memakai business date sama sehingga melanggar unique
+  Company/date. Test diperbaiki memakai tanggal unik berurutan untuk coverage,
+  target, dan probe; runtime migration live tidak diubah. Behavioral rerun masih
+  menunggu output user.
+- Behavioral attempt kedua juga rollback sebelum mutation: assertion fixture
+  salah mengharapkan preview hanya berisi satu Product, padahal canonical
+  rematch dengan benar mengembalikan seluruh 21 kebutuhan LSM dan target T23BC
+  terbukti menerima exact Draft coverage 1 (`1200 -> 1199`). Test sekarang
+  mencari exact Product/Warehouse target di full preview, memeriksa quantity
+  target setelah rematch, dan membangun allocation untuk seluruh batch saat
+  menguji confirmation. Migration live tetap tidak diubah; rerun masih pending.
+- Behavioral rerun ketiga user-confirmed `PASS`: current RO dikeluarkan dari
+  coverage sendiri, hanya RO lain berstatus Draft dihitung, perubahan coverage
+  setelah match ditolak stale, rematch in-place audited/idempotent, variance
+  tanpa acknowledgement ditolak, variance acknowledged dapat membentuk PO,
+  confirmed RO tidak double count dengan remaining PO, dan Stock/FIFO/Finance
+  tidak berubah. Seluruh fixture business row di-rollback; sequence PO dapat
+  mempunyai gap. Status kini `DATABASE LIVE / POSTFLIGHT PASS / BEHAVIOR PASS /
+  POLICY OFF`; client harus dideploy sebelum activation LSM.
+
+## 2026-09-23 - LSM STALE DRAFT RO ROOT CAUSE PROVEN
+
+- Production output from
+  `docs/audits/LSM_STALE_DRAFT_RO_COVERAGE_2026-09-22.sql` proves cumulative
+  active DRAFT coverage `4587`, exact negative On Hand requirement `4429`, no
+  uncovered quantity, and true stale/excess coverage `158` across three SKUs.
+- All excess originates in `RO-20260920-0000000007`, generated before LSM-only
+  correction Transfer `TRF-0000000134`: BRB10 `18`, T22B `80`, and T25B `60`.
+  The Transfer posted those exact positive quantities on 21 September, but the
+  already-created DRAFT RO remained active and was not reconciled downward.
+- Prior `639` estimate is withdrawn: it compared all DRAFT coverage `4587`
+  against only the `3948` negative quantity represented by actionable RO-22
+  rows and omitted `481` negative quantity already fully covered by older DRAFT
+  lines. Correct global excess is `158`.
+- This is not a daily RO formula defect. It is a stale-DRAFT lifecycle gap after
+  a later positive Stock movement. Do not confirm all three LSM DRAFT ROs
+  unchanged: doing so can over-procure 158 base quantity. No Production fix or
+  cleanup has yet been applied.
+
+## 2026-09-23 - LSM CUMULATIVE DRAFT RO STALE COVERAGE AUDIT READY
+
+- User clarified the defect is the cumulative conservation mismatch between
+  all SO-driven Stock demand and all still-active Daily RO quantities, not the
+  formula of one Daily RO or a UOM display difference.
+- Existing evidence shows LSM DRAFT RO totals `1681 + 740 + 2166 = 4587`, while
+  the 22 September negative On Hand requirement previously measured `3948`;
+  therefore `639` base quantity may be stale coverage. Earlier claims that the
+  cumulative result was balanced are withdrawn.
+- Added SELECT-only Production diagnosis
+  `docs/audits/LSM_STALE_DRAFT_RO_COVERAGE_2026-09-22.sql`. At the exact RO 22
+  generation boundary it reconstructs active DRAFT batches from audit state,
+  reconciles every Product/Warehouse against the Stock ledger, identifies the
+  excess per SKU and source RO, and lists later positive Stock movements,
+  including linked Stock Transfer numbers. No correction or runtime mutation
+  has been performed.
+
+## 2026-09-23 - LSM RO 21 PRIOR DRAFT COVERAGE TRACE READY
+
+- Exact SO/RO output proved `RO-20260921-0000000009` stored nonzero
+  `open_purchase_base_qty_snapshot`, while the user confirms the prior Daily RO
+  had not been converted into a PO.
+- Runtime call-chain review proves
+  `private.get_purchase_daily_auto_ro_candidates_core` deliberately adds every
+  earlier `purchase_daily_batches.status='DRAFT'` line to coverage before
+  calculating a new Daily RO. Such coverage is a pending demand commitment,
+  not physical Stock and not a PO revision.
+- Added SELECT-only Production trace
+  `docs/audits/LSM_RO_20260921_COVERAGE_SOURCE_TRACE.sql`. It reconstructs each
+  earlier Daily RO status at the target generation timestamp from immutable
+  audit snapshots, lists every source batch/SKU/quantity, and reconciles those
+  quantities to the target RO coverage snapshot. No Production mutation or
+  runtime change was made.
+
+## 2026-09-23 - LSM MANUAL SO VS RO 21 SEPTEMBER EXACT AUDIT READY
+
+- User rejected an unsupported UOM-conversion inference from screenshots and
+  requested exact evidence for the manually checked SO rows versus
+  `RO-20260921-0000000009`.
+- Added SELECT-only Production diagnosis
+  `docs/audits/LSM_MANUAL_SO_VS_RO_2026-09-21.sql`. It matches the exact
+  customer/date/SKU rows visible in the supplied checklist against persisted
+  Retail and Backoffice SO lines, exposes commercial UOM/factor/base quantity,
+  traces physical dispatch, and verifies the immutable AUTO_RO Stock snapshot,
+  open-Purchase coverage, ledger On Hand, and RO formula.
+- No conclusion about UOM conversion or SO coverage is considered proven until
+  this exact diagnostic output is reviewed. No Production data, Stock, SO,
+  RO/PO, Finance, migration, or runtime code was changed.
+
+## 2026-09-23 - KMS T23BC DISPATCH VS DAILY RO TIMELINE AUDIT READY
+
+- Manual reviewer states 15-18 September Orders should have been received on
+  Saturday 19 September, but Warehouse dispatch was clicked on Monday 21
+  September; Sunday RO reportedly matched before the late dispatch.
+- Runtime audit confirms On Hand is reduced by the atomic Delivery dispatch
+  operation, not by the Sales Order/order date or an open Reservation. Daily RO
+  reads current negative On Hand at Company-local 23:59 and subtracts active
+  Purchase coverage.
+- Added SELECT-only Production diagnosis
+  `docs/audits/KMS_T23BC_DISPATCH_RO_TIMELINE_2026-09-23.sql`. It traces exact
+  KMS/T23BC identity, Sales/Delivery timestamps, source-linked dispatch Stock
+  Movements, daily dispatch totals, immutable RO snapshots for 18-22 September,
+  and RO-to-PO lineage. Final verdict distinguishes actual Saturday dispatch
+  from a Monday late dispatch; it does not infer facts from document dates.
+- No mutation, migration, runtime, Stock, RO/PO, Reservation, or Finance change.
+  Production output is still required before declaring the manual explanation
+  proven for the exact rows.
+
+## 2026-09-23 - FINANCE COA WORKBOOK PROCESS-SOURCE CLASSIFICATION READY
+
+- User meminta workbook `docs/exports/COA MADS.xlsx` membedakan sumber proses
+  Retail/POS dan Backoffice karena Finance menemukan nama operasi yang tampak
+  dobel atau rancu.
+- Audit tidak mengandalkan display name. Klasifikasi mengikuti source document,
+  runtime dispatcher, dan consumer UI yang aktif. Empat label dipakai agar
+  tidak memberi klasifikasi palsu: `Retail/POS`, `Backoffice`,
+  `Retail/POS -> Backoffice`, dan `Lintas Kanal`.
+- Contoh boundary penting: `SALE_PAYMENT` adalah Customer Receipt Backoffice;
+  `SALE_PAYMENT_VERIFIED` berasal dari pembayaran POS lalu direview Backoffice;
+  `GOODS_RECEIPT` dan `PURCHASE_RETURN` benar-benar dipakai oleh kedua kanal.
+- Workbook baru dibuat sebagai
+  `docs/exports/COA MADS - SUMBER PROSES.xlsx`; workbook asal tidak ditimpa.
+  Sheet KMS/SMS/LSM masing-masing tetap 104 baris dan kini memiliki kolom
+  pertama `Sumber Proses` yang dapat difilter.
+- Builder `scripts/build-finance-journal-review-workbook.cjs` dan katalog
+  `docs/FINANCE_PROCESS_DISPLAY_NAME_CATALOG.md` diperbarui agar regenerasi
+  berikutnya mempertahankan klasifikasi yang sama dan gagal bila system key
+  aktif belum mempunyai klasifikasi sumber.
+- Evidence: workbook reopen/contract check PASS; 104/104 baris per Company
+  memiliki klasifikasi; distribusi per Company adalah 16 Retail/POS, 56
+  Backoffice, 19 Retail/POS -> Backoffice, dan 13 Lintas Kanal; row key,
+  Debit/Kredit, dan Kode COA identik dengan workbook asal; formula lookup,
+  dropdown, satu table per sheet, tanpa merged cells, dan Metadata veryHidden
+  tetap terjaga.
+- Impact: dokumen review saja. Tidak ada perubahan schema, mapping COA live,
+  jurnal, Stock/FIFO, Payment, permission, runtime, atau deployment.
+- Status: `WORKBOOK READY FOR FINANCE REVIEW`; belum ada mapping Production yang
+  diterapkan dari workbook ini.
+
+## 2026-09-22 - POS SESSION SUMMARY PRODUCT RECONCILIATION TAB LOCAL READY
+
+- User meminta padding Search pada modal Ringkasan Sesi dirapikan dan tab
+  `Produk keluar` untuk membantu Kasir mencocokkan barang saat menutup sesi.
+- Implementasi lokal di `pwa/src/SessionSummaryModal.tsx`, `pwa/src/lib/pos.ts`,
+  dan `pwa/src/App.css` menambahkan identitas Product pada line ringkasan,
+  agregasi quantity per Product/UOM, pencarian Product/SKU/UOM, serta tab
+  `Transaksi` / `Produk keluar` yang responsif.
+- Rekap tidak memasukkan Draft (`DRAFT_INPUT`) atau transaksi yang dibatalkan.
+  Quantity satu Product dijumlahkan hanya dalam UOM yang sama; mixed-UOM
+  ditampilkan terpisah agar tidak menghasilkan penjumlahan satuan yang salah.
+- Follow-up visual menghapus border/radius/focus ring bawaan dari Input Search;
+  Search sekarang memakai satu border dan satu focus ring pada wrapper saja.
+- Direct impact hanya read-model/UI Ringkasan Sesi. Tidak ada mutation Stock,
+  Reservation, FIFO, Payment, Cashier Session, Finance, schema, atau permission.
+- Local evidence: PWA ESLint PASS, PWA production build PASS, targeted
+  `git diff --check` PASS, local preview HTTP 200, dan bundle hasil build memuat
+  label tab/CSS baru. Authenticated browser smoke belum dapat dijalankan karena
+  koneksi in-app Browser gagal pada bootstrap sandbox.
+- Status: `LOCAL READY`; belum `CLIENT DEPLOYED`, `SMOKE PASS`, atau `UAT PASS`.
+
+## 2026-09-22 - POS CART PRICE SPACING + SHARED TOTAL FOOTER LOCAL READY
+
+- Feedback Production: nama Product, harga satuan, dan total baris terlalu rapat;
+  Total Akhir harus tetap terlihat sebagai footer Keranjang; Compact belum
+  mempunyai perubahan visual yang cukup jelas.
+- `pwa/src/App.tsx` sekarang memisahkan label `Harga satuan`, `Jumlah`, dan
+  `Total barang`. Footer `Total akhir` berada di dalam `pos-cart-panel` untuk
+  Catalog dan Compact; tombol `Atur pembayaran` tetap hanya pada Catalog karena
+  Compact sudah menampilkan panel pembayaran berdampingan.
+- `pwa/src/App.css` menambah spacing/boundary harga dan menumpuk breakdown card
+  Compact agar tidak terjepit pada grid tiga/empat kolom. Footer bersifat sticky
+  terhadap area Keranjang dan tidak mengubah sumber nilai total.
+- Impact: UI-only. Rumus `paymentDue`/`fallbackSubtotal`, modal pembayaran,
+  checkout, Payment, Session, Stock/FIFO, dan Finance tidak berubah.
+- Evidence: PWA oxlint PASS; TypeScript/Vite production build PASS; local preview
+  HTTP 200; bundle CSS/JS memuat footer, aturan Compact, dan empat label baru.
+  Browser visual automation tidak dapat dimulai karena koneksi browser menolak
+  metadata sandbox; authenticated visual smoke belum terbukti.
+- Status: `LOCAL READY`; belum commit/push, `CLIENT DEPLOYED`, `SMOKE PASS`, atau
+  `UAT PASS`.
+
+## 2026-09-22 - POS SESSION SUMMARY CUSTOMER PERMISSION FIX LOCAL READY
+
+- Production feedback membuktikan modal Ringkasan Sesi gagal untuk Kasir dengan
+  `permission denied for table customers` dan akibatnya seluruh summary kosong.
+- Root cause: `loadCashierSessionSummary()` membaca `public.customers` langsung,
+  bertentangan dengan ACP-5A yang sengaja mencabut direct SELECT dari
+  `authenticated`. Ini bug consumer, bukan alasan memperlebar izin Kasir.
+- Fix mengganti lookup tersebut dengan `get_pos_customer_references()`, RPC
+  SECURITY DEFINER canonical yang sudah dipakai katalog POS dan hanya berjalan
+  saat actor mempunyai Cashier Session OPEN pada Company aktif.
+- Audit dependency: `sales_headers`, `sales_details`, dan `sales_payments` tetap
+  memakai SELECT tenant/document-scoped yang memang diberikan ke authenticated;
+  tidak ada direct mutation atau permission widening.
+- Evidence: PWA oxlint PASS; TypeScript/Vite production build PASS; source scan
+  menunjukkan nol `.from('customers')` di PWA dan dua pemakaian RPC canonical.
+- Status: `LOCAL READY`; belum commit/push/deploy, authenticated Cashier smoke,
+  atau UAT.
+
 ## 2026-09-21 - POS CART / CHECKOUT / SESSION SUMMARY CLIENT DEPLOYED; CASH CHANGE AUDITED
 
 - User approved Retail POS UI refinements: visible Cart prices, one active-session
@@ -14844,3 +15067,606 @@ Eksekusi hanya setelah backup dan maintenance window.
   reduce the midnight AUTO_RO candidate; the returned negative On Hand remains
   eligible even before the historical PO is explicitly canceled.
 - Status: `LOCAL READY`; client deployment and Production UI smoke are pending.
+# 2026-09-21 — DEFERRED DECISIONS: GROSS SALES DISCOUNT, CASH AUTO-VERIFY, SESSION-CLOSE REQUEST SWITCH
+
+- User menetapkan pencatatan diskon Penjualan memakai metode gross: debit akun
+  kontra-pendapatan Diskon Penjualan, kredit Pendapatan bruto, sementara
+  Kas/Piutang tetap sebesar nilai net. Round up/down tetap memakai akun
+  pembulatan tersendiri. Implementasi ditunda sampai pembahasan Finance selesai.
+- Cash POS direncanakan auto-verified secara server-side hanya untuk pembayaran
+  sesi POS dengan Payment Method CASH/route CASH_DRAWER. Transfer dan seluruh
+  non-Cash tetap melalui verifikasi Finance. Perubahan belum diimplementasikan;
+  wajib mencakup Event/Journal, Cash Drawer, close Session, split payment,
+  cancellation/reversal, retry/offline, existing pending Cash, queue, health,
+  dan authenticated smoke.
+- User meminta otomatisasi Purchase dari Tutup Sesi dapat dimatikan. Audit kode
+  membuktikan Tutup Sesi tidak langsung membuat PO: runtime membekukan demand
+  lalu membuat Stock Request SUBMITTED; scheduler harian AUTO_RO/AUTO_PO adalah
+  alur terpisah. Rencana yang disetujui adalah switch per Company **Buat
+  permintaan stok saat sesi ditutup**, default OFF. OFF tetap menutup sesi dan
+  mempertahankan audit/frozen demand tetapi tidak membuat Stock Request baru.
+  Switch tidak membatalkan dokumen historis dan tidak mengubah mode scheduler
+  Purchase. Belum diimplementasikan.
+# 2026-09-21 — LSM BRB10 RETURN WAREHOUSE DIAGNOSIS CORRECTION
+
+- Corrected `docs/audits/LSM_BRB10_RETURN_WAREHOUSE_SCOPE_DIAGNOSIS_2026-09-21.sql` after the first version incorrectly required a native Backoffice Sales Order with an inner join.
+- A retained Retail Return has `sales_order_id IS NULL`; the corrected audit resolves its source Warehouse from `sales_headers.sales_warehouse_id`, while native Backoffice Returns still use `backoffice_sales_orders.warehouse_id`.
+- The audit now anchors from the posted BRB10 `SALES_RETURN` movement, follows its exact receipt and line, reports Warehouse usage, and raises `BLOCKER` when receipt and source-document Warehouses differ.
+- No Production mutation, migration, stock correction, Warehouse deactivation, or runtime/UI change has been performed.
+- Next safe step: run this corrected read-only audit in Production before designing any compensating correction.
+- Audit syntax follow-up: replaced the invalid `stock_movements.effective_at` reference with the canonical `COALESCE(posted_at,created_at)` movement timestamp after checking the active stock-movement schema.
+- Production evidence proves BRB10 receipt `CRR-20260919-0000000024` / movement `127f07ef-2f49-4b72-bdab-ed6412bb4c70` restored 18 units to legacy LSM Warehouse `KGS`, while retained Retail source Invoice `INV-20260904-0000000243` used `GDS`; this is a real source/receipt Warehouse mismatch.
+- Root call-chain cause: `get_backoffice_sales_return_receipt_workspace()` returns every active Warehouse ordered by name; `CustomerReturnReceiptView.open()` defaults every line to `workspace.warehouses[0]`; receipt RPCs only require an active Warehouse in the Company. Under LSM, `Gudang Toko` sorts before `Gudang Utama`, so legacy `KGS` was silently selected.
+- Warehouse usage shows 9 Return receipt lines, 9 Stock movements, and 9 Product batches in legacy `KGS`, so a BRB10-only correction is insufficient. Added `docs/audits/LSM_CUSTOMER_RETURN_WAREHOUSE_MISMATCH_SCOPE_2026-09-21.sql` to enumerate the full read-only correction scope.
+- Expected BRB10 physical result after a correctly audited reclassification: move the 18-unit restoration from `KGS` to source `GDS` without changing Company total quantity or Finance; based on the observed current balances this would change BRB10 GDS from -29 to -11 and KGS from +18 to 0. This is not yet executed.
+- User clarified this runtime is shared by KMS, SMS and LSM, so an LSM-only correction is invalid. LSM evidence reports all 9 receipt lines as RESTOCK mismatches, totaling 558 base units, with the restoration posted to legacy `KGS` instead of source `GDS`.
+- Added `docs/audits/THREE_COMPANY_CUSTOMER_RETURN_WAREHOUSE_MISMATCH_SCOPE_2026-09-21.sql`, explicitly anchored to KMS/SMS/LSM Company UUID and expected name. It inventories active Warehouses, summarizes receipt/mismatch quantity and FIFO cost per Company, lists every exact mismatch, and reports all affected per-Warehouse stock balances.
+- The LSM-only audit remains historical evidence but is superseded as the scope gate for any runtime or data correction. No correction migration has been authored or executed yet.
+- Three-Company Production scope result: KMS has 5 correct RESTOCK receipt lines and zero mismatch; LSM has 9/9 RESTOCK mismatches totaling 558 base units and FIFO cost 11,203,416; SMS has 2 mismatches but both are DESTROY with no Stock movement, so SMS must not receive a Stock transfer correction.
+- Added `docs/audits/THREE_COMPANY_CUSTOMER_RETURN_WAREHOUSE_FIX_PREFLIGHT_2026-09-21.sql`. It gates exact scope, immutable restoration/batch/movement shape, untouched FIFO layers, LSM KGS Stock parity, SMS no-Stock DESTROY behavior, active Finance/Offline work, canonical Stock Transfer availability, and reports active LSM RO/PO coverage for post-correction review.
+- Planned order: (1) install backward-compatible server canonical-Warehouse resolution and deploy UI that displays the source Warehouse; (2) use an audited canonical Stock Transfer for only the 558 LSM RESTOCK units from legacy KGS to GDS if preflight passes; (3) leave KMS data unchanged and SMS DESTROY Stock unchanged; (4) postflight Stock/FIFO/Finance/RO reconciliation; (5) only then audit/deactivate unused legacy KGS Warehouses.
+- Production preflight untuk rencana tersebut dikonfirmasi user seluruh gate
+  mutasinya `PASS`: exact mismatch tetap 9 LSM RESTOCK (558 / biaya 11.203.416),
+  dua SMS DESTROY tanpa Stock effect, sembilan batch FIFO LSM untouched, saldo
+  KGS persis sama dengan scope koreksi, tanpa active Finance queue/offline work,
+  tanpa active GDS RO/PO coverage, dan canonical Stock Transfer tersedia.
+- Local runtime package kini tersedia:
+  `20260921120000_customer_return_source_warehouse_guard.sql`, read-only
+  postflight, dan read-only behavior. Server mengabaikan Warehouse salah dari
+  stale client dan menormalkannya ke Warehouse dokumen sumber;
+  workspace/UI menampilkan Warehouse tersebut sebagai locked value. Native dan
+  retained posting core tidak diganti.
+- Exact append-only correction tersedia sebagai
+  `20260921121000_lsm_customer_return_warehouse_reclassification.sql` dengan
+  postflight read-only. Migration membuat satu canonical Stock Transfer LSM
+  KGS -> GDS; receipt historis tidak dimutasi. Migration fail-closed terhadap
+  batch, Stock, Procurement, Finance queue, dan offline drift serta memulihkan
+  temporary Super Admin Company context di transaksi yang sama.
+- Local evidence: targeted ESLint PASS, production build/TypeScript/87 static
+  pages PASS, dan `git diff --check` PASS. PostgreSQL runtime tidak tersedia
+  lokal, sehingga kedua migration dan SQL behavior/postflight belum dijalankan.
+- Status: `LOCAL READY` saja; belum `DATABASE LIVE`, `CLIENT DEPLOYED`,
+  `SMOKE PASS`, atau `UAT PASS`. Next safe step wajib berurutan: migration
+  `20260921120000` -> behavior guard -> postflight guard -> migration
+  `20260921121000` -> correction postflight. Stop pada error/FAIL pertama.
+- User kemudian mengonfirmasi kedua migration telah terpasang dan correction
+  Stock Transfer `TRF-0000000134` POSTED: 558 Base Qty, biaya 11.203.416,
+  16 movement seimbang, saldo delapan produk tepat, dan ledger PASS. Step-6
+  awal hanya FAIL pada sembilan FIFO karena assertion keliru mengharapkan batch
+  tujuan tetap utuh. Runtime canonical memang menjalankan trigger
+  `g4_reconcile_negative_stock_replenishment` saat batch GDS dibuat; karena GDS
+  masih nol/minus, batch tujuan sah langsung terserap untuk merekonsiliasi
+  shortage terdahulu. Postflight diperbaiki agar membuktikan persamaan
+  `destination remaining + replenishment consumed = transferred quantity`
+  lintas POS, Backoffice, dan Purchase Return shortage. Tidak ada data atau
+  migration yang diulang; revised step 6 masih menunggu hasil Production.
+- Revised step 6 kemudian dikonfirmasi seluruhnya `PASS`. Transfer
+  `TRF-0000000134` mempunyai 8 line produk, 9 exact source FIFO allocation,
+  total 558 Base Qty / biaya 11.203.416, serta 16 paired movements. Seluruh
+  source batch KGS menjadi nol; seluruh 558 destination quantity langsung
+  terserap negative-stock replenishment GDS, sehingga destination remaining
+  juga nol. Delapan saldo produk cocok dengan expected result dan histori
+  Return/Invoice/Receipt tetap immutable.
+- Status database kini `DATABASE LIVE + POSTFLIGHT PASS`. Runtime server sudah
+  menormalkan Warehouse future receipt walaupun stale client masih mengirim
+  pilihan salah. UI locked source-Warehouse masih `LOCAL CLIENT READY`; belum
+  `CLIENT DEPLOYED`, authenticated `SMOKE PASS`, atau `UAT PASS`.
+- User meminta audit apakah seluruh saldo minus KMS/SMS/LSM benar-benar sesuai
+  barang terjual. Ditambahkan audit read-only
+  `THREE_COMPANY_NEGATIVE_STOCK_SALES_RECONCILIATION_2026-09-21.sql` yang
+  memisahkan balance-vs-movement, latest balance, Retail/Backoffice Sales
+  shortage, Supplier Return shortage, sumber lain, canceled Retail net effect,
+  dan source-line integrity. Audit belum dijalankan; tidak ada mutation.
+- Production result audit tersebut seluruhnya PASS untuk gate reconciliation:
+  100 Stock rows sama persis dengan jumlah movement POSTED; 10 negative rows
+  sama dengan latest movement balance; seluruh 10 berstatus `SALES_EXACT`
+  tanpa unreconciled/mixed/Supplier Return shortage; source Retail/Backoffice
+  lengkap; canceled Retail net stock effect nol. KMS tidak mempunyai saldo
+  minus. LSM mempunyai 8 produk / total minus 1.123 Base Qty dan SMS 2 produk /
+  total minus 80 Base Qty; keduanya sama persis dengan open Sales shortage.
+  Kesimpulan point-in-time: saldo minus saat audit valid berasal dari physical
+  Retail Sale/Backoffice Dispatch, bukan Quotation, canceled Retail, salah
+  Warehouse, atau movement yatim. Tidak ada koreksi data yang diperlukan.
+# 2026-09-22 - FINANCE PROCESS / COA MAPPING CATALOG STATIC AUDIT
+
+- User meminta audit apakah seluruh proses yang membutuhkan jurnal sudah
+  mempunyai operasi yang dapat dipilih saat mapping COA. Audit call-chain
+  Finance dicatat pada
+  `docs/audits/FINANCE_PROCESS_MAPPING_CATALOG_AUDIT_2026-09-22.md`.
+- Kesimpulan statis: sebagian besar operasi inti Sales, Purchase, Inventory,
+  Expense, Cash, Customer Balance, Return/Refund, dan Manual Journal sudah
+  mempunyai system event serta runtime. Namun belum benar bila disebut seluruhnya
+  tinggal mapping.
+- Gap nyata: katalog `PURCHASE_RETURN` belum mendeklarasikan
+  `SUPPLIER_AP_PROVISIONAL`, `PURCHASE_PRICE_VARIANCE`, dan `INPUT_TAX` yang
+  dipakai runtime; penyelesaian Piutang Refund Supplier belum mempunyai operasi
+  settlement; diskon Penjualan gross belum diimplementasikan; API/UI mapping
+  mengabaikan `optional_account_functions`; dan UI belum mempunyai completeness
+  matrix per Company.
+- Ditambahkan audit Production SELECT-only
+  `docs/audits/FINANCE_PROCESS_MAPPING_CATALOG_PRODUCTION_CHECK_2026-09-22.sql`
+  untuk KMS/SMS/LSM. Audit memeriksa Company identity, event/category coverage,
+  function integrity, required mapping resolution, Purchase Return catalog
+  parity, optional-function inventory, dan known unimplemented operations.
+- Evidence lokal: balanced parentheses/quotes dan `git diff --check` PASS.
+  PostgreSQL tidak tersedia lokal dan query belum dijalankan di Production.
+  Status `LOCAL STATIC AUDIT`; tidak ada schema/data/runtime yang diubah.
+- Next safe step: user menjalankan query read-only dan menghentikan tindak lanjut
+  bila ada `BLOCKER`. Jangan memperbaiki katalog/runtime sebelum output exact
+  KMS/SMS/LSM ditinjau.
+# 2026-09-22 - FINANCE PROCESS DISPLAY-NAME CATALOG DRAFT
+
+- User meminta dokumen katalog nama yang akan dilihat pengguna sebelum schema/UI
+  mapping diubah. Dibuat
+  `docs/FINANCE_PROCESS_DISPLAY_NAME_CATALOG.md` dengan pola konsisten
+  `Proses / Metode proses` dan technical key pada kolom terpisah.
+- Katalog meliputi Retail/Backoffice Sales, Customer Payment, Return/Refund,
+  Purchase/Supplier, Stock, Expense, Cash/Bank, Customer Balance, Manual Journal,
+  serta modul deferred. Setiap baris ditandai `AKTIF`, `KATALOG/FOUNDATION`,
+  `DEFERRED`, atau `TARGET` agar pilihan yang belum mempunyai runtime tidak
+  terlihat seolah siap dipakai.
+- Nama yang membutuhkan implementasi baru tetap draft: Gross Sales Discount,
+  Supplier Refund Receipt, dan Supplier Refund Offset. Catalog drift
+  `PURCHASE_RETURN` ditandai sebagai runtime sudah memakai tetapi katalog belum
+  lengkap.
+- Tidak ada schema, mapping, jurnal, atau runtime yang diubah. Status hanya
+  `DRAFT UNTUK REVIEW USER`. Next safe step adalah user merevisi kolom Display
+  name; jangan membuat migration sebelum nama dan scope disetujui.
+# 2026-09-22 - THREE-COMPANY FINANCE COA BULK PAIRING PREPARATION
+
+- User menyetujui katalog display name dan meminta daftar COA KMS/SMS/LSM agar
+  proses dapat dipasangkan secara bulk, termasuk deklarasi akun baru bila akun
+  yang dibutuhkan belum ada.
+- Ditambahkan export Production SELECT-only
+  `supabase/diagnostics/three_company_finance_coa_mapping_export.sql`. Satu hasil
+  tabular memuat exact Company identity, seluruh COA dan parent, direct mapping,
+  Company fallback, serta Payment Method route/function untuk KMS/SMS/LSM.
+- Ditambahkan
+  `docs/runbooks/FINANCE_COA_BULK_PAIRING_WORKFLOW.md`: worksheet final memakai
+  kolom account code per Company dan daftar `COA_TO_CREATE` yang eksplisit.
+  Migration berikutnya wajib transactional, effective-dated, idempotent,
+  fail-closed, dan tidak memutasi jurnal historis.
+- Tidak ada query Production yang dijalankan dan tidak ada schema/data/mapping
+  yang diubah. Status `LOCAL READ-ONLY EXPORT READY`.
+- Next safe step: user menjalankan export, memastikan tiga identity `PASS`, lalu
+  mengirim CSV/result agar worksheet pairing exact dapat dibuat. Jangan membuat
+  COA atau mapping sebelum worksheet mendapat persetujuan user.
+# 2026-09-22 - FINANCE COA PAIRING WORKBOOK READY FOR FINANCE REVIEW
+
+- CSV Production `COA MADS.csv` tervalidasi memiliki 597 baris: tiga exact
+  Company identity `PASS`, 240 COA, 294 direct mappings, 51 Company fallbacks,
+  dan 9 Payment Method routes. KMS/SMS/LSM masing-masing mempunyai 80 COA aktif
+  dan postable.
+- Dibuat workbook
+  `docs/exports/FINANCE_COA_PAIRING_KMS_SMS_LSM_2026-09-22.xlsx` dengan sembilan
+  sheet: Petunjuk, Pairing Proses, COA KMS/SMS/LSM, COA TO CREATE, Mapping
+  Existing, Payment Methods, dan Raw Export.
+- `Pairing Proses` mempunyai 127 baris display-name catalog, dropdown account
+  code per Company, formula nama akun, sumber resolusi saat ini, keputusan
+  Finance, dan catatan. Existing mapping/fallback/system account memprefill 125
+  baris per Company tanpa ambiguity. Dua baris belum mempunyai akun pada semua
+  Company dan keduanya adalah target function yang sama: `SALES_DISCOUNT` untuk
+  `SALE_POSTED` dan `SALE_DISPATCHED`.
+- Builder reproducible disimpan pada
+  `scripts/build-finance-coa-pairing-workbook.cjs`. ExcelJS hanya dipasang pada
+  folder sementara untuk build ini dan folder tersebut sudah dihapus; tidak ada
+  dependency aplikasi yang berubah.
+- Workbook dibuka ulang secara programatik: sembilan sheet hadir, row count
+  Pairing tepat 127, formula dan data validation tersimpan, ukuran file 104.390
+  byte. `git diff --check` PASS.
+- Status `WORKBOOK READY FOR FINANCE REVIEW`. Belum ada COA, mapping, schema,
+  runtime, atau jurnal Production yang diubah. Next safe step: tim Finance
+  mengisi keputusan/pairing dan `COA TO CREATE`, lalu mengembalikan workbook
+  untuk exact preflight dan guarded migration.
+# 2026-09-22 - FINANCE-FRIENDLY COA PAIRING WORKBOOK
+
+- User menyatakan workbook generasi pertama terlalu teknis bahkan untuk dibaca
+  non-IT. Workbook tidak dipertahankan sebagai UI review Finance.
+- Dibuat pengganti
+  `docs/exports/FINANCE_COA_PAIRING_FINANCE_REVIEW_KMS_SMS_LSM_2026-09-22.xlsx`.
+  Sembilan sheet visible hanya berisi Petunjuk, Ringkasan, Pairing KMS/SMS/LSM,
+  Daftar COA KMS/SMS/LSM, dan Akun Baru. `Referensi Sistem` serta `Raw Export`
+  berstatus `veryHidden`.
+- Setiap sheet Pairing menampilkan hanya: nomor, kelompok, Proses/Metode, kapan
+  digunakan, ketersediaan proses, akun saat ini, dropdown kode akun, nama akun
+  otomatis, keputusan Finance, dan catatan. Technical key/source disimpan pada
+  kolom tersembunyi untuk migration berikutnya.
+- Masing-masing Company mempunyai 127 baris: 99 perlu direview dan 28 otomatis
+  `TIDAK PERLU DIREVIEW` karena deferred/catalog-only/no-net/manual boundary.
+  Dua baris aktif-target tanpa akun tetap `SALES_DISCOUNT`; tidak ada ambiguity.
+- Programmatic reopen verification PASS: 11 sheet, formula dan validation ada,
+  seluruh technical sheet/columns tersembunyi, file 113.796 byte. ExcelJS hanya
+  dipasang sementara dan sudah dibersihkan; dependency aplikasi tidak berubah.
+- File generasi awal tidak ditimpa karena sedang terkunci. Gunakan hanya file
+  bernama `FINANCE_REVIEW` untuk dikirim kepada tim Finance.
+
+# 2026-09-22 - FINANCE JOURNAL REVIEW WORKBOOK (SUPERSEDES PRIOR WORKBOOKS)
+
+- Dua workbook pairing sebelumnya dinyatakan tidak layak untuk approval final:
+  keduanya tidak memperlihatkan satu proses sebagai kelompok kaki jurnal yang
+  lengkap, sehingga Finance tidak dapat menilai Debit/Kredit dan balance.
+- Dibuat workbook pengganti
+  `docs/exports/FINANCE_JOURNAL_REVIEW_KMS_SMS_LSM_2026-09-22.xlsx` melalui
+  `scripts/build-finance-journal-review-workbook.cjs`.
+- Sheet KMS/SMS/LSM hanya berupa tabel biasa tanpa merged cell. Kolom visible:
+  `Proses`, `Komponen Jurnal`, `Dasar Nilai`, `Debit/Kredit`, `Kode COA`,
+  `Nama COA`, dan `Catatan Finance`. Posisi serta kode akun berjalan diprefill
+  tetapi dapat direvisi Finance. Technical identity/original value disimpan
+  tersembunyi untuk diff setelah workbook dikembalikan.
+- Workbook memuat 99 pasangan process/function yang posting runtime-nya sudah
+  tersedia, termasuk feature yang dapat dipakai kemudian walaupun runtime row
+  saat ini nol. Cabang amount yang sah mempunyai baris terpisah; total menjadi
+  104 review rows per Company. Foundation/deferred/target tanpa posting runtime
+  tidak dimasukkan.
+- Verifikasi lokal membuka ulang workbook: 9 sheet; masing-masing Company satu
+  table/104 data rows; nol merged cell; seluruh kelompok Proses memiliki sisi
+  Debit dan Kredit; nol COA kosong; formula nama akun dan dropdown tersimpan.
+- Perubahan ini hanya dokumen/builder. Tidak ada COA, mapping, schema, jurnal,
+  atau data Production yang diubah. Status `LOCAL WORKBOOK READY`; approval
+  Finance dan exact diff/preflight masih menunggu.
+- Next safe step: Finance mengisi workbook baru. Setelah dikembalikan, pisahkan
+  perubahan mapping-only dari perubahan Debit/Kredit/dasar nilai/kaki jurnal;
+  kategori kedua memerlukan perubahan posting rule dan behavioral balance test.
+# 2026-09-23 — CUSTOMER-RECEIVED QTY VS ORIGINAL DAILY RO AUDIT READY
+
+- User clarified that the required comparison is Customer-final-received Sales
+  quantity versus the original unedited Daily RO quantity for KMS/SMS/LSM, not
+  Supplier Goods Receipt versus RO.
+- Static call-chain audit proves Daily RO does not read Quotation, SO, or
+  Customer Receipt documents. It snapshots uncovered negative On Hand at cutoff:
+  `max(-On Hand - active Purchase coverage, 0)`. Backoffice source Stock leaves
+  the operational Warehouse at Dispatch to Transit, before Customer receipt.
+  Therefore direct Customer-received = RO equality is not a valid standalone
+  invariant.
+- Added SELECT-only Production audit
+  `docs/audits/THREE_COMPANY_CUSTOMER_RECEIVED_VS_ORIGINAL_RO_2026-09-23.sql`.
+  It reads the immutable `GENERATE` audit snapshot (not the possibly changed
+  current RO line), validates the RO formula and Stock ledger at cutoff, and
+  reports Customer-received, source-Warehouse-out, Stock delta, original RO,
+  current RO, canceled rows, and post-generate changes per Company/RO/Product.
+- No Production query has been run and no data/schema/runtime/UI was changed.
+  Status: `LOCAL READ-ONLY AUDIT READY`; Production result is still required
+  before concluding whether the observed quantities match or explaining exact
+  per-Product differences.
+
+## Production result and corrected timing interpretation
+
+- User ran the audit in Production. Exact Company identity passed; 14 AUTO_RO
+  batches each have exactly one immutable GENERATE snapshot; all 179 original
+  RO lines match `max(-On Hand snapshot - open Purchase coverage, 0)`; and all
+  179 On Hand snapshots match the cumulative POSTED Stock ledger at cutoff.
+- Therefore RO generation and its captured Stock basis are internally
+  consistent. The assumption that operational-Warehouse On Hand only decreases
+  when the Customer accepts goods is false for Backoffice. Confirmation reserves
+  Stock; Dispatch posts source-Warehouse -> Transit and decreases source On Hand;
+  Customer receipt later consumes/settles Transit and finalizes the delivery.
+- Exact proof in the result: SMS `T25MC`, RO `RO-20260922-0000000014`, has 1,000
+  Base Qty dispatched from source, zero Customer-received at cutoff, On Hand
+  -1,460, active Purchase coverage 460, and original RO 1,000. The formula and
+  source-out quantity both reconcile even though Customer receipt is still zero.
+- Direct historical totals are not a valid equality test because the output
+  includes canceled RO lines that can be regenerated on a later day and active
+  Purchase coverage that reduces a later RO. The result reports 62 canceled RO
+  lines across KMS/SMS/LSM and 13 current lines changed after their immutable
+  original snapshot. Those facts must be retained when interpreting totals.
+- No mutation or runtime change is required from this result. A business-flow
+  change to defer source On Hand reduction until Customer receipt would be a
+  separate high-impact redesign of Transit, reservation, shortage, FIFO, RO,
+  and cancellation—not a bug fix.
+
+# 2026-09-23 - POS CASH AUTO VERIFICATION LOCAL READY
+
+- User menyetujui Point 1: pembayaran POS route `CASH_DRAWER` tidak lagi masuk
+  verifikasi manual Finance; transfer dan seluruh non-Cash tetap maker-checker.
+- Impact map aktif ada di
+  `docs/audits/POS_CASH_AUTO_VERIFICATION_IMPACT_2026-09-23.md`. Call chain yang
+  diaudit: confirm Order -> payment capture -> Cash Drawer -> verification
+  request -> Finance Event/posting; cancellation, revision, close Session,
+  navigation counter, dan Finance queue ikut diperiksa.
+- Paket lokal baru:
+  - `supabase/diagnostics/pos_cash_auto_verification_preflight.sql`;
+  - `supabase/migrations/20260923100000_pos_cash_auto_verification.sql`;
+  - `supabase/tests/pos_cash_auto_verification_behavior.sql`;
+  - `supabase/diagnostics/pos_cash_auto_verification_postflight.sql`;
+  - `docs/runbooks/POS_CASH_AUTO_VERIFICATION_ROLLOUT.md`.
+- Runtime menambah klasifikasi `verification_mode`, helper private auto-Cash,
+  deferred invariant yang melarang Cash tersisa `PENDING`, audit
+  `AUTO_VERIFY_CASH`, dan satu Event `SALE_PAYMENT_VERIFIED` `HOLD`. Existing
+  pending Cash dibackfill hanya bila Drawer/Session/Store/POS/amount/source dan
+  kategori exact; drift menggagalkan seluruh migration.
+- Cancellation sebelum dispatch hanya membuka auto-Cash dengan Event `HOLD`:
+  Event menjadi `CANCELED`, Cash Drawer mendapat satu reversal, dan request
+  menjadi `CANCELED`. Event `POSTED`, payment manual, serta dispatch yang sudah
+  berjalan tetap fail-closed dan membutuhkan reversal/refund canonical.
+- Backoffice manual verification RPC serta navigation counter mengecualikan
+  route Cash. Copy UI menjelaskan bahwa daftar hanya non-tunai. PWA client tidak
+  diubah; confirm POS memakai RPC server existing.
+- Local evidence: targeted ESLint PASS; Next production build, TypeScript, dan
+  87 static pages PASS; `git diff --check` PASS; SQL dollar-tag/transaction
+  boundary static check PASS. PostgreSQL runtime tidak tersedia lokal, sehingga
+  preflight/migration/behavior/postflight belum dijalankan.
+- Status hanya `LOCAL READY`, bukan `DATABASE LIVE`, `CLIENT DEPLOYED`,
+  `SMOKE PASS`, atau `UAT PASS`. Next safe step wajib mengikuti runbook dan stop
+  pada `BLOCKER`/error/`FAIL` pertama. Jangan menyatakan aman dari zero runtime
+  row; authenticated Cash-only, transfer-only, split, retry, close Session,
+  pre-dispatch cancel, posted boundary, dan cross-Company smoke masih wajib.
+
+## Production preflight result - HOLD
+
+- User menjalankan `pos_cash_auto_verification_preflight.sql` dan meminta task
+  dihentikan sementara.
+- Hasil Production: seluruh relation, routine, dependency ledger, object
+  collision, pending source shape, category shape, dan active Finance queue
+  `PASS`. Inventory saat pemeriksaan: 8 pending Cash, 1 verified Cash, dan 2
+  pending non-Cash.
+- Gate `pos_cash_auto_runtime_anchor` adalah `BLOCKER`: capture=1, cancel=1,
+  review=1, close=1, tetapi confirm=0. Karena itu migration
+  `20260923100000_pos_cash_auto_verification.sql` **belum boleh dijalankan**.
+- `confirm=0` pada output tersebut kemudian dibuktikan sebagai false blocker:
+  wrapper publik mendelegasikan ke private composition yang memanggil payment
+  capture. Detail koreksi dan coverage penggantinya dicatat pada bagian sesudah
+  ini; output preflight lama tidak lagi menjadi gate rollout.
+- Status pada saat output tersebut tetap `LOCAL READY / PRODUCTION PREFLIGHT
+  BLOCKED / USER HOLD`;
+  `DATABASE LIVE`, behavior, postflight, client deploy, smoke, dan UAT belum
+  dilakukan.
+
+## 2026-09-23 - POS Cash preflight call-chain correction
+
+- Task dilanjutkan setelah user menyatakan audit lain aman. Root cause blocker
+  `confirm=0` dibuktikan sebagai `TEST HARNESS FIX`, bukan product/runtime fix:
+  `public.confirm_pos_sales_order` adalah revision-aware wrapper yang memanggil
+  `private.confirm_pos_sales_order_before_revision_core`; private composition
+  itulah yang memanggil `capture_sales_order_payment_requests`.
+- Preflight sekarang mewajibkan kedua routine dan menguji wrapper (`revision`
+  serta delegation) dan composition (`core`, invoice/document, procurement,
+  payment capture) secara terpisah. Migration guard dan postflight memakai
+  kontrak call-chain identik, jadi drift tidak disembunyikan.
+- Behavioral test ditambah jalur nyata
+  `capture_sales_order_payment_requests`: split Cash/non-Cash, status
+  `AUTO_CASH`/`MANUAL_REVIEW`, dan exact retry tanpa duplicate request. Test
+  helper, cancellation, posted boundary, dan tenant rejection lama tetap ada.
+- Local verification terbaru: SQL dollar-tag dan parenthesis seimbang
+  (`preflight 149/149`, `migration 211/211`, `behavior 98/98`, `postflight
+  146/146`), diagnostic mutation scan bersih, trailing-whitespace nol, targeted
+  Backoffice ESLint PASS, serta Next 16 production build/TypeScript/87 static
+  pages PASS. SHA-256: preflight `A6F06BF4...00C7`, migration
+  `54426279...07C`, behavior `B923C0DF...173D`, postflight
+  `8DC8FEA8...C4CFD`.
+- Status tetap `LOCAL READY`. Migration belum dijalankan. Next safe step:
+  jalankan ulang seluruh preflight terbaru; wajib `confirmWrapper=1`,
+  `confirmComposition=1`, dan tidak ada `BLOCKER`. Setelah itu baru migration,
+  behavior, postflight, deploy, authenticated smoke, dan UAT sesuai runbook.
+
+## 2026-09-23 - LSM SO/RO reconciliation 22 September
+
+- Atas instruksi user, rollout POS Cash auto-verification kembali `USER HOLD`;
+  migration `20260923100000` tetap belum boleh dijalankan sampai task dibuka
+  lagi dan preflight terbaru lulus.
+- Fokus berpindah ke laporan ketidakcocokan seluruh SO dan RO LSM pada business
+  date `2026-09-22`. Dibuat diagnostic read-only satu statement:
+  `docs/audits/LSM_SO_RO_RECONCILIATION_2026-09-22.sql`.
+- Audit memisahkan planned active/inactive SO Retail dan Backoffice, dispatch
+  fisik aktual, seluruh movement masuk/keluar, opening dan cutoff ledger,
+  immutable `GENERATE` snapshot, formula uncovered negative On Hand, perubahan
+  current RO, serta alokasi/PO lineage per Product-Warehouse.
+- Hard invariant yang dinilai `FAIL` hanya snapshot-vs-ledger dan original
+  RO-vs-formula. Selisih planned SO, dispatch, dan RO diberi `REVIEW`, karena
+  ketiganya memang dapat berbeda akibat timing dispatch, opening negative,
+  Receipt/Return/Transfer/Adjustment, serta coverage pembelian aktif.
+- Local structural evidence: 414 baris, parentheses `187/187`, zero mutation
+  statement, zero trailing whitespace; SHA-256
+  `F64A4D5AB9757410F554E28F83DE5F39C4BB6AD428C4C12DBF905EBCBD7BA041`.
+- Next safe step: user menjalankan seluruh diagnostic di Production dan mengirim
+  semua row, terutama batch contract, formula reconciliation, seluruh row
+  product reconciliation, dan summary verdict. Belum ada kesimpulan data atau
+  izin perbaikan sebelum output tersebut dianalisis.
+
+## 2026-09-23 - LSM 22 September coverage lineage follow-up
+
+- User menjalankan audit SO/RO. Evidence Production: satu AUTO_RO Draft dengan
+  17 Product; snapshot-vs-ledger dan formula seluruhnya PASS; planned SO aktif
+  `2,254`, physical dispatch `2,254`, original RO `2,166`, opening On Hand
+  `-1,694`, cutoff On Hand `-3,948`, dan open-Purchase snapshot `1,782`.
+- Selisih 88 seluruhnya berada pada T23B `20`, T20B `20`, dan BRB10-2 `48`.
+  Ketiganya mempunyai coverage lebih besar daripada opening shortage; belum
+  terbukti apakah coverage tersebut valid atau stale. `poDocuments=null` hanya
+  berarti RO tanggal 22 masih Draft dan belum dialokasikan, bukan berarti
+  snapshot open-Purchase nol.
+- Dibuat diagnostic read-only
+  `docs/audits/LSM_RO_COVERAGE_LINEAGE_2026-09-22.sql` untuk merekonstruksi
+  coverage cutoff dari sisa PO setelah Receipt dan sisa Stock Request setelah
+  allocation, menampilkan nomor dokumen/source batch/status/timestamp, serta
+  memisahkan Product yang disentuh migration reclassification `20260921121000`.
+- Local structural evidence: 293 baris, parentheses `122/122`, zero mutation
+  statement/trailing whitespace; SHA-256
+  `2531293CAD4A5CDCD0EA98D4B6FCC70CEFAADB45C7B96240093F88362E1F7A32`.
+- Next safe step: jalankan seluruh lineage diagnostic dan kirim semua output.
+  Jangan mengoreksi RO, PO, Stock Request, atau migration sebelum source 1,782
+  dan khususnya excess 88 terbukti.
+
+## 2026-09-23 - LSM AUTO_RO Draft roll-forward
+
+Status: `DATABASE LIVE / POSTFLIGHT PASS / BEHAVIOR PASS / LSM ACTIVATED`;
+belum scheduler postflight, belum CLIENT DEPLOYED, belum SMOKE/UAT PASS.
+
+- Root cause Production sudah dibuktikan: active Draft RO LSM 20–22 September
+  memberi coverage 4.587 terhadap kebutuhan cutoff 4.429. Excess 158 berasal
+  dari BRB10 18, T22B 80, dan T25B 60 setelah correction transfer
+  `TRF-0000000134`; uncovered quantity nol.
+- Migration baru `20260923110000_purchase_auto_ro_draft_roll_forward.sql`
+  menambah flag Company default OFF. Jika enabled, scheduler AUTO_RO memakai
+  cancellation core canonical untuk seluruh Draft lama lalu membuat satu Draft
+  terbaru dalam transaksi yang sama. AUTO_PO unchanged.
+- Public confirmation menolak source snapshot stale. Guard membandingkan
+  immutable On Hand/open-Purchase snapshot, bukan Qty editable, sehingga edit
+  Qty user existing tetap kompatibel.
+- Paket mencakup preflight, installation postflight, rollback-only behavior
+  memakai self-created transient Draft tanpa Stock movement, activation LSM terpisah,
+  post-activation scheduler postflight, impact map, dan runbook.
+- Activation menolak jika scheduler business date berjalan sudah selesai. PO
+  aktif tidak dibatalkan oleh fitur dan tetap menjadi coverage; keputusan PO
+  operasional harus selesai sebelum cutoff bila harus masuk konsolidasi hari 23.
+- Local evidence: targeted ESLint selesai tanpa error (dua warning unused
+  disable existing pada `SupplierOrderView`); Next 16 production build,
+  TypeScript, dan 87 static pages PASS; tujuh file SQL seimbang untuk dollar-tag
+  dan parentheses; diagnostic DML scan kosong; behavior tidak memanggil sequence
+  dokumen; `git diff --check` PASS. Supabase/PostgreSQL runtime lokal tidak
+  tersedia, sehingga syntax/runtime SQL tetap wajib dibuktikan lewat preflight
+  dan urutan Production di runbook.
+- Next safe step: user menjalankan gate runbook berurutan dan stop pada
+  error/BLOCKER/FAIL. Behavior harus dijalankan sebelum Draft stale existing
+  dibatalkan agar fixture exact masih tersedia.
+- Jangan menjalankan activation sebelum izin operasional. Jangan mengaktifkan
+  KMS/SMS dan jangan membuat transfer/adjustment/stok palsu untuk test.
+
+### Preflight schema-anchor correction
+
+- Preflight Production pertama berhenti dengan `42P01` karena paket lokal
+  salah menyebut `public.finance_posting_runs` dan status `PENDING`. Keduanya
+  bukan contract schema canonical; klaim `LOCAL READY` sebelumnya dicabut.
+- Source header yang diverifikasi adalah migration canonical
+  `20260810210000_g6_phase5_controlled_posting_queue.sql`: relation yang benar
+  `public.finance_posting_queue_runs`, dengan lifecycle aktif
+  `PREVIEWED`, `APPROVED`, dan `PROCESSING`.
+- Klasifikasi perubahan: `TEST HARNESS FIX` untuk preflight dan activation
+  guard; tidak mengubah rumus RO, Stock, FIFO, PO, atau Finance runtime.
+- Seluruh relation yang dirujuk paket kemudian dicocokkan ke file pembentuknya
+  dalam canonical migration chain. Tidak ditemukan relation fiktif lain.
+- File diperbaiki: preflight dan activation LSM. Preflight juga menambah ledger
+  dependency `20260810210000`. Production tetap belum lolos sampai seluruh
+  preflight terbaru dijalankan ulang tanpa SQL error/BLOCKER.
+
+### Corrected Production preflight result
+
+- User menjalankan ulang preflight yang sudah dikoreksi. Seluruh dependency,
+  collision, exact LSM identity, active-PO boundary, Finance queue, runtime
+  anchor/definition, dan setting-audit anchor `PASS` dengan nol violation.
+- Runtime inventory LSM mempunyai nol AUTO_RO Draft. Ini valid untuk migration
+  default-OFF, tetapi membuktikan test lama tidak boleh bergantung pada
+  `RO-20260920-0000000007`.
+- Behavioral test diubah menjadi fixture mandiri: memakai Product-Warehouse LSM
+  yang nyata dan negatif, hanya membuat header/line Draft transient, sengaja
+  membuat source snapshot stale, dan me-rollback seluruh business row. Test
+  tidak membuat atau mengubah Stock/Movement/FIFO/PO/Receipt/Finance.
+- Pada saat corrected preflight diterima, next step adalah migration
+  `20260923110000`; activation LSM tetap dilarang sebelum installation
+  postflight dan behavioral test lulus.
+
+### Migration installation confirmation
+
+- User mengonfirmasi migration `20260923110000` berhasil dijalankan di
+  Production setelah corrected preflight seluruhnya PASS.
+- Flag masih default OFF dan belum ada bukti installation postflight,
+  behavioral test, activation LSM, scheduler smoke, atau UAT.
+- Pada saat migration dikonfirmasi, next step adalah installation postflight;
+  activation tetap dilarang sebelum seluruh gate berikutnya lulus.
+
+### Installation postflight confirmation
+
+- User mengirim seluruh installation postflight: migration ledger, column
+  default-OFF, five-Company default policy, audit constraint, empat routine,
+  dispatch contract, dan permission contract seluruhnya `PASS` tanpa violation.
+- LSM tetap `AUTO_RO`, flag `enabled=false`, serta mempunyai nol Draft/qty saat
+  pemeriksaan. KMS/SMS dan Company lain juga masih OFF.
+- Next safe step hanya rollback-only behavioral test terbaru. Activation LSM
+  tetap belum boleh dijalankan.
+
+### Behavioral harness company-column correction
+
+- Behavioral run pertama berhenti pada `42703` karena test memakai kolom
+  fiktif `companies.short_code`. Karena error terjadi di dalam transaksi test,
+  seluruh fixture/flag transient rollback dan tidak ada business row Production
+  yang tertinggal.
+- Header canonical diverifikasi dari `001_multi_company_setup.sql`:
+  `companies` memakai `company_code`, `company_name`, dan `timezone`; tidak ada
+  `short_code`.
+- Tenant-boundary assertion behavioral diperkuat tanpa bergantung pada kode:
+  sekarang test menolak bila **Company mana pun selain LSM** mempunyai flag ON.
+- Audit seluruh paket menemukan satu referensi `short_code` lain pada activation
+  postflight; sudah diganti menjadi canonical `company_code` sebelum file itu
+  dipakai. Scan ulang paket tidak menemukan `short_code`, `company.name`,
+  `finance_posting_runs`, atau `offline_submissions` yang tidak canonical.
+- Klasifikasi perubahan `TEST HARNESS FIX`; migration/runtime yang sudah live
+  tidak berubah. Behavioral test harus dijalankan ulang dari awal dan activation
+  tetap dilarang sampai hasilnya PASS.
+
+### Behavioral test confirmation
+
+- User menjalankan ulang behavioral test terkoreksi dan mendapat `PASS` dengan
+  nol violation. Test benar-benar mencakup self-created stale Draft,
+  authenticated freshness rejection, audited cancellation, retry, removal dari
+  coverage, fresh snapshot dengan edit Qty, serta invariance Stock/FIFO/Finance.
+- Seluruh fixture business row di-rollback; hanya identity counter audit yang
+  secara native dapat mempunyai gap. Tidak ada flag Company yang dipertahankan
+  ON oleh test.
+- Gate teknis sebelum activation sudah lulus. Gate berikutnya bersifat
+  operasional: pastikan PO yang memang hendak dibatalkan sudah diputuskan sebelum
+  aktivasi/cutoff, karena PO aktif sengaja tetap dihitung sebagai coverage.
+
+### Operational activation gate cleared
+
+- User mengonfirmasi seluruh RO lama sudah dibatalkan dan tidak ada PO aktif.
+  Karena itu scheduler berikutnya tidak mempunyai stale Draft/active-PO coverage
+  lama yang mengurangi kebutuhan.
+- Activation LSM sekarang boleh dijalankan. Script hanya mengaktifkan policy
+  untuk exact Company LSM dan tetap menolak bila scheduler business date yang
+  sama sudah selesai; script tidak membuat RO atau mengubah Stock secara langsung.
+
+### LSM activation confirmation
+
+- User menjalankan activation dan mendapat `PASS`, `enabled=true`, mode
+  `AUTO_RO`, exact Company LSM `07bdffb9-8c56-444c-a49b-81ac86745674`.
+- Activation sendiri tidak membuat RO dan tidak mengubah Stock/FIFO/Finance.
+  Bukti runtime berikutnya baru tersedia setelah scheduler cutoff 23:59 berhasil.
+- Next safe step: tunggu scheduler selesai, lalu jalankan activation postflight.
+  Jangan memanggil scheduler manual tanpa instruksi eksplisit.
+
+### Premature scheduler-postflight result
+
+- User menjalankan activation postflight sebelum cutoff. Policy scope dan audit
+  PASS, old Draft absence PASS, tetapi scheduler mempunyai `runs=[]`, current
+  batch nol, dan 21 current requirement rows belum mempunyai batch pembanding.
+- Ini bukan bukti scheduler/runtime gagal: activation tercatat pukul
+  `2026-09-23 10:11 UTC` (`17:11 WIB`), sedangkan scheduler baru eligible pada
+  `23:59` waktu Company.
+- Diagnostic reporting diperbaiki: tanpa scheduler run, scheduler result,
+  current-batch uniqueness, dan snapshot sekarang berstatus `WAITING` dengan
+  nol violation. Setelah run tersedia, assertion PASS/FAIL lama tetap sama kuat.
+- Klasifikasi `TEST HARNESS FIX`; tidak ada perubahan migration/runtime/data.
+  Next safe step tetap menunggu cutoff, lalu rerun postflight terbaru.
+
+### Scheduler-postflight date-rollover correction
+
+- Setelah RO otomatis terbentuk, postflight yang dijalankan pada tanggal kalender
+  berikutnya salah mencari scheduler run berdasarkan tanggal query. Akibatnya run
+  business date `2026-09-23` tidak terbaca, RO tanggal 23 salah dihitung sebagai
+  Draft lama, dan tiga gate menampilkan kombinasi `WAITING`/`FAIL` palsu.
+- Root cause berada hanya pada diagnostic. Klasifikasi perubahan:
+  `TEST HARNESS FIX`; migration/runtime roll-forward, policy LSM, Stock, FIFO,
+  Finance, RO, dan PO tidak diubah.
+- Diagnostic sekarang memilih scheduler run LSM terbaru sesudah timestamp
+  activation, lalu memakai business date run yang sama untuk current batch,
+  old-Draft boundary, dan snapshot comparison. Assertion tidak dihapus atau
+  dipersempit.
+- Status scheduler smoke tetap **belum terbukti** sampai file postflight terbaru
+  dijalankan sebelum RO/Stock/PO terkait diedit dan seluruh gate menghasilkan
+  output baru tanpa `WAITING`/`FAIL`.
+
+### LSM scheduler smoke confirmation
+
+- User menjalankan ulang postflight terkoreksi sebelum RO/Stock/PO terkait
+  diedit. Seluruh enam gate `PASS` dengan nol violation.
+- Exact Production evidence: scheduler run `893732c8-59db-4005-a2cd-b1b861fdf81d`
+  untuk business date `2026-09-23` berstatus `GENERATED`, attempt satu, policy
+  roll-forward aktif, dan menghasilkan tepat satu Draft
+  `RO-20260923-0000000015` (`961a5690-8d02-4160-b8b3-83e3cb5bf08e`) berisi 21
+  baris serta 5.405 Base Qty.
+- Tidak ada Draft AUTO_RO tanggal lama yang tersisa dan snapshot seluruh 21
+  Product-Warehouse sama dengan resolver current requirement pada boundary
+  pemeriksaan (`invalidRows=0`). `supersededCount=0` sesuai kondisi operasional:
+  user sudah membatalkan seluruh Draft lama sebelum run; cancellation branch
+  tetap dibuktikan oleh behavioral test rollback-only sebelumnya.
+- Status sekarang `DATABASE LIVE / POSTFLIGHT PASS / BEHAVIOR PASS / LSM
+  ACTIVATED / SCHEDULER SMOKE PASS`. Ini belum membuktikan authenticated
+  confirmation menjadi PO atau UAT pengguna; KMS/SMS tetap OFF.

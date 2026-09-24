@@ -341,6 +341,16 @@ function friendly(code?: string) {
     PURCHASE_AUTO_RO_NOT_DRAFT: "RO ini tidak lagi berstatus Draft. Muat ulang daftar.",
     PURCHASE_AUTO_RO_DRAFT_REQUIRED: "Hanya RO Draft yang dapat dibatalkan.",
     PURCHASE_AUTO_RO_HAS_ACTIVE_PO: "RO sudah memiliki PO aktif dan tidak dapat dibatalkan langsung.",
+    PURCHASE_AUTO_RO_REFRESH_REQUIRED:
+      "Stok atau coverage berubah lagi. Klik Cocokkan Stok sebelum melanjutkan.",
+    PURCHASE_AUTO_RO_STOCK_MATCH_REQUIRED:
+      "Cocokkan stok RO ini sebelum mengubahnya menjadi PO.",
+    PURCHASE_AUTO_RO_STOCK_MATCH_DISABLED:
+      "Fitur Cocokkan Stok belum aktif untuk perusahaan ini.",
+    PURCHASE_AUTO_RO_STOCK_MATCH_HAS_PO:
+      "RO ini sudah mempunyai PO aktif sehingga tidak dapat dicocokkan ulang.",
+    PURCHASE_AUTO_RO_VARIANCE_CONFIRMATION_REQUIRED:
+      "Jumlah pesanan berbeda dari rekomendasi stok. Periksa lalu konfirmasi ulang bila memang ingin dilanjutkan.",
     PURCHASE_AUTO_RO_ALL_LINES_REQUIRED: "Seluruh baris RO wajib ditentukan sebelum dikonfirmasi.",
     PURCHASE_AUTO_RO_LINE_VERSION_CONFLICT: "Baris RO berubah. Muat ulang sebelum melanjutkan.",
     PURCHASE_RECEIPT_WAREHOUSE_INVALID: "Gudang penerimaan tidak aktif atau tidak diizinkan menerima Purchase.",
@@ -1517,7 +1527,7 @@ type DailyAllocationDraft = {
   warehouseId: string;
 };
 
-function DailyRoModal({ batch, lines, suppliers, relations, uoms, warehouses, session, close, complete }: {
+type DailyRoModalProps = {
   batch: DailyBatch;
   lines: DailyLine[];
   suppliers: { id: string; supplierName: string }[];
@@ -1527,7 +1537,90 @@ function DailyRoModal({ batch, lines, suppliers, relations, uoms, warehouses, se
   session: Session;
   close: () => void;
   complete: (message: string) => Promise<void>;
-}) {
+};
+
+type DailyStockMovement = {
+  type: string;
+  quantity: number | string;
+  postedAt: string;
+  referenceTable: string;
+  referenceId: string;
+} | null;
+
+type DailyStockChange = {
+  productId: string;
+  warehouseId: string;
+  productSku: string;
+  productName: string;
+  baseUomName: string;
+  previousQty: number | string;
+  recommendedQty: number | string;
+  deltaQty: number | string;
+  currentOnHand: number | string | null;
+  currentOpenCoverage: number | string | null;
+  latestMovement: DailyStockMovement;
+};
+
+type DailyStockSurplus = {
+  productId: string;
+  warehouseId: string;
+  productSku: string;
+  productName: string;
+  warehouseName: string;
+  baseUomName: string;
+  onHandQty: number | string;
+  latestMovement: DailyStockMovement;
+};
+
+type DailyStockMatch = {
+  enabled: boolean;
+  batchId?: string;
+  batchNo?: string;
+  batchVersion?: number;
+  matchedAt?: string | null;
+  matchOperationId?: string | null;
+  fingerprint?: string;
+  isMatched?: boolean;
+  changes?: DailyStockChange[];
+  surplus?: DailyStockSurplus[];
+  changeCount?: number;
+  surplusCount?: number;
+};
+
+function makeDailyDrafts(
+  lines: DailyLine[],
+  relations: DailyRelation[],
+  uoms: DailyUom[],
+) {
+  return lines.map((line) => {
+    const relation = relations.find(
+      (item) => item.id === line.suggested_product_supplier_id,
+    );
+    const uomId = relation?.purchaseUomId ?? line.base_uom_id;
+    const uom = uoms.find(
+      (item) => item.productId === line.product_id && item.uomId === uomId,
+    );
+    return {
+      key: crypto.randomUUID(),
+      lineId: line.id,
+      lineVersion: line.master_version,
+      relationId: relation?.id ?? "",
+      uomId,
+      quantity: String(
+        Number(line.requested_base_qty) / Number(uom?.factorToBase ?? 1),
+      ),
+      price: String(
+        relation?.lastPurchasePrice ??
+          relation?.referencePurchasePrice ??
+          uom?.purchasePrice ??
+          0,
+      ),
+      warehouseId: line.destination_warehouse_id ?? "",
+    } satisfies DailyAllocationDraft;
+  });
+}
+
+function LegacyDailyRoModal({ batch, lines, suppliers, relations, uoms, warehouses, session, close, complete }: DailyRoModalProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<DailyAllocationDraft[]>(() => lines.map((line) => {
@@ -1587,6 +1680,676 @@ function DailyRoModal({ batch, lines, suppliers, relations, uoms, warehouses, se
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Konfirmasi RO gagal."); setBusy(false); }
   }
   return <div className="fixed inset-0 z-[80] bg-black/60 p-3 sm:p-6"><section role="dialog" aria-modal="true" className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white"><header className="flex items-start gap-3 border-b p-5"><div className="flex-1"><p className="text-xs font-bold uppercase tracking-wider text-emerald-600">Konfirmasi Request Order</p><h2 className="mt-1 text-xl font-black">{batch.batch_no}</h2><p className="mt-1 text-sm text-slate-500">Qty, Supplier, satuan, harga, dan Gudang masih dapat disesuaikan sebelum menjadi PO.</p></div><button onClick={close} disabled={busy} className="rounded-xl border p-2"><X className="h-5 w-5"/></button></header><div className="flex-1 overflow-y-auto p-5">{error && <div className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</div>}<div className="space-y-5">{lines.map((line) => <article key={line.id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-black">{line.product_sku_snapshot} · {line.product_name_snapshot}</h3><p className="text-sm text-slate-500">Usulan {quantity(line.requested_base_qty)} {line.base_uom_name_snapshot} dari {line.warehouse_name_snapshot}</p></div><button onClick={() => split(line)} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-black text-emerald-700">Bagi ke Supplier lain</button></div><div className="mt-4 space-y-3">{drafts.filter((item) => item.lineId === line.id).map((draft, index) => { const productRelations = relations.filter((item) => item.productId === line.product_id); const productUoms = uoms.filter((item) => item.productId === line.product_id); return <div key={draft.key} className="grid gap-3 rounded-xl bg-slate-50 p-3 md:grid-cols-5"><Field label="Supplier"><select className="field" value={draft.relationId} onChange={(event) => chooseRelation(draft, event.target.value)}><option value="">Belum ditentukan</option>{productRelations.map((relation) => <option key={relation.id} value={relation.id}>{supplierById.get(relation.supplierId) ?? "Supplier"}{relation.preferred ? " · prioritas" : ""}</option>)}</select></Field><Field label="Satuan"><select className="field" value={draft.uomId} onChange={(event) => update(draft.key, { uomId: event.target.value })} disabled={!draft.relationId}><option value={line.base_uom_id}>{line.base_uom_name_snapshot}</option>{productUoms.filter((uom) => uom.uomId !== line.base_uom_id && productRelations.some((relation) => relation.id === draft.relationId && relation.purchaseUomId === uom.uomId)).map((uom) => <option key={uom.uomId} value={uom.uomId}>{uom.uomName}</option>)}</select></Field><Field label="Qty"><input className="field" type="number" min="0" step="any" value={draft.quantity} onChange={(event) => update(draft.key, { quantity: event.target.value })}/></Field><Field label="Harga"><input className="field" type="number" min="0" step="any" value={draft.price} onChange={(event) => update(draft.key, { price: event.target.value })}/></Field><Field label="Gudang terima"><select className="field" value={draft.warehouseId} onChange={(event) => update(draft.key, { warehouseId: event.target.value })}><option value="">Pilih Gudang</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field>{index > 0 && <button onClick={() => setDrafts((current) => current.filter((item) => item.key !== draft.key))} className="text-left text-xs font-black text-rose-700">Hapus pembagian</button>}</div>; })}</div></article>)}</div></div><footer className="flex justify-end gap-3 border-t p-4"><button onClick={close} disabled={busy} className="rounded-xl border px-4 py-3 font-bold">Kembali</button><button onClick={() => void submit()} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 font-black text-white disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}Konfirmasi jadi PO</button></footer></section></div>;
+}
+
+function DailyRoModal(props: DailyRoModalProps) {
+  const {
+    batch,
+    lines,
+    suppliers,
+    relations,
+    uoms,
+    warehouses,
+    session,
+    close,
+    complete,
+  } = props;
+  const [stockMatch, setStockMatch] = useState<DailyStockMatch | null>(null);
+  const [workingLines, setWorkingLines] = useState(lines);
+  const [workingVersion, setWorkingVersion] = useState(batch.master_version);
+  const [drafts, setDrafts] = useState<DailyAllocationDraft[]>(() =>
+    makeDailyDrafts(lines, relations, uoms),
+  );
+  const [tab, setTab] = useState<"ORDER" | "SURPLUS">("ORDER");
+  const [loadingMatch, setLoadingMatch] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [variancePrompt, setVariancePrompt] = useState(false);
+  const supplierById = useMemo(
+    () => new Map(suppliers.map((item) => [item.id, item.supplierName])),
+    [suppliers],
+  );
+
+  const loadMatch = useCallback(async () => {
+    setLoadingMatch(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/purchase/daily-replenishment/${batch.id}/stock-match`,
+        { headers: headers(session) },
+      );
+      const result = (await response.json()) as {
+        data?: DailyStockMatch;
+        error?: string;
+      };
+      if (!response.ok || !result.data) throw new Error(friendly(result.error));
+      setStockMatch(result.data);
+      if (result.data.batchVersion != null) {
+        setWorkingVersion(result.data.batchVersion);
+      }
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Pemeriksaan stok RO gagal.",
+      );
+    } finally {
+      setLoadingMatch(false);
+    }
+  }, [batch.id, session]);
+
+  useEffect(() => {
+    // The first request synchronizes this modal with the server-owned stock snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadMatch();
+  }, [loadMatch]);
+  useEscapeClose(() => {
+    if (!busy) close();
+  });
+
+  if (!loadingMatch && stockMatch?.enabled === false) {
+    return <LegacyDailyRoModal {...props} />;
+  }
+
+  function update(key: string, patch: Partial<DailyAllocationDraft>) {
+    setDrafts((current) =>
+      current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function chooseRelation(draft: DailyAllocationDraft, relationId: string) {
+    const line = workingLines.find((item) => item.id === draft.lineId);
+    const oldUom = uoms.find(
+      (item) =>
+        item.productId === line?.product_id && item.uomId === draft.uomId,
+    );
+    const baseQty = Number(draft.quantity) * Number(oldUom?.factorToBase ?? 1);
+    const relation = relations.find((item) => item.id === relationId);
+    const uomId = relation?.purchaseUomId ?? line?.base_uom_id ?? "";
+    const nextUom = uoms.find(
+      (item) => item.productId === line?.product_id && item.uomId === uomId,
+    );
+    update(draft.key, {
+      relationId,
+      uomId,
+      quantity: String(baseQty / Number(nextUom?.factorToBase ?? 1)),
+      price: String(
+        relation?.lastPurchasePrice ??
+          relation?.referencePurchasePrice ??
+          nextUom?.purchasePrice ??
+          0,
+      ),
+    });
+  }
+
+  function split(line: DailyLine) {
+    const source = drafts.find((item) => item.lineId === line.id);
+    setDrafts((current) => [
+      ...current,
+      {
+        key: crypto.randomUUID(),
+        lineId: line.id,
+        lineVersion: line.master_version,
+        relationId: "",
+        uomId: line.base_uom_id,
+        quantity: "",
+        price: "0",
+        warehouseId:
+          source?.warehouseId ?? line.destination_warehouse_id ?? "",
+      },
+    ]);
+  }
+
+  async function matchStock() {
+    setBusy(true);
+    setError("");
+    setVariancePrompt(false);
+    try {
+      const response = await fetch(
+        `/api/purchase/daily-replenishment/${batch.id}/stock-match`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers(session) },
+          body: JSON.stringify({
+            masterVersion: workingVersion,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        },
+      );
+      const result = (await response.json()) as {
+        data?: {
+          masterVersion: number;
+          matchOperationId: string;
+          batchLines: DailyLine[];
+          surplus?: DailyStockSurplus[];
+        };
+        error?: string;
+      };
+      if (!response.ok || !result.data) throw new Error(friendly(result.error));
+      setWorkingLines(result.data.batchLines);
+      setWorkingVersion(result.data.masterVersion);
+      setDrafts(makeDailyDrafts(result.data.batchLines, relations, uoms));
+      setTab("ORDER");
+      await loadMatch();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Cocokkan stok gagal.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function varianceRows() {
+    return workingLines.flatMap((line) => {
+      const ordered = drafts
+        .filter((item) => item.lineId === line.id)
+        .reduce((total, item) => {
+          const uom = uoms.find(
+            (candidate) =>
+              candidate.productId === line.product_id &&
+              candidate.uomId === item.uomId,
+          );
+          return total + Number(item.quantity) * Number(uom?.factorToBase ?? 1);
+        }, 0);
+      const recommended = Number(line.requested_base_qty);
+      return Math.abs(ordered - recommended) < 0.000001
+        ? []
+        : [{ line, ordered, recommended, difference: ordered - recommended }];
+    });
+  }
+
+  async function submit(acceptVariance = false) {
+    if (!stockMatch?.isMatched || !stockMatch.matchOperationId) {
+      setError("Klik Cocokkan Stok sebelum mengubah RO menjadi PO.");
+      return;
+    }
+    if (workingLines.length === 0) {
+      setError("Tidak ada kebutuhan barang yang dapat dibuat menjadi PO.");
+      return;
+    }
+    if (
+      drafts.some(
+        (item) =>
+          !item.warehouseId ||
+          !item.uomId ||
+          Number(item.quantity) <= 0 ||
+          Number(item.price) < 0,
+      )
+    ) {
+      setError(
+        "Lengkapi Gudang, satuan, jumlah, dan harga pada seluruh pembagian RO.",
+      );
+      return;
+    }
+    const duplicates = new Set<string>();
+    for (const item of drafts) {
+      const key = `${item.lineId}|${item.relationId}|${item.uomId}|${item.warehouseId}`;
+      if (duplicates.has(key)) {
+        setError(
+          "Pembagian dengan Supplier, satuan, dan Gudang yang sama tidak boleh ganda.",
+        );
+        return;
+      }
+      duplicates.add(key);
+    }
+    if (
+      workingLines.some(
+        (line) => !drafts.some((item) => item.lineId === line.id),
+      )
+    ) {
+      setError("Seluruh barang RO wajib mempunyai minimal satu pembagian.");
+      return;
+    }
+    if (!acceptVariance && varianceRows().length > 0) {
+      setVariancePrompt(true);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/purchase/daily-replenishment/${batch.id}/confirm`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers(session) },
+          body: JSON.stringify({
+            masterVersion: workingVersion,
+            idempotencyKey: crypto.randomUUID(),
+            stockMatchOperationId: stockMatch.matchOperationId,
+            acceptVariance,
+            allocations: drafts.map((item) => ({
+              batchLineId: item.lineId,
+              batchLineVersion: item.lineVersion,
+              destinationWarehouseId: item.warehouseId,
+              orderedQty: Number(item.quantity),
+              purchaseUomId: item.uomId,
+              productSupplierId: item.relationId || null,
+              estimatedUnitPrice: Number(item.price),
+            })),
+          }),
+        },
+      );
+      const result = (await response.json()) as {
+        data?: { supplierOrderCount?: number };
+        error?: string;
+      };
+      if (!response.ok) throw new Error(friendly(result.error));
+      await complete(
+        `${batch.batch_no} dikonfirmasi menjadi ${result.data?.supplierOrderCount ?? 0} PO.`,
+      );
+    } catch (reason) {
+      const message =
+        reason instanceof Error ? reason.message : "Konfirmasi RO gagal.";
+      setError(message);
+      if (message.includes("Cocokkan Stok")) await loadMatch();
+      setBusy(false);
+      setVariancePrompt(false);
+    }
+  }
+
+  const changes = stockMatch?.changes ?? [];
+  const surplus = stockMatch?.surplus ?? [];
+  const matched = Boolean(
+    stockMatch?.isMatched && stockMatch.matchOperationId && changes.length === 0,
+  );
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 p-3 sm:p-6">
+      <section
+        role="dialog"
+        aria-modal="true"
+        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white"
+      >
+        <header className="flex items-start gap-3 border-b p-5">
+          <div className="flex-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">
+              Konfirmasi Request Order
+            </p>
+            <h2 className="mt-1 text-xl font-black">{batch.batch_no}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Cocokkan kebutuhan stok, lalu tentukan Supplier, satuan, harga,
+              dan Gudang sebelum menjadi PO.
+            </p>
+          </div>
+          <button
+            onClick={close}
+            disabled={busy}
+            className="rounded-xl border p-2"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="border-b px-5 pt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setTab("ORDER")}
+              className={`rounded-t-xl px-4 py-3 text-sm font-black ${tab === "ORDER" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}
+            >
+              Pesanan ({workingLines.length})
+            </button>
+            <button
+              onClick={() => setTab("SURPLUS")}
+              className={`rounded-t-xl px-4 py-3 text-sm font-black ${tab === "SURPLUS" ? "bg-amber-500 text-white" : "bg-amber-50 text-amber-800"}`}
+            >
+              Stok Lebih ({surplus.length})
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {error && (
+            <div className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+              {error}
+            </div>
+          )}
+          {loadingMatch && (
+            <div className="grid min-h-52 place-items-center text-slate-500">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          )}
+
+          {!loadingMatch && stockMatch?.enabled && tab === "ORDER" && (
+            <>
+              {matched ? (
+                <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  <p className="font-black">Stok sudah cocok</p>
+                  <p className="mt-1">
+                    Draft ini memakai kondisi stok dan coverage terbaru. Sistem
+                    akan memeriksanya lagi saat konfirmasi.
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black">
+                        {changes.length > 0
+                          ? `${changes.length} produk perlu disesuaikan`
+                          : "RO belum dicocokkan dengan stok terbaru"}
+                      </p>
+                      <p className="mt-1">
+                        Draft RO lain dihitung selama masih Draft. RO yang sudah
+                        menjadi PO diabaikan dan digantikan sisa PO yang belum
+                        diterima.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void matchStock()}
+                      disabled={busy}
+                      className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-black text-white disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Cocokkan Stok
+                    </button>
+                  </div>
+                  {changes.length > 0 && (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {changes.map((change) => (
+                        <div
+                          key={`${change.productId}-${change.warehouseId}`}
+                          className="rounded-lg bg-white/80 p-3"
+                        >
+                          <p className="font-black">
+                            {change.productSku} · {change.productName}
+                          </p>
+                          <p className="mt-1">
+                            {quantity(change.previousQty)} →{" "}
+                            <strong>{quantity(change.recommendedQty)}</strong>{" "}
+                            {change.baseUomName}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {workingLines.length === 0 ? (
+                <Empty text="Tidak ada kebutuhan stok minus yang perlu dibuat menjadi PO." />
+              ) : (
+                <div className="space-y-5">
+                  {workingLines.map((line) => (
+                    <article
+                      key={line.id}
+                      className="rounded-2xl border border-slate-200 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-black">
+                            {line.product_sku_snapshot} ·{" "}
+                            {line.product_name_snapshot}
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Rekomendasi {quantity(line.requested_base_qty)}{" "}
+                            {line.base_uom_name_snapshot} dari{" "}
+                            {line.warehouse_name_snapshot}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => split(line)}
+                          className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-black text-emerald-700"
+                        >
+                          Bagi ke Supplier lain
+                        </button>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {drafts
+                          .filter((item) => item.lineId === line.id)
+                          .map((draft, index) => {
+                            const productRelations = relations.filter(
+                              (item) => item.productId === line.product_id,
+                            );
+                            const productUoms = uoms.filter(
+                              (item) => item.productId === line.product_id,
+                            );
+                            return (
+                              <div
+                                key={draft.key}
+                                className="grid gap-3 rounded-xl bg-slate-50 p-3 md:grid-cols-5"
+                              >
+                                <Field label="Supplier">
+                                  <select
+                                    className="field"
+                                    value={draft.relationId}
+                                    onChange={(event) =>
+                                      chooseRelation(draft, event.target.value)
+                                    }
+                                  >
+                                    <option value="">Belum ditentukan</option>
+                                    {productRelations.map((relation) => (
+                                      <option key={relation.id} value={relation.id}>
+                                        {supplierById.get(relation.supplierId) ??
+                                          "Supplier"}
+                                        {relation.preferred ? " · prioritas" : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Satuan">
+                                  <select
+                                    className="field"
+                                    value={draft.uomId}
+                                    onChange={(event) =>
+                                      update(draft.key, {
+                                        uomId: event.target.value,
+                                      })
+                                    }
+                                    disabled={!draft.relationId}
+                                  >
+                                    <option value={line.base_uom_id}>
+                                      {line.base_uom_name_snapshot}
+                                    </option>
+                                    {productUoms
+                                      .filter(
+                                        (uom) =>
+                                          uom.uomId !== line.base_uom_id &&
+                                          productRelations.some(
+                                            (relation) =>
+                                              relation.id ===
+                                                draft.relationId &&
+                                              relation.purchaseUomId === uom.uomId,
+                                          ),
+                                      )
+                                      .map((uom) => (
+                                        <option key={uom.uomId} value={uom.uomId}>
+                                          {uom.uomName}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </Field>
+                                <Field label="Qty">
+                                  <input
+                                    className="field"
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={draft.quantity}
+                                    onChange={(event) =>
+                                      update(draft.key, {
+                                        quantity: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Harga">
+                                  <input
+                                    className="field"
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={draft.price}
+                                    onChange={(event) =>
+                                      update(draft.key, {
+                                        price: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Gudang terima">
+                                  <select
+                                    className="field"
+                                    value={draft.warehouseId}
+                                    onChange={(event) =>
+                                      update(draft.key, {
+                                        warehouseId: event.target.value,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Pilih Gudang</option>
+                                    {warehouses.map((warehouse) => (
+                                      <option key={warehouse.id} value={warehouse.id}>
+                                        {warehouse.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                {index > 0 && (
+                                  <button
+                                    onClick={() =>
+                                      setDrafts((current) =>
+                                        current.filter(
+                                          (item) => item.key !== draft.key,
+                                        ),
+                                      )
+                                    }
+                                    className="text-left text-xs font-black text-rose-700"
+                                  >
+                                    Hapus pembagian
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {!loadingMatch && stockMatch?.enabled && tab === "SURPLUS" && (
+            <div>
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-black">Carry Forward — tidak masuk PO</p>
+                <p className="mt-1">
+                  Stok positif tetap disimpan sebagai stok. Scrap, transfer, atau
+                  pengeluaran stok dilakukan lewat proses terpisah oleh user.
+                </p>
+              </div>
+              {surplus.length === 0 ? (
+                <Empty text="Tidak ada stok positif yang perlu diperhatikan." />
+              ) : (
+                <div className="divide-y rounded-2xl border border-slate-200">
+                  {surplus.map((item) => (
+                    <div
+                      key={`${item.productId}-${item.warehouseId}`}
+                      className="flex flex-wrap items-center justify-between gap-3 p-4"
+                    >
+                      <div>
+                        <p className="font-black">
+                          {item.productSku} · {item.productName}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {item.warehouseName}
+                        </p>
+                      </div>
+                      <p className="font-black text-amber-700">
+                        +{quantity(item.onHandQty)} {item.baseUomName}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
+          <p className="text-xs text-slate-500">
+            PO tidak mengubah On Hand. On Hand berubah saat Goods Receipt diposting.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={close}
+              disabled={busy}
+              className="rounded-xl border px-4 py-3 font-bold"
+            >
+              Kembali
+            </button>
+            <button
+              onClick={() => void submit(false)}
+              disabled={busy || loadingMatch || !matched || workingLines.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 font-black text-white disabled:opacity-50"
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Konfirmasi jadi PO
+            </button>
+          </div>
+        </footer>
+      </section>
+
+      {variancePrompt && (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-black/60 p-4">
+          <section className="w-full max-w-2xl rounded-2xl bg-white p-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-1 h-6 w-6 text-amber-500" />
+              <div>
+                <h3 className="text-xl font-black">Qty berbeda dari rekomendasi</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  PO berikut tidak memproyeksikan seluruh produk kembali ke nol.
+                  Lanjutkan hanya jika perbedaan ini memang disengaja.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 max-h-72 divide-y overflow-y-auto rounded-xl border">
+              {varianceRows().map((row) => (
+                <div key={row.line.id} className="grid gap-2 p-3 sm:grid-cols-3">
+                  <p className="font-black sm:col-span-3">
+                    {row.line.product_sku_snapshot} ·{" "}
+                    {row.line.product_name_snapshot}
+                  </p>
+                  <p className="text-sm">
+                    Rekomendasi: {quantity(row.recommended)}
+                  </p>
+                  <p className="text-sm">Dipesan: {quantity(row.ordered)}</p>
+                  <p className="text-sm font-black text-amber-700">
+                    Proyeksi selisih: {row.difference > 0 ? "+" : ""}
+                    {quantity(row.difference)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setVariancePrompt(false)}
+                className="rounded-xl border px-4 py-3 font-bold"
+              >
+                Kembali atur Qty
+              </button>
+              <button
+                onClick={() => void submit(true)}
+                disabled={busy}
+                className="rounded-xl bg-amber-500 px-5 py-3 font-black text-white disabled:opacity-50"
+              >
+                Tetap buat PO
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CancelPurchaseModal({ label, busy, readiness, readinessLoading, close, submit }: { label: string; busy: boolean; readiness: ReturnReadiness | null; readinessLoading: boolean; close: () => void; submit: (reason: string) => Promise<void> }) {

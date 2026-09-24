@@ -1,5 +1,20 @@
 # MADS — Management Distribution System
 
+## 2026-09-24 - LSM AUTO_RO stock match LOCAL READY
+
+Draft AUTO_RO kini mempunyai paket lokal `Cocokkan Stok`: RO lain hanya
+dihitung selama masih Draft, sedangkan RO yang sudah menjadi PO digantikan oleh
+sisa PO belum diterima sehingga tidak double count. Draft direvisi in-place
+dengan audit/fingerprint; perubahan coverage setelah match mewajibkan rematch.
+Stok positif tampil sebagai Carry Forward dan tidak otomatis masuk PO. Qty
+manual tetap boleh berbeda setelah konfirmasi kedua. Migration default OFF dan
+trial disiapkan hanya untuk LSM; KMS/SMS tetap memakai behavior lama. Lint dan
+TypeScript serta production build 87 halaman lokal PASS. Migration, installation
+postflight, dan rollback-only behavior telah user-confirmed PASS di Production;
+policy seluruh Company masih OFF. Deploy client, aktivasi khusus LSM,
+authenticated smoke, dan UAT belum dilakukan. Ikuti
+[runbook](docs/runbooks/PURCHASE_AUTO_RO_STOCK_MATCH_LSM_TRIAL.md).
+
 ## 2026-09-21 - POS cart, checkout, and session summary CLIENT DEPLOYED
 
 Retail POS sekarang menampilkan harga efektif di Cart Catalog dan Compact,
@@ -11,6 +26,37 @@ diubah. Lint, production build, static mutation scan, dan local preview PASS.
 Commit `e6adb15` sudah ada di `origin/main`; deployment production Vercel
 berstatus `Ready`, alias publik merespons HTTP 200, dan bundle live memuat label
 UI baru. Authenticated visual smoke dan UAT operasional masih harus dibuktikan.
+
+Follow-up UI 22 September berstatus `LOCAL READY`: harga satuan dan total barang
+kini dipisahkan secara visual, sedangkan Total Akhir menjadi footer Keranjang
+yang selalu tersedia pada Catalog dan Compact. Lint/build serta local bundle
+check PASS; perubahan follow-up ini belum di-commit atau di-deploy.
+
+Ringkasan Sesi juga dikoreksi agar tidak membaca tabel `customers` yang memang
+ditutup untuk role Kasir. Lookup nama Customer sekarang memakai RPC POS canonical
+`get_pos_customer_references()`; izin master Customer tidak diperlebar. Fix ini
+`LOCAL READY` dan masih menunggu deploy serta smoke Kasir terautentikasi.
+
+Follow-up Ringkasan Sesi 22 September menambahkan tab `Produk keluar` yang
+merekap quantity per Product dan UOM untuk pencocokan Stock oleh Kasir. Draft
+dan transaksi batal tidak dihitung; mixed-UOM tetap dipisahkan. Padding Search
+serta tampilan mobile ikut dirapikan. Status masih `LOCAL READY`.
+
+## 2026-09-21 - Customer Return source-Warehouse guard DATABASE LIVE + POSTFLIGHT PASS
+
+Audit KMS/SMS/LSM menemukan receipt Retur Customer memilih Warehouse pertama
+secara alfabetis, bukan Warehouse dokumen sumber. Runtime lokal kini
+menormalisasi Warehouse di server dan UI menampilkannya sebagai nilai terkunci;
+native Backoffice serta retained Retail tetap memakai posting core sebelumnya.
+Paket juga menyiapkan satu koreksi append-only LSM melalui Stock Transfer resmi
+KGS ke GDS untuk exact 558 Base Qty / biaya FIFO 11.203.416. KMS tidak memerlukan
+koreksi data dan SMS hanya mempunyai `DESTROY`, sehingga keduanya tidak menerima
+transfer stok. User telah menjalankan runtime guard dan exact LSM correction di
+Production. Transfer `TRF-0000000134` POSTED untuk 558 Base Qty / biaya FIFO
+11.203.416; 16 movement seimbang, sembilan batch sumber habis, dan seluruh 558
+unit langsung terserap canonical negative-stock replenishment di GDS. Seluruh
+postflight PASS. Lint dan production build 87 halaman PASS. Client deploy,
+authenticated smoke, dan UAT masih tertunda; fitur belum dinyatakan selesai.
 
 ## 2026-09-19 - Supplier Return Post channel-routing fix LOCAL READY
 
@@ -3113,3 +3159,33 @@ Product/UOM/Qty yang dapat difilter pada XLSX. Perubahan hanya pada read-only
 RPC dan formatter workbook; transaksi, Stock/FIFO, Payment, Finance, dan import
 tidak berubah. Database rollout, client deploy, smoke, dan UAT masih manual.
 Lihat [runbook](docs/runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md).
+
+# 2026-09-23 - POS Cash Auto Verification LOCAL READY
+
+Cash POS route `CASH_DRAWER` kini disiapkan untuk otomatis `VERIFIED` setelah
+Drawer `IN` tercatat, lalu membuat Event Finance `HOLD` yang tetap diposting
+melalui controlled queue. Transfer/non-Cash tetap `PENDING` dan maker-checker;
+queue Backoffice hanya menampilkan pembayaran non-tunai. Existing pending Cash
+hanya dibackfill bila lineage exact, sedangkan cancel sebelum dispatch membatalkan
+Event `HOLD` dan membuat satu Drawer reversal. Stock/FIFO, Dispatch, Return,
+RO/PO, dan Backoffice Sales tidak diubah. Status masih `LOCAL READY`; database,
+client deploy, authenticated smoke, dan UAT mengikuti
+[runbook](docs/runbooks/POS_CASH_AUTO_VERIFICATION_ROLLOUT.md).
+Preflight call-chain telah dikoreksi untuk memeriksa wrapper publik dan private
+composition secara terpisah; Production wajib menjalankan ulang preflight
+terbaru sebelum migration.
+
+# 2026-09-23 - LSM AUTO_RO Draft roll-forward DATABASE LIVE
+
+Paket trial default-OFF menyiapkan LSM agar scheduler malam menutup secara
+audited RO otomatis Draft tanggal lama sebelum menghitung satu RO baru dari On
+Hand dan coverage Purchase terkini. Konfirmasi RO menolak snapshot Stock/
+coverage stale tanpa melarang edit Qty manual. KMS/SMS, AUTO_PO, Stock/FIFO,
+PO aktif, Receipt, dan Finance tidak diubah. User mengonfirmasi migration
+berhasil dipasang, installation postflight seluruhnya PASS, rollback-only
+behavioral test PASS, dan flag LSM sudah aktif. Scheduler/post-activation smoke
+untuk pembentukan RO juga PASS: run LSM business date `2026-09-23` menghasilkan
+tepat satu Draft `RO-20260923-0000000015`, 21 baris dan 5.405 Base Qty, tanpa
+Draft lama atau mismatch snapshot. Authenticated confirmation menjadi PO dan
+UAT pengguna masih terpisah. Urutan gate ada di
+[runbook](docs/runbooks/PURCHASE_AUTO_RO_DRAFT_ROLL_FORWARD_LSM_TRIAL.md).
