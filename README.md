@@ -3160,7 +3160,7 @@ RPC dan formatter workbook; transaksi, Stock/FIFO, Payment, Finance, dan import
 tidak berubah. Database rollout, client deploy, smoke, dan UAT masih manual.
 Lihat [runbook](docs/runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md).
 
-# 2026-09-23 - POS Cash Auto Verification LOCAL READY
+# 2026-09-24 - POS Cash Auto Verification DATABASE LIVE
 
 Cash POS route `CASH_DRAWER` kini disiapkan untuk otomatis `VERIFIED` setelah
 Drawer `IN` tercatat, lalu membuat Event Finance `HOLD` yang tetap diposting
@@ -3168,12 +3168,13 @@ melalui controlled queue. Transfer/non-Cash tetap `PENDING` dan maker-checker;
 queue Backoffice hanya menampilkan pembayaran non-tunai. Existing pending Cash
 hanya dibackfill bila lineage exact, sedangkan cancel sebelum dispatch membatalkan
 Event `HOLD` dan membuat satu Drawer reversal. Stock/FIFO, Dispatch, Return,
-RO/PO, dan Backoffice Sales tidak diubah. Status masih `LOCAL READY`; database,
-client deploy, authenticated smoke, dan UAT mengikuti
+RO/PO, dan Backoffice Sales tidak diubah. Corrected preflight, migration
+`20260923100000`, non-zero rollback behavior, dan postflight Production sudah
+PASS. Delapan Cash historis menjadi `VERIFIED` dengan delapan Event `HOLD`, Cash
+pending nol, dan tidak ada jurnal prematur. Client lokal lulus targeted ESLint,
+TypeScript, serta production build 87 halaman; client deploy, authenticated
+smoke, dan UAT masih menunggu sesuai
 [runbook](docs/runbooks/POS_CASH_AUTO_VERIFICATION_ROLLOUT.md).
-Preflight call-chain telah dikoreksi untuk memeriksa wrapper publik dan private
-composition secara terpisah; Production wajib menjalankan ulang preflight
-terbaru sebelum migration.
 
 # 2026-09-23 - LSM AUTO_RO Draft roll-forward DATABASE LIVE
 

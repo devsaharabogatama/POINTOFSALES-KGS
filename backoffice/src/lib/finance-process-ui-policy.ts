@@ -44,7 +44,8 @@ export async function getFinanceProcessUiPolicy(
           .from("sales_payment_verification_requests")
           .select("id", { count: "exact", head: true })
           .eq("company_id", companyId)
-          .eq("status", "PENDING"),
+          .eq("status", "PENDING")
+          .neq("settlement_route_snapshot", "CASH_DRAWER"),
         admin
           .from("cash_deposit_documents")
           .select("id", { count: "exact", head: true })

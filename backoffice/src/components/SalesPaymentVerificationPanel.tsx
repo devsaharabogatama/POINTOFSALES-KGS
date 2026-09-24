@@ -239,11 +239,11 @@ export function SalesPaymentVerificationPanel({
               Maker-checker
             </p>
             <h2 className="mt-1 text-xl font-black text-slate-950">
-              Verifikasi pembayaran POS
+              Verifikasi pembayaran non-tunai POS
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Verifikasi membuat event Finance HOLD. Jurnal baru terbentuk setelah
-              event diproses melalui Antrian Jurnal.
+              Transfer dan metode non-tunai tetap diperiksa Finance. Tunai yang
+              diterima Kasir diselesaikan otomatis dan tidak masuk daftar ini.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
