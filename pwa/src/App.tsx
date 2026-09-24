@@ -1755,12 +1755,18 @@ export default function App() {
       setOfflineAllowances([])
       setOfflineQueue([])
       setOfflineCacheMessage('')
+      const procurementRequest =
+        (result.procurementStockRequest ?? {}) as Record<string, unknown>
+      const stockRequestNo = procurementRequest.stockRequestNo ?? result.stockRequestNo
+      const stockRequestLineCount = procurementRequest.stockRequestLineCount ?? result.stockRequestLineCount
       setNotice(
         `Sesi ditutup. Expected ${money(Number(result.expectedCash ?? 0))}, ` +
           `selisih ${money(Number(result.difference ?? 0))}.` +
-          (result.stockRequestNo
-            ? ` Permintaan barang ${String(result.stockRequestNo)} otomatis dikirim ke Purchasing untuk ${Number(result.stockRequestLineCount ?? 0)} barang.`
-            : ''),
+          (stockRequestNo
+            ? ` Permintaan barang ${String(stockRequestNo)} otomatis dikirim ke Purchasing untuk ${Number(stockRequestLineCount ?? 0)} barang.`
+            : procurementRequest.skipReason === 'COMPANY_POLICY_DISABLED'
+              ? ' Permintaan stok otomatis tidak dibuat sesuai pengaturan Company.'
+              : ''),
       )
       resetSale()
       setSaleDrafts([])

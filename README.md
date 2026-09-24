@@ -3190,3 +3190,16 @@ tepat satu Draft `RO-20260923-0000000015`, 21 baris dan 5.405 Base Qty, tanpa
 Draft lama atau mismatch snapshot. Authenticated confirmation menjadi PO dan
 UAT pengguna masih terpisah. Urutan gate ada di
 [runbook](docs/runbooks/PURCHASE_AUTO_RO_DRAFT_ROLL_FORWARD_LSM_TRIAL.md).
+
+# 2026-09-24 - POS Session-close Stock Request switch LOCAL READY
+
+Pengaturan per Company **Permintaan stok saat tutup sesi** disiapkan dengan
+default `OFF`. Sesi tetap ditutup dan demand shortage tetap dibekukan untuk
+audit; Stock Request baru hanya dibentuk bila switch sudah aktif saat Session
+masih `OPEN`. Keputusan disnapshot per Session agar retry setelah perubahan
+setting tidak membuat request retroaktif. Existing request lineage dan
+scheduler RO/PO harian tidak berubah. Migration, preflight, rollback behavior,
+postflight, serta UI Backoffice/PWA sudah tersedia secara lokal; lint dan build
+Backoffice/PWA PASS. Database rollout, client deploy, authenticated smoke, dan
+UAT belum dilakukan. Lihat
+[runbook](docs/runbooks/POS_SESSION_CLOSE_STOCK_REQUEST_POLICY_ROLLOUT.md).

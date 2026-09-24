@@ -1,5 +1,71 @@
 # Active Development Handoff — KGS POS
 
+## 2026-09-24 - LSM PO 20 SEPTEMBER VS LATEST RO SOURCE AUDIT READY
+
+- User reports one LSM PO shown as completed on 20 September and asks whether
+  older SO sources in the latest RO were genuinely not covered by that PO.
+- Added SELECT-only audit
+  `docs/audits/LSM_PO_20260920_LATEST_RO_SOURCE_COVERAGE_2026-09-24.sql` tracing
+  exact PO/Posted Goods Receipt/Product batch/replenishment allocation/open
+  Sales shortage/latest Draft RO lineage at Company/Product/Warehouse grain.
+- The audit distinguishes: absent matching receipt, shortage created after the
+  PO receipt, partial exact-source coverage, PO quantity consumed by earlier
+  shortages, and a true replenishment-allocation gap requiring review. No PO,
+  Receipt, Stock, FIFO, RO, Sales, or Finance row is mutated. Production output
+  remains pending.
+
+## 2026-09-24 - LSM RO SOURCE PRODUCT SHAREABLE WORKBOOK READY
+
+- Production pivot output confirms `TOTAL SUMBER = RO TERBARU = 5,405` and
+  every one of the 21 Product columns has zero difference.
+- Generated shareable workbook
+  `docs/exports/LSM_RO_TERBARU_SUMBER_SO_PRODUCT_2026-09-24.xlsx` with a compact
+  summary sheet and a filterable/frozen Product pivot. Zero cells are left
+  visually empty; footer rows retain Source total, latest RO, and difference.
+- Generator `scripts/build-lsm-ro-source-pivot.ps1` validates every Product
+  source total against the RO total and aborts before workbook creation on any
+  mismatch. Workbook regeneration and ZIP structure inspection both PASS.
+- User requested one additional source-date column. The SELECT-only pivot audit
+  now reads the real `backoffice_sales_orders.order_date` and Company-local
+  Retail transaction date rather than inferring dates from document numbers.
+  Production output confirms all source dates. Generated the updated workbook
+  `docs/exports/LSM_RO_TERBARU_SUMBER_SO_PRODUCT_DENGAN_TANGGAL_2026-09-24.xlsx`
+  with chronological ordering, `Tanggal Order`, and three frozen identity
+  columns. The original workbook was left untouched because it was locked by
+  Excel/OneDrive. Product totals were revalidated before save: all 21 SKU
+  differences and the grand-total difference remain zero.
+
+## 2026-09-24 - LSM LATEST AUTO_RO SOURCE PRODUCT PIVOT READY
+
+- Added SELECT-only audit
+  `docs/audits/LSM_LATEST_AUTO_RO_SOURCE_PRODUCT_PIVOT_2026-09-24.sql` after
+  Production returned 28 Backoffice SO and 3 Retail Invoice sources for the
+  latest LSM AUTO_RO Draft.
+- Output shape is one source document per row and one Product SKU per column.
+  Cells contain the still-open negative-stock allocation attributable to that
+  document, which is the quantity comparable to RO rather than unfiltered
+  commercial ordered quantity.
+- Footer rows provide `TOTAL SUMBER`, `RO TERBARU`, and `SELISIH`; `SKU LAIN`
+  prevents a newly introduced SKU from being silently excluded by the static
+  pivot. No Stock, RO, PO, Receipt, FIFO, Finance, or settings row is mutated.
+  Production result is pending user execution.
+
+## 2026-09-24 - LSM LATEST AUTO_RO SOURCE DOCUMENT LIST READY
+
+- Current Production reconciliation proves LSM negative Stock is fully explained
+  by open Retail and Backoffice Sales shortage lineage. The eight manually
+  compared products reconcile exactly as prior deficit `1,123` plus new FO
+  `1,572` equals current/latest RO quantity `2,695`.
+- Added SELECT-only audit
+  `docs/audits/LSM_LATEST_AUTO_RO_SOURCE_DOCUMENT_NUMBERS_2026-09-24.sql`.
+  It selects the latest LSM `AUTO_RO` Draft and returns only distinct source
+  document numbers whose still-open negative-stock allocations intersect its
+  Product/Warehouse lines.
+- Backoffice sources are labelled `BACKOFFICE_SO`; Retail shortages have no
+  Backoffice SO and are therefore labelled `RETAIL_INVOICE` instead of being
+  silently omitted. No Stock, RO, PO, Receipt, FIFO, Finance, or settings row
+  is mutated. Production result is still pending user execution.
+
 ## 2026-09-24 - LSM AUTO_RO STOCK MATCH LOCAL READY
 
 - User mengunci guard coverage: hanya RO `DRAFT` yang dihitung; setelah RO
@@ -15697,3 +15763,107 @@ belum scheduler postflight, belum CLIENT DEPLOYED, belum SMOKE/UAT PASS.
   Draft Invoice: ubah harga, simpan, muat ulang, cek UOM name dan total; setelah
   itu post hanya fixture/UAT yang disetujui dan cocokkan nilai Journal. Jangan
   menguji dengan mengubah Invoice Production yang sudah `POSTED`.
+# 2026-09-24 - POS Cash auto-verification behavioral fixture Profile correction
+
+- Production migration `20260923100000` was user-confirmed successful after the
+  corrected preflight passed every contract and call-chain anchor.
+- The first behavioral-test run stopped before business assertions because
+  inserting `auth.users` fired the live `public.handle_new_user()` trigger and
+  created `public.profiles`; the fixture then attempted a duplicate Profile ID.
+- Classified as `TEST HARNESS FIX`, not a product/runtime fix. The fixture now
+  upserts the exact generated actor Profile so it works with the active auth
+  trigger while retaining the cashier role required by the authenticated test.
+- No migration, Production data, Cash behavior, Finance event, Stock, FIFO, or
+  assertion was changed. The failed transaction was rolled back atomically.
+- Next safe step: rerun the complete behavioral test from its updated file. Do
+  not proceed to postflight or UI smoke until it reports its single PASS row.
+
+### Confirmed Sales fixture shape correction
+
+- The second Production run exposed another fixture-only incompatibility:
+  both generated `sales_headers` rows declared `order_runtime_status='CONFIRMED'`
+  without the four state anchors required by the existing
+  `sales_headers_order_runtime_shape` constraint.
+- Classified as `TEST HARNESS FIX`. Both fixture Sales now include
+  `confirmed_at`, `confirmed_by`, a unique `confirmation_idempotency_key`, and
+  `reservation_version=1`, while remaining Draft documents as required by the
+  canonical confirmed-order model.
+- The complete fixture was re-audited across Profile trigger behavior, Session,
+  both Sales rows, Cash Drawer movements, Cash/non-Cash verification requests,
+  Finance Events, cancellation, retry, tenant rejection, and final rollback.
+  No behavioral assertion or Production runtime object was weakened or changed.
+
+### Production database verification
+
+- User reran the corrected non-zero behavioral test and received its single
+  `PASS` row. Covered: canonical Cash/non-Cash split, exact retry, Cash auto
+  verification, source-linked HOLD Event, manual-Cash rejection, non-Cash
+  pending behavior, cancellation/reversal, posted-event protection, and tenant
+  rejection. All fixture business writes rolled back.
+- Production postflight then passed every contract and reconciliation with zero
+  violations. Runtime inventory contains eight `AUTO_CASH` requests: all eight
+  are `VERIFIED`, all eight Events are `HOLD`, none are POSTED/CANCELED, and no
+  pending Cash request remains. No premature Journal was found.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS`. Client deployment,
+  authenticated UI smoke, and UAT remain unproven. Next safe step is focused
+  Backoffice lint/build, deploy the matching client changes, then execute the
+  runbook smoke matrix; do not label the feature complete before those gates.
+- Focused ESLint passed for `SalesPaymentVerificationPanel.tsx` and
+  `finance-process-ui-policy.ts`. Next.js 16.2.10 production build, TypeScript,
+  and generation of all 87 static pages also passed. This raises the client
+  package to `LOCAL READY`, not `CLIENT DEPLOYED` or `SMOKE PASS`.
+
+## 2026-09-24 - POS Session-close Stock Request policy
+
+- Status: `LOCAL READY`; belum `DATABASE LIVE`, `CLIENT DEPLOYED`, authenticated
+  `SMOKE PASS`, atau `UAT PASS`.
+- Approved contract: switch per Company **Permintaan stok saat tutup sesi**
+  default `OFF`. OFF tetap menutup Session dan membekukan procurement demand,
+  tetapi tidak membuat Stock Request baru. Scheduler harian RO/PO terpisah dan
+  tidak berubah.
+- Root call chain yang diaudit: public close aktif
+  `20260829130000` -> `private.odr5d_close_cashier_session_legacy` -> freeze
+  demand ODR-4B -> `private.ensure_session_procurement_stock_request` ODR-4C.
+- Migration lokal `20260924110000` menambah Company flag, dua Session decision
+  snapshot columns, setter Super Admin dengan optimistic version + audit,
+  getter additive, policy gate di helper, dan wrapper close yang mengambil
+  snapshot hanya ketika Session masih `OPEN`.
+- Compatibility: existing linked request selalu dikembalikan sebagai retry;
+  historical closed Session default OFF dan tidak diproyeksikan retroaktif;
+  tidak ada perubahan Stock/FIFO/Transfer/Receipt/Payment/Finance/PO atau data
+  historis.
+- UI lokal: Pengaturan Modul > Point of Sale menampilkan switch dan menjelaskan
+  bahwa scheduler RO/PO tidak terpengaruh. PWA close notice sekarang membaca
+  canonical nested `procurementStockRequest` dan menjelaskan bila policy OFF.
+- File baru: migration, read-only preflight/postflight, rollback-only behavior,
+  impact map, dan rollout runbook dengan nama
+  `pos_session_close_stock_request_policy*` / `POS_SESSION_CLOSE_STOCK_REQUEST_POLICY*`.
+- File client berubah:
+  `backoffice/src/components/ModuleSettingsView.tsx`,
+  `backoffice/src/app/api/platform/module-settings/route.ts`, dan
+  `pwa/src/App.tsx`.
+- Evidence lokal: targeted Backoffice ESLint PASS; targeted PWA oxlint PASS;
+  Backoffice Next 16 build + TypeScript + 87 static pages PASS; PWA TypeScript +
+  Vite/PWA build PASS; scoped `git diff --check` PASS (line-ending warning only).
+- Manual gate berikutnya: jalankan preflight read-only. Jangan menjalankan
+  migration bila ada `BLOCKER`. Setelah itu migration -> rollback behavior ->
+  postflight -> deploy commit yang sama -> authenticated OFF/ON/retry/tenant
+  smoke sesuai runbook.
+
+### Behavioral fixture Store/Terminal status correction
+
+- Production preflight seluruhnya PASS dan user mengonfirmasi migration
+  `20260924110000` sukses dijalankan. Status database baru `DATABASE LIVE`;
+  behavior dan postflight belum PASS.
+- Run pertama behavioral test berhenti sebelum assertion karena selector fixture
+  memakai `stores.is_active` dan `pos_terminals.is_active`, sedangkan schema
+  canonical kedua tabel memakai kolom text `status='ACTIVE'`.
+- Diklasifikasikan sebagai `TEST HARNESS FIX`; migration/runtime Production,
+  setting, Session snapshot, demand, Stock Request, Stock/FIFO, Finance, dan
+  assertion bisnis tidak diubah. Transaksi test gagal sehingga seluruh write
+  fixture di-roll back.
+- Selector fixture sekarang memakai `store.status='ACTIVE'` dan
+  `terminal.status='ACTIVE'`. Postflight diaudit dan tidak mereferensikan kedua
+  kolom yang salah, sehingga tidak memerlukan perubahan.
+- Next safe step: jalankan ulang behavioral test lengkap dari file terbaru.
+  Hanya setelah menghasilkan satu PASS, jalankan postflight yang sudah ada.

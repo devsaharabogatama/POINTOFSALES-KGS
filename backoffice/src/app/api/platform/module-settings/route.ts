@@ -153,6 +153,27 @@ export async function PATCH(request: Request) {
       }
       return Response.json({ data })
     }
+    if (body.featureCode === 'pos_session_close_stock_request') {
+      if (typeof body.enabled !== 'boolean') {
+        throw new ApiRouteError('SESSION_CLOSE_STOCK_REQUEST_POLICY_INVALID', 400)
+      }
+      if (!Number.isSafeInteger(body.masterVersion) || Number(body.masterVersion) <= 0) {
+        throw new ApiRouteError('MASTER_VERSION_INVALID', 400)
+      }
+      const { data, error } = await caller.client.rpc(
+        'set_session_close_stock_request_policy',
+        { p_enabled: body.enabled, p_master_version: Number(body.masterVersion) },
+      )
+      if (error) {
+        const known = ['SUPER_ADMIN_REQUIRED', 'SESSION_CLOSE_STOCK_REQUEST_POLICY_INVALID',
+          'PURCHASE_REPLENISHMENT_SETTING_NOT_FOUND', 'MASTER_VERSION_CONFLICT']
+          .find((code) => error.message.includes(code))
+        if (known) throw new ApiRouteError(known,
+          known === 'SUPER_ADMIN_REQUIRED' ? 403 : known === 'MASTER_VERSION_CONFLICT' ? 409 : 400)
+        throwDatabaseError(error)
+      }
+      return Response.json({ data })
+    }
     if (typeof body.enabled !== 'boolean') {
       throw new ApiRouteError('FEATURE_ENABLED_MUST_BE_BOOLEAN', 400)
     }
