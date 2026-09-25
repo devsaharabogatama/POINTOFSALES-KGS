@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   BookOpen,
+  CircleCheckBig,
   Edit3,
   Landmark,
   Loader2,
@@ -14,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
+import type { FinanceMappingCompletenessRow } from '@/lib/finance-mapping-completeness'
 
 type AccountFunction = {
   function_key: string
@@ -26,6 +28,7 @@ type SystemEvent = {
   event_name: string
   required_account_functions: string[]
   conditional_account_functions: string[]
+  optional_account_functions: string[]
 }
 type Account = {
   id: string
@@ -55,6 +58,7 @@ type Category = {
 type Rule = {
   id: string
   transaction_category_id: string
+  system_key: string
   account_function_key: string
   account_id: string
   effective_from: string
@@ -78,9 +82,10 @@ type Payload = {
   categories?: Category[]
   rules?: Rule[]
   fallbacks?: Fallback[]
+  mappingCompleteness?: FinanceMappingCompletenessRow[]
   error?: string
 }
-type Tab = 'categories' | 'rules' | 'accounts' | 'fallbacks'
+type Tab = 'coverage' | 'categories' | 'rules' | 'accounts' | 'fallbacks'
 
 const accountTypes = Object.keys({
   ASSET: true, LIABILITY: true, EQUITY: true, REVENUE: true,
@@ -101,6 +106,14 @@ const groupLabels: Record<string, string> = {
   EXPENSE: 'Pengeluaran', CASH: 'Kas', CUSTOMER: 'Customer',
   KETUL: 'Ketul', FINANCE: 'Keuangan',
 }
+const requirementLabels = {
+  REQUIRED: 'Wajib', CONDITIONAL: 'Sesuai kondisi', OPTIONAL: 'Opsional',
+} as const
+const resolutionLabels = {
+  DIRECT_RULE: 'Mapping kategori', COMPANY_FALLBACK: 'Fallback Company',
+  MISSING: 'Belum dipetakan', AMBIGUOUS: 'Mapping ganda',
+  INVALID_ACCOUNT: 'Akun tidak valid', FUNCTION_INACTIVE: 'Fungsi tidak aktif',
+} as const
 
 function authHeaders(session: Session) {
   return { Authorization: `Bearer ${session.access_token}` }
@@ -174,9 +187,9 @@ export function FinanceMasterView({
   canManage: boolean
   notify: (message: string | null) => void
 }) {
-  const [tab, setTab] = useState<Tab>('categories')
+  const [tab, setTab] = useState<Tab>('coverage')
   const [data, setData] = useState<Required<Omit<Payload, 'error'>>>({
-    accountFunctions: [], systemEvents: [], accounts: [], categories: [], rules: [], fallbacks: [],
+    accountFunctions: [], systemEvents: [], accounts: [], categories: [], rules: [], fallbacks: [], mappingCompleteness: [],
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -200,6 +213,7 @@ export function FinanceMasterView({
         categories: payload.categories ?? [],
         rules: payload.rules ?? [],
         fallbacks: payload.fallbacks ?? [],
+        mappingCompleteness: payload.mappingCompleteness ?? [],
       })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal memuat master Finance.')
@@ -227,13 +241,20 @@ export function FinanceMasterView({
     () => new Map(data.accounts.map((item) => [item.id, item])),
     [data.accounts],
   )
+  const mappingSummary = useMemo(() => {
+    const rows = data.mappingCompleteness
+    const ready = rows.filter((item) => item.resolution === 'DIRECT_RULE' || item.resolution === 'COMPANY_FALLBACK').length
+    const blocking = rows.filter((item) => item.requirement !== 'OPTIONAL' && item.resolution !== 'DIRECT_RULE' && item.resolution !== 'COMPANY_FALLBACK').length
+    const optionalOpen = rows.filter((item) => item.requirement === 'OPTIONAL' && item.resolution !== 'DIRECT_RULE' && item.resolution !== 'COMPANY_FALLBACK').length
+    return { total: rows.length, ready, blocking, optionalOpen }
+  }, [data.mappingCompleteness])
 
   return <>
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-600">Master Keuangan</p><h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">Kategori Transaksi & COA</h1><p className="mt-2 text-sm text-slate-500">Hubungkan kategori bisnis ke fungsi dan akun tanpa menampilkan identifier teknis kepada pengguna.</p></div>
       <button onClick={() => void refresh()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600"><RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Muat ulang</button>
     </div>
-    <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><b>Finance posting belum aktif.</b> Menu ini baru mengatur master dan versi mapping. Tidak ada jurnal yang dibuat dari perubahan di sini.</div>
+    <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900"><b>Mapping berlaku untuk transaksi baru sesuai tanggal efektif.</b> Jurnal yang sudah diposting tidak berubah. Matriks di bawah menilai konfigurasi eksplisit kategori/fallback; compatibility account lama tidak dianggap sebagai pengganti review Finance.</div>
     <div className="mb-5 grid gap-3 md:grid-cols-3">
       <Guide number="1" title="Kategori transaksi" text="Alasan bisnis yang dipilih user, misalnya Penjualan, Setoran Kas, atau Listrik." />
       <Guide number="2" title="Jenis transaksi sistem" text="Proses aplikasi di balik kategori. Kategori bawaan sudah dipasangkan dan tidak perlu diubah." />
@@ -241,11 +262,34 @@ export function FinanceMasterView({
     </div>
     {error && <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
     <div className="mb-5 flex flex-wrap gap-2">{([
+      ['coverage','Kelengkapan mapping',CircleCheckBig],
       ['categories','Kategori transaksi',BookOpen],
       ['rules','Mapping akun',Route],
       ['accounts','Daftar akun',Landmark],
       ['fallbacks','Fallback Company',ShieldCheck],
     ] as const).map(([id,label,Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold ${tab === id ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}><Icon className="h-4 w-4" />{label}</button>)}</div>
+
+    {tab === 'coverage' && <Section title="Kelengkapan konfigurasi mapping" description="Menilai direct rule dan fallback Company yang efektif saat ini. Fungsi sesuai kondisi tetap harus disiapkan sebelum skenario tersebut terjadi.">
+      <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-4">
+        <Summary label="Total komponen" value={mappingSummary.total} tone="slate" />
+        <Summary label="Siap" value={mappingSummary.ready} tone="emerald" />
+        <Summary label="Perlu diperbaiki" value={mappingSummary.blocking} tone={mappingSummary.blocking ? 'rose' : 'emerald'} />
+        <Summary label="Opsional terbuka" value={mappingSummary.optionalOpen} tone="amber" />
+      </div>
+      <Table headers={['Proses / kategori','Fungsi akun','Kebutuhan','Resolusi','Akun mapping']}>
+        {data.mappingCompleteness.map((item) => {
+          const ready = item.resolution === 'DIRECT_RULE' || item.resolution === 'COMPANY_FALLBACK'
+          return <tr key={`${item.category_id}:${item.account_function_key}`} className="border-t border-slate-100">
+            <td className="px-5 py-4"><p className="font-bold">{item.event_name}</p><p className="mt-1 text-xs text-slate-400">{item.category_name} · {groupLabels[item.event_group] ?? item.event_group}</p></td>
+            <td className="px-5 py-4 font-semibold">{item.function_name}</td>
+            <td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">{requirementLabels[item.requirement]}</span></td>
+            <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${ready ? 'bg-emerald-50 text-emerald-700' : item.requirement === 'OPTIONAL' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{resolutionLabels[item.resolution]}</span></td>
+            <td className="px-5 py-4"><p className="font-semibold">{item.account_name ?? '-'}</p><p className="mt-1 text-xs text-slate-400">{item.account_code ?? ''}</p></td>
+          </tr>
+        })}
+      </Table>
+      {!loading && !data.mappingCompleteness.length && <Empty text="Belum ada kategori aktif yang dapat diperiksa." />}
+    </Section>}
 
     {tab === 'categories' && <Section title="Kategori transaksi" description="Kategori bawaan mencakup proses wajib aplikasi. Tambahkan kategori khusus hanya bila bisnis perlu rincian, misalnya Listrik atau Bensin." action={canManage && <button onClick={() => setCategoryEditor(null)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Tambah kategori khusus</button>}>
       <Table headers={['Nama kategori','Jenis transaksi','Keterangan','Sifat','Status',...(canManage ? ['Aksi'] : [])]}>{data.categories.map((item) => { const event = eventByKey.get(item.system_key); return <tr key={item.id} className="border-t border-slate-100"><td className="px-5 py-4 font-bold">{item.category_name}</td><td className="px-5 py-4"><p>{event?.event_name ?? 'Jenis transaksi tidak tersedia'}</p><p className="mt-1 text-xs text-slate-400">{groupLabels[event?.event_group ?? ''] ?? event?.event_group}</p></td><td className="max-w-sm px-5 py-4 text-slate-500">{item.description || '-'}</td><td className="px-5 py-4">{item.is_system_default ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">Bawaan wajib</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">Khusus Company</span>}</td><td className="px-5 py-4"><Status active={item.is_active} /></td>{canManage && <td className="px-5 py-4 text-right"><button onClick={() => setCategoryEditor(item)} className="rounded-lg border border-slate-200 p-2 text-slate-500" aria-label={`Edit ${item.category_name}`}><Edit3 className="h-4 w-4" /></button></td>}</tr> })}</Table>
@@ -290,7 +334,7 @@ function RuleEditor({ session, categories, events, functions, accounts, close, c
   const [saving, setSaving] = useState(false); const [error, setError] = useState('')
   const category = categories.find((item) => item.id === form.categoryId)
   const systemEvent = events.find((item) => item.system_key === category?.system_key)
-  const suggestedKeys = new Set([...(systemEvent?.required_account_functions ?? []), ...(systemEvent?.conditional_account_functions ?? [])])
+  const suggestedKeys = new Set([...(systemEvent?.required_account_functions ?? []), ...(systemEvent?.conditional_account_functions ?? []), ...(systemEvent?.optional_account_functions ?? [])])
   const availableFunctions = functions.filter((item) => !suggestedKeys.size || suggestedKeys.has(item.function_key))
   const selectedFunction = functions.find((item) => item.function_key === form.accountFunctionKey)
   const availableAccounts = accounts.filter((item) => item.is_active && item.is_postable && (!selectedFunction || selectedFunction.compatible_account_types.includes(item.account_type)))
@@ -329,6 +373,7 @@ function Section({ title, description, action, children }: { title: string; desc
 function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) { return <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr>{headers.map((header) => <th key={header} className="px-5 py-4 last:text-right">{header}</th>)}</tr></thead><tbody>{children}</tbody></table></div> }
 function Empty({ text }: { text: string }) { return <div className="border-t border-slate-100 p-10 text-center text-sm text-slate-400">{text}</div> }
 function Guide({ number, title, text }: { number: string; title: string; text: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">{number}</div><p className="font-black text-slate-900">{title}</p><p className="mt-1 text-sm leading-6 text-slate-500">{text}</p></div> }
+function Summary({ label, value, tone }: { label: string; value: number; tone: 'slate' | 'emerald' | 'amber' | 'rose' }) { const colors = { slate: 'bg-slate-50 text-slate-700', emerald: 'bg-emerald-50 text-emerald-700', amber: 'bg-amber-50 text-amber-700', rose: 'bg-rose-50 text-rose-700' }; return <div className={`rounded-xl p-4 ${colors[tone]}`}><p className="text-xs font-bold uppercase tracking-wider">{label}</p><p className="mt-2 text-2xl font-black">{value}</p></div> }
 function Modal({ title, close, children }: { title: string; close: () => void; children: React.ReactNode }) { return <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"><div className="mx-auto my-6 max-w-4xl rounded-3xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-100 p-6"><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-600">Master Finance</p><h2 className="mt-2 text-xl font-black">{title}</h2></div><button type="button" onClick={close} className="rounded-xl border border-slate-200 p-2 text-slate-500" aria-label="Tutup"><X className="h-5 w-5" /></button></div><div className="p-6">{children}</div></div></div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-bold text-slate-700">{label}</span>{children}</label> }
 function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) { return <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-emerald-500" />{label}</label> }

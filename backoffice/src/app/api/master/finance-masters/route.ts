@@ -16,6 +16,7 @@ import {
   ruleRpcArgs,
   throwFinanceMasterRpcError,
 } from '@/lib/finance-master'
+import { buildFinanceMappingCompleteness } from '@/lib/finance-mapping-completeness'
 
 export async function GET(request: Request) {
   try {
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
         .select('function_key,function_name,compatible_account_types,is_active')
         .eq('is_active', true).order('function_name'),
       caller.client.from('system_events')
-        .select('system_key,event_group,event_name,required_account_functions,conditional_account_functions,is_active')
+        .select('system_key,event_group,event_name,required_account_functions,conditional_account_functions,optional_account_functions,is_active')
         .eq('is_active', true).order('event_group').order('event_name'),
       caller.client.from('chart_of_accounts')
         .select('id,account_code,account_name,account_type,normal_balance,parent_account_id,system_function_key,is_system_account,is_postable,allow_manual_posting,allow_reconciliation,is_active,master_version')
@@ -46,14 +47,31 @@ export async function GET(request: Request) {
     for (const result of [functions, events, accounts, categories, rules, fallbacks]) {
       if (result.error) throwDatabaseError(result.error)
     }
+    const asOf = new Date().toISOString()
+    const accountFunctions = functions.data ?? []
+    const systemEvents = events.data ?? []
+    const chartOfAccounts = accounts.data ?? []
+    const transactionCategories = categories.data ?? []
+    const transactionRules = rules.data ?? []
+    const companyFallbacks = fallbacks.data ?? []
     return Response.json({
       companyId,
-      accountFunctions: functions.data ?? [],
-      systemEvents: events.data ?? [],
-      accounts: accounts.data ?? [],
-      categories: categories.data ?? [],
-      rules: rules.data ?? [],
-      fallbacks: fallbacks.data ?? [],
+      asOf,
+      accountFunctions,
+      systemEvents,
+      accounts: chartOfAccounts,
+      categories: transactionCategories,
+      rules: transactionRules,
+      fallbacks: companyFallbacks,
+      mappingCompleteness: buildFinanceMappingCompleteness({
+        accountFunctions,
+        systemEvents,
+        accounts: chartOfAccounts,
+        categories: transactionCategories,
+        rules: transactionRules,
+        fallbacks: companyFallbacks,
+        asOf,
+      }),
     })
   } catch (error) {
     return apiError(error)
