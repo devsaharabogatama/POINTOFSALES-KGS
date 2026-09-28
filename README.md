@@ -1,5 +1,35 @@
 # MADS — Management Distribution System
 
+## 2026-09-28 - Sales export RO reconciliation DATABASE LIVE
+
+Export Invoice Penjualan lokal kini mempertahankan histori Invoice gross dan
+menambahkan tiga sheet operasional terpisah: `Kebutuhan RO Bersih`, `Pembatalan
+Reversal`, serta `Retur Customer`. Data bersih mengecualikan shortage yang sudah
+reconciled/reversed dan menampilkan coverage remaining PO, sisa Stock Request,
+serta RO Draft tanpa menghitung RO yang sudah berubah menjadi PO dua kali.
+Retur RESTOCK dipisahkan dari DESTROY/tanpa fisik, dan seluruh sheet dibaca
+dalam satu database snapshot. Lint, TypeScript, build 87 halaman, Production
+preflight, migration `20260928100000`, authenticated behavior, dan postflight
+PASS. Database sudah live; deploy client, authenticated smoke KMS/LSM/SMS, dan
+UAT masih menunggu sehingga workbook baru belum dinyatakan live bagi user.
+
+## 2026-09-25 - Gross Sales Discount database live
+
+Metode gross untuk diskon Penjualan sudah melewati Production preflight tanpa
+blocker: Retail/POS, Dispatch, dan Regular Backoffice Invoice akan mencatat
+Pendapatan bruto serta debit Potongan Penjualan, sementara settlement/Piutang
+tetap net. Migration `20260925100000`, tiga rollback-only behavioral test, dan
+postflight tersedia. Migration `20260925100000` sudah user-confirmed committed
+melalui exact ledger row. Retail rollback-only behavior juga PASS dengan fixture
+non-zero; Backoffice Invoice behavior juga PASS, termasuk permission denial,
+DP compatibility, gross Regular Invoice, balance, dan retry. Native ODR/POS
+Dispatch behavior kini PASS untuk gross/net split, Stock/FIFO, Journal balance,
+dan exact retry. Closing postflight masih menunggu.
+Jurnal posted, Stock/FIFO/COGS, Return, Refund, pajak, ongkir, surcharge,
+dan rounding dipertahankan sesuai kontrak. Ikuti
+[runbook](docs/runbooks/GROSS_SALES_DISCOUNT_ROLLOUT.md) dan berhenti pada SQL
+error, `BLOCKER`, atau `FAIL`.
+
 ## 2026-09-24 - LSM AUTO_RO stock match LOCAL READY
 
 Draft AUTO_RO kini mempunyai paket lokal `Cocokkan Stok`: RO lain hanya

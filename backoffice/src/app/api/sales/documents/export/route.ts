@@ -27,7 +27,21 @@ function validIsoDate(value: string) {
     && parsed.getUTCDate() === day
 }
 
-function workbookResponse(payload: JsonMap, invoices: JsonMap[], lines: JsonMap[], dateFrom: string, dateTo: string) {
+function coverageText(value: unknown) {
+  return list(value).map((item) => {
+    const documentDate = date(item.documentDate)
+    return `${text(item.type)} ${text(item.documentNo)}${documentDate ? ` (${documentDate})` : ''}: ${number(item.quantityBase)}`
+  }).join('; ')
+}
+
+function workbookResponse(
+  payload: JsonMap,
+  reconciliation: JsonMap,
+  invoices: JsonMap[],
+  lines: JsonMap[],
+  dateFrom: string,
+  dateTo: string,
+) {
   const invoiceRows: WorkbookCell[][] = [[
     'Sumber', 'Nomor Dokumen', 'Nomor Invoice', 'Nomor Draft', 'Nomor SO',
     'Tanggal Invoice', 'Status', 'Kode Customer', 'Customer',
@@ -68,6 +82,51 @@ function workbookResponse(payload: JsonMap, invoices: JsonMap[], lines: JsonMap[
     number(line.tax_amount), number(line.line_total),
   ])
 
+  const requirements = list(reconciliation.roRequirements)
+  const requirementRows: WorkbookCell[][] = [[
+    'Sumber', 'Nomor SO / Invoice', 'Tanggal Sumber', 'SKU', 'Produk', 'Gudang',
+    'UOM Dasar', 'Qty Keluar Kekurangan', 'Sudah Dipulihkan', 'Kebutuhan Terbuka',
+    'On Hand Saat Export', 'Sudah Dicakup RO / Request / PO', 'Belum Dicakup',
+    'Dokumen Coverage Aktif',
+  ]]
+  for (const item of requirements) requirementRows.push([
+    text(item.source_type), text(item.source_document_no), date(item.source_date),
+    text(item.sku), text(item.product_name), text(item.warehouse_name),
+    text(item.base_uom_name), number(item.original_base_qty),
+    number(item.replenished_base_qty), number(item.open_base_qty),
+    number(item.current_on_hand_base_qty), number(item.coverage_base_qty),
+    number(item.uncovered_base_qty), coverageText(item.coverage_documents),
+  ])
+
+  const cancellations = list(reconciliation.cancellations)
+  const cancellationRows: WorkbookCell[][] = [[
+    'Sumber', 'Nomor Dokumen', 'Tanggal Efek', 'SKU', 'Produk', 'UOM Dasar',
+    'Qty Keluar', 'Qty Reversal', 'Qty Keluar Bersih', 'Status Efek Stok',
+    'Alasan Pembatalan',
+  ]]
+  for (const item of cancellations) cancellationRows.push([
+    text(item.source_kind), text(item.document_no), date(item.effect_date),
+    text(item.sku), text(item.product_name), text(item.base_uom_name),
+    number(item.outbound_base_qty), number(item.reversed_base_qty),
+    number(item.net_stock_out_base_qty), text(item.stock_effect_status),
+    text(item.cancel_reason),
+  ])
+
+  const returns = list(reconciliation.returns)
+  const returnRows: WorkbookCell[][] = [[
+    'Sumber', 'Dokumen Asal', 'Nomor Retur', 'Nomor Penerimaan', 'Tanggal Efek',
+    'SKU', 'Produk', 'UOM', 'Qty Retur', 'Qty Masuk Stok', 'Qty Dihancurkan',
+    'Qty Tanpa Barang Fisik', 'Kondisi / Disposisi', 'Gudang',
+  ]]
+  for (const item of returns) returnRows.push([
+    text(item.source_kind), text(item.source_document_no), text(item.return_no),
+    text(item.receipt_no), date(item.effect_date), text(item.sku),
+    text(item.product_name), text(item.uom_name), number(item.returned_base_qty),
+    number(item.restocked_base_qty), number(item.destroyed_base_qty),
+    number(item.no_physical_base_qty), text(item.disposition),
+    text(item.warehouse_name),
+  ])
+
   const retailCount = invoices.filter((invoice) => text(invoice.sourceKind) === 'RETAIL').length
   const backofficeCount = invoices.filter((invoice) => text(invoice.sourceKind) === 'BACKOFFICE').length
   const statusCounts = new Map<string, number>()
@@ -90,13 +149,26 @@ function workbookResponse(payload: JsonMap, invoices: JsonMap[], lines: JsonMap[
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([status, count]): WorkbookCell[] => [`Status ${status}`, count]),
     ['Jumlah baris detail', lines.length],
+    ['Kebutuhan RO bersih (baris)', requirements.length],
+    ['Kebutuhan terbuka (base qty)', requirements.reduce((sum, item) => sum + number(item.open_base_qty), 0)],
+    ['Sudah dicakup RO / Request / PO (base qty)', requirements.reduce((sum, item) => sum + number(item.coverage_base_qty), 0)],
+    ['Belum dicakup (base qty)', requirements.reduce((sum, item) => sum + number(item.uncovered_base_qty), 0)],
+    ['Pembatalan / reversal (baris)', cancellations.length],
+    ['Retur Customer (baris)', returns.length],
     ['Total akhir Invoice', invoices.reduce((sum, invoice) => sum + number(invoice.grandTotal), 0)],
     ['Total piutang', invoices.reduce((sum, invoice) => sum + number(invoice.receivable), 0)],
+    ['Dasar Kebutuhan RO Bersih', 'Snapshot kebutuhan Stock minus yang masih terbuka saat file dibuat; tidak dibatasi tanggal Invoice'],
+    ['Aturan coverage', 'PO aktif dihitung lebih dahulu, lalu Stock Request aktif, lalu RO Draft; RO yang sudah menjadi PO tidak dihitung ganda'],
+    ['Dasar Pembatalan / Retur', `Tanggal efek antara ${dateFrom} sampai ${dateTo}`],
+    ['Aturan retur terhadap Stock', 'Hanya Qty Masuk Stok yang mengurangi kebutuhan; DESTROY dan tanpa barang fisik tidak menambah Stock'],
   ]
 
   const workbook = createXlsx([
     { name: 'Daftar Invoice', widths: [14, 25, 25, 25, 25, 16, 16, 18, 30, 24, 14, 16, 10, 16, 18, 18, 18, 18, 18, 18, 18, 20, 18, 18, 24, 34, 24, 22], rows: invoiceRows },
     { name: 'Detail Produk', widths: [14, 25, 25, 25, 25, 16, 16, 18, 30, 10, 22, 16, 18, 36, 15, 14, 18, 16, 18, 18, 16, 24, 18, 18, 20], rows: detailRows },
+    { name: 'Kebutuhan RO Bersih', widths: [18, 27, 16, 18, 36, 26, 16, 20, 18, 20, 20, 26, 18, 60], rows: requirementRows },
+    { name: 'Pembatalan Reversal', widths: [16, 27, 16, 18, 36, 16, 16, 16, 20, 34, 45], rows: cancellationRows },
+    { name: 'Retur Customer', widths: [18, 27, 25, 25, 16, 18, 36, 16, 16, 18, 20, 22, 22, 26], rows: returnRows },
     { name: 'Informasi Export', widths: [27, 55], rows: metadataRows },
   ])
   return new Response(Buffer.from(workbook), { headers: {
@@ -120,13 +192,22 @@ export async function handleSalesDocumentExport(request: Request) {
     if (dateFrom > dateTo) {
       throw new ApiRouteError('SALES_DOCUMENT_EXPORT_DATE_RANGE_INVALID', 400)
     }
-    const { data, error } = await caller.client.rpc('export_sales_documents', {
+    const { data, error } = await caller.client.rpc('export_sales_documents_with_reconciliation', {
       p_date_from: dateFrom,
       p_date_to: dateTo,
     })
     if (error) throwDatabaseError(error)
-    const payload = (data ?? {}) as JsonMap
-    return workbookResponse(payload, list(payload.invoices), list(payload.lines), dateFrom, dateTo)
+    const combined = (data ?? {}) as JsonMap
+    const payload = (combined.documents ?? {}) as JsonMap
+    const reconciliation = (combined.reconciliation ?? {}) as JsonMap
+    return workbookResponse(
+      payload,
+      reconciliation,
+      list(payload.invoices),
+      list(payload.lines),
+      dateFrom,
+      dateTo,
+    )
   } catch (error) {
     return apiError(error)
   }
