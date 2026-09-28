@@ -31,6 +31,14 @@ export async function GET(request: Request, { params }: Context) {
     if (permissionError) throwBackofficeInvoiceError(permissionError);
     const capabilities = Array.isArray(permission?.effectiveCapabilities) ? permission.effectiveCapabilities : [];
     let paymentContext = null;
+    let priceCorrectionContext = null;
+    if (data?.data?.status === "POSTED") {
+      const correction = await caller.client.rpc("get_backoffice_sales_invoice_price_correction_context", {
+        p_invoice_id: invoiceId,
+      });
+      if (correction.error) throwBackofficeInvoiceError(correction.error);
+      priceCorrectionContext = correction.data;
+    }
     if (capabilities.includes("VIEW")) {
       const payment = await caller.client.rpc("get_backoffice_sales_invoice_payment_context", {
         p_invoice_id: invoiceId,
@@ -39,6 +47,7 @@ export async function GET(request: Request, { params }: Context) {
       paymentContext = payment.data;
     }
     return Response.json({ ...data, data: { ...(data?.data ?? {}), ...commercial }, paymentContext,
+      priceCorrectionContext,
       returnLinks: returnLinks.data?.data ?? [] });
   } catch (error) { return apiError(error); }
 }
