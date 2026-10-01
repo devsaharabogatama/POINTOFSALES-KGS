@@ -1,6 +1,10 @@
 import { apiError, requireActiveCompany, requireCaller } from "@/lib/server-auth";
-import { readJsonObject, uuidValue } from "@/lib/master-data";
-import { parseDailyRoStockMatchBody, throwSupplierOrderError } from "@/lib/supplier-order";
+import { readJsonObject } from "@/lib/master-data";
+import {
+  parseDailyRoStockMatchBody,
+  purchaseDailyBatchIdValue,
+  throwSupplierOrderError,
+} from "@/lib/supplier-order";
 
 export async function GET(
   request: Request,
@@ -12,7 +16,7 @@ export async function GET(
     const { id } = await params;
     const { data, error } = await caller.client.rpc(
       "get_purchase_daily_auto_ro_stock_match",
-      { p_batch_id: uuidValue(id, "PURCHASE_DAILY_BATCH_ID_INVALID") },
+      { p_batch_id: purchaseDailyBatchIdValue(id) },
     );
     if (error) throwSupplierOrderError(error);
     return Response.json({ data });
@@ -33,7 +37,7 @@ export async function POST(
     const { data, error } = await caller.client.rpc(
       "reconcile_purchase_daily_auto_ro_stock",
       {
-        p_batch_id: uuidValue(id, "PURCHASE_DAILY_BATCH_ID_INVALID"),
+        p_batch_id: purchaseDailyBatchIdValue(id),
         p_master_version: input.masterVersion,
         p_operation_id: input.idempotencyKey,
       },

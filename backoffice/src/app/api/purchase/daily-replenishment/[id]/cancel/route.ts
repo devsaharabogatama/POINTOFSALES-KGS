@@ -1,7 +1,8 @@
 import { apiError, requireActiveCompany, requireCaller } from "@/lib/server-auth";
-import { readJsonObject, uuidValue } from "@/lib/master-data";
+import { readJsonObject } from "@/lib/master-data";
 import {
   parsePurchaseCancellationBody,
+  purchaseDailyBatchIdValue,
   throwSupplierOrderError,
 } from "@/lib/supplier-order";
 
@@ -17,7 +18,7 @@ export async function POST(
     const { data, error } = await caller.client.rpc(
       "cancel_purchase_daily_auto_ro",
       {
-        p_batch_id: uuidValue(id, "PURCHASE_DAILY_BATCH_ID_INVALID"),
+        p_batch_id: purchaseDailyBatchIdValue(id),
         p_master_version: input.masterVersion,
         p_operation_id: input.idempotencyKey,
         p_reason: input.reason,

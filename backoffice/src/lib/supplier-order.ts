@@ -3,6 +3,12 @@ import { optionalText, requiredVersion, uuidValue } from "@/lib/master-data";
 
 type JsonObject = Record<string, unknown>;
 
+export function purchaseDailyBatchIdValue(value: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
+    throw new ApiRouteError("PURCHASE_DAILY_BATCH_ID_INVALID", 400);
+  return value;
+}
+
 function uuid(body: JsonObject, field: string) {
   const value = body[field];
   if (typeof value !== "string")
