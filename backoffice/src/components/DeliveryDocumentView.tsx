@@ -14,6 +14,25 @@ import {
 } from '@/lib/sales-document-print'
 
 type JsonMap = Record<string, unknown>
+type DeliveryReturnDocument = {
+  returnId: string
+  returnNo: string
+  status: string
+  reason: string
+  requestedBaseQty: number | string
+  receivedBaseQty: number | string
+  restockedBaseQty: number | string
+  destroyedBaseQty: number | string
+  goodsStatus: 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELED'
+  receiptCount: number
+  updatedAt: string
+}
+type DeliveryReturnOverlay = {
+  sourceChannel: 'POS' | 'BACKOFFICE_SALES'
+  deliveryDocumentId: string
+  attribution: 'EXACT_DELIVERY' | 'SALES_ORDER'
+  returns: DeliveryReturnDocument[]
+}
 type DeliverySummary = {
   sourceChannel?: 'POS' | 'BACKOFFICE_SALES'
   salesId: string
@@ -44,6 +63,8 @@ type DeliverySummary = {
   totalReservedBaseQty?: number | string
   totalDispatchedBaseQty?: number | string
   totalReceivedBaseQty?: number | string
+  returnAttribution?: DeliveryReturnOverlay['attribution']
+  returnDocuments?: DeliveryReturnDocument[]
 }
 type DispatchLine = {
   id: string
@@ -118,6 +139,29 @@ function statusClass(status?: string) {
   if (status === 'PARTIALLY_DISPATCHED' || status === 'PARTIALLY_SHIPPED') return 'bg-violet-100 text-violet-800'
   if (status === 'CANCELED') return 'bg-rose-100 text-rose-800'
   return 'bg-amber-100 text-amber-800'
+}
+const returnStatusLabel: Record<string, string> = {
+  DRAFT: 'Draft retur',
+  SUBMITTED: 'Menunggu persetujuan',
+  APPROVED: 'Disetujui · menunggu barang',
+  PARTIALLY_RECEIVED: 'Barang diterima sebagian',
+  RECEIVED: 'Barang sudah diterima',
+  CREDIT_PENDING: 'Menunggu Credit Note',
+  REFUND_PENDING: 'Menunggu refund',
+  COMPLETED: 'Retur selesai',
+  CANCELED: 'Retur dibatalkan',
+}
+const goodsStatusLabel: Record<DeliveryReturnDocument['goodsStatus'], string> = {
+  NOT_RECEIVED: 'Belum diterima Gudang',
+  PARTIALLY_RECEIVED: 'Diterima sebagian',
+  RECEIVED: 'Sudah diterima Gudang',
+  CANCELED: 'Dibatalkan',
+}
+const baseQuantity = (value: number | string) => new Intl.NumberFormat('id-ID', {
+  maximumFractionDigits: 6,
+}).format(Number(value) || 0)
+function activeReturnDocuments(row: DeliverySummary) {
+  return (row.returnDocuments ?? []).filter((document) => document.status !== 'CANCELED')
 }
 function friendly(code?: string) {
   return ({
@@ -241,11 +285,14 @@ export function DeliveryDocumentView({
       const query = new URLSearchParams()
       if (dateFrom) query.set('dateFrom', dateFrom)
       if (dateTo) query.set('dateTo', dateTo)
-      const [response, backofficeResponse, brandingResponse] = await Promise.all([
+      const [response, backofficeResponse, returnResponse, brandingResponse] = await Promise.all([
         fetch(`/api/inventory/delivery-documents?${query}`, {
           headers: headers(session), cache: 'no-store',
         }),
         fetch(`/api/inventory/backoffice-delivery-orders?${query}`, {
+          headers: headers(session), cache: 'no-store',
+        }),
+        fetch(`/api/inventory/delivery-return-overlays?${query}`, {
           headers: headers(session), cache: 'no-store',
         }),
         fetch('/api/platform/company-branding', {
@@ -274,10 +321,32 @@ export function DeliveryDocumentView({
       if (backofficeResult.workspaceVersion !== 3) {
         throw new Error('BACKOFFICE_DELIVERY_WORKSPACE_CONTRACT_MISMATCH')
       }
-      setRows([
+      const returnResult = await returnResponse.json() as {
+        data?: DeliveryReturnOverlay[]
+        workspaceVersion?: number
+        error?: string
+      }
+      if (!returnResponse.ok) throw new Error(friendly(returnResult.error))
+      if (returnResult.workspaceVersion !== 1) {
+        throw new Error('DELIVERY_RETURN_OVERLAY_CONTRACT_MISMATCH')
+      }
+      const returnByDelivery = new Map((returnResult.data ?? []).map((row) => [
+        `${row.sourceChannel}:${row.deliveryDocumentId}`, row,
+      ]))
+      const deliveryRows: DeliverySummary[] = [
         ...(result.data ?? []).map((row) => ({ ...row, sourceChannel: 'POS' as const })),
         ...(backofficeResult.data ?? []),
-      ])
+      ]
+      setRows(deliveryRows.map((row) => {
+        const overlay = returnByDelivery.get(
+          `${row.sourceChannel ?? 'POS'}:${row.deliveryDocumentId}`,
+        )
+        return {
+          ...row,
+          returnAttribution: overlay?.attribution,
+          returnDocuments: overlay?.returns ?? [],
+        }
+      }))
       setDispatchLines([
         ...(result.dispatchLines ?? []),
         ...(backofficeResult.lines ?? []),
@@ -492,7 +561,7 @@ export function DeliveryDocumentView({
         <td className="p-4"><strong>{row.deliveryNo}</strong><p className="text-xs text-slate-500">{row.sourceChannel === 'BACKOFFICE_SALES' ? `${row.deliveryKind === 'BACKORDER' ? 'Backorder' : 'Backoffice'} · SO ${row.salesOrderNo}` : `${row.fulfillmentMode === 'PICKUP' ? 'Ambil di toko' : 'Pengiriman'} · Invoice ${row.invoiceNo}`} · {dateTime(row.scheduledAt ?? row.createdAt)}</p></td>
         <td className="p-4"><strong>{row.recipientName}</strong>{row.recipientPhone && <p className="text-xs text-slate-500">{row.recipientPhone}</p>}</td>
         <td className="p-4">{row.storeName}<p className="text-xs text-slate-500">{row.warehouseName}</p></td>
-        <td className="p-4"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusClass(row.status)}`}>{statusLabel(row.status, row.fulfillmentMode)}</span></td>
+        <td className="p-4"><div className="flex flex-col items-start gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusClass(row.status)}`}>{statusLabel(row.status, row.fulfillmentMode)}</span>{row.returnDocuments?.length ? <span className={`rounded-full px-2.5 py-1 text-xs font-black ${activeReturnDocuments(row).length ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-600'}`}>{activeReturnDocuments(row).length ? `${activeReturnDocuments(row).length} retur terkait` : 'Retur dibatalkan'}</span> : null}</div></td>
         <td className="p-4 text-right"><button onClick={() => void open(row)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 font-bold text-white"><Eye className="h-4 w-4"/>Detail</button></td>
       </tr>)}</tbody>
     </table></div></div>
@@ -655,6 +724,7 @@ function Detail({ session, summary, detail, dispatchLines, discrepancyWorkspace,
           <div><p className="text-xs font-bold uppercase text-amber-700">Baris tersisa</p><p className="mt-1 font-black">{dispatchLines.filter((line) => Number(line.remaining_quantity_uom) > 0).length}</p></div>
         </div>}
         {summary.sourceChannel === 'BACKOFFICE_SALES' && <p className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800">{summary.status === 'COMPLETED' ? `Diterima ${summary.acceptedDate ?? '-'}${summary.receiptNo ? ` · ${summary.receiptNo}` : ''}. Qty telah tersedia untuk proses Invoice; pencatatan COGS menunggu Finance (${summary.receiptFinancialStatus ?? 'HOLD'}).` : 'Dispatch memindahkan stok fisik Gudang ke Transit Pengiriman. Setelah seluruh barang berstatus Dalam perjalanan, penerimaan Customer dapat dikonfirmasi dari dokumen ini.'}</p>}
+        {!!summary.returnDocuments?.length && <DeliveryReturnPanel summary={summary}/>}
         {summary.sourceChannel === 'BACKOFFICE_SALES' && <WarehouseDiscrepancyPanel session={session} deliveryOrderId={summary.deliveryDocumentId} workspace={discrepancyWorkspace} companyDate={companyDate} canManage={canManage} refreshed={refreshed} />}
         <div className="mt-5 overflow-x-auto rounded-2xl border">
           <table className="w-full min-w-[560px] text-sm">
@@ -679,6 +749,33 @@ function Detail({ session, summary, detail, dispatchLines, discrepancyWorkspace,
       </>}
     </article>
   </div>
+}
+
+function DeliveryReturnPanel({ summary }: { summary: DeliverySummary }) {
+  const documents = summary.returnDocuments ?? []
+  const attribution = summary.returnAttribution === 'SALES_ORDER'
+    ? 'Retur tercatat pada SO ini. Jika SO memiliki beberapa Surat Jalan, sistem belum mengklaim DO tertentu sebagai sumber fisik retur.'
+    : 'Retur terhubung langsung dengan transaksi dan Surat Jalan ini.'
+  return <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+    <div className="flex items-start gap-3">
+      <RefreshCcw className="mt-0.5 h-5 w-5 text-violet-700"/>
+      <div><h3 className="font-black text-violet-950">Status retur terkait</h3><p className="mt-1 text-xs leading-5 text-violet-800">{attribution}</p></div>
+    </div>
+    <div className="mt-4 space-y-3">{documents.map((document) => <article key={document.returnId} className="rounded-xl border border-violet-100 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><strong className="text-slate-950">{document.returnNo}</strong><p className="mt-1 text-xs text-slate-500">{document.reason}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${document.status === 'CANCELED' ? 'bg-slate-100 text-slate-600' : document.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : 'bg-violet-100 text-violet-800'}`}>{returnStatusLabel[document.status] ?? document.status}</span></div>
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <ReturnMetric label="Diajukan" value={`${baseQuantity(document.requestedBaseQty)} base qty`}/>
+        <ReturnMetric label="Diterima" value={`${baseQuantity(document.receivedBaseQty)} base qty`}/>
+        <ReturnMetric label="Masuk stok" value={`${baseQuantity(document.restockedBaseQty)} base qty`}/>
+        <ReturnMetric label="Dihancurkan" value={`${baseQuantity(document.destroyedBaseQty)} base qty`}/>
+      </div>
+      <p className="mt-3 text-xs font-bold text-violet-800">Barang: {goodsStatusLabel[document.goodsStatus]}{document.receiptCount ? ` · ${document.receiptCount} dokumen penerimaan` : ''}</p>
+    </article>)}</div>
+  </section>
+}
+
+function ReturnMetric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg bg-slate-50 p-3"><span className="block text-[11px] font-black uppercase text-slate-500">{label}</span><strong className="mt-1 block text-slate-900">{value}</strong></div>
 }
 
 function WarehouseDiscrepancyPanel({ session, deliveryOrderId, workspace, companyDate, canManage, refreshed }: { session: Session; deliveryOrderId: string; workspace: DiscrepancyWorkspace; companyDate: string; canManage: boolean; refreshed: () => Promise<void> }) {
