@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     if (discrepancyError) throwDiscrepancyDatabaseError(discrepancyError)
     const workspace = data ?? {
       companyId,
-      workspaceVersion: 3,
+      workspaceVersion: 4,
       companyDate: null,
       operationsReady: false,
       data: [],

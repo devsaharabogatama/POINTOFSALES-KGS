@@ -318,7 +318,7 @@ export function DeliveryDocumentView({
         error?: string
       }
       if (!backofficeResponse.ok) throw new Error(friendly(backofficeResult.error))
-      if (backofficeResult.workspaceVersion !== 3) {
+      if (backofficeResult.workspaceVersion !== 4) {
         throw new Error('BACKOFFICE_DELIVERY_WORKSPACE_CONTRACT_MISMATCH')
       }
       const returnResult = await returnResponse.json() as {
