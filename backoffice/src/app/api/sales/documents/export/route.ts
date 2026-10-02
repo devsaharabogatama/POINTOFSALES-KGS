@@ -37,6 +37,7 @@ function coverageText(value: unknown) {
 function workbookResponse(
   payload: JsonMap,
   reconciliation: JsonMap,
+  netSalesLines: JsonMap[],
   invoices: JsonMap[],
   lines: JsonMap[],
   dateFrom: string,
@@ -80,6 +81,27 @@ function workbookResponse(
     number(line.quantity_base), number(line.unit_price), number(line.discount),
     text(line.tax_code), text(line.tax_name), number(line.tax_rate_percent),
     number(line.tax_amount), number(line.line_total),
+  ])
+
+  const netSalesRows: WorkbookCell[][] = [[
+    'Sumber', 'Nomor Dokumen', 'Nomor Invoice', 'Tanggal Invoice', 'Status Invoice',
+    'Kode Customer', 'Customer', 'SKU', 'Produk', 'UOM Dasar',
+    'Qty Invoice', 'Qty Batal', 'Qty Retur', 'Qty Penjualan Bersih',
+    'Qty Keluar Stok', 'Qty Reversal Stok', 'Qty Retur Masuk Stok',
+    'Qty Keluar Bersih Stok', 'Qty Retur Dihancurkan',
+    'Qty Retur Tanpa Barang Fisik', 'Dasar Qty Stok', 'Status Rekonsiliasi',
+  ]]
+  for (const line of netSalesLines) netSalesRows.push([
+    text(line.source_kind), text(line.document_no), text(line.invoice_no),
+    date(line.invoice_date), text(line.invoice_status), text(line.customer_code),
+    text(line.customer_name), text(line.sku), text(line.product_name),
+    text(line.base_uom_name), number(line.invoice_base_qty),
+    number(line.canceled_base_qty), number(line.returned_base_qty),
+    number(line.net_sales_base_qty), number(line.outbound_base_qty),
+    number(line.reversed_base_qty), number(line.restocked_base_qty),
+    number(line.net_stock_out_base_qty), number(line.destroyed_base_qty),
+    number(line.no_physical_base_qty), text(line.stock_basis),
+    text(line.reconciliation_status),
   ])
 
   const requirements = list(reconciliation.roRequirements)
@@ -149,6 +171,9 @@ function workbookResponse(
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([status, count]): WorkbookCell[] => [`Status ${status}`, count]),
     ['Jumlah baris detail', lines.length],
+    ['Detail Penjualan Bersih (baris)', netSalesLines.length],
+    ['Qty Penjualan Bersih (base qty)', netSalesLines.reduce((sum, item) => sum + number(item.net_sales_base_qty), 0)],
+    ['Qty Keluar Bersih Stok (base qty)', netSalesLines.reduce((sum, item) => sum + number(item.net_stock_out_base_qty), 0)],
     ['Kebutuhan RO bersih (baris)', requirements.length],
     ['Kebutuhan terbuka (base qty)', requirements.reduce((sum, item) => sum + number(item.open_base_qty), 0)],
     ['Sudah dicakup RO / Request / PO (base qty)', requirements.reduce((sum, item) => sum + number(item.coverage_base_qty), 0)],
@@ -161,11 +186,14 @@ function workbookResponse(
     ['Aturan coverage', 'PO aktif dihitung lebih dahulu, lalu Stock Request aktif, lalu RO Draft; RO yang sudah menjadi PO tidak dihitung ganda'],
     ['Dasar Pembatalan / Retur', `Tanggal efek antara ${dateFrom} sampai ${dateTo}`],
     ['Aturan retur terhadap Stock', 'Hanya Qty Masuk Stok yang mengurangi kebutuhan; DESTROY dan tanpa barang fisik tidak menambah Stock'],
+    ['Dasar Detail Penjualan Bersih', 'Invoice dalam rentang tanggal, dikurangi seluruh pembatalan dan retur valid yang sudah tercatat sampai file dibuat'],
+    ['Perbedaan penjualan dan stok', 'Retur DESTROY atau tanpa barang fisik mengurangi penjualan bersih tetapi tidak mengurangi Qty Keluar Bersih Stok'],
   ]
 
   const workbook = createXlsx([
     { name: 'Daftar Invoice', widths: [14, 25, 25, 25, 25, 16, 16, 18, 30, 24, 14, 16, 10, 16, 18, 18, 18, 18, 18, 18, 18, 20, 18, 18, 24, 34, 24, 22], rows: invoiceRows },
     { name: 'Detail Produk', widths: [14, 25, 25, 25, 25, 16, 16, 18, 30, 10, 22, 16, 18, 36, 15, 14, 18, 16, 18, 18, 16, 24, 18, 18, 20], rows: detailRows },
+    { name: 'Detail Penjualan Bersih', widths: [14, 25, 25, 16, 18, 18, 30, 18, 36, 16, 16, 14, 14, 22, 18, 20, 22, 24, 24, 28, 24, 22], rows: netSalesRows },
     { name: 'Kebutuhan RO Bersih', widths: [18, 27, 16, 18, 36, 26, 16, 20, 18, 20, 20, 26, 18, 60], rows: requirementRows },
     { name: 'Pembatalan Reversal', widths: [16, 27, 16, 18, 36, 16, 16, 16, 20, 34, 45], rows: cancellationRows },
     { name: 'Retur Customer', widths: [18, 27, 25, 25, 16, 18, 36, 16, 16, 18, 20, 22, 22, 26], rows: returnRows },
@@ -203,6 +231,7 @@ export async function handleSalesDocumentExport(request: Request) {
     return workbookResponse(
       payload,
       reconciliation,
+      list(combined.netSalesLines),
       list(payload.invoices),
       list(payload.lines),
       dateFrom,
