@@ -27,10 +27,48 @@ function quantity(value: unknown) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 6 }).format(Number(value) || 0)
 }
 
-function dateTime(value: unknown) {
-  if (!value) return '-'
-  const parsed = new Date(String(value))
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('id-ID')
+function documentDate(value: unknown, timeZone?: string) {
+  if (!value) return { display: '-', filePart: 'TANGGAL-TIDAK-ADA' }
+  const raw = String(value)
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (dateOnly) {
+    return {
+      display: `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`,
+      filePart: `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`,
+    }
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) {
+    return { display: raw, filePart: safeFilePart(raw, 'TANGGAL-TIDAK-ADA') }
+  }
+  const options: Intl.DateTimeFormatOptions = {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone,
+  }
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', options)
+      .formatToParts(parsed)
+      .reduce<Record<string, string>>((result, part) => {
+        if (part.type !== 'literal') result[part.type] = part.value
+        return result
+      }, {})
+    return {
+      display: `${parts.day}/${parts.month}/${parts.year}`,
+      filePart: `${parts.year}-${parts.month}-${parts.day}`,
+    }
+  } catch {
+    delete options.timeZone
+    const parts = new Intl.DateTimeFormat('en-GB', options)
+      .formatToParts(parsed)
+      .reduce<Record<string, string>>((result, part) => {
+        if (part.type !== 'literal') result[part.type] = part.value
+        return result
+      }, {})
+    return {
+      display: `${parts.day}/${parts.month}/${parts.year}`,
+      filePart: `${parts.year}-${parts.month}-${parts.day}`,
+    }
+  }
 }
 
 function invoiceDate(document: JsonMap, snapshot: JsonMap) {
@@ -77,6 +115,12 @@ function documentFileName(customerName: unknown, documentNo: unknown, type: 'INV
   return `${safeFilePart(customerName, 'PELANGGAN-UMUM')}_${safeFilePart(documentNo, type)}.pdf`
 }
 
+function deliveryDocumentFileName(
+  customerName: unknown, deliveryDate: string, documentNo: unknown,
+) {
+  return `${safeFilePart(customerName, 'PELANGGAN-UMUM')}_${deliveryDate}_${safeFilePart(documentNo, 'SJ')}.pdf`
+}
+
 type PdfDocument = import('jspdf').jsPDF
 
 function invoiceCanceled(document: JsonMap) {
@@ -100,15 +144,22 @@ function pdfMoney(value: unknown) {
     .format(Number(value) || 0)
 }
 
-function drawPdfHeader(doc: PdfDocument, title: string, number: unknown) {
+function drawPdfHeader(
+  doc: PdfDocument, title: string, number: unknown, detail?: string,
+) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
   doc.text(title, 196, 17, { align: 'right' })
   doc.setFontSize(10)
   doc.text(String(number ?? '-'), 196, 24, { align: 'right' })
+  if (detail) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.text(detail, 196, 29, { align: 'right' })
+  }
   doc.setDrawColor(30, 41, 59)
   doc.setLineWidth(0.7)
-  doc.line(14, 29, 196, 29)
+  doc.line(14, detail ? 33 : 29, 196, detail ? 33 : 29)
 }
 
 async function drawPdfLogo(doc: PdfDocument, logoUrl: unknown, enabled: boolean) {
@@ -334,23 +385,27 @@ async function buildSalesDeliveryPdf(
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
   const snapshot = map(document.snapshot)
   const branding = map(snapshot.branding)
+  const company = map(snapshot.company)
   const store = map(snapshot.store)
   const recipient = map(snapshot.recipient)
   const deliveryNo = document.deliveryNo ?? 'SJ'
   const lines = rows(document.lines)
+  const deliveryDate = documentDate(snapshot.scheduledAt,
+    typeof company.timezone === 'string' ? company.timezone : undefined)
   const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
   const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
-  drawPdfHeader(doc, 'SURAT JALAN', deliveryNo)
+  drawPdfHeader(doc, 'SURAT JALAN', deliveryNo,
+    `Tanggal Kirim: ${deliveryDate.display}`)
   await drawPdfLogo(doc, branding.logoPublicUrl, effectiveShowLogo)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text(`Customer: ${String(customerFileName ?? recipient.name ?? 'Pelanggan Umum')}`, 14, 38)
-  doc.text(`Penerima: ${String(recipient.name ?? '-')}`, 14, 44)
-  doc.text(`Telepon: ${displayText(recipient.phone)}`, 14, 50)
+  doc.text(`Customer: ${String(customerFileName ?? recipient.name ?? 'Pelanggan Umum')}`, 14, 42)
+  doc.text(`Penerima: ${String(recipient.name ?? '-')}`, 14, 48)
+  doc.text(`Telepon: ${displayText(recipient.phone)}`, 14, 54)
   const address = doc.splitTextToSize(`Alamat: ${displayText(recipient.address)}`, 180) as string[]
-  doc.text(address, 14, 56)
-  doc.text(`Toko: ${String(store.name ?? '-')}`, 14, 56 + address.length * 4.5)
-  const tableY = 67 + address.length * 4.5
+  doc.text(address, 14, 60)
+  doc.text(`Toko: ${String(store.name ?? '-')}`, 14, 60 + address.length * 4.5)
+  const tableY = 71 + address.length * 4.5
   const columns: PdfColumn[] = [
     { text: 'PRODUK', x: 16 }, { text: 'SKU', x: 108 },
     { text: 'UOM', x: 152 }, { text: 'QTY', x: 194, align: 'right' },
@@ -376,7 +431,8 @@ async function buildSalesDeliveryPdf(
     14 + (182 / signatureLabels.length) * 0.5)
   return {
     doc,
-    fileName: documentFileName(customerFileName ?? recipient.name, deliveryNo, 'SJ'),
+    fileName: deliveryDocumentFileName(customerFileName ?? recipient.name,
+      deliveryDate.filePart, deliveryNo),
   }
 }
 
@@ -469,10 +525,13 @@ export function printSalesDeliveryDocument(
 ) {
   const snapshot = map(document.snapshot)
   const branding = map(snapshot.branding)
+  const company = map(snapshot.company)
   const store = map(snapshot.store)
   const recipient = map(snapshot.recipient)
   const deliveryNo = document.deliveryNo ?? 'Surat Jalan'
   const lines = rows(document.lines)
+  const deliveryDate = documentDate(snapshot.scheduledAt,
+    typeof company.timezone === 'string' ? company.timezone : undefined)
   const effectiveShowLogo = snapshotFlag(branding, 'showLogoOnDocuments', showLogo)
   const effectiveShowStamp = snapshotFlag(branding, 'showStampOnDocuments', showStamp)
   const logo = effectiveShowLogo && branding.logoPublicUrl
@@ -482,5 +541,5 @@ export function printSalesDeliveryDocument(
   const lineHtml = lines.map((line, index) => `<tr><td>${index + 1}</td><td><b>${escapeHtml(line.productName)}</b><div class="muted">${escapeHtml(line.sku)}</div></td><td>${escapeHtml(line.uomName)}</td><td class="num">${quantity(line.quantity)}</td></tr>`).join('')
   const signatureHtml = deliverySignatureLabels(snapshot, 'WAREHOUSE')
     .map((label, index) => `<div class="signature">${escapeHtml(label)}${index === 0 ? stamp : ''}</div>`).join('')
-  openPrint(String(deliveryNo), `<header><div>${logo}<div>${escapeHtml(store.name)}</div></div><div class="right"><h1>SURAT JALAN</h1><b>${escapeHtml(deliveryNo)}</b><div>${dateTime(snapshot.scheduledAt)}</div></div></header><section class="identity"><div class="box"><b>Penerima</b>${escapeHtml(recipient.name)}<br>${escapeHtml(displayText(recipient.phone))}</div><div class="box"><b>Alamat pengiriman</b>${escapeHtml(displayText(recipient.address))}<br>${escapeHtml(snapshot.notes)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="signatures" style="grid-template-columns:repeat(${deliverySignatureLabels(snapshot, 'WAREHOUSE').length},1fr)">${signatureHtml}</section>`)
+  openPrint(String(deliveryNo), `<header><div>${logo}<div>${escapeHtml(store.name)}</div></div><div class="right"><h1>SURAT JALAN</h1><b>${escapeHtml(deliveryNo)}</b><div>Tanggal Kirim: ${escapeHtml(deliveryDate.display)}</div></div></header><section class="identity"><div class="box"><b>Penerima</b>${escapeHtml(recipient.name)}<br>${escapeHtml(displayText(recipient.phone))}</div><div class="box"><b>Alamat pengiriman</b>${escapeHtml(displayText(recipient.address))}<br>${escapeHtml(snapshot.notes)}</div></section><table><thead><tr><th>No</th><th>Produk</th><th>UOM</th><th class="num">Qty</th></tr></thead><tbody>${lineHtml}</tbody></table><section class="signatures" style="grid-template-columns:repeat(${deliverySignatureLabels(snapshot, 'WAREHOUSE').length},1fr)">${signatureHtml}</section>`)
 }
