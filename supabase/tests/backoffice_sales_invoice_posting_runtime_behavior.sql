@@ -2,20 +2,30 @@
 BEGIN;
 DO $test$
 DECLARE
-  v_actor uuid;v_company uuid;v_store uuid;v_warehouse uuid;v_customer uuid;
+  v_actor uuid;v_finance_actor uuid:=gen_random_uuid();v_company uuid;v_store uuid;
+  v_warehouse uuid;v_customer uuid;
   v_product_uom uuid;v_product uuid;v_factor numeric;v_tax_account uuid;
   v_tax_rule uuid:=gen_random_uuid();v_suffix text:=substr(replace(gen_random_uuid()::text,'-',''),1,8);
   v_created jsonb;v_confirmed jsonb;v_dp jsonb;v_dp_posted jsonb;
   v_regular jsonb;v_adjusted jsonb;v_regular_posted jsonb;v_retry jsonb;
+  v_permission jsonb;
   v_order uuid;v_order_line uuid;v_dp_id uuid;v_regular_id uuid;
   v_delivery uuid;v_delivery_line uuid;v_delivery_version bigint;v_receipt jsonb;
   v_original_negative boolean;v_period_date date;v_blocked boolean:=false;
   v_dp_total numeric;v_manual_amount numeric;v_event_before bigint;v_journal_before bigint;
   v_sales_before bigint;v_journal public.finance_journals%rowtype;
+  v_invoice_event public.financial_events%rowtype;
+  v_invoice_row public.backoffice_sales_invoices%rowtype;
+  v_revenue_account uuid;v_discount_account uuid;
+  v_revenue_credit numeric(24,4);v_discount_debit numeric(24,4);
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
     WHERE version='20260909161000') THEN
     RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Invoice posting runtime required';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
+    WHERE version='20260925100000') THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Gross Sales Discount runtime required';
   END IF;
   SELECT profile.id INTO v_actor FROM public.profiles profile
   JOIN auth.users auth_user ON auth_user.id=profile.id
@@ -44,6 +54,18 @@ BEGIN
   IF v_company IS NULL THEN
     RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: canonical Company with current open period required';
   END IF;
+  INSERT INTO auth.users(id,email,instance_id,raw_app_meta_data,raw_user_meta_data,
+    is_super_admin,role,aud,email_confirmed_at)
+  VALUES(v_finance_actor,'gross-sales-finance-'||right(v_finance_actor::text,8)||
+    '@example.invalid','00000000-0000-0000-0000-000000000000',
+    '{"provider":"email","providers":["email"]}',
+    '{"name":"Gross Sales Finance Test"}',false,'authenticated','authenticated',now());
+  INSERT INTO public.profiles(id,email,name,role)
+  VALUES(v_finance_actor,'gross-sales-finance-'||right(v_finance_actor::text,8)||
+    '@example.invalid','Gross Sales Finance Test','cashier'::public.user_role)
+  ON CONFLICT(id) DO UPDATE SET email=excluded.email,name=excluded.name;
+  INSERT INTO public.company_memberships(company_id,user_id,role_code,status,is_default_company)
+  VALUES(v_company,v_finance_actor,'FINANCE','ACTIVE',false);
   SELECT current_date INTO v_period_date;
   PERFORM set_config('request.jwt.claim.sub',v_actor::text,true);
   INSERT INTO public.user_active_company_contexts(user_id,company_id)
@@ -133,7 +155,7 @@ BEGIN
     jsonb_build_object('storeId',v_store,'warehouseId',v_warehouse,'customerId',v_customer,
       'selectedPricelistId',NULL,'orderDate',v_period_date,
       'plannedDeliveryDate',v_period_date,'isTempo',false,'currencyCode','IDR',
-      'globalDiscount',0,'roundingDirection','NONE','roundingIncrement',100,
+      'globalDiscount',10000,'roundingDirection','NONE','roundingIncrement',100,
       'lines',jsonb_build_array(jsonb_build_object('productUomId',v_product_uom,
         'quantity',2,'overrideUnitPrice',100000))));
   v_order:=(v_created->'data'->>'id')::uuid;
@@ -173,13 +195,34 @@ BEGIN
     jsonb_build_object('invoiceType','DOWN_PAYMENT','invoiceDate',v_period_date,
       'downPaymentMode','PERCENT','downPaymentInput',40));
   v_dp_id:=(v_dp->'data'->>'id')::uuid;
+  IF NOT EXISTS(SELECT 1 FROM public.backoffice_sales_invoice_receivable_schedules schedule
+      WHERE schedule.company_id=v_company AND schedule.invoice_id=v_dp_id)
+    OR EXISTS(SELECT 1 FROM public.backoffice_sales_invoice_receivable_schedules schedule
+      WHERE schedule.company_id=v_company AND schedule.invoice_id=v_dp_id
+        AND schedule.original_amount_due IS DISTINCT FROM schedule.amount_due) THEN
+    RAISE EXCEPTION 'TEST_FAILED: fresh DP schedule original amount bridge invalid';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub',v_finance_actor::text,true);
+  PERFORM set_config('request.jwt.claim.role','authenticated',true);
+  PERFORM set_config('request.jwt.claims',jsonb_build_object(
+    'sub',v_finance_actor,'role','authenticated')::text,true);
+  PERFORM public.set_active_company_context(v_company,'GROSS_SALES_DISCOUNT_TEST');
+  IF auth.uid() IS DISTINCT FROM v_finance_actor THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Finance JWT identity mismatch';
+  END IF;
   INSERT INTO public.user_company_permission_overrides AS current_override(company_id,user_id,
     permission_key,restriction_preset,created_by,updated_by)
-  VALUES(v_company,v_actor,'finance.journals_reports','TANPA_AKSES',v_actor,v_actor)
+  VALUES(v_company,v_finance_actor,'finance.journals_reports','TANPA_AKSES',v_actor,v_actor)
   ON CONFLICT(company_id,user_id,permission_key) DO UPDATE
     SET restriction_preset='TANPA_AKSES',updated_by=excluded.updated_by,
       master_version=current_override.master_version+1,
       updated_at=clock_timestamp();
+  v_permission:=private.acp_resolve_permission(
+    v_company,v_finance_actor,'finance.journals_reports');
+  IF v_permission->>'roleCode'<>'FINANCE'
+    OR COALESCE((v_permission->'effectiveCapabilities')?'POST',false) THEN
+    RAISE EXCEPTION 'TEST_FAILED: Finance restriction fixture invalid %',v_permission;
+  END IF;
   v_blocked:=false;
   BEGIN
     PERFORM public.post_backoffice_sales_invoice(v_dp_id,
@@ -189,8 +232,13 @@ BEGIN
     RAISE EXCEPTION 'TEST_FAILED: custom Finance denial did not block Invoice posting';
   END IF;
   DELETE FROM public.user_company_permission_overrides override_state
-  WHERE override_state.company_id=v_company AND override_state.user_id=v_actor
+  WHERE override_state.company_id=v_company AND override_state.user_id=v_finance_actor
     AND override_state.permission_key='finance.journals_reports';
+  v_permission:=private.acp_resolve_permission(
+    v_company,v_finance_actor,'finance.journals_reports');
+  IF NOT COALESCE((v_permission->'effectiveCapabilities')?'POST',false) THEN
+    RAISE EXCEPTION 'TEST_FAILED: Finance baseline POST capability missing %',v_permission;
+  END IF;
   v_blocked:=false;
   BEGIN
     PERFORM public.post_backoffice_sales_invoice(v_dp_id,
@@ -204,14 +252,31 @@ BEGIN
     OR v_dp_posted->'finance'->>'status'<>'POSTED' THEN
     RAISE EXCEPTION 'TEST_FAILED: DP Invoice was not posted canonically';
   END IF;
+  PERFORM set_config('request.jwt.claim.sub',v_actor::text,true);
+  PERFORM set_config('request.jwt.claim.role','authenticated',true);
+  PERFORM set_config('request.jwt.claims',jsonb_build_object(
+    'sub',v_actor,'role','authenticated')::text,true);
+  INSERT INTO public.user_active_company_contexts(user_id,company_id)
+  VALUES(v_actor,v_company) ON CONFLICT(user_id) DO UPDATE
+    SET company_id=excluded.company_id,selected_at=clock_timestamp(),updated_at=clock_timestamp();
+  IF auth.uid() IS DISTINCT FROM v_actor THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Super Admin JWT identity restore mismatch';
+  END IF;
   SELECT dp.grand_total INTO v_dp_total FROM public.backoffice_sales_invoices dp
   WHERE dp.company_id=v_company AND dp.id=v_dp_id;
 
   v_regular:=public.save_backoffice_sales_invoice_draft(NULL,NULL,gen_random_uuid(),v_order,
     jsonb_build_object('invoiceType','REGULAR','invoiceDate',v_period_date,
       'lines',jsonb_build_array(jsonb_build_object('salesOrderLineId',v_order_line,
-        'quantityUom',2,'unitPrice',100000))));
+        'quantityUom',2,'unitPrice',100000,'discountAmount',10000))));
   v_regular_id:=(v_regular->'data'->>'id')::uuid;
+  IF NOT EXISTS(SELECT 1 FROM public.backoffice_sales_invoice_receivable_schedules schedule
+      WHERE schedule.company_id=v_company AND schedule.invoice_id=v_regular_id)
+    OR EXISTS(SELECT 1 FROM public.backoffice_sales_invoice_receivable_schedules schedule
+      WHERE schedule.company_id=v_company AND schedule.invoice_id=v_regular_id
+        AND schedule.original_amount_due IS DISTINCT FROM schedule.amount_due) THEN
+    RAISE EXCEPTION 'TEST_FAILED: fresh Regular schedule original amount bridge invalid';
+  END IF;
   IF (v_regular->'data'->>'downPaymentDeductionTotal')::numeric<>v_dp_total
     OR jsonb_array_length(v_regular->'data'->'downPaymentApplications')<>1 THEN
     RAISE EXCEPTION 'TEST_FAILED: posted DP was not auto-filled on Regular Draft';
@@ -255,7 +320,26 @@ BEGIN
   SELECT journal.* INTO v_journal FROM public.finance_journals journal
   WHERE journal.company_id=v_company
     AND journal.id=(v_regular_posted->'finance'->>'journalId')::uuid;
+  SELECT invoice.* INTO STRICT v_invoice_row FROM public.backoffice_sales_invoices invoice
+  WHERE invoice.company_id=v_company AND invoice.id=v_regular_id;
+  SELECT event.* INTO STRICT v_invoice_event FROM public.financial_events event
+  WHERE event.company_id=v_company AND event.id=v_invoice_row.financial_event_id;
+  v_revenue_account:=private.resolve_financial_event_account(
+    v_invoice_event,'SALES_REVENUE');
+  v_discount_account:=private.resolve_financial_event_account(
+    v_invoice_event,'SALES_DISCOUNT');
+  SELECT round(COALESCE(sum(line.credit-line.debit),0),4)
+    INTO v_revenue_credit FROM public.finance_journal_lines line
+  WHERE line.company_id=v_company AND line.journal_id=v_journal.id
+    AND line.account_id=v_revenue_account;
+  SELECT round(COALESCE(sum(line.debit-line.credit),0),4)
+    INTO v_discount_debit FROM public.finance_journal_lines line
+  WHERE line.company_id=v_company AND line.journal_id=v_journal.id
+    AND line.account_id=v_discount_account;
   IF v_journal.status<>'POSTED' OR round(v_journal.total_debit,4)<>round(v_journal.total_credit,4)
+    OR v_invoice_row.discount_total<=0
+    OR round(v_revenue_credit,4)<>round(v_invoice_row.charge_total,4)
+    OR round(v_discount_debit,4)<>round(v_invoice_row.discount_total,4)
     OR NOT EXISTS(SELECT 1 FROM public.finance_journal_lines line
       WHERE line.company_id=v_company AND line.journal_id=v_journal.id
         AND line.account_id=v_tax_account AND line.debit>0)
@@ -289,10 +373,12 @@ $test$;
 ROLLBACK;
 SELECT 'backoffice_sales_invoice_posting_runtime_behavior' check_name,'PASS' status,
   0::bigint violation_rows,jsonb_build_object('tested',ARRAY[
-    'canonical taxed SO preparation','stale posting denial','DP Invoice posting',
+    'canonical taxed SO preparation','fresh Draft schedule original amount bridge',
+    'stale posting denial','DP Invoice posting',
     'local strict Finance role and custom override denial',
     'shared canonical Invoice numbering','auto oldest available DP application',
     'editable DP application','DP basis and per-account tax lineage',
-    'Regular quantity hold finalization','balanced AR Advance Revenue and tax journal',
+    'Regular quantity hold finalization','gross Regular Invoice Revenue and Sales Discount',
+    'balanced AR Advance Revenue and tax journal',
     'explicit DP tax debit and current Invoice tax credit','exact posting retry',
     'POS Sales unchanged','all fixture writes rolled back']) details;
