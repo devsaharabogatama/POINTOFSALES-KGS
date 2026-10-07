@@ -1,5 +1,20 @@
 # Unified Posted Backoffice Invoice Revision Rollout
 
+## 2026-10-07 client effective-template forward fix
+
+The database effective readers were correct, but the Backoffice Print/PDF
+payload still consumed the immutable original Invoice plus the legacy
+price-correction context. The client now uses the unified revision context for
+every mutable field visible on the Invoice template: billing customer, Invoice
+date, derived due date, unit price, line discount, subtotal, tax, and grand
+total. The PDF filename follows the effective customer as well. Legacy
+price-only corrections remain a fallback and are not double-counted.
+
+This is a client-only forward fix. It does not mutate the source Invoice, SO,
+DO, Product, quantity, UOM, Stock, FIFO, COGS, payment, Return, Event, or
+Journal. Local scoped ESLint and the full production build pass. Deployment,
+authenticated Print/PDF comparison, and UAT remain pending.
+
 ## Scope and status
 
 This package enables one Posted Regular Backoffice Invoice correction form for
