@@ -11,11 +11,17 @@ import {
   Plus,
   RefreshCcw,
   Route,
+  Search,
   ShieldCheck,
   X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
-import type { FinanceMappingCompletenessRow } from '@/lib/finance-mapping-completeness'
+import {
+  filterFinanceMappingCompleteness,
+  isFinanceMappingReady,
+  type FinanceMappingCompletenessRow,
+  type FinanceMappingCoverageFilter,
+} from '@/lib/finance-mapping-completeness'
 
 type AccountFunction = {
   function_key: string
@@ -86,6 +92,7 @@ type Payload = {
   error?: string
 }
 type Tab = 'coverage' | 'categories' | 'rules' | 'accounts' | 'fallbacks'
+type RuleEditorTarget = { categoryId: string; accountFunctionKey: string }
 
 const accountTypes = Object.keys({
   ASSET: true, LIABILITY: true, EQUITY: true, REVENUE: true,
@@ -195,8 +202,11 @@ export function FinanceMasterView({
   const [error, setError] = useState('')
   const [categoryEditor, setCategoryEditor] = useState<Category | null | undefined>()
   const [showRuleEditor, setShowRuleEditor] = useState(false)
+  const [ruleEditorTarget, setRuleEditorTarget] = useState<RuleEditorTarget | null>(null)
   const [accountEditor, setAccountEditor] = useState<Account | null | undefined>()
   const [showFallbackEditor, setShowFallbackEditor] = useState(false)
+  const [coverageFilter, setCoverageFilter] = useState<FinanceMappingCoverageFilter>('UNRESOLVED')
+  const [coverageQuery, setCoverageQuery] = useState('')
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('')
@@ -243,11 +253,20 @@ export function FinanceMasterView({
   )
   const mappingSummary = useMemo(() => {
     const rows = data.mappingCompleteness
-    const ready = rows.filter((item) => item.resolution === 'DIRECT_RULE' || item.resolution === 'COMPANY_FALLBACK').length
-    const blocking = rows.filter((item) => item.requirement !== 'OPTIONAL' && item.resolution !== 'DIRECT_RULE' && item.resolution !== 'COMPANY_FALLBACK').length
-    const optionalOpen = rows.filter((item) => item.requirement === 'OPTIONAL' && item.resolution !== 'DIRECT_RULE' && item.resolution !== 'COMPANY_FALLBACK').length
-    return { total: rows.length, ready, blocking, optionalOpen }
+    const ready = rows.filter(isFinanceMappingReady).length
+    const blocking = rows.filter((item) => item.requirement !== 'OPTIONAL' && !isFinanceMappingReady(item)).length
+    const conditionalOpen = rows.filter((item) => item.requirement === 'CONDITIONAL' && !isFinanceMappingReady(item)).length
+    const optionalOpen = rows.filter((item) => item.requirement === 'OPTIONAL' && !isFinanceMappingReady(item)).length
+    return { total: rows.length, ready, blocking, conditionalOpen, optionalOpen }
   }, [data.mappingCompleteness])
+  const visibleMappings = useMemo(
+    () => filterFinanceMappingCompleteness(data.mappingCompleteness, coverageFilter, coverageQuery),
+    [coverageFilter, coverageQuery, data.mappingCompleteness],
+  )
+  const openRuleEditor = useCallback((target: RuleEditorTarget | null = null) => {
+    setRuleEditorTarget(target)
+    setShowRuleEditor(true)
+  }, [])
 
   return <>
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -269,26 +288,48 @@ export function FinanceMasterView({
       ['fallbacks','Fallback Company',ShieldCheck],
     ] as const).map(([id,label,Icon]) => <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold ${tab === id ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}><Icon className="h-4 w-4" />{label}</button>)}</div>
 
-    {tab === 'coverage' && <Section title="Kelengkapan konfigurasi mapping" description="Menilai direct rule dan fallback Company yang efektif saat ini. Fungsi sesuai kondisi tetap harus disiapkan sebelum skenario tersebut terjadi.">
-      <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-4">
+    {tab === 'coverage' && <Section title="Mapping yang perlu dilengkapi" description="Daftar kerja Finance untuk direct rule dan fallback Company yang efektif saat ini. Tidak ada akun yang dipilih otomatis oleh sistem.">
+      <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 xl:grid-cols-5">
         <Summary label="Total komponen" value={mappingSummary.total} tone="slate" />
         <Summary label="Siap" value={mappingSummary.ready} tone="emerald" />
         <Summary label="Perlu diperbaiki" value={mappingSummary.blocking} tone={mappingSummary.blocking ? 'rose' : 'emerald'} />
+        <Summary label="Conditional kosong" value={mappingSummary.conditionalOpen} tone={mappingSummary.conditionalOpen ? 'rose' : 'emerald'} />
         <Summary label="Opsional terbuka" value={mappingSummary.optionalOpen} tone="amber" />
       </div>
-      <Table headers={['Proses / kategori','Fungsi akun','Kebutuhan','Resolusi','Akun mapping']}>
-        {data.mappingCompleteness.map((item) => {
-          const ready = item.resolution === 'DIRECT_RULE' || item.resolution === 'COMPANY_FALLBACK'
+      <div className="border-b border-slate-100 p-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2" aria-label="Filter kelengkapan mapping">
+            {([
+              ['UNRESOLVED', 'Belum siap'],
+              ['CONDITIONAL', 'Sesuai kondisi'],
+              ['REQUIRED', 'Wajib'],
+              ['OPTIONAL', 'Opsional'],
+              ['ALL', 'Semua'],
+            ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setCoverageFilter(value)} className={`rounded-xl px-3 py-2 text-xs font-bold ${coverageFilter === value ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}>{label}</button>)}
+          </div>
+          <label className="relative block min-w-0 xl:w-80">
+            <span className="sr-only">Cari proses, kategori, fungsi, atau akun</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={coverageQuery} onChange={(event) => setCoverageQuery(event.target.value)} className="input pl-10" placeholder="Cari proses, fungsi, atau akun" />
+          </label>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-slate-500"><b>{visibleMappings.length} komponen ditampilkan.</b> Mapping baru mengikuti tanggal efektif dan tidak mengubah jurnal yang sudah diposting. Transaksi yang belum berhasil diposting harus diselesaikan melalui antrean Finance setelah mapping siap.</p>
+      </div>
+      <Table headers={['Proses / kategori','Fungsi akun','Kebutuhan','Resolusi','Akun mapping',...(canManage ? ['Tindakan'] : [])]}>
+        {visibleMappings.map((item) => {
+          const ready = isFinanceMappingReady(item)
           return <tr key={`${item.category_id}:${item.account_function_key}`} className="border-t border-slate-100">
             <td className="px-5 py-4"><p className="font-bold">{item.event_name}</p><p className="mt-1 text-xs text-slate-400">{item.category_name} · {groupLabels[item.event_group] ?? item.event_group}</p></td>
             <td className="px-5 py-4 font-semibold">{item.function_name}</td>
             <td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">{requirementLabels[item.requirement]}</span></td>
             <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${ready ? 'bg-emerald-50 text-emerald-700' : item.requirement === 'OPTIONAL' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{resolutionLabels[item.resolution]}</span></td>
             <td className="px-5 py-4"><p className="font-semibold">{item.account_name ?? '-'}</p><p className="mt-1 text-xs text-slate-400">{item.account_code ?? ''}</p></td>
+            {canManage && <td className="px-5 py-4 text-right">{item.resolution === 'MISSING' ? <button type="button" onClick={() => openRuleEditor({ categoryId: item.category_id, accountFunctionKey: item.account_function_key })} className="whitespace-nowrap rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-white">Isi mapping</button> : !ready ? <button type="button" onClick={() => setTab('rules')} className="whitespace-nowrap rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Periksa versi</button> : <span className="text-xs text-slate-400">Siap</span>}</td>}
           </tr>
         })}
       </Table>
       {!loading && !data.mappingCompleteness.length && <Empty text="Belum ada kategori aktif yang dapat diperiksa." />}
+      {!loading && data.mappingCompleteness.length > 0 && !visibleMappings.length && <Empty text="Tidak ada mapping yang cocok dengan filter ini." />}
     </Section>}
 
     {tab === 'categories' && <Section title="Kategori transaksi" description="Kategori bawaan mencakup proses wajib aplikasi. Tambahkan kategori khusus hanya bila bisnis perlu rincian, misalnya Listrik atau Bensin." action={canManage && <button onClick={() => setCategoryEditor(null)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Tambah kategori khusus</button>}>
@@ -296,7 +337,7 @@ export function FinanceMasterView({
       {!loading && !data.categories.length && <Empty text="Belum ada kategori transaksi. Buat kategori sesuai kebutuhan bisnis Company." />}
     </Section>}
 
-    {tab === 'rules' && <Section title="Mapping kategori ke akun" description="Setiap perubahan aktif membuat versi baru dan menutup periode versi sebelumnya." action={canManage && <button disabled={!data.categories.some((item) => item.is_active)} onClick={() => setShowRuleEditor(true)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" /> Tambah mapping</button>}>
+    {tab === 'rules' && <Section title="Mapping kategori ke akun" description="Setiap perubahan aktif membuat versi baru dan menutup periode versi sebelumnya." action={canManage && <button disabled={!data.categories.some((item) => item.is_active)} onClick={() => openRuleEditor()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" /> Tambah mapping</button>}>
       <Table headers={['Kategori','Fungsi akun','Akun tujuan','Periode','Versi','Status']}>{data.rules.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-5 py-4 font-bold">{categoryById.get(item.transaction_category_id)?.category_name ?? '-'}</td><td className="px-5 py-4">{functionByKey.get(item.account_function_key)?.function_name ?? 'Fungsi tidak tersedia'}</td><td className="px-5 py-4"><p className="font-semibold">{accountById.get(item.account_id)?.account_name ?? '-'}</p><p className="mt-1 text-xs text-slate-400">{accountById.get(item.account_id)?.account_code}</p></td><td className="px-5 py-4 text-xs text-slate-500">{new Date(item.effective_from).toLocaleDateString('id-ID')} — {item.effective_to ? new Date(item.effective_to).toLocaleDateString('id-ID') : 'seterusnya'}</td><td className="px-5 py-4">v{item.rule_version}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${item.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{item.status === 'ACTIVE' ? 'Aktif' : 'Draft'}</span></td></tr>)}</Table>
       {!loading && !data.rules.length && <Empty text="Belum ada mapping. Journal tetap tidak akan diposting sampai resolver Finance diaktifkan pada gate terpisah." />}
     </Section>}
@@ -313,7 +354,7 @@ export function FinanceMasterView({
     </Section>}
 
     {categoryEditor !== undefined && <CategoryEditor session={session} record={categoryEditor ?? undefined} events={data.systemEvents} close={() => setCategoryEditor(undefined)} complete={async () => { setCategoryEditor(undefined); await refresh(); notify('Kategori transaksi berhasil disimpan.') }} />}
-    {showRuleEditor && <RuleEditor session={session} categories={data.categories} events={data.systemEvents} functions={data.accountFunctions} accounts={data.accounts} close={() => setShowRuleEditor(false)} complete={async () => { setShowRuleEditor(false); await refresh(); notify('Versi mapping akun berhasil disimpan.') }} />}
+    {showRuleEditor && <RuleEditor session={session} categories={data.categories} events={data.systemEvents} functions={data.accountFunctions} accounts={data.accounts} initialTarget={ruleEditorTarget} close={() => { setShowRuleEditor(false); setRuleEditorTarget(null) }} complete={async () => { setShowRuleEditor(false); setRuleEditorTarget(null); await refresh(); notify('Versi mapping akun berhasil disimpan.') }} />}
     {accountEditor !== undefined && <AccountEditor session={session} record={accountEditor ?? undefined} functions={data.accountFunctions} accounts={data.accounts} close={() => setAccountEditor(undefined)} complete={async () => { setAccountEditor(undefined); await refresh(); notify('Chart of Account berhasil disimpan.') }} />}
     {showFallbackEditor && <FallbackEditor session={session} functions={data.accountFunctions} accounts={data.accounts} close={() => setShowFallbackEditor(false)} complete={async () => { setShowFallbackEditor(false); await refresh(); notify('Versi fallback Company berhasil disimpan.') }} />}
   </>
@@ -327,10 +368,13 @@ function CategoryEditor({ session, record, events, close, complete }: { session:
   return <Modal title={record ? 'Edit Kategori Transaksi' : 'Tambah Kategori Khusus'} close={close}><form onSubmit={submit} className="space-y-5">{record?.is_system_default && <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800"><b>Kategori bawaan wajib.</b> Nama dan penjelasan boleh disesuaikan. Jenis transaksi, identitas sistem, dan status aktif dikunci agar alur aplikasi tetap lengkap.</div>}<div className="grid gap-4 sm:grid-cols-2"><Field label="Nama yang dilihat pengguna"><input required className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Contoh: Listrik" /><span className="mt-1 block text-xs text-slate-400">Nama harus unik. Identitas internal dibuat otomatis.</span></Field><Field label="Jenis transaksi sistem"><select disabled={record?.is_system_default} required className="input disabled:bg-slate-100" value={form.systemKey} onChange={(event) => setForm({ ...form, systemKey: event.target.value })}>{events.map((item) => <option key={item.system_key} value={item.system_key}>{item.event_name} — {groupLabels[item.event_group] ?? item.event_group}</option>)}</select></Field><Field label="Keterangan untuk membantu user"><input className="input" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field></div>{record?.is_system_default ? <div className="rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-600">Status: Aktif wajib</div> : <Checkbox checked={form.isActive} onChange={(isActive) => setForm({ ...form, isActive })} label="Kategori aktif dan dapat dipilih" />}{error && <ErrorBox text={error} />}<Actions saving={saving} close={close} label="Simpan Kategori" /></form></Modal>
 }
 
-function RuleEditor({ session, categories, events, functions, accounts, close, complete }: { session: Session; categories: Category[]; events: SystemEvent[]; functions: AccountFunction[]; accounts: Account[]; close: () => void; complete: () => Promise<void> }) {
+function RuleEditor({ session, categories, events, functions, accounts, initialTarget, close, complete }: { session: Session; categories: Category[]; events: SystemEvent[]; functions: AccountFunction[]; accounts: Account[]; initialTarget: RuleEditorTarget | null; close: () => void; complete: () => Promise<void> }) {
   useEscapeClose(close)
   const activeCategories = categories.filter((item) => item.is_active)
-  const [form, setForm] = useState({ categoryId: activeCategories[0]?.id ?? '', accountFunctionKey: '', accountId: '', effectiveFrom: dateInput(new Date().toISOString()), effectiveTo: '', status: 'ACTIVE' })
+  const initialCategoryId = initialTarget && activeCategories.some((item) => item.id === initialTarget.categoryId)
+    ? initialTarget.categoryId
+    : activeCategories[0]?.id ?? ''
+  const [form, setForm] = useState({ categoryId: initialCategoryId, accountFunctionKey: initialTarget?.accountFunctionKey ?? '', accountId: '', effectiveFrom: dateInput(new Date().toISOString()), effectiveTo: '', status: 'ACTIVE' })
   const [saving, setSaving] = useState(false); const [error, setError] = useState('')
   const category = categories.find((item) => item.id === form.categoryId)
   const systemEvent = events.find((item) => item.system_key === category?.system_key)
@@ -341,7 +385,7 @@ function RuleEditor({ session, categories, events, functions, accounts, close, c
   function changeCategory(categoryId: string) { setForm({ ...form, categoryId, accountFunctionKey: '', accountId: '' }) }
   function changeFunction(accountFunctionKey: string) { setForm({ ...form, accountFunctionKey, accountId: '' }) }
   async function submit(event: React.FormEvent) { event.preventDefault(); setSaving(true); setError(''); try { const response = await fetch('/api/master/finance-masters', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(session) }, body: JSON.stringify({ entityType: 'RULE', ...form, effectiveFrom: instantValue(form.effectiveFrom), effectiveTo: form.effectiveTo ? instantValue(form.effectiveTo) : null }) }); const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(friendlyError(payload.error)); await complete() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Gagal menyimpan mapping.') } finally { setSaving(false) } }
-  return <Modal title="Tambah Versi Mapping Akun" close={close}><form onSubmit={submit} className="space-y-5"><div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">Pilih berdasarkan nama. Versi aktif baru otomatis menutup periode versi aktif sebelumnya tanpa mengubah histori.</div><div className="grid gap-4 sm:grid-cols-2"><Field label="Kategori transaksi"><select required className="input" value={form.categoryId} onChange={(event) => changeCategory(event.target.value)}>{activeCategories.map((item) => <option key={item.id} value={item.id}>{item.category_name}</option>)}</select></Field><Field label="Fungsi akun"><select required className="input" value={form.accountFunctionKey} onChange={(event) => changeFunction(event.target.value)}><option value="">Pilih fungsi akun</option>{availableFunctions.map((item) => <option key={item.function_key} value={item.function_key}>{item.function_name}</option>)}</select></Field><Field label="Akun tujuan"><select required className="input" value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}><option value="">Pilih akun yang kompatibel</option>{availableAccounts.map((item) => <option key={item.id} value={item.id}>{item.account_name} ({item.account_code})</option>)}</select></Field><Field label="Status"><select className="input" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="ACTIVE">Aktif setelah disimpan</option><option value="DRAFT">Draft</option></select></Field><Field label="Mulai berlaku"><input required type="datetime-local" className="input" value={form.effectiveFrom} onChange={(event) => setForm({ ...form, effectiveFrom: event.target.value })} /></Field><Field label="Berakhir (opsional)"><input type="datetime-local" className="input" value={form.effectiveTo} onChange={(event) => setForm({ ...form, effectiveTo: event.target.value })} /></Field></div>{error && <ErrorBox text={error} />}<Actions saving={saving} close={close} label="Simpan Versi Mapping" /></form></Modal>
+  return <Modal title="Tambah Versi Mapping Akun" close={close}><form onSubmit={submit} className="space-y-5"><div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">{initialTarget ? <><b>Proses dan fungsi sudah dipilih dari daftar mapping yang kosong.</b> Finance hanya perlu memilih akun dan tanggal efektif.</> : <>Pilih berdasarkan nama. Versi aktif baru otomatis menutup periode versi aktif sebelumnya tanpa mengubah histori.</>}</div><div className="grid gap-4 sm:grid-cols-2"><Field label="Kategori transaksi"><select required className="input" value={form.categoryId} onChange={(event) => changeCategory(event.target.value)}>{activeCategories.map((item) => <option key={item.id} value={item.id}>{item.category_name}</option>)}</select></Field><Field label="Fungsi akun"><select required className="input" value={form.accountFunctionKey} onChange={(event) => changeFunction(event.target.value)}><option value="">Pilih fungsi akun</option>{availableFunctions.map((item) => <option key={item.function_key} value={item.function_key}>{item.function_name}</option>)}</select></Field><Field label="Akun tujuan"><select required className="input" value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}><option value="">Pilih akun yang kompatibel</option>{availableAccounts.map((item) => <option key={item.id} value={item.id}>{item.account_name} ({item.account_code})</option>)}</select></Field><Field label="Status"><select className="input" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="ACTIVE">Aktif setelah disimpan</option><option value="DRAFT">Draft</option></select></Field><Field label="Mulai berlaku"><input required type="datetime-local" className="input" value={form.effectiveFrom} onChange={(event) => setForm({ ...form, effectiveFrom: event.target.value })} /></Field><Field label="Berakhir (opsional)"><input type="datetime-local" className="input" value={form.effectiveTo} onChange={(event) => setForm({ ...form, effectiveTo: event.target.value })} /></Field></div>{error && <ErrorBox text={error} />}<Actions saving={saving} close={close} label="Simpan Versi Mapping" /></form></Modal>
 }
 
 function AccountEditor({ session, record, functions, accounts, close, complete }: { session: Session; record?: Account; functions: AccountFunction[]; accounts: Account[]; close: () => void; complete: () => Promise<void> }) {

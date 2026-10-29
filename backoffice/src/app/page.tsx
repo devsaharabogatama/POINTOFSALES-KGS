@@ -1480,10 +1480,14 @@ function LoginScreen() {
               {error}
             </div>
           )}
-          <label className="mt-7 block text-sm font-semibold text-slate-700">
+          <label
+            htmlFor="backoffice-login-email"
+            className="mt-7 block text-sm font-semibold text-slate-700"
+          >
             Email
           </label>
           <input
+            id="backoffice-login-email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             type="email"
@@ -1491,10 +1495,14 @@ function LoginScreen() {
             placeholder="nama@perusahaan.com"
             className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
           />
-          <label className="mt-5 block text-sm font-semibold text-slate-700">
+          <label
+            htmlFor="backoffice-login-password"
+            className="mt-5 block text-sm font-semibold text-slate-700"
+          >
             Password
           </label>
           <input
+            id="backoffice-login-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type="password"

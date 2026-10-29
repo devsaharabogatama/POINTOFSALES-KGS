@@ -35,6 +35,7 @@ type Product = {
   sku: string
   name: string
   uom_id: string
+  default_unit_cost: number | string | null
   is_bundle: boolean
   is_active: boolean
   product_uoms: ProductUom[] | null
@@ -630,7 +631,17 @@ function OpeningEditor({
                       <select
                         required
                         value={line.productId}
-                        onChange={(event) => updateLine(line.key, { productId: event.target.value })}
+                        onChange={(event) => {
+                          const productId = event.target.value
+                          const selectedProduct = products.find((item) => item.id === productId)
+                          updateLine(line.key, {
+                            productId,
+                            unitCostBase: selectedProduct?.default_unit_cost == null
+                              ? ''
+                              : String(selectedProduct.default_unit_cost),
+                            zeroCostReason: '',
+                          })
+                        }}
                         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3"
                       >
                         <option value="">Pilih Product</option>
@@ -662,6 +673,9 @@ function OpeningEditor({
                         onChange={(event) => updateLine(line.key, { unitCostBase: event.target.value })}
                         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3"
                       />
+                      <span className="mt-1 block text-xs font-medium text-slate-500">
+                        Otomatis dari HPP Product; tetap dapat dikoreksi sebelum Draft disimpan.
+                      </span>
                     </label>
                     <button
                       type="button"

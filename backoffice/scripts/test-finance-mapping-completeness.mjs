@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
-import { buildFinanceMappingCompleteness } from '../src/lib/finance-mapping-completeness.ts'
+import {
+  buildFinanceMappingCompleteness,
+  filterFinanceMappingCompleteness,
+  isFinanceMappingReady,
+} from '../src/lib/finance-mapping-completeness.ts'
 
 const asOf = '2026-09-24T10:00:00.000Z'
 const base = {
@@ -54,5 +58,13 @@ const futureRule = buildFinanceMappingCompleteness({
   rules: [{ ...base.rules[0], effective_from: '2027-01-01T00:00:00.000Z' }],
 })
 assert.equal(futureRule.find((row) => row.account_function_key === 'REQUIRED_FN')?.resolution, 'MISSING')
+
+assert.equal(filterFinanceMappingCompleteness(rows, 'UNRESOLVED').length, 1)
+assert.equal(filterFinanceMappingCompleteness(rows, 'CONDITIONAL').length, 1)
+assert.equal(filterFinanceMappingCompleteness(rows, 'OPTIONAL').length, 1)
+assert.equal(filterFinanceMappingCompleteness(rows, 'ALL', 'test event').length, 3)
+assert.equal(filterFinanceMappingCompleteness(rows, 'ALL', 'liability').length, 1)
+assert.equal(isFinanceMappingReady(rows.find((row) => row.account_function_key === 'REQUIRED_FN')), true)
+assert.equal(isFinanceMappingReady(rows.find((row) => row.account_function_key === 'OPTIONAL_FN')), false)
 
 console.log('finance mapping completeness tests: PASS')

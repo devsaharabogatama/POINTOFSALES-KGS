@@ -32,6 +32,7 @@ import {
   type ManualJournalLineInput,
 } from "@/components/ManualJournalDialog";
 import type { FinanceProcessUiPolicy } from "@/lib/finance-process-ui-policy";
+import { OpeningBalanceView } from "@/components/OpeningBalanceView";
 
 type Period = {
   id: string;
@@ -195,6 +196,7 @@ type Tab =
   | "overview"
   | "ledger"
   | "journals"
+  | "opening"
   | "periods"
   | "payments"
   | "queue"
@@ -619,6 +621,7 @@ export function FinanceOperationsView(props: Props) {
             ["overview", "Ringkasan", Landmark],
             ["ledger", "Buku Besar", Landmark],
             ["journals", "Journal Entries", BookOpen],
+            ["opening", "Saldo Awal", FileClock],
             ["periods", "Periode", CalendarRange],
             ["payments", "Verifikasi Pembayaran POS", BadgeCheck],
             ["queue", "Antrian Jurnal", FileClock],
@@ -678,6 +681,9 @@ export function FinanceOperationsView(props: Props) {
             await load();
           }}
         />
+      )}
+      {tab === "opening" && (
+        <OpeningBalanceView session={props.session} notify={props.notify} />
       )}
       {tab === "periods" && (
         <PeriodPanel

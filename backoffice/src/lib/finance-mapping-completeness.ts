@@ -8,6 +8,13 @@ export type FinanceMappingResolution =
   | 'INVALID_ACCOUNT'
   | 'FUNCTION_INACTIVE'
 
+export type FinanceMappingCoverageFilter =
+  | 'ALL'
+  | 'UNRESOLVED'
+  | 'REQUIRED'
+  | 'CONDITIONAL'
+  | 'OPTIONAL'
+
 type AccountFunction = {
   function_key: string
   function_name: string
@@ -72,6 +79,32 @@ export type FinanceMappingCompletenessRow = {
   account_id: string | null
   account_code: string | null
   account_name: string | null
+}
+
+export function isFinanceMappingReady(row: FinanceMappingCompletenessRow) {
+  return row.resolution === 'DIRECT_RULE' || row.resolution === 'COMPANY_FALLBACK'
+}
+
+export function filterFinanceMappingCompleteness(
+  rows: FinanceMappingCompletenessRow[],
+  filter: FinanceMappingCoverageFilter,
+  query = '',
+) {
+  const normalizedQuery = query.trim().toLocaleLowerCase('id-ID')
+  return rows.filter((row) => {
+    const matchesFilter = filter === 'ALL'
+      || (filter === 'UNRESOLVED' && !isFinanceMappingReady(row))
+      || row.requirement === filter
+    if (!matchesFilter) return false
+    if (!normalizedQuery) return true
+    return [
+      row.event_name,
+      row.category_name,
+      row.function_name,
+      row.account_name,
+      row.account_code,
+    ].some((value) => value?.toLocaleLowerCase('id-ID').includes(normalizedQuery))
+  })
 }
 
 function isEffective(

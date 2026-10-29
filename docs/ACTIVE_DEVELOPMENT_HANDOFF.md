@@ -1,5 +1,2643 @@
 # Active Development Handoff — KGS POS
 
+## 2026-10-29 - Finance Opening Balance direct-entry local-ready
+
+- Keputusan cutover user: physical stock KGFF dihitung dan diposting sebagai
+  Opening Stock efektif `2026-10-31` beserta COGS/HPP; transaksi operasional
+  KGFF di sistem dimulai `2026-11-01`. Finance Opening Balance menggunakan
+  cut-off/effective date `2026-10-31` walaupun entry dilakukan menyusul. Tidak
+  boleh ada transaksi operasional KGFF bertanggal sebelum go-live tersebut.
+- User meminta opening balance dapat dimasukkan langsung dari aplikasi seperti
+  Draft Journal Entry, tanpa export/import. Slice lokal menambahkan
+  `Finance > Jurnal Keuangan > Saldo Awal`, API server, dan guarded migration
+  `20261029100000_opening_balance_direct_entry.sql`.
+- Dokumen mendukung baris `GL`, `RECEIVABLE`, dan `PAYABLE`, Company/party/
+  account validation, balance gate, optimistic version, idempotent operation,
+  open-period gate, maker/approver separation, audit, dan canonical
+  `OPENING_BALANCE` journal. Opening Stock tetap wajib melalui
+  `Inventory > Stok Awal`; Stock/FIFO tidak disentuh runtime ini.
+- Keputusan Finance terbaru diterapkan: saldo awal AR/AP adalah satu saldo
+  agregat per Customer/Supplier; nomor/tanggal/jatuh-tempo invoice lama tidak
+  diminta dan histori transaksi lama tidak dibuat ulang.
+- Opening Stock sekarang membaca `products.cogs` milik Company sebagai default
+  HPP ketika Product dipilih. Nilai tetap dapat dikoreksi sebelum Draft
+  disimpan; nilai nol tetap memerlukan alasan HPP nol.
+- Evidence lokal terbaru: focused ESLint PASS; Backoffice Next.js
+  build/TypeScript PASS (route `/api/finance/opening-balances`); Playwright
+  runtime source contract `6/6 PASS`; `git diff --check` tidak menemukan
+  whitespace error. Full QA tetap `11/14 PASS`: dua kegagalan label optional
+  lama sengaja dipertahankan, sedangkan public Backoffice smoke berhenti pada
+  layar `Menyiapkan backoffice` karena koneksi eksternal environment test dan
+  bukan assertion Opening Stock/Saldo Awal.
+- Link staging `yjxpddwrjdczuqyixqwi` sudah dipulihkan. Compile wrapper tetap
+  berhenti sebelum query dengan `SELF_SIGNED_CERT_IN_CHAIN` karena certificate
+  authority project staging belum tersedia lokal. Agent tidak menurunkan TLS
+  ke mode tanpa verifikasi. Karena itu schema compile, rollback-only database
+  behavior, postflight, authenticated smoke, dan UAT masih `BELUM TERBUKTI`.
+- Existing Customer Receipt hanya menerima Retail/Backoffice Invoice dan
+  Supplier Payment hanya menerima Supplier Invoice. Jangan menyatakan opening
+  AR/AP operasional sampai payment-consumer extension tersendiri dibuat dan
+  melewati behavior matrix.
+- Status: `LOCAL READY / MIGRATION NOT INSTALLED / DATABASE NOT LIVE / CLIENT
+  NOT DEPLOYED / SMOKE AND UAT PENDING`. Production tidak dibaca atau diubah
+  oleh pekerjaan ini.
+- Next safe step: unduh certificate staging dari Supabase Dashboard **Database
+  Settings > SSL Configuration** ke
+  `%TEMP%\mads-invoice-staging-20261005\supabase-root-ca.crt`, lalu jalankan
+  compile, preflight, rollback-only behavior
+  `supabase/tests/opening_balance_direct_entry_behavior.sql`, dan postflight.
+  Jangan memberikan Production command sebelum semua gate itu PASS. Impact dan
+  runbook berada di
+  `docs/audits/OPENING_BALANCE_DIRECT_ENTRY_IMPACT_2026-10-29.md` serta
+  `docs/runbooks/OPENING_BALANCE_DIRECT_ENTRY_ROLLOUT.md`.
+
+## 2026-10-29 - HR sandbox hold checkpoint
+
+- User meminta pekerjaan HR ditahan sementara. Tidak ada kode, database,
+  deployment, atau Production yang diubah untuk checkpoint ini.
+- Baseline terakhir yang dipertahankan adalah full Chromium `63/63 PASS` pada
+  mock lokal. Status tetap `ON HOLD BY USER / LOCAL MOCK ONLY / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Payroll Component Super Admin override sudah local-ready, tetapi invariant
+  Super Admin global pada workflow lain masih `BELUM TERBUKTI`.
+- Gap resume prioritas: lifecycle master Payroll Component, ledger komponen per
+  Employee, kalkulasi/UX backpay, linkage rapel lembur, lalu audit override
+  Super Admin per workflow. Employee import tetap pekerjaan terakhir.
+- Checkpoint lengkap dan next safe step:
+  `docs/audits/HR_SANDBOX_HOLD_CHECKPOINT_2026-10-29.md`.
+
+## 2026-10-28 - HR Super Admin Payroll Component override local-ready
+
+- Keputusan user: Super Admin mempunyai seluruh akses dan dapat mengambil alih
+  maker maupun approval role lain karena merupakan penanggung jawab akhir.
+  Fraud control dilakukan melalui log, bukan dengan membatasi Super Admin.
+- `Payroll -> Update Component` sekarang memperbolehkan Super Admin submit saat
+  maker policy menunjuk SPV HR, dan approve/reject saat layer menunjuk role lain.
+- Audit membedakan `ASSIGNED_ROLE` dari `SUPER_ADMIN_OVERRIDE`, menyimpan role
+  ter-assign, ID/nama actor aktual, waktu, keputusan, dan note. Override approval
+  wajib berketerangan.
+- Assignment tetap hanya diterapkan pada final approval atau langsung bila
+  policy tanpa approval; Company, permission, version, retry, dan atomic effect
+  guard tetap berlaku.
+- File berubah: `hr-sandbox/src/payrollComponentUpdateEngine.ts`,
+  `hr-sandbox/src/payrollComponentUpdateEngine.behavior.ts`,
+  `hr-sandbox/src/App.tsx`, dan
+  `hr-sandbox/e2e/payroll-governance.smoke.spec.ts`.
+- Evidence: behavior/lint/build PASS, focused Chromium `4/4 PASS`, full Chromium
+  `63/63 PASS`.
+- Status: `PAYROLL COMPONENT LOCAL READY / GLOBAL RBAC AUDIT PENDING / DATABASE
+  NOT STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Manual gate: sebagai Bima Super Admin, set maker SPV HR dan approver Finance,
+  submit transaksi, override Finance dengan note, lalu periksa bagian Audit dan
+  snapshot approval.
+- Invariant Super Admin berlaku global menurut keputusan user, tetapi workflow
+  lain masih `BELUM TERBUKTI`; audit per modul adalah next safe step.
+- Impact: `docs/audits/HR_SUPER_ADMIN_OVERRIDE_AUTHORITY_IMPACT_2026-10-28.md`.
+
+## 2026-10-28 - HR Personal Data Change Request local-ready
+
+- Tombol kosmetik `Ajukan perubahan data` pada Employee Profile sekarang
+  membuka form nyata dan membentuk request `PERSONAL_DATA_CHANGE`.
+- Field lokal yang didukung: nama panggilan, tempat/tanggal lahir, gender,
+  email, telepon, telepon tambahan, kode pos, alamat KTP/domisili, serta kontak
+  darurat. Identitas legal, rekening, pajak, BPJS, employment, grade, gaji, dan
+  Payroll tidak ikut berubah.
+- Request memakai snapshot approval departemen. Employee master baru berubah
+  setelah approval final; duplicate aktif, no-change, cross-Company, stale
+  snapshot, unauthorized field, dan retry ganda fail-closed.
+- File utama: `hr-sandbox/src/personalDataChangeEngine.ts`,
+  `hr-sandbox/src/personalDataChangeEngine.behavior.ts`,
+  `hr-sandbox/src/App.tsx`, `hr-sandbox/src/domain.ts`,
+  `hr-sandbox/src/employeeMasterEngine.ts`, `hr-sandbox/src/mockData.ts`, dan
+  `hr-sandbox/e2e/personal-data-change.smoke.spec.ts`.
+- Evidence: behavior/lint/build PASS, focused Chromium `2/2 PASS`, full Chromium
+  `62/62 PASS`. Locator Playwright yang diperbaiki adalah `TEST HARNESS FIX`,
+  bukan pengurangan assertion produk.
+- Status: `LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / USER UAT
+  PENDING`. Manual gate: ajukan dari Employee Profile, selesaikan layer approval,
+  verifikasi perubahan hanya terjadi sesudah final, lalu uji no-change/duplicate.
+- Compatibility: semua browser smoke lama tetap PASS. Belum ada database,
+  schema, Supabase, Production, deployment, attachment binary, atau notifikasi
+  nyata.
+- Import Employee tetap ditahan sebagai tahap terakhir setelah semua field dan
+  kontrak master final. Next safe step setelah UAT slice ini: audit dan ubah
+  fitur mock/kosmetik berikutnya tanpa membuka backend prematur.
+- Impact: `docs/audits/HR_PERSONAL_DATA_CHANGE_IMPACT_2026-10-28.md`.
+
+## 2026-10-28 - HR rehire versus open Offboarding guard local-ready
+
+- Rehire sekarang fail-closed bila resignation terkait masih mempunyai case
+  Offboarding `READY` atau `IN_PROGRESS`. UI menonaktifkan tombol dan menjelaskan
+  bahwa HR harus menyelesaikan Offboarding terlebih dahulu.
+- Sistem tidak auto-cancel task, aset, keputusan Loan, maupun audit. Setelah
+  case `COMPLETED` (atau tidak ada case terbuka), rehire memakai kontrak lama:
+  periode kerja baru dan Payroll harus disiapkan ulang.
+- Guard berada di lifecycle engine dan menerima exact resignation IDs dari
+  Offboarding state; role, Company, expected Employee snapshot, mutation key,
+  duplicate Employee number, dan date guard lama tetap berlaku.
+- Direct impact: lifecycle Rehire dan Employee detail. Tidak ada perubahan
+  Offboarding task/aset, Payroll, Finance, Attendance, database, atau deploy.
+- Evidence: lifecycle behavior PASS termasuk negative open-case guard, lint
+  PASS, build PASS, focused lifecycle `3/3 PASS` yang menyelesaikan task/aset
+  sebelum recovery Rehire, dan full Chromium `60/60 PASS`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (60/60) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Rule ini adalah keputusan fail-closed lokal agar histori tidak hilang; wajib
+  dikonfirmasi pada UAT sebelum kontrak database/Production dibuat.
+
+## 2026-10-28 - HR mass resignation Select Employee local-ready
+
+- Direktori Employee sekarang mendukung pemilihan beberapa Employee eligible,
+  clear/select-all sesuai filter aktif, batch fill tanggal resign, alasan, dan
+  keputusan Loan, lalu satu konfirmasi mass resign.
+- Composer domain menolak input kosong/duplikat, stale Employee, cross-Company,
+  role tanpa wewenang, active resignation, dan mutation-key conflict. Seluruh
+  jadwal dibuat atomic dengan derived mutation key; exact retry tidak membuat
+  duplikat.
+- Handler aplikasi juga atomic terhadap dua state lokal: lifecycle baru dan
+  seluruh case Offboarding `READY` baru di-commit setelah setiap Employee
+  berhasil disiapkan. Employee tetap aktif sampai tanggal efektif.
+- Referensi resmi: Talenta Mass Resignation membuktikan jalur Select employee,
+  assigned list, batch fill, dan confirmation:
+  https://help-center.talenta.co/hc/en-us/articles/59352856916377-How-to-Perform-Mass-Employee-Resignation-New-Interface
+- Scope sengaja tidak mencakup import XLSX, header template, merit/severance,
+  kompensasi cuti, document template, efek Payroll, database, atau deployment.
+- File berubah: `hr-sandbox/src/employeeLifecycleEngine.ts`, behavior test,
+  `hr-sandbox/src/App.tsx`, `hr-sandbox/src/styles.css`, lifecycle E2E, dan
+  dokumen status/UAT terkait.
+- Evidence: lifecycle behavior PASS, lint PASS, build PASS, focused lifecycle
+  `3/3 PASS`, dan full Chromium `60/60 PASS`. Warning ukuran chunk Vite yang
+  sudah dikenal tetap informational.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (60/60) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Next safe gap: import mass resignation hanya setelah kontrak workbook lokal
+  dan keputusan field disetujui; alternatif aman adalah keputusan rehire untuk
+  case terbuka atau persistence/auth.
+
+## 2026-10-28 - HR Offboarding monitoring list local-ready
+
+- Daftar case Backoffice sekarang dapat dicari memakai nama/nomor Employee dan
+  difilter menurut `READY`, `IN_PROGRESS`, `COMPLETED`, atau `CANCELLED`.
+  Pilihan filter menampilkan count dalam Company scope aktif.
+- Filter merupakan read model lokal. Lifecycle, task, asset, Loan, batch
+  selection, Payroll, Finance, Attendance, dan resignation tidak dimutasi.
+- Company/profile scope diterapkan sebelum pencarian dan filter sehingga data
+  lintas Company tidak masuk hitungan atau hasil.
+- Referensi resmi: Talenta Offboarding overview membuktikan search bar dan
+  filter pada daftar Offboarding:
+  https://help-center.talenta.co/hc/en-us/articles/18806270484889-Talenta-Offboarding-Overview
+- File berubah: `hr-sandbox/src/App.tsx`, `hr-sandbox/src/styles.css`,
+  `hr-sandbox/e2e/offboarding.smoke.spec.ts`, dan dokumen status/UAT terkait.
+- Evidence: lint PASS, build PASS, focused Offboarding `6/6 PASS`, full Chromium
+  `59/59 PASS`. Warning chunk Vite yang sudah dikenal tetap ada.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (59/59) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Next safe gap: keputusan rehire terhadap case terbuka, mass resignation/import,
+  external delivery/Forms+, atau persistence/auth; jangan pilih diam-diam bila
+  mengubah keputusan bisnis.
+
+## 2026-10-28 - HR Offboarding bulk Start/Complete local-ready
+
+- Referensi resmi Talenta membuktikan bulk `Start offboard` untuk case `Ready`
+  dan bulk `Complete offboarding` untuk case `In Progress`; mixed selection
+  hanya memproses status yang cocok. Sumber:
+  https://help-center.talenta.co/hc/en-us/articles/18806537693593-How-to-Start-Offboarding-Employee
+- Backoffice lokal dapat menandai beberapa case, menjalankan Start untuk subset
+  Ready atau Complete untuk subset In Progress, dan meminta konfirmasi sebelum
+  mutation.
+- Engine batch memakai kontrak individual yang sama secara atomik. Role,
+  Company, expected version, task, aset, keputusan Loan, mutation conflict,
+  dan exact retry tetap fail-closed. Satu case gagal membatalkan seluruh batch
+  tanpa state parsial.
+- Tidak ada bulk reminder, auto-complete task, perubahan Employee status,
+  Payroll, Finance, Attendance, resign date, database, atau deployment.
+- File berubah: `hr-sandbox/src/offboardingEngine.ts`,
+  `hr-sandbox/src/offboardingEngine.behavior.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/src/styles.css`, `hr-sandbox/e2e/offboarding.smoke.spec.ts`, dan
+  dokumen handoff/UAT terkait.
+- Evidence: `test:offboarding` PASS, lint PASS tanpa warning, build PASS,
+  focused Offboarding `5/5 PASS`, test browser bulk baru `1/1 PASS`, dan full
+  Chromium `58/58 PASS`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (58/58) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Manual gate: jalankan bagian bulk pada EMP-02. Next safe step tetap
+  authenticated persistence/RLS atau gap Offboarding lain yang dipilih user.
+
+## 2026-10-28 - HR Offboarding custom form/external attachment local-ready
+
+- HR dapat menyusun field custom pada template task dengan tipe `TEXT`,
+  `SELECT`, atau `CHECKBOX`, menentukan field wajib, serta pilihan untuk field
+  select. Schema divalidasi agar ID unik dan opsi tidak ambigu.
+- Case baru menyimpan deep snapshot schema form. Edit template tidak menulis
+  ulang case lama. Jawaban disimpan pada task completion dan terlihat kembali
+  di Backoffice maupun Employee App.
+- Task fail-closed bila jawaban wajib belum lengkap, checkbox wajib belum
+  disetujui, atau jawaban select tidak termasuk opsi snapshot.
+- Attachment v1 tetap mengikuti invariant repository: nomor dokumen atau URL
+  eksternal HTTPS. Unsafe scheme ditolak; tidak ada blob/base64, Supabase
+  Storage, atau upload backend.
+- Direct impact: template editor, task snapshot/completion, Backoffice, Employee
+  App, dan audit payload idempotent. Payroll, Finance, Loan, Attendance, Auth,
+  asset settlement, serta dokumen historis tidak dimutasi.
+- Compatibility: template/case tanpa custom field tetap berjalan. Mutation
+  Company/role/owner scoped, versioned, stale-safe, dan exact-retry safe.
+- File berubah: `hr-sandbox/src/offboardingEngine.ts`,
+  `hr-sandbox/src/offboardingEngine.behavior.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/src/styles.css`, dan `hr-sandbox/e2e/offboarding.smoke.spec.ts`.
+- Evidence: behavior PASS, lint PASS tanpa warning, build PASS, focused
+  Offboarding `4/4 PASS`, dan full Chromium `57/57 PASS`. Build hanya memiliki
+  warning ukuran chunk Vite yang sudah dikenal.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (57/57) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Manual gate: jalankan EMP-02 terbaru pada consolidated UAT checklist. Next
+  safe step: advanced Forms+ parity, authenticated persistence/RLS, binary
+  delivery bila kebijakan berubah, dan external email provider.
+
+## 2026-10-28 - HR Offboarding task evidence/in-app reminder local-ready
+
+- Template task sekarang dapat mewajibkan referensi bukti. Nilai tersebut
+  disalin ke snapshot case; perubahan template berikutnya tidak mengubah case
+  lama.
+- Task wajib bukti tidak dapat menjadi `DONE` bila referensi kosong. Referensi
+  tersimpan pada task dan terlihat kembali di Backoffice/Employee App.
+- `Catat reminder PIC` membuat notifikasi `IN_APP_LOCAL` hanya untuk profile PIC
+  exact pada task nonterminal. Exact retry tidak menggandakan audit, counter,
+  atau notifikasi; profile lain tidak dapat melihatnya.
+- Tidak ada klaim upload file, Forms+, atau email eksternal. Referensi bukti
+  masih berupa teks dan seluruh state masih browser-local.
+- Direct impact: template/task snapshot, completion guard, notification panel,
+  dan unread state. Downstream Payroll, Finance, Loan, Attendance, asset
+  settlement, Auth, serta data historis tidak dimutasi.
+- File berubah: `hr-sandbox/src/domain.ts`,
+  `hr-sandbox/src/offboardingEngine.ts`,
+  `hr-sandbox/src/offboardingEngine.behavior.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/src/styles.css`, dan `hr-sandbox/e2e/offboarding.smoke.spec.ts`.
+- Evidence: `test:offboarding` PASS, lint PASS, build PASS, focused Offboarding
+  `4/4 PASS`, dan full Chromium `57/57 PASS`. Build hanya memiliki warning
+  ukuran chunk Vite yang sudah dikenal.
+- Error TypeScript awal diklasifikasikan `PRODUCT FIX`: properti
+  `evidenceRequired` telah dipakai pada composer tetapi belum dicantumkan pada
+  interface snapshot. Kontrak diperbaiki; assertion tidak dihapus/dilonggarkan.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (57/57) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Manual gate: jalankan EMP-02 terbaru pada consolidated UAT checklist. Basic
+  custom form dan external attachment reference diteruskan oleh entry terbaru;
+  authenticated persistence/RLS dan provider email tetap pending.
+
+## 2026-10-28 - HR Offboarding asset handover/reminder local-ready
+
+- Case Offboarding baru menyimpan snapshot aset aktif Employee. Employee App
+  hanya membaca daftar aset; HR mencatat kondisi, referensi bukti, catatan,
+  exception review, dan resolution.
+- Final completion tertutup bila ada aset `OPEN` atau `EXCEPTION_REVIEW`.
+  Kondisi rusak/hilang tidak memotong Payroll dan tidak membuat Finance event;
+  kebijakan penyelesaiannya masih `BELUM TERBUKTI`.
+- Reminder hanya berlaku untuk task PIC nonterminal dan dicatat pada audit
+  lokal. Tidak ada klaim email sudah dikirim.
+- Guard: Company/HR authority, status case, case/asset/task version,
+  mutation-key conflict, exact retry, dan immutable case snapshot.
+- File berubah: `hr-sandbox/src/offboardingEngine.ts`,
+  `hr-sandbox/src/offboardingEngine.behavior.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/src/styles.css`, `hr-sandbox/e2e/offboarding.smoke.spec.ts`, serta
+  fixture tanggal relatif di `hr-sandbox/e2e/employee-lifecycle.smoke.spec.ts`.
+- Evidence: `test:offboarding` PASS, lint PASS, build PASS, focused Offboarding
+  `4/4 PASS`, focused lifecycle `2/2 PASS`, full Chromium `57/57 PASS`.
+  Full run pertama `55/57` akibat tanggal absolut lifecycle menjadi hari ini;
+  ini `PRECONDITION CHANGE`, bukan product regression, dan assertion bisnis
+  dipertahankan.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (57/57) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Manual gate: jalankan bagian EMP-02 terbaru pada
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Basic custom form, external attachment reference, dan local reminder sudah
+  dilanjutkan pada entry terbaru. Bulk mutation, advanced Forms+ parity,
+  asset-loss settlement, rehire terhadap case belum selesai, persistence, dan
+  deployment tetap tertutup sampai contract bisnis/teknis terbukti.
+
+## 2026-10-27 - HR Offboarding template and Employee task slice local-ready
+
+- HR dapat membuat, mengubah, mengaktifkan, dan menonaktifkan template task per
+  Company. Perubahan selalu membuat versi berikutnya; case existing tetap
+  memakai snapshot nama, owner, PIC, due date, deskripsi, dan versi lama.
+- Employee App sekarang menampilkan task `RESIGNEE` hanya untuk identitas dan
+  Company sendiri. Employee dapat mengirim completion note, tetapi tidak dapat
+  melihat/menyelesaikan task PIC atau melakukan final completion.
+- Guard mencakup HR Settings authority, Company, exact PIC resolution, duplicate
+  active name, stale version, mutation-key conflict, exact retry, case status,
+  task version, dan exact Employee ownership.
+- Evidence: Offboarding behavior PASS, lint/build PASS, focused Chromium `4/4`,
+  complete Chromium `57/57` tanpa assertion yang dihapus atau dipersempit.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (57/57) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Next safe scope: asset register/form evidence/reminder. Rehire dengan case
+  Offboarding belum selesai tetap `BELUM TERBUKTI` dan belum diubah.
+
+## 2026-10-27 - HR Offboarding operational slice local-ready
+
+- Resign terjadwal/efektif sekarang menyiapkan case Offboarding lokal dengan
+  lifecycle `READY -> IN_PROGRESS -> COMPLETED` atau `CANCELLED` dan snapshot
+  task template yang tidak berubah mengikuti edit template berikutnya.
+- Task mendukung owner resignee/PIC, due date, HR override yang diaudit, final
+  completion eksplisit, Company/role guard, stale-version guard, dan exact
+  retry. Pembatalan resign membatalkan case nonterminal.
+- Loan `SETTLE_BEFORE_EXIT` dengan saldo outstanding memblokir completion;
+  `CONTINUE_AFTER_EXIT` tidak mengubah cicilan. Payroll, Finance, asset,
+  ESS/Auth, dan histori operasional tidak dimutasi.
+- Evidence: behavior Offboarding PASS, lint/build PASS, focused Chromium `2/2`,
+  complete Chromium `55/55`. Regression pertama menemukan menu Settings keluar
+  viewport dan diselesaikan sebagai `PRODUCT FIX` dengan sidebar scrollable.
+- Impact/UAT:
+  `docs/audits/HR_OFFBOARDING_OPERATIONAL_SLICE_IMPACT_2026-10-27.md` dan
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (55/55) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Next safe scope: template management dan Employee App task completion.
+  Rehire ketika case lama belum selesai tetap `BELUM TERBUKTI` dan tidak boleh
+  diasumsikan.
+
+## 2026-10-27 - HR resignation, approval continuity, and rehire local-ready
+
+- HR can schedule or cancel resignation. Employee master status remains active until the effective date is explicitly applied; authenticated ESS-session revocation is still deferred.
+- Effective resignation closes the current employment period and reroutes active approvals by exact access-profile `employeeId`: resigned layers are audited as skipped, the request advances to the next layer, and a last-layer gap returns to HR without auto-approval.
+- Rehire creates a new employment period and Employee number while retaining the person and prior history. Salary/daily-rate values reset to unconfigured.
+- Loan exit handling is snapshotted as continue-after-exit or settle-before-exit; this slice does not mutate Loan installments or historical documents.
+- Evidence: lifecycle behavior PASS, lint/build PASS, focused Chromium `2/2`, complete Chromium `53/53`. The first focused failures were `TEST HARNESS FIX` for ambiguous/noncanonical text locators; product assertions and flow were retained.
+- Impact/UAT: `docs/audits/HR_EMPLOYEE_LIFECYCLE_IMPACT_2026-10-27.md` and `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (53/53) / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Next safe scope: Offboarding task/asset/form completion and ESS access revocation design; do not infer final-pay or statutory termination formulas.
+
+## 2026-10-27 - HR Employee transfer and effective history local-ready
+
+- HR can now mutate role, department, work location, and manager inside the
+  same Company using an effective date and mandatory reason.
+- The previous employment placement is closed and retained; the current
+  Employee assignment is updated with stale-snapshot, Company, role, date,
+  no-op, idempotency, and mutation-key guards.
+- Existing Payroll, Attendance, Roster, Request, Loan, and Payslip records are
+  not rewritten. Cross-Company transfer and future-dated scheduling remain
+  fail-closed until an as-of resolver exists across consumers.
+- Evidence: Employee Master create/transfer behavior PASS, lint PASS, build
+  PASS, focused Chromium `4/4 PASS`, complete Chromium `51/51 PASS`.
+  One initial modal-layer failure was a `PRODUCT FIX`; one ambiguous exact
+  locator was a `TEST HARNESS FIX`. No assertion was removed.
+- Impact/UAT:
+  `docs/audits/HR_EMPLOYEE_TRANSFER_HISTORY_IMPACT_2026-10-27.md` and
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (51/51) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`.
+- Remaining EMP scope: approval/request-based add, ESS invite/linking,
+  source-linked general profile change, bulk/cancel/future/cross-Company
+  transfer, resign/offboarding/rehire, persistence/RLS, and authenticated
+  concurrency.
+
+## 2026-10-27 - HR Employee Master create and profile boundary local-ready
+
+- Backoffice HR can now create a Company-scoped Employee master from the
+  previously cosmetic `Tambah karyawan` button. The local engine validates HR
+  authority, Company entitlement, required identity/employment fields,
+  Regular/Daily Worker consistency, duplicate number/NIK, exact retry, and
+  mutation conflict while retaining a local audit row.
+- Creation does not silently provision ESS, roster, attendance, Payroll Info,
+  salary/rate, components, statutory data, Time Off balance, Kiosk eligibility,
+  or Company membership.
+- The active Employee Profile no longer changes shift directly. It shows the
+  effective schedule read-only and sends the Employee to the existing Shift
+  Change request/approval workflow.
+- Evidence: Employee Master behavior PASS, build PASS, lint PASS, focused
+  Chromium `2/2 PASS`, and complete Chromium `49/49 PASS`. Two initial focused
+  failures were classified `TEST HARNESS FIX` (ambiguous tab locator and the
+  existing masked-payroll reveal interaction); assertions were preserved.
+- Impact/UAT:
+  `docs/audits/HR_EMPLOYEE_MASTER_CREATE_IMPACT_2026-10-27.md` and
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (49/49) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`. No Supabase, Production,
+  MADS Finance, Stock, FIFO, or deployment mutation occurred.
+- Remaining `EMP-01/02/03`: ESS invitation/linking, editable source-linked
+  profile request, Employee transfer/history, lifecycle/offboarding/rehire,
+  persistence/RLS, and authenticated concurrency remain unimplemented.
+
+## 2026-10-27 - HR Employee App attendance lifecycle local-ready
+
+- Per user correction, the active Employee App now records only personal Check
+  In and Check Out events with photo evidence into the same effective attendance state
+  consumed by Backoffice. The previous cosmetic-only `clockedIn` path is no
+  longer the active root surface.
+- Normal breaks are not attendance events. Overtime duration remains on the
+  existing approved Overtime source, supported by final Check In/Check Out
+  evidence against the effective shift.
+- Regular Employees require an exact Company/department Published roster date;
+  approved effective Shift Change revisions are honored. Daily Workers require
+  an exact active daily assignment. Missing roster, cross-Company identity,
+  event order/time, duplicate attendance, terminal state, evidence, and
+  mutation-key conflicts fail closed.
+- The prototype exposes a visible fixture event time solely for local UAT.
+  Production must use authoritative server time.
+- Added engine behavior and two browser scenarios. Evidence PASS:
+  `test:employee-attendance`, Kiosk/Shift Change/Time Effect/Overtime/Daily
+  Worker Payroll regressions, lint, build, focused Playwright `2/2`, and final
+  full Chromium `47/47`.
+- After removing normal-break events per the user decision, combined
+  Employee/Kiosk focused Playwright passes `4/4`; Overtime effect/pay and both
+  Regular/Daily Worker Payroll composer regressions pass; full Chromium remains
+  `47/47`.
+- The first full run had one browser `ERR_NETWORK_IO_SUSPENDED` during
+  `beforeEach`; the unchanged exact test passed `1/1` and the unchanged full
+  suite then passed `47/47`. Classification: test-environment failure; no
+  product assertion was weakened.
+- Impact/evidence:
+  `docs/audits/HR_EMPLOYEE_APP_ATTENDANCE_LIFECYCLE_IMPACT_2026-10-27.md`.
+- Status: `LOCAL READY / AGENT SMOKE PASS / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / USER UAT PENDING`. No Supabase, Production, Finance, Stock, FIFO,
+  payment, or deployment path was changed.
+- Next safe step: user performs the Employee attendance local UAT checklist.
+  After confirmation, continue with the next unimplemented HR roadmap slice;
+  do not claim face recognition, geofence, offline sync, or server-time safety.
+
+## 2026-10-27 - HR Kiosk attendance lifecycle local-ready
+
+- Office Kiosk is no longer a cosmetic camera success message. An eligible
+  Employee now records ordered Check In and Check Out
+  events with local photo evidence into the shared effective attendance state.
+- Daily Worker eligibility remains schedule-scoped. Tenant, active Employee,
+  resolvable shift, device, evidence, event ordering/time, duplicate record,
+  exact retry, mutation conflict, and terminal-session guards fail closed.
+- The completed row is visible in Backoffice Attendance and remains consumable
+  by the existing Daily Worker Payroll path. Normal breaks are deliberately not
+  attendance events. Existing fixture attendance remains compatible.
+- Added `src/kioskAttendanceEngine.ts`, behavior/runner, focused Playwright,
+  Kiosk UI wiring/styles, and package scripts in the ignored local sandbox.
+- Evidence PASS: build, lint, Kiosk behavior, relevant Daily Worker/time/shift/
+  Payroll regressions, focused Playwright `2/2`, combined Employee/Kiosk
+  Playwright `4/4`, and latest full Chromium `47/47` agent-side. One initial
+  negative-test mismatch was classified `FIXTURE FIX`;
+  no product assertion was removed or weakened.
+- Impact: `docs/audits/HR_KIOSK_ATTENDANCE_LIFECYCLE_IMPACT_2026-10-27.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (47/47) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`. Photo capture is not face
+  recognition. Offline sync, device persistence, RLS, and deployment remain
+  outside this slice.
+
+## 2026-10-27 - HR Shift Change end-to-end local-ready
+
+- Employee now submits Shift Change only from an exact Company/department
+  `PUBLISHED` roster assignment. Direct profile mutation no longer changes the
+  effective schedule.
+- The request consumes the versioned department approval route; final approval
+  creates an immutable, versioned schedule revision while the Published source
+  roster remains unchanged. Cancellation creates no effect.
+- Guards cover same-shift, active duplicate, current corrected attendance,
+  cross-Company/department source, stale roster version, exact retry, and
+  conflicting replay.
+- Files changed in the ignored local prototype: `src/domain.ts`,
+  `src/mockData.ts`, `src/App.tsx`, new `src/shiftChangeEngine.ts` and behavior
+  file, behavior runner, package scripts, and
+  `e2e/shift-change.smoke.spec.ts`.
+- Evidence PASS: build, lint, Shift Change behavior, related approval/time/
+  Overtime regressions, focused Playwright `2/2`, and full Chromium `43/43`
+  agent-side. Existing Vite bundle-size warning remains non-blocking.
+- Impact and manual checks:
+  `docs/audits/HR_SHIFT_CHANGE_END_TO_END_IMPACT_2026-10-27.md` and
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (43/43) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`. No Production, Supabase,
+  Finance, Stock, FIFO, or deployment action occurred. Next safe step is user
+  UAT on `http://127.0.0.1:5190`.
+
+## 2026-10-27 - HR department approval policy local-ready
+
+- User menetapkan approval request HR per Company + jenis request + departemen,
+  dengan layer PIC Employee yang dinamis. Tidak ada route per Employee.
+- Bila pemohon juga menjadi PIC sebuah layer, layer tersebut disimpan sebagai
+  `SKIPPED`, diaudit, dan request langsung menuju layer valid berikutnya.
+  Route yang seluruh layernya self ditolak; tidak ada self-approval atau
+  auto-approval.
+- Added local `approvalPolicyEngine`, Approval Settings Super Admin, versioned
+  policy updates, immutable request route snapshots, and wiring for Time Off,
+  Attendance Correction, and Overtime. Loan/Payroll approval flows remain
+  separate. `SHIFT_CHANGE` is catalogued but its request submission is not yet
+  end-to-end and must not be claimed active.
+- Files changed in ignored local prototype: `src/domain.ts`,
+  `src/approvalPolicyEngine.ts`, `src/approvalEngine.ts`, `src/mockData.ts`,
+  `src/overtimeApprovalEngine.ts`, `src/App.tsx`, `src/styles.css`, behavior
+  runner, package scripts, and `e2e/approval-policy.smoke.spec.ts`.
+- Evidence PASS: approval-policy, generic approval, Time Request, Overtime,
+  Overtime approval/effect and Loan behavior; lint; build; focused Playwright
+  `2/2`; complete Chromium regression `41/41` agent-side. Existing Vite chunk
+  warning remains non-blocking.
+- Impact, compatibility, open boundaries, and evidence are recorded in
+  `docs/audits/HR_DEPARTMENT_APPROVAL_POLICY_IMPACT_2026-10-27.md`.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (41/41) / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / USER UAT PENDING`. No Supabase, Production,
+  Finance, Stock, FIFO, or deployment action occurred. Next safe step is manual
+  UAT; persistence/API design follows only after UAT.
+
+## 2026-10-26 - HR Time Off Full/Half-day-only local correction
+
+- User removed hourly Time Off from the target workflow. Employee Time Off now
+  exposes only `FULL_DAY` and `HALF_DAY`; Half day requires exactly one period:
+  `BEFORE_BREAK` or `AFTER_BREAK`. Full day does not render or retain that
+  period.
+- Removed the hourly request contract and its hours-per-day balance conversion
+  from the local domain/effect path, not only from the UI. Full day still
+  deducts one unit per effective scheduled work date and Half day deducts
+  exactly `0.5` unit after final HR approval. Sick/Unpaid fixture policies do
+  not deduct balance.
+- Direct impact: Employee request form, Time Off request builder, balance and
+  attendance effect validation, fixtures, domain tests and Playwright request
+  coverage. No Loan, Overtime, Payroll, Finance, database, Supabase,
+  Production, deployment, Stock or POS path changed.
+- Evidence PASS: Time Request behavior, Time Request Effect behavior, lint,
+  TypeScript/Vite build, focused Employee Request Playwright `6/6`, and full
+  Chromium regression `39/39` agent-side. The existing Vite bundle-size warning
+  remains non-blocking.
+- Two Playwright authoring assertions were classified `TEST HARNESS FIX`: an
+  exact accessible-label locator was replaced by the stable sourced form name,
+  and the expected visible decimal was aligned from `6,5` to the actual `6.5`.
+  No product assertion was removed or weakened.
+- Status: `LOCAL READY / AGENT-SIDE BROWSER SMOKE PASS (39/39) / USER VISUAL
+  CHECK PENDING / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / UAT PENDING`.
+  Existing user-confirmed baseline remains `37/37` until the user runs the
+  expanded suite or checks the updated preview.
+
+## 2026-10-26 - HR Playwright Step 1 user-confirmed (37 scenarios)
+
+- User confirmed the preceding complete Chromium report at `27 passed`, zero
+  failed/flaky/skipped. That replaces the prior `26 USER-CONFIRMED` boundary.
+- Added seven browser scenarios for Payroll Component Draft/duplicate guard,
+  Payment Schedule version lifecycle and Super Admin authority, Employee
+  Payroll Info direct and approval paths, Salary Grade activation/placement,
+  and statutory-policy authority.
+- Added three governance scenarios for versioned Work Calendar plus PP 35
+  policy, HR -> Finance atomic Component Update approval, and immutable Payroll
+  History duplicate-period rejection with Finance read-only access.
+- Files changed in the ignored local prototype:
+  `hr-sandbox/e2e/payroll-configuration.smoke.spec.ts`,
+  `hr-sandbox/e2e/payroll-governance.smoke.spec.ts`, and focused scripts in
+  `hr-sandbox/package.json`. No product engine, fixture, schema, database,
+  Supabase, MADS Finance, Production runtime, or deployment was changed.
+- Evidence PASS: all 25 domain/behavior scripts; application lint;
+  Playwright-file lint; TypeScript/Vite build; full Chromium regression
+  `37 passed` in 1.5 minutes with one worker. The existing Vite bundle-size
+  warning remains visible and non-blocking.
+- Authoring failures were classified `TEST HARNESS FIX`: selectors were aligned
+  to actual controlled fields and expected feedback was corrected from the
+  current runtime text. No business assertion, role boundary, amount, or state
+  transition was removed or weakened.
+- Loan direct repayment, Finance verification, allocation to another Loan, and
+  excess refund remain a product implementation gap after disbursement. They
+  were not given synthetic PASS coverage.
+- User returned the final complete HTML report: `37 passed`, `0 failed`,
+  `0 flaky`, `0 skipped`, total time 1.5 minutes.
+- Status: `LOCAL READY / USER-CONFIRMED LOCAL BROWSER SMOKE PASS (37/37) /
+  DATABASE NOT STARTED / CLIENT NOT DEPLOYED / MANUAL BUSINESS UAT PENDING`.
+  Step 1 is closed. This evidence does not authorize deployment.
+
+## 2026-10-26 - HR Daily Worker Payroll extended browser E2E agent-pass
+
+- User confirmed the preceding complete report: `26 passed`, `0 failed`,
+  `0 flaky`, `0 skipped` in 1.3 minutes.
+- Activated an exact fictional KMS Daily Worker daily-meal component and
+  assignment, one scheduled Fikri Loan installment, and one approved
+  same-shift Overtime source. The 17 October attendance fixture now contains
+  the matching 60 excess minutes.
+- Payroll source detail exposes each present day's base wage, full daily
+  component, Overtime and worked/required minutes. The browser proves the
+  short day prorates only base wage while retaining the full daily allowance.
+- Employee App now has an explicit fixture-identity selector instead of a
+  hard-coded Dimas identity; all personal views consume that selected Employee.
+  Fikri sees only his published payslip with the reconciled amount/reference.
+- Added browser evidence for daily component + Overtime + Loan composition,
+  reuse rejection for all three source families, one KMS mixed Regular + Daily
+  Worker Run, and Fikri's Employee App payslip identity.
+- Evidence PASS: focused Daily Worker Payroll `5 passed`; focused One-time
+  regression `2 passed`; complete Chromium `.last-run.json` is `passed` after
+  starting `27 tests`; application lint, Playwright-file lint, TypeScript and
+  Vite production build PASS. Existing bundle-size warning remains visible.
+- The only observed infrastructure failure was a stale local port from an
+  earlier interrupted runner (`TEST HARNESS`); the same unchanged tests passed
+  after the process exited. The expected Rp205.000/Rp235.000 changes are the
+  deliberate product effect of the now-active daily allowance, Overtime and
+  Loan fixtures, not weakened assertions.
+- Status: `LOCAL BROWSER SMOKE PASS (27 AGENT-SIDE / 26 USER-CONFIRMED)`.
+  Database, persistence, authenticated concurrency, deployment, MADS
+  Finance/COA and UAT remain unproven. Next safe batch is Loan
+  post-disbursement repayment/allocation/refund browser coverage.
+
+## 2026-10-26 - HR One-time Payroll browser E2E agent-pass
+
+- Added active fictional One-time earning/deduction masters for KGS Regular and
+  KMS Daily Worker. The previous KGS deduction note was corrected to match the
+  approved direct-Draft-Run workflow; no recurring assignment is created.
+- Payroll source detail now renders each one-time master identity, amount and HR
+  reason. A held composed line also exposes every retained composition version,
+  proving the pre-correction snapshot is not overwritten.
+- Added two browser scenarios: Regular earning+deduction through required-field
+  validation, duplicate guard, Finance hold, HR amount/reason revision and a
+  clean next period; plus Daily Worker earning+deduction with worker-group and
+  duplicate-option guards.
+- Evidence PASS: focused One-time suite `2 passed`; complete Chromium regression
+  `26 passed` in 1.3 minutes; application lint, Playwright-file lint, TypeScript
+  and Vite production build PASS. Existing bundle-size warning remains visible.
+- Authoring failures: one `FIXTURE FIX` added the already-required
+  `CALENDAR_DAY` proration source; one `TEST HARNESS FIX` used the actual
+  unlabelled controlled Prorate select. No business assertion or expected amount
+  was removed or weakened.
+- Status at this boundary: `LOCAL BROWSER SMOKE PASS (26 USER-CONFIRMED)`.
+  Database, persistence, deployment, authenticated smoke, MADS Finance/COA and
+  UAT remain unproven.
+- These Daily Worker gaps are covered by the newer section above.
+
+## 2026-10-22 - HR Daily Worker Payroll Playwright expansion user-confirmed
+
+- Added explicit KMS prototype fixtures for Fikri (`emp-004`): final full-day
+  attendance on 17 October, final short-day attendance on 18 October, and the
+  existing past no-show on 19 October. Matching roster IDs and audit entries are
+  fixed in browser-memory state only.
+- Candidate preview now uses the same current-date cutoff source as Payroll Run
+  composition, removing the previous preview/Run classification drift.
+- Added four browser scenarios covering full/prorated/no-show projection,
+  missing-rate blocking, exact source-composed Daily Worker Run through Finance
+  hold -> HR recalculation -> Finance success -> HR publication, and duplicate
+  roster-source rejection.
+- Updated the existing Finance read-only roster test to verify all three seeded
+  roster controls remain disabled. This was a fixture/cardinality harness fix;
+  no authority expectation was relaxed.
+- Files changed: `hr-sandbox/src/mockData.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/e2e/daily-worker-payroll.smoke.spec.ts`,
+  `hr-sandbox/e2e/daily-worker.smoke.spec.ts`, `hr-sandbox/package.json`, the
+  Playwright impact record, consolidated UAT checklist, docs router, root README,
+  and this handoff.
+- Evidence PASS: focused Daily Worker Payroll `4 passed`; complete Chromium
+  regression `24 passed` in 57.7 seconds; application lint, Playwright-file
+  lint, TypeScript and Vite production build PASS. Existing chunk-size warning
+  remains visible and non-blocking.
+- Authoring failures were `TEST HARNESS FIX`: unstable controlled Company
+  selector, formatter non-breaking-space matching, and an old single-roster
+  locator after adding three exact fixtures. Business assertions were retained.
+- User returned the complete Chromium HTML report: `24 passed`, `0 failed`,
+  `0 flaky`, `0 skipped`, total time 57.7 seconds.
+- Status: user-confirmed `LOCAL BROWSER SMOKE PASS (24 SCENARIOS)`. Database,
+  persistence, deployment, authenticated smoke, MADS Finance/COA integration,
+  and UAT remain pending.
+- Remaining Daily Worker Payroll coverage gaps: active daily allowance on full
+  and short attendance, mixed Regular+Daily Run, reused Loan installment,
+  Daily Worker approved Overtime, Employee App identity for Fikri's payslip,
+  and real persistent/concurrent execution.
+
+## 2026-10-22 - HR Playwright 20-scenario user-confirmed local smoke
+
+- User paused further HR implementation at the current `LOCAL READY` boundary.
+  No database, Supabase, MADS Finance, deployment, Production, smoke, or UAT
+  action was performed by this test-harness slice.
+- Installed `@playwright/test` 1.64.1 and its isolated Chromium runtime. Added a
+  one-worker Chromium configuration, failure-only trace/screenshot/video, and a
+  Vite worker fixture that owns server startup/teardown on loopback port 5196.
+- User independently returned the local HTML report proving the prior combined
+  package `11/11 PASS`. A twelfth two-Employee KGS Payroll scenario was then
+  added: Finance success/hold stays
+  isolated, bulk publish excludes the held line, HR recomposes the held line
+  from source, Finance rechecks it, HR publishes it, then a non-payment payslip
+  correction creates v2 while v1 remains in immutable history.
+- Added eight browser scenarios grounded in the existing paths: four Loan tests
+  cover Employee cancellation, HR correction, Director return/reapproval,
+  Finance read-only authority, HR-recorded disbursement, installment creation,
+  and SPV denial; four Daily Worker tests cover roster creation, audited shift
+  change, kiosk eligibility, cancellation empty state, and Finance read-only.
+- Files changed: `hr-sandbox/e2e/loan-workflow.smoke.spec.ts`,
+  `hr-sandbox/e2e/daily-worker.smoke.spec.ts`,
+  `hr-sandbox/package.json`, the Playwright impact record, consolidated UAT
+  checklist, docs router, root README and this handoff.
+- Authoring errors were classified as `TEST HARNESS/FIXTURE FIX`: exact status
+  casing, an unassociated textarea label, and the exact Fikri Ramadhan fixture
+  identity. No product workflow or expected transition was weakened.
+- Evidence PASS: application lint, Playwright-file lint, focused Loan `4 passed`,
+  focused Daily Worker `4 passed`, production build, and complete combined suite
+  `20 passed` with one worker.
+- The Finance disbursement reference is stored by the Loan engine but is not
+  rendered after submission; UI re-verification remains a known coverage gap.
+- On 2026-10-22 the user returned the complete Chromium HTML-report output:
+  all 20 named scenarios passed in 41.4 seconds. This closes the pending local
+  rerun gate without expanding what the tests prove.
+- Status is user-confirmed `LOCAL BROWSER SMOKE PASS` for these twenty
+  scenarios. Daily Worker Payroll Run, real
+  persistence, and the remaining consolidated checklist are still pending.
+- Playwright may reduce repetitive manual testing, but it cannot by itself prove
+  database/RLS/transaction/concurrency behavior, MADS Finance/COA integration,
+  real file-import parsing, Production deployment, or business acceptance.
+  Those states must remain separately reported.
+
+## 2026-10-20 - HR annual PPh and Payroll History local-ready
+
+- User directed the implementation to follow Talenta because the detailed
+  payroll-tax workflow was not yet decided internally. Official Talenta
+  evidence supports Salary History import plus `Beginning Netto` and `PPh21
+  Paid` in Employee Payroll Info; PMK 168/2023 supplies the annual formula.
+- Added Company/role-scoped locked Payroll History batches, previous-employer
+  tax opening with proof, Article 17 reconciliation for December or an
+  Employee exit month, negative tax refund handling, and immutable annual source
+  evidence in Run/payslip.
+- Required prior-month history missing/duplicate or incomplete proof blocks the Run.
+  Draft Runs are excluded from prior-period history.
+- Evidence PASS: all 25 `test:*` suites, lint, production build, local preview
+  HTTP 200, and bundle labels for History/annual reconciliation/opening. Status is
+  `LOCAL READY` only; no database, Supabase, MADS Finance, COA, deployment,
+  smoke or UAT was changed or executed.
+- Exact Talenta `.xlsx` parsing remains `BELUM TERBUKTI` because the actual
+  workbook headers were not supplied. Do not invent them; current UI captures
+  the exact business fields and source filename.
+- Manual smoke remains deferred to the consolidated UAT pass. Next safe payroll
+  boundary is database design/RLS only after user opens that scope.
+
+## 2026-10-20 - HR Regular Payroll proration local-ready
+
+- User approved effective-date segmentation for Regular salary and prorated
+  monthly Components. Standard calendar/working-day modes use the period day
+  count; custom modes use the positive divisor in effective Payroll Info.
+- Join/exit, mid-period Salary Grade and Component changes are calculated.
+  Components with proration disabled use the period-end assignment in full.
+- New Run snapshots retain salary placement IDs and exact segment method,
+  divisor, eligible units, raw amount and rounded amount. Run validation rejects
+  tampering; legacy snapshots without these optional fields remain compatible.
+- Missing/ambiguous Payroll Info, working calendar, salary, divisor, or
+  overlapping Component assignment fails closed.
+- Evidence PASS: all 24 HR behavior suites, lint and production build. No
+  database, Production, deployment, or external Finance mutation.
+- Status: `LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE +
+  UAT DEFERRED`.
+- Next unresolved Payroll boundary: December annual PPh reconciliation.
+
+## 2026-10-20 - HR Regular and Daily Worker Overtime nominal local-ready
+
+- User fixed two paths: Regular uses a Super Admin-configured hourly base with
+  PP 35 progressive multipliers; Daily Worker uses daily rate divided by
+  required hours, multiplied by approved Overtime hours without that multiplier.
+- Daily Worker requires a same-date/same-shift payable source, caps approved
+  minutes at final attendance excess, rejects request reuse, and snapshots the
+  derived rate, minutes, amount and request IDs per day.
+- Overtime enters taxable gross. Run validation rejects snapshot rate, amount,
+  minutes, source-ID or taxable-gross drift before Finance receives it.
+- Evidence PASS: Overtime policy, Daily Worker pay/composer, Regular composer,
+  Payroll Run, build and lint. No database, MADS Finance or Production mutation.
+- Status: `LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE +
+  UAT DEFERRED`.
+- Next unresolved Payroll boundary: December annual PPh reconciliation.
+
+## 2026-10-20 - HR one-time Payroll input local-ready
+
+- User approved direct HR entry on Draft Run without a separate approval route.
+- Run preparation now allows one or more active one-time component masters per
+  Employee, each with a positive amount and required reason. The master controls
+  earning/deduction/benefit, tax and worker-group eligibility.
+- One-time values feed both Regular and Daily Worker composition and are stored
+  in immutable Run/payslip snapshots. They do not create recurring assignments
+  and do not carry to another period.
+- Finance hold keeps the existing source-recalculation path; HR may revise the
+  one-time amount/reason, while the prior snapshot remains in history.
+- Evidence PASS: one-time behavior, both composer regressions, Payroll Run,
+  build and lint. No database, Production, deployment or Finance mutation.
+- Status: `LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE +
+  UAT DEFERRED`.
+- Next safe unresolved payroll boundary: December annual PPh reconciliation.
+
+## 2026-10-19 - HR Daily Worker Payroll composition local-ready
+
+- Daily Worker Run now composes from the existing versioned schedule,
+  attendance result and effective rate source. Short attendance prorates the
+  base wage and rounds to the nearest Rupiah per day before period aggregation.
+- User decision is encoded exactly: every valid present day pays the daily
+  component in full even when hours are short; no-show pays neither base wage
+  nor daily component and remains traceable as an HR warning.
+- The existing Run/Finance/payslip path now accepts a discriminated Regular or
+  Daily Worker snapshot. Daily snapshots retain day-level roster, attendance,
+  raw/rounded wage, components and source IDs; rounding/source drift is rejected.
+- Fail-closed boundaries: pending attendance, missing rate, invalid/unsupported
+  component, source reuse, statutory blocker, Loan installment reuse, negative
+  net pay, and Daily Worker Overtime without matching final attendance excess.
+- Files changed locally: `hr-sandbox/src/dailyWorkerPayEngine.ts`,
+  `dailyWorkerPayrollComposer.ts`, its behavior test/runner,
+  `payrollRunEngine.ts`, `payrollRunEngine.behavior.ts`, `regularPayrollComposer.ts`,
+  `App.tsx`, and `hr-sandbox/package.json`; documentation updated with the impact
+  record and current status.
+- Evidence PASS: Daily source behavior, Daily composer behavior, Regular
+  composer regression, Payroll Run behavior, lint and production build.
+- Status: `LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE +
+  UAT DEFERRED`.
+- This historical next step is closed by the 2026-10-20 one-time input and
+  Overtime nominal slices above.
+
+## 2026-10-19 - HR Regular Payroll automatic composition local-ready
+
+- Added a fail-closed full-month Regular Employee composer using only proven
+  effective sources: Salary Grade/placement, fixed-monthly Payroll Component
+  assignments, approved Overtime plus Company calendar/policy, Employee
+  statutory profile/policy and scheduled Loan installments.
+- `Payroll -> Run Payroll` no longer asks HR to type a free take-home-pay amount
+  for new Regular lines. It previews the calculated nominal or exact blockers,
+  then creates an immutable composition snapshot when every source is ready.
+- Payroll Run validates Company/Employee/period/date, the net equation and
+  source ID uniqueness. The snapshot is copied into the Run line and payslip;
+  Overtime/Loan sources already present in another Run are rejected.
+- Existing legacy/manual Run rows remain compatible. A held composed line is
+  not manually overwriteable; after HR corrects its sources, the dedicated
+  recalculation path appends a new composition snapshot and resubmits only that
+  line without reopening successful lines.
+- Evidence PASS: composer behavior, Payroll Run behavior, all prior HR behavior
+  suites, lint and production build. No database, deployment or Production
+  action occurred.
+- Status: `REGULAR FULL-MONTH COMPOSITION LOCAL READY / DATABASE NOT STARTED /
+  CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+- Regular join/exit and source proration are closed by the 2026-10-20 slice at
+  the top of this handoff. Remaining boundaries: December annual PPh
+  reconciliation, persistence/API and Finance/COA integration.
+
+## 2026-10-19 - HR PP 35 overtime policy and work calendar UI local-ready
+
+- User approved PP 35/2021 as the default Overtime formula with configurable
+  Company, Regular worker-group and Employee policies.
+- Added a local effective-dated policy/calculation engine with Super Admin
+  authority, Company scope, policy priority, immutable history, version guard,
+  exact retry and audit.
+- This original slice used the `1/173` hourly basis. PAY-04H adds the current
+  Super Admin hourly-base mode while retaining this legacy mode for compatibility.
+- Payroll Info overtime eligibility and effective Salary Grade resolution are
+  mandatory. Daily Worker stays outside this monthly salary path.
+- Added `Payroll -> Kebijakan Lembur`: Super Admin can configure a versioned
+  annual Company work calendar (five/six-day week, weekly rest, shortest day,
+  holiday and special-workday overrides), then activate policy by Company,
+  Regular worker group or Employee. Other roles are read-only.
+- Approved Overtime preview resolves its date through the active annual
+  calendar. A missing calendar year or policy remains an explicit blocker.
+- Payroll Component now has an explicit Overtime-basis classification.
+  `FIXED_ALLOWANCE` is restricted to active monthly Regular allowances, and
+  the preview sums only active Employee assignments effective on the Overtime
+  date. Overlapping assignments, null amounts and invalid component shape fail
+  closed.
+- Evidence PASS: new Overtime Pay behavior, Overtime request/approval/effect,
+  Salary Grade, Employee Payroll Info and Payroll Run regressions, lint and
+  production build. No database, Production or deploy action occurred.
+- Overtime composition into versioned Payroll Run snapshots is now connected by
+  the later Regular and Daily Worker composition slices.
+- Historical slice status remains local-only; current status is recorded at the
+  top of this handoff.
+
+## 2026-10-19 - HR salary grade and individual adjustment local-ready
+
+- User approved Company-defined salary grades with minimum/reference/maximum
+  values and four Employee resolution modes: follow grade, grade plus nominal,
+  grade plus percentage, or fixed amount.
+- Added HR-only batch structure revision with mandatory preview, effective-date
+  versioning, immutable historical resolution, stale/version checks, exact
+  retry and audit. Fixed salaries remain unchanged and appear as review
+  exceptions; range breaches are explicit warnings.
+- Added effective-dated Employee placement/adjustment. Daily Worker is rejected
+  from this path and stays on schedule/attendance/daily-rate calculation.
+- UI is under `Payroll -> Grade Gaji`; initial grade creation, mass revision,
+  simulation, Employee placement and current resolution are locally usable.
+- Evidence PASS: salary-grade behavior, Payroll Run, Employee Payroll Info,
+  statutory calculation, Daily Worker pay/rate regressions, TypeScript/Vite
+  build and lint. One initial failure was a runner path defect and was fixed as
+  `TEST HARNESS FIX`; business assertions were retained unchanged.
+- Legacy `Employee.baseSalary` is not silently migrated or used as fallback.
+  Automatic backpay, final Run composition, Overtime nominal policy, database,
+  deploy, smoke and UAT remain pending.
+- Status: `SALARY GRADE LOCAL READY / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - HR statutory calculation preview local-ready
+
+- Added complete PP 58/2023 monthly TER A/B/C tables and Daily Worker TER,
+  including Gross, Gross Up and Netto results. Non-final Regular and qualifying
+  daily payments calculate only from explicit gross inputs.
+- Added read-only BPJS contribution calculation from effective Company policy
+  and Employee Payroll Info, including caps, JKK risk and explicit Employee/
+  Company payer split.
+- Missing gross, final-period annual context, daily payments above the TER
+  limit, JKP wage rules and unconfigured Employee tax treatment fail closed.
+- Evidence PASS: `test:pph21-ter`, `test:statutory-calculation`, Employee
+  Payroll Info, statutory policy and Payroll Run regressions, build and lint.
+- No database, Production or deploy action occurred. Consolidated manual smoke
+  and UAT remain deferred by user instruction.
+- Next safe step is automatic net-pay composition, but the current source audit
+  still requires exact decisions for Overtime nominal policy and an effective-
+  dated Regular base-salary source. It must not consume free manual totals.
+- Status: `CALCULATOR LOCAL READY / RUN COMPOSITION NOT STARTED / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - HR statutory Pajak/BPJS policy local-ready
+
+- Added a Super Admin-only, Company-scoped statutory-policy Draft/update/
+  activation flow with effective dates, immutable active history, prospective
+  supersession, version guards and mutation-key retry protection.
+- The editable baseline is sourced from DJP PMK 168 guidance, BPJS
+  Ketenagakerjaan published rates/risk bands and BPJS Kesehatan PPU rates/cap.
+  JKK/JKM relief defaults to zero and must not be enabled without exact Company
+  eligibility evidence.
+- Payroll UI now exposes `Pajak & BPJS`; no value is applied automatically.
+- Evidence: statutory behavior, Employee Payroll Info regression, Payroll Run
+  regression, TypeScript/Vite build and lint PASS.
+- No database, Production, Run amount, Finance, COA or Journal mutation exists.
+  Consolidated manual smoke/UAT remains deferred by user instruction.
+- Next safe slice: statutory calculation preview. It must keep Regular and
+  Daily Worker tax paths separate and fail closed on missing policy,
+  unconfigured Employee tax treatment or unavailable exact tax table.
+- Status: `STATUTORY POLICY LOCAL READY / CALCULATOR NOT STARTED / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - Employee tax treatment/PTKP/BPJS Payroll Info local-ready
+
+- User confirmed tax/BPJS must come from each Employee's data and that Regular
+  versus Daily Worker payroll calculations must remain separate.
+- Extended the existing effective-dated Payroll Info source with PTKP, BPJS
+  Kesehatan participation/wage basis, selected BPJS Ketenagakerjaan programs,
+  employment wage basis and JKK risk class. Existing configurable approval,
+  versioning and history remain the single mutation path.
+- Added explicit per-Employee PPh 21 treatment: `GROSS`, `GROSS_UP`, `NETTO`,
+  or visible `UNCONFIGURED`. No default policy is inferred. The future final
+  calculator must fail closed while the effective profile is unconfigured.
+- Expanded the controlled PTKP catalog from three partial fixtures to the eight
+  DJP-evidenced TER A/B/C statuses (`TK/0`-`TK/3`, `K/0`-`K/3`). This is
+  reference metadata only, not an activated tax-rate calculator.
+- Added fail-closed worker-group guards: Regular requires `MONTHLY`; Daily
+  Worker requires `DAILY`. Daily Worker BPJS participation stays configurable
+  per Employee and is never inferred from worker group.
+- Evidence: Employee Payroll Info behavior, Payroll Run regression, build and
+  lint PASS. Statutory
+  rates/brackets, automatic calculation, database, deployment and manual UAT
+  remain pending.
+- Status: `EMPLOYEE STATUTORY PROFILE LOCAL READY / CALCULATOR NOT STARTED /
+  DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - HR single/bulk payslip publication local-ready
+
+- User decided payslip publication is an explicit HR action and must support
+  both one Employee and all eligible Employees in a Run.
+- Added HR-only `PAYROLL_PUBLISH`, immutable payslip snapshots, per-line and
+  bulk publication, version guards, exact retry and audit. Bulk publication
+  includes only `PAYMENT_SUCCEEDED` lines and leaves held/pending lines blocked.
+- Employee App `Slip` now reads the logged-in Employee's published snapshots;
+  the previous static mock list was removed. This slice does not generate PDF.
+- HR may issue a new version for Employee display name, period, planned pay
+  date and payslip note with a mandatory correction reason. Prior versions stay
+  immutable; reconciled amount and payment reference cannot be changed.
+- Evidence: payroll Run behavior, TypeScript/Vite build and lint PASS. No
+  database, internet-banking transfer, Journal/COA, deploy or manual UAT was
+  performed.
+- Next safe product slice: automatic final net-pay composition (components,
+  approved Overtime, Loan deductions, tax/BPJS and rounding). Consolidated
+  manual smoke remains deferred by user instruction.
+- Status: `PAYSLIP PUBLICATION LOCAL READY / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - Run Payroll and per-Employee Finance reconciliation local-ready
+
+- User decided HR creates and locks Run Payroll directly. Finance performs the
+  actual reconciliation/transfer in internet banking and records success or a
+  mismatch hold per Employee in HR.
+- A held line can be corrected by HR and resubmitted inside the same Run. Paid
+  lines remain immutable and other successful Employees are not blocked.
+- Added local Run/line version guards, exact retry, Company/role enforcement,
+  immutable audit and payslip eligibility only after payment success.
+- Changed ignored local prototype: `hr-sandbox/src/payrollRunEngine.ts`, its
+  behavior/runner, Payroll UI/state/styles, permissions and package scripts.
+  Added impact/UAT/product notes and root status documentation.
+- Evidence: new behavior PASS; all prior HR behavior suites PASS; build and
+  lint PASS. No database, internet-banking transfer, Journal/COA, deploy,
+  payslip publication or manual smoke was performed.
+- Superseded next step: explicit HR payslip publication is implemented by the
+  newer entry above. Automatic net-pay tax/BPJS calculation is still pending.
+- Status: `RUN + FINANCE RECONCILIATION LOCAL READY / DATABASE NOT STARTED /
+  CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - Daily Worker rate authority local-ready
+
+- User decided rates are normally uniform for all Daily Workers in a Company,
+  with optional per-Employee exceptions, and HR activates them directly without
+  approval.
+- Added a Company default/Employee override rate master with HR-only mutation,
+  effective-dated history, same-Company Daily Worker validation, exact retry,
+  mutation conflict and work-date resolver. Override wins over default.
+- PAY-05A projection now resolves this rate master instead of reading the
+  legacy Employee `dailyRate` field. Payroll UI exposes the HR form and history.
+- Evidence: `test:daily-worker-rate`, `test:daily-worker-pay`, build and lint
+  PASS. Manual smoke/UAT remains deferred for the consolidated run.
+- Status: `RATE MASTER + PAY-05A SOURCE LOCAL READY / RUN PAYROLL AUTHORITY
+  PENDING / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - Daily Worker wage-candidate projection local-ready
+
+- Added a read-only PAY-05A projection from active HR assignment plus effective
+  Attendance. Full required minutes earn one daily rate; short attendance uses
+  exact actual/required-minute prorata; excess minutes are excluded from
+  ordinary wages; accepted-call no-show is zero with warning.
+- Future dates and incomplete Attendance remain pending. Missing Daily Worker
+  rate blocks nominal calculation. Cancelled assignments are excluded.
+- Payroll summary now exposes source status, required/actual/excess minutes,
+  raw candidate and blocker/warning without creating Run Payroll, payslip,
+  tax/BPJS, Journal or Finance effects.
+- Evidence: `test:daily-worker-pay`, schedule behavior, lint and build PASS.
+  Consolidated manual smoke/UAT remains deferred by user instruction.
+- Status: `PAY-05A SOURCE PROJECTION LOCAL READY / RATE AUTHORITY + FINAL RUN
+  PAYROLL PENDING / DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE + UAT
+  DEFERRED`.
+
+## 2026-10-16 - Daily Worker weekly schedule and dynamic kiosk local-ready
+
+- User decided that work-call communication stays manual through WhatsApp. HR
+  records the agreed weekly assignment in the application; that record is the
+  operational acceptance source.
+- Added a Company-scoped, Daily Worker-only schedule engine with HR/Super Admin
+  authority, one active Employee/date assignment, immutable audit, version,
+  stale protection, exact retry/mutation conflict, and cancellation.
+- HR may change a shift or cancel at short notice only before Attendance exists.
+  Once a matching Attendance row exists, the schedule is locked and the
+  established Attendance Correction workflow must be used.
+- Backoffice `Jadwal & shift` now has an operational Daily Worker panel. Kiosk
+  eligibility keeps active Regular Employees and includes Daily Workers only
+  for an active assignment matching the kiosk Company and date.
+- Changed local files: `hr-sandbox/src/App.tsx`, `styles.css`, new
+  `dailyWorkerScheduleEngine.ts`, behavior suite/runner and `package.json`;
+  updated product/impact/UAT/handoff/root documentation.
+- Evidence: new behavior PASS, all prior HR behavior suites PASS, lint PASS,
+  build PASS. Manual smoke is intentionally deferred to consolidated UAT.
+- This schedule milestone is superseded by the PAY-05A projection milestone
+  above. Status remains `SCHEDULE SOURCE LOCAL READY / DATABASE NOT STARTED /
+  CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - HR Update Component PAY-02 local-ready with configurable role approval
+
+- User explicitly chose configurable role-based ownership because the final
+  responsible role is not yet known. No maker or approver is hardcoded as an
+  approved business policy.
+- Super Admin can configure one maker role and zero, one or two ordered approval
+  role layers per Company. Existing access-role fixtures supply the selectable
+  catalog; future custom-role persistence can use the same role-key contract.
+- Submitted transactions snapshot their policy route. Later policy changes do
+  not rewrite pending or historical approvals.
+- Adjustment/Expired supports multiple Employee/component lines, effective,
+  end and backpay dates, evidence reference and description. Pending, rejected
+  and cancelled requests preserve existing Employee values. Final approval
+  applies every line atomically, retains prior assignment history and rejects
+  duplicate/cross-Company references.
+- Stale versions, wrong role, missing policy, invalid fields, mutation-key
+  conflict and repeat final application fail closed or return an exact retry.
+- UI is available under `Payroll -> Update Component`; manual paths were added
+  to the consolidated UAT checklist and intentionally not clicked yet.
+- Evidence PASS: `test:payroll-component-update`,
+  `test:payroll-component`, all existing HR behavioral suites, lint, build,
+  bundle-contract search and HTTP 200 on local preview.
+- Status: `PAY-01 + PAY-02 LOCAL READY / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / SMOKE + UAT DEFERRED`.
+
+## 2026-10-16 - HR Payroll Component catalog PAY-01 local-ready; PAY-02 approval decision pending
+
+- Rechecked the two official source pages underlying PAY-01/PAY-02. Catalog
+  fields and the separation between master settings and Update Component
+  transactions remain current.
+- Added a Company-scoped pure catalog writer with role denial, exact retry,
+  mutation-key conflict, code uniqueness, field-combination validation, stale
+  version denial and before/after audit.
+- Expanded local component fixtures with payment schedule, default/filter,
+  prorate, daily maximum, tax treatment, bonus/backpay/formula policy, version
+  and audit fields.
+- Removed the direct `Tetapkan ke karyawan` mutation from component cards.
+  Existing Employee component rows remain readable fixture history; future
+  changes must enter through PAY-02 Update Component transactions.
+- Added consolidated manual UAT checklist at
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`. Per user
+  instruction, manual smoke is deferred until the planned slices are ready.
+- Evidence PASS: `test:payroll-component`, all seven existing HR behavioral
+  suites, lint and production build. The first new runner failure was a
+  `TEST HARNESS FIX` only (NodeNext import mode); assertions were retained and
+  the runner was aligned with the existing CommonJS harness.
+- Status: `PAY-01 LOCAL READY / DATABASE NOT STARTED / CLIENT NOT DEPLOYED /
+  SMOKE + UAT DEFERRED`. PAY-02 is not started because the MADS maker/approver
+  identity for Update Component has not been explicitly decided. Do not infer
+  it from Talenta's configurable approval feature.
+
+## 2026-10-16 - HR Overtime local end-to-end implementation ready; visual smoke pending
+
+- Implemented the approved monetary-only Overtime flow in the isolated
+  `hr-sandbox`; no Supabase, API, schema, Finance, Journal or Production path
+  changed.
+- Changed local files: `src/App.tsx`, `src/domain.ts`, `src/mockData.ts`,
+  `src/styles.css`, `src/overtimeEngine.ts`, new
+  `src/overtimeApprovalEngine.ts`, new `src/overtimeEffectEngine.ts`, their
+  behavior suites and runners, plus `package.json`.
+- Employee submission derives scheduled shift or day-off from the Published
+  roster, separates before/after breaks, allows only paid Overtime, blocks
+  duplicate active dates, and rejects overnight/multishift fixtures.
+- SPV may adjust minutes with a required reason when values change. Requested
+  and SPV-approved snapshots remain separate. HR may only approve/reject the
+  SPV snapshot. Wrong scope, stale version, terminal retry, invalid duration
+  and HR adjustment fail closed.
+- Final HR approval creates one idempotent `ApprovedOvertimeRecord` before the
+  approved request is committed to React state. Attendance is referenced, not
+  changed. Payroll shows approved minutes as read-only candidates without a
+  rate, multiplier, nominal, tax/BPJS or Finance effect.
+- Evidence PASS: `test:overtime`, `test:overtime-approval`,
+  `test:overtime-effect`, `test:time-request`, `test:time-effect`,
+  `test:approval`, `test:loan`, `lint`, and `build`. Preview HTTP 200 at
+  `http://127.0.0.1:5194/`.
+- Windows visual automation was stopped by its safety layer because it could
+  not prove the active URL after navigating from stale port `5192` to `5194`.
+  Visual click smoke and UAT are therefore pending.
+- Next safe manual gate: open `http://127.0.0.1:5194/`; submit a new date from
+  Employee App, approve/adjust as Raka, approve final as Nadia, then verify the
+  Employee title and Payroll Overtime candidate. Do not claim deployed or
+  Production-ready from this local result.
+
+## 2026-10-16 - HR Overtime end-to-end work plan ready
+
+- User selected Overtime as the next incremental HR slice. No Overtime runtime
+  behavior was changed in this planning step.
+- Repository audit proves the current Employee form directly creates a generic
+  `HrRequest`; generic approval cannot retain a separate approved-duration
+  snapshot, and no Overtime source effect or Payroll candidate exists.
+- Official Mekari Talenta evidence was rechecked for request fields, approval
+  adjustment of before/after/break durations, Attendance/Shift review context,
+  statuses, attachment and approval routing.
+- Work is divided into decision gate, request contract, approval adjustment,
+  idempotent final source effect, E2E UI, read-only Payroll bridge, and regression
+  / UAT handoff. Formula uang, replacement-leave conversion, tax/BPJS, Payroll,
+  database and Production remain outside this slice.
+- Eight business decisions are explicitly open; implementation must not invent
+  their answers. See
+  `docs/audits/HR_OVERTIME_END_TO_END_WORK_PLAN_2026-10-16.md`.
+- Decision recorded 2026-10-16: Overtime is monetary-only. Replacement Time Off
+  is not supported. Moving work onto a previously off day belongs to the normal
+  schedule/workday flow and does not create Overtime compensation or leave.
+- Decision recorded 2026-10-16: only the SPV approval layer may correct the
+  requested Overtime duration. HR receives the SPV-adjusted snapshot and can
+  approve/reject without editing minutes. Requested and SPV-adjusted values
+  remain separate and audited.
+- Decision recorded 2026-10-16: Attendance/clock data is evidence and produces
+  a variance warning, not a hard duration cap. SPV may approve a different
+  duration with a reason; requested, clock-derived and SPV-approved values must
+  remain visible and audited.
+- Decision recorded 2026-10-16: actual additional work on a rostered day off is
+  eligible for Overtime using the same SPV -> HR route. A moved normal workday
+  remains a schedule change and does not become Overtime.
+- Decision recorded 2026-10-16: the first Overtime prototype supports one
+  normal shift on one calendar date plus day-off work. Cross-midnight and
+  multishift cases are deferred and must fail explicitly.
+- Decision recorded 2026-10-16: one Employee may have only one Overtime request
+  per date while the prior request is Awaiting Approval or Approved. Rejected
+  or Cancelled requests allow a new submission.
+- Decision recorded 2026-10-16: this slice ends at approved minutes as a
+  read-only future Payroll candidate. Money, multiplier, tax/BPJS and worker
+  formula remain deferred to Payroll.
+- Status: `PHASE 0 COMPLETE / PHASE 1 IN PROGRESS / DATABASE NOT APPLICABLE /
+  CLIENT NOT DEPLOYED / SMOKE + UAT NOT STARTED`.
+
+## 2026-10-15 - HR Time Off and Attendance Request end-to-end local slice
+
+- Replaced the two disabled Employee App controls for `Cuti / izin` and
+  `Koreksi attendance` with working session-state forms and validated request
+  constructors. The feature follows the official Talenta field/lifecycle
+  evidence already recorded in the traceability matrix.
+- Time Off captures policy/type, full-day/half-day/hourly duration, date range,
+  shift and start/duration for hourly requests, same-Company delegate, note and
+  an optional attachment reference. Cross-Company/self delegate and invalid
+  date combinations fail closed.
+- Attendance Correction captures request date, an Employee-eligible shift,
+  requested clock-in and/or clock-out with adjacent-date overnight support,
+  reason and optional attachment reference. At least one clock value is
+  required; non-adjacent dates and reversed clock ranges fail closed.
+- Both request types enter the existing Company/department-scoped layered
+  approval register, retain version/audit history, support Employee cancellation
+  while awaiting approval, notify the next approval layer, and reuse
+  stale-version/role/terminal guards.
+- Final HR approval now applies an idempotent local source effect. Annual leave
+  deducts the Employee balance once and creates a source-linked effective
+  Attendance row; half-day/hourly uses `PARTIAL_LEAVE`. Attendance Correction
+  updates effective clock values while preserving the first raw clock values
+  and the originating request ID. A failed source effect leaves the approval
+  unchanged.
+- Policy values are explicit **UAT fixtures**, not approved Company policy:
+  roster Published dates only, eight hours per day, annual leave deducts
+  balance, while Sick/Unpaid leave currently does not. The UI displays this
+  boundary so the user can correct it during UAT.
+- Employee Home reads the live session balance, Employee Attendance reads the
+  effective log, and Backoffice Attendance shows date, raw/effective values,
+  source lineage, and applied-effect count.
+- Verification after final UI wiring: `npm.cmd run test:time-request` PASS;
+  `npm.cmd run test:time-effect` PASS, including submit -> SPV -> HR -> balance
+  and Attendance effect, retry/idempotency, insufficient balance, raw
+  preservation, and cross-Company identity; `npm.cmd run test:approval` PASS;
+  `npm.cmd run test:loan` PASS; `npm.cmd run lint` PASS; `npm.cmd run build`
+  PASS. Preview `http://127.0.0.1:5192/` returns HTTP 200 and serves the new
+  bundle labels.
+- No actual file upload, database, authentication, API, Supabase, Production,
+  deployment, Payroll calculation, POS or Finance change was made.
+- Status: `LOCAL E2E BEHAVIOR + BUILD + HTTP PASS / DATABASE NOT STARTED /
+  CLIENT NOT DEPLOYED / VISUAL CLICK SMOKE + UAT PENDING`.
+- Files added/changed: `hr-sandbox/src/timeRequestEngine.ts`,
+  `hr-sandbox/src/timeRequestEngine.behavior.ts`,
+  `hr-sandbox/scripts/run-time-request-behavior.mjs`,
+  `hr-sandbox/src/timeRequestEffectEngine.ts`,
+  `hr-sandbox/src/timeRequestEffectEngine.behavior.ts`,
+  `hr-sandbox/scripts/run-time-request-effect-behavior.mjs`,
+  `hr-sandbox/src/domain.ts`, `hr-sandbox/src/mockData.ts`,
+  `hr-sandbox/src/App.tsx`, `hr-sandbox/src/styles.css`, `hr-sandbox/package.json`,
+  `docs/audits/HR_TIME_REQUEST_OPERATIONAL_SLICE_IMPACT_2026-10-15.md`, root
+  `README.md`, `docs/HR_MODULE_PRODUCT_NOTES.md`, and this handoff.
+
+## 2026-10-15 - HR Loan operational slice implemented locally
+
+- Implemented one bounded Employee Finance slice in the ignored local
+  `hr-sandbox/`; this does **not** replace or narrow the complete HR roadmap.
+  Employee/organization, roster, attendance, leave, overtime, approvals,
+  payroll/components/payslip, onboarding, offboarding, reporting and the three
+  HR surfaces remain part of the same product.
+- Added a Company-scoped, versioned Loan transition engine covering Employee
+  submission; HR correction/review; Director approve/reject/return; HR
+  resubmission; pre-disbursement cancellation; and HR recording of actual
+  partial/full disbursement evidence. Director approval and actual
+  disbursement remain separate milestones.
+- Loan operations moved out of Payroll into `Employee Finance`. Payroll only
+  reads due installments. Employee App now contains the Loan request form,
+  request status and the Employee cancellation boundary. Director and Finance
+  preview roles are available for the local workflow demonstration; they are
+  not production authorization.
+- Finance is read-only for approved terms and disbursement preparation in this
+  slice. Only HR records actual date/method/amount/evidence. No COA, Financial
+  Event, Journal, cash/bank, Supabase, Production, deployment or external
+  notification mutation was added.
+- Behavioral evidence after the final UI/state edit:
+  `npm.cmd run test:loan` PASS; `npm.cmd run test:approval` PASS;
+  `npm.cmd run lint` PASS; `npm.cmd run build` PASS. The Loan suite covers
+  wrong-role, cross-Employee/Company, stale version, Director return/resubmit,
+  partial actual disbursement, actual-principal schedule and cancellation.
+- Visual browser smoke is **not** claimed: neither Chrome nor the in-app browser
+  was exposed to the automation session. Manual UI smoke and user UAT remain.
+- Still pending in later Loan slices: H-3/H notifications, direct Employee
+  payment evidence, Finance verification/return, HR allocation across Loans,
+  overpayment refund, locked-installment recalculation, resignation settlement
+  policy, persistence/API/auth and MADS Finance integration.
+- Status: `LOCAL BEHAVIOR + BUILD PASS / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / VISUAL SMOKE PENDING / UAT PENDING`.
+- Files changed for this slice: `hr-sandbox/src/domain.ts`,
+  `hr-sandbox/src/loanEngine.ts`, `hr-sandbox/src/loanEngine.behavior.ts`,
+  `hr-sandbox/src/mockData.ts`, `hr-sandbox/src/App.tsx`,
+  `hr-sandbox/src/styles.css`, `hr-sandbox/scripts/run-loan-behavior.mjs`,
+  `hr-sandbox/package.json`,
+  `docs/audits/HR_LOAN_OPERATIONAL_VERTICAL_SLICE_IMPACT_2026-10-15.md`,
+  `docs/HR_MODULE_PRODUCT_NOTES.md`, root `README.md`, and this handoff.
+
+## 2026-10-15 - HR adaptation protocol and Loan decisions corrected
+
+- User established a mandatory rule for every Talenta adaptation: separate
+  proven Talenta behavior from MADS adaptation, identify workflow holes, ask
+  the user, and record the response before implementation. Missing public
+  evidence is never by itself a reason to remove an existing capability.
+- The earlier decision to remove Employee self-service Loan is revoked.
+  Approved target flow: any Employee submits -> HR approves -> Director
+  approves -> Finance administers the Loan contract/disbursement. Employees do
+  not access Finance or self-approve.
+- User closed the request-adjustment sequencing: HR may change amount and
+  installments before HR approval; the corrected request then advances to
+  Director for final approval. Finance receives the approved-term snapshot and
+  cannot alter those terms when creating the contract.
+- Director may return rather than reject the request. HR may revise and
+  resubmit; every cycle must retain the return reason, version, before/after
+  values, actor and timestamp.
+- Payout channel remains flexible. HR sets the first deduction date according
+  to the Loan agreement; it is independent from approval/disbursement and may
+  start months after funds are paid. Multiple concurrent Loans are permitted.
+  Finance owns audited active-Loan balance corrections/write-offs, while
+  resignation settlement remains policy/case based.
+- Director approval, planned disbursement, actual disbursement and first
+  deduction are distinct milestones. HR and Finance need advance and same-day
+  disbursement reminders so Finance can allocate funds. Reminder timing is fixed
+  at H-3 and H for every Loan; HR cannot configure it per request.
+- User approved lifecycle labels: Draft; Menunggu Review HR; Menunggu
+  Persetujuan Direksi; Perlu Revisi HR; Ditolak; Disetujui - Menunggu
+  Pencairan; Dicairkan - Menunggu Potongan; Aktif Dicicil; Lunas; Dibatalkan.
+- Employee may cancel Draft/waiting-HR requests. HR alone is final cancellation
+  authority for all pre-disbursement states; Director approval is unnecessary.
+  A disbursed Loan cannot be cancelled and must use payment/refund/correction/
+  write-off with preserved history.
+- Cancellation of a Director-approved undisbursed Loan sends Director and
+  Finance an informational notification plus reason only; it creates no new
+  approval and no automatic Finance mutation.
+- HR alone owns and may change the planned disbursement date after discussion
+  with the requesting Employee. Director and Finance receive the HR-owned
+  request snapshot and may not edit its planned date.
+- Finance sends disbursement evidence to HR; Finance does not mark a Loan
+  disbursed in the application. HR records actual date, method, amount and
+  evidence, and only this audited HR action advances the disbursement state.
+- HR may record partial or mismatched actual disbursement. The system retains
+  approved and actual amounts, calculates the variance and notifies Director
+  with links to evidence/audit. Installments use cumulative actual disbursement
+  as of each due date; changes recorded before the due date recalculate that
+  period. Due/locked installments remain immutable; only remaining balance and
+  future installments are recalculated, including remaining-tenor extension.
+- User requires Employee direct installment payment and early full settlement.
+  Approved responsibility chain is Employee -> HR -> Finance verification -> HR
+  allocation/finalization. No Employee-to-Finance bypass exists; Finance cannot
+  close an installment or Loan. HR owns communication and completion, with an
+  audit entry for every handoff/decision.
+- Failed Finance verification returns to HR with a reason. HR obtains Employee
+  clarification/replacement evidence and resubmits; Finance never contacts the
+  Employee directly and all iterations remain auditable.
+- Employee sees a combined installment total across active Loans. Employee does
+  not choose a direct-payment target; after Finance verification, HR chooses the
+  allocation and may split one verified payment across multiple active Loans.
+  Each target/amount is auditable. Excess is allocated to other payable active
+  Loans first; if no balance remains, the residual must be refunded to Employee
+  rather than held as an undefined credit. HR requests the refund, Finance pays
+  and returns evidence, then HR records/closes it; Finance cannot close it.
+- User rejected percentage-cap policy. Base installment is cumulative actual
+  principal divided by agreed tenor. Creation/review only warns when installment
+  exceeds salary; equal-to-salary remains allowed when Employee accepts it.
+- User fixed the accounting boundary specifically for Loan; this does not reduce
+  `hr-sandbox` to a Loan-only application. The sandbox remains the prototype for
+  the complete HR scope (Employee, schedule, attendance, leave, overtime,
+  approvals, payroll/components/payslip, Employee Finance workflows, onboarding
+  and offboarding). It has no standalone accounting engine and must not create
+  COA, Financial Event, Journal, cash/bank, or reconciliation logic. The Loan
+  slice implements its operational workflow and auditable Finance handoffs;
+  accounting integration is deferred until deployment into MADS and must use
+  MADS Finance with separately approved mappings.
+- This entry records the approved design baseline. It is superseded for local
+  implementation status by the entry immediately above; database, Supabase,
+  Production and deployment remain untouched.
+
+## 2026-10-15 - HR approval-slice readiness claim revoked
+
+- User confirmed that the visible Overtime submission flow already existed in
+  the earlier local prototype. The 2026-10-13 work added an internal approval
+  engine, request-state wiring and automated guard tests, but did not establish
+  a new user-visible capability.
+- Because `hr-sandbox/` is ignored by Git, no versioned baseline exists to prove
+  the exact UI/behavior delta. Build, HTTP 200 and state-machine tests prove only
+  the current files; they do not prove progress relative to the prior prototype.
+- The previous `HR foundation approval slice local-ready` statement is revoked.
+  Correct status: `INTERNAL PROTOTYPE CHANGE / USER-VISIBLE DELTA UNPROVEN /
+  DATABASE NOT STARTED / CLIENT NOT DEPLOYED / SMOKE NOT PASS / UAT NOT PASS`.
+- Do not duplicate existing request forms or report the current HR sandbox as a
+  completed Talenta-parity slice.
+
+## 2026-10-13 - SUPERSEDED: HR foundation approval slice local-ready
+
+- User approved implementation after the source-traceable Talenta workflow
+  matrix. The first slice is limited to Company/department scope, Employee
+  request identity, access profiles, two-layer approval, source-linked Inbox,
+  cancellation and append-only browser-state audit.
+- Implemented shared Employee App/Backoffice request state in `hr-sandbox`, a
+  pure approval state machine with optimistic version checks, and an executable
+  behavior contract. The Employee App can submit/cancel Overtime; the assigned
+  Warehouse supervisor approves layer 1; HR approves final. Wrong department,
+  wrong layer, stale version, repeat terminal action and foreign cancellation
+  are rejected.
+- Evidence: `npm.cmd run test:approval` PASS; `npm.cmd run lint` PASS;
+  `npm.cmd run build` PASS; production preview on `127.0.0.1:5191` returns HTTP
+  200. The in-app Browser runtime failed before navigation because host sandbox
+  metadata was missing, therefore manual interactive click smoke remains
+  pending and is not represented as PASS.
+- Impact and verification contract:
+  `docs/audits/HR_FOUNDATION_VERTICAL_SLICE_IMPACT_2026-10-13.md`.
+- No database, migration, authentication, production, payroll, Loan, Finance,
+  Journal or COA change was made. Delivery state is `LOCAL READY / DATABASE NOT
+  STARTED / CLIENT NOT DEPLOYED / SMOKE PENDING / UAT PENDING`.
+- Next safe step after manual click smoke: persist the same contract server-side
+  before expanding request types. Do not treat browser fixtures as production
+  access control.
+
+## 2026-10-13 - HR Talenta workflow matrix added; initial implementation gate
+
+- Added `docs/audits/HR_TALENTA_FUNCTIONAL_TRACEABILITY_MATRIX_2026-10-13.md`.
+- The matrix separates proven Talenta behavior, user decisions and blocked
+  unknowns across Employee, access/approval/Inbox, attendance, shared tablet,
+  time off, overtime, payroll components, payroll, payslip, reimbursement,
+  cash advance and Loan.
+- Existing prototype disposition was recorded at that time as removing the
+  Employee Mobile Loan request. That conclusion is superseded by the
+  2026-10-15 user decision above: preserve/rework Employee request intake while
+  keeping Loan contract administration in Finance.
+- The complete Daily Worker formula and exact shared-tablet identity flow remain
+  blocked rather than inferred.
+- No HR runtime, schema, database or production code changed in this step.
+- Next safe step: close matrix gaps, obtain user approval, then implement the
+  Employee/access/approval/Inbox foundation as the first vertical slice.
+
+### User approval received / first vertical slice started
+
+- User explicitly approved continuation after the traceability matrix.
+- Impact contract: `docs/audits/HR_FOUNDATION_VERTICAL_SLICE_IMPACT_2026-10-13.md`.
+- Current implementation boundary is local `hr-sandbox` state only; database,
+  production, payroll and Finance remain untouched.
+
+## 2026-10-08 - KGFF Retail master/config clone: location live; Finance preflight next
+
+- User-run Production postflight for location V3 `20261008100600` is fully
+  green: one Store, exact four-Warehouse layout, active `POS-1`, and zero
+  business effect. This phase is `DATABASE LIVE / POSTFLIGHT PASS`; authenticated
+  POS smoke and UAT remain pending and the phase must not be rerun.
+- Finance draft audit found a pre-execution scope defect: it selected every
+  KGS non-system account, including accounts outside the approved KGS Retail
+  authority. No Finance migration had been run, so Production was unaffected.
+- Migration `20261008110000` now uses the exact 37-account contract from the KGS
+  activation, requires exact name/type/balance/posting/reconciliation properties,
+  restricts all account mapping and fallbacks to that authority, and blocks
+  category-code collisions. The postflight also requires exactly 37 user COA.
+- Added SELECT-only
+  `supabase/diagnostics/kgff_retail_finance_authority_clone_preflight.sql`.
+  It proves exact Company/ledger state, the 37 source accounts, empty target
+  Finance boundary, 92 clean direct mappings, 14 fallbacks, category collision
+  absence, and exact runtime patch anchors before any write.
+- Authorized staging evidence: preflight executes as one read-only SELECT (nine
+  fail-visible rows; expected data blockers because staging lacks the Production
+  KGS/KGFF state). The revised migration compiles rollback-only and stops at the
+  expected missing-location dependency on staging. This is schema/syntax
+  evidence, not Production business proof.
+- Status: `LOCATION DATABASE LIVE / FINANCE PREFLIGHT LOCAL READY / FINANCE
+  PRODUCTION OUTPUT PENDING`. Next user action is only the Finance preflight.
+  Do not run `20261008110000` until every non-INFO row passes.
+
+### First Finance preflight: fallback remap harness corrected
+
+- Production returned PASS for exact identities/dependencies, all 37 approved
+  source accounts, empty KGFF Finance history, 92 unique direct mappings,
+  category collision absence, and exact 3/2 runtime anchors.
+- The only blocker listed all 14 KGS fallbacks as outside authority. Root cause
+  is explicit: KGS direct rules were cut over to user-owned accounts, while its
+  legacy Company fallbacks still reference system accounts. The first KGFF
+  preflight incorrectly expected their source account IDs inside the 37-account
+  map; the migration's original account-ID join would consequently have cloned
+  zero fallbacks. No Production mutation occurred.
+- Classified as `TEST HARNESS + MIGRATION DESIGN FIX`, not an accepted system-
+  account exception. Added the exact approved 34-function map from the KGS
+  authority. The 14 existing fallback function identities are now remapped to
+  their approved user-owned KGFF account codes; source system account IDs are
+  never copied. Postflight additionally asserts all 14 exact function/account
+  pairs.
+- Revised preflight and postflight both execute as read-only SQL on staging;
+  revised migration compiles rollback-only to the expected Production-data
+  guard. Static shape proves 37 account rows and 34 function rows.
+- Next safe step: rerun only the corrected Finance preflight in Production.
+  Do not run the Finance migration until its fallback row is PASS.
+
+### Corrected Finance preflight Production PASS
+
+- User rerun returned PASS on every blocking row: exact KGS/KGFF identities;
+  location and KGS-authority dependencies; Finance migration absent; exact 37
+  source accounts; zero target user accounts/Finance history/active queue; 92
+  unique direct mappings; zero category-code collision; and exact 3/2 runtime
+  anchors.
+- All 14 legacy fallback functions resolve to explicit approved user-owned
+  targets. Production evidence includes each source system account and target
+  workbook account, with `outsideAuthority=[]`; no system account is authorized
+  for KGFF.
+- Status: `LOCATION DATABASE LIVE / FINANCE PRODUCTION PREFLIGHT PASS / FINANCE
+  MIGRATION USER ACTION READY`. Next action is the complete migration
+  `20261008110000_kgff_retail_finance_authority_clone.sql` once. After success,
+  run behavior and postflight before Product/Tax. The agent has not accessed
+  Production.
+
+### First Finance migration attempt rolled back; posting lifecycle corrected
+
+- The first user-run Finance migration stopped with
+  `POSTING_RULE_SET_MUST_START_DRAFT` while inserting a cloned Posting Rule Set
+  directly as `APPROVED`. Because the file is enclosed by `BEGIN`/`COMMIT` and
+  the error occurred before ledger/commit, the intended outcome is a complete
+  rollback; this must still be confirmed by rerunning the read-only preflight.
+- Root cause is a migration design defect: the canonical trigger requires every
+  Posting Rule Set to be inserted as `DRAFT`, populated with lines, validated,
+  and then transitioned to `APPROVED`. This was not a Production-data drift.
+- Migration now follows that exact lifecycle. Before approval it explicitly
+  checks Debit/Credit presence, required system-event functions, and unique
+  direct-or-fallback account resolution, then writes separate CREATE and
+  APPROVE audit entries. It does not bypass or alter the guard trigger.
+- Preflight now inventories the live Posting Rule lifecycle guard. Authorized
+  staging evidence: revised preflight is SQL-valid with lifecycle PASS; revised
+  migration parses/compiles rollback-only and stops at the expected missing
+  Production location dependency.
+- Status: `FAILED ATTEMPT EXPECTED ROLLED BACK / CORRECTED MIGRATION LOCAL READY /
+  PRODUCTION ROLLBACK CONFIRMATION PENDING`. Next action is rerun the complete
+  read-only Finance preflight. Do not retry migration before that output passes.
+
+#### Failed-attempt rollback confirmed; helper assertion corrected
+
+- The compact Production state output proves the failed migration fully rolled
+  back: ledger 0, user COA 0, Finance history 0, and the exact provisioned
+  baseline remains 36 active direct rules / 7 fallbacks / 3 approved rule sets.
+  Both patched Retail/Dispatch runtimes still exclude KGFF.
+- Its sole `BLOCKER` came from an incorrect expectation that
+  `private.kgs_retail_category_account` must not exist. That helper already
+  exists legitimately from the installed KGS authority; rollback must instead
+  prove its definition does not contain the KGFF UUID. The compact diagnostic
+  is corrected accordingly. No additional Production rerun is required to
+  classify the returned baseline facts.
+- The corrected Finance migration uses the canonical guarded sequence used by
+  existing Finance migrations: insert DRAFT, insert lines, validate Debit and
+  Credit, required functions and exact account resolution, audit CREATE,
+  transition to APPROVED, audit APPROVE. Trigger bypass remains forbidden.
+- Status: `FAILED ATTEMPT ROLLBACK CONFIRMED / CORRECTED MIGRATION RETRY READY`.
+
+#### Second Finance attempt stopped on migration work-table dependency
+
+- The next user-run attempt stopped before commit with
+  `relation "kgff_account_map" does not exist`. This was a migration packaging
+  defect: later transaction blocks still depended on session-local work tables.
+  It was not KGFF business-data drift. The file's explicit `BEGIN` and absence
+  of the migration ledger mean the Finance phase is not classified live.
+- Migration `20261008110000` has been refactored to use no temporary or
+  persistent work tables. Account, Category, direct-rule, fallback, and Posting
+  Rule identities are now resolved again from exact Company-scoped business
+  keys inside each transaction block. A repository scan finds zero references
+  to all five former work-table names and zero `CREATE TEMP TABLE` statements.
+- The exact source contract remains fail-closed: 37 approved KGS accounts plus
+  digest `24f7517caa68b9d82c73ddf71ec3c5b9`, 92 unique direct mappings, 14 explicit
+  fallback remaps, no target Finance history, and no category collision. The
+  canonical Posting Rule lifecycle remains `DRAFT -> validated lines ->
+  APPROVED`; no trigger is bypassed.
+- Authorized staging evidence after refactor: complete migration transaction
+  accepted by PostgreSQL and stopped only at the expected missing Production
+  location dependency; preflight and postflight both execute read-only without
+  SQL/schema errors. Staging business blockers are expected because it does not
+  contain the Production KGFF dataset.
+- Status: `LOCATION DATABASE LIVE / FINANCE PREFLIGHT PRODUCTION PASS /
+  FINANCE MIGRATION REPACKAGED LOCAL READY / PRODUCTION RETRY PENDING`.
+  Production behavior, postflight, authenticated smoke, and UAT remain pending.
+
+#### Finance ledger now installed; migration must not be rerun
+
+- The next Production execution returned
+  `MIGRATION_ALREADY_APPLIED: 20261008110000` at the migration's first guard.
+  This proves the ledger row already exists from a prior complete transaction;
+  the Finance migration is now `DATABASE LIVE` and must never be rerun.
+- The previous instruction to retry the migration was incorrect because it did
+  not reclassify the newly installed ledger before directing the next action.
+  There is no third Finance migration step.
+- Next and only database action for this phase is the single SELECT-only
+  `kgff_retail_finance_authority_clone_postflight.sql`. It verifies all installed
+  COA, mappings, fallbacks, runtime scope, and zero business-history effect in
+  one result set. The rollback behavior test depends on Product Categories that
+  belong to the later Product/Tax phase and must not be used as the immediate
+  Finance closing gate.
+- Status: `FINANCE DATABASE LIVE / POSTFLIGHT PENDING`. Do not rerun migration,
+  preflight, or failed-attempt diagnostics.
+
+#### Finance Production postflight PASS
+
+- User returned the complete Production postflight: ledger 1; exactly 37 active
+  user-owned COA; 92 active direct mappings; 14 exact user-owned fallbacks with
+  zero invalid authority; helper, Retail, and Dispatch runtime scopes all contain
+  KGFF; and Event/Journal/legacy-Journal business effect remains zero.
+- Finance status is now `DATABASE LIVE / POSTFLIGHT PASS`. Migration
+  `20261008110000`, its preflight, failed-attempt diagnostic, and Finance
+  postflight must not be rerun.
+- The next rollout phase is Product/UOM/Tax migration `20261008120000`. Its
+  Production preflight/current-state guard must be reviewed before execution;
+  opening balances remain blocked until all master/config phases and combined
+  smoke checks close.
+
+### Product/UOM/Tax Production preflight ready
+
+- Re-audit found two deterministic defects before Production execution: the
+  migration still required obsolete location version `20261008100000` instead
+  of live V3 `20261008100600`, and it attempted to write nonexistent migration-
+  ledger columns `name/applied_at`. Both are corrected to the live dependency
+  and canonical `version/migration_name/notes` contract.
+- Added one-result-set SELECT-only preflight
+  `supabase/diagnostics/kgff_retail_product_tax_master_clone_preflight.sql`.
+  It proves exact Company/dependency state; exact 9 Category / 6 UOM / 1 Tax /
+  74 Product / 76 Product-UOM / zero Bundle source inventory; source ownership
+  and base-UOM integrity; active Tax account resolution into KGFF user COA;
+  empty target master; zero Stock/FIFO/transaction effect; idle Finance/Offline
+  queues; and linked Super Admin availability.
+- Authorized staging evidence: corrected migration parses and stops only at the
+  expected missing Production dependency; the complete preflight executes as
+  nine read-only checks without SQL/schema error. Staging data blockers are
+  expected and are not Production business evidence.
+- Status: `PRODUCT/UOM/TAX PREFLIGHT LOCAL READY / PRODUCTION OUTPUT PENDING`.
+  Next user action is only the complete preflight. Do not run migration
+  `20261008120000` until every non-INFO row passes.
+
+#### Production Product/Tax preflight: Tax version blocker
+
+- Production returned exact 9 Category / 6 UOM / 1 Tax Rule / 74 Product / 76
+  Product-UOM / zero Bundle counts and all ownership, empty-target, zero-effect,
+  runtime, identity, and dependency checks pass. The sole blocker is exact: the
+  KGS Tax Rule has zero currently active Tax Rule Version.
+- Migration must remain blocked because cloning an active Tax header without a
+  current rate/account version could leave KGFF Product/Category tax references
+  unresolved at transaction time. No Tax rate, status, effective date, or
+  entitlement may be invented or activated automatically.
+- Added SELECT-only detail
+  `supabase/diagnostics/kgff_kgs_tax_master_blocker_detail.sql`, validated as
+  four executable read-only rows on authorized staging. It inventories every
+  KGS Tax version, Product/Category assignments, KGS/KGFF Tax entitlements, and
+  returns a fail-visible decision boundary.
+- Next user action is only this Tax blocker detail. Do not run migration
+  `20261008120000` until the output establishes whether Tax is unused/disabled
+  and should be excluded, or whether an exact source version must be repaired
+  through the canonical Tax workflow first.
+
+#### Tax blocker classified; Draft-only clone contract ready
+
+- Production detail proves exact KGS state: one active `PPN11` Sales Tax header;
+  one Draft version at 11%, inclusive/per-document, OUTPUT_TAX, source account
+  `2110`; zero Product assignments; zero Category assignments. KGS Tax feature
+  flags are enabled, while KGFF Tax features are disabled.
+- Approved safe contract: clone the Tax header and its one Draft version without
+  activating it; remap OUTPUT_TAX to approved KGFF user account `2020100-1`;
+  preserve zero Product/Category assignment; keep both KGFF Tax feature flags
+  disabled. Finance may later review and activate the version through the
+  canonical Tax UI. No rate, effective date, or status is invented.
+- Product/Tax migration, preflight, and postflight now enforce that exact
+  Draft-only contract. The downstream commercial migration explicitly excludes
+  the two Tax feature flags from the KGS feature clone and fails if either KGFF
+  Tax feature becomes enabled while Tax remains Draft-only. Its migration-ledger
+  column contract was also corrected before Production use.
+- Authorized staging evidence: revised preflight and postflight execute without
+  SQL/schema errors; migration compiles to the expected missing Production
+  dependency. Status: `CORRECTED PRODUCTION PREFLIGHT RERUN PENDING`. Run only
+  the revised Product/Tax preflight; do not run migration yet.
+
+#### Revised Product/UOM/Tax Production preflight PASS
+
+- User rerun returned PASS for every blocking row: exact Company/dependency
+  identity; migration absent; exact 9/6/1/74/76/0 source inventory; exactly one
+  Draft Tax version and zero active versions; clean source ownership; exact
+  Draft Tax account resolution; empty KGFF target master; zero operational
+  effect; idle queues; linked Super Admin; and both KGFF Tax features disabled.
+- Status: `PRODUCT/UOM/TAX PRODUCTION PREFLIGHT PASS / MIGRATION USER ACTION
+  READY`. Next action is the complete migration `20261008120000` once. After
+  success, run only its one-result-set postflight. Do not rerun the preflight or
+  Finance phase, and do not advance to commercial policy before postflight PASS.
+
+#### Product/UOM/Tax migration Production success
+
+- User reports migration `20261008120000` completed successfully. Status is
+  `DATABASE LIVE / POSTFLIGHT PENDING`; the migration and preflight must not be
+  rerun.
+- Next and only action for this phase is the SELECT-only
+  `kgff_retail_product_tax_master_clone_postflight.sql`. Require every row to
+  PASS before commercial/policy migration work continues.
+
+#### Product/UOM/Tax Production postflight PASS; commercial preflight ready
+
+- User returned complete PASS: migration ledger 1; exact KGS/KGFF parity for
+  9 Categories, 6 UOMs, 74 Products, 76 Product-UOMs, zero Bundles, one Tax
+  header and one Tax version; exact PPN11 Draft 11% mapped to user-owned
+  `2020100-1`; tenant ownership clean; zero Stock/FIFO/transaction effect; both
+  Tax features disabled. Product/UOM/Tax is closed and must not be rerun.
+- Commercial/policy migration was audited before Production. Its KGS Tax feature
+  clone is explicitly excluded while Tax is Draft-only, and its ledger insert
+  uses canonical columns. Added dedicated one-result-set SELECT-only preflight
+  `kgff_retail_commercial_policy_clone_preflight.sql` covering exact source and
+  target baseline counts, mapping uniqueness, Product/Pricelist/Expense
+  references, Retail policies, queues, and zero business effect.
+- Commercial postflight now also proves exact business-key identities, Expense
+  Category count, Tax features disabled, user-COA-only runtime, and zero Journal
+  Entry effect. Preflight, migration compile, and postflight execute against
+  authorized staging; expected data blockers there are not Production evidence.
+- Status: `PRODUCT/UOM/TAX DATABASE LIVE + POSTFLIGHT PASS / COMMERCIAL
+  PRODUCTION PREFLIGHT READY`. Next user action is only the commercial preflight.
+
+#### Commercial Production preflight returned two blockers
+
+- Production evidence passes Company/dependency identity, exact source and
+  target inventories, mapping uniqueness, and the zero-business-effect runtime
+  boundary. Migration `20261008130000` has not been run.
+- `kgff_commercial_preflight_reference_resolution` reports the single KGS
+  Expense Category `5087d306-a697-4a17-b443-b8246e33109b` unresolved in the
+  target contract. This is a real blocking reference until its exact source
+  Category/account/payment lineage and KGFF target matches are known.
+- `kgff_commercial_preflight_policy_contract` reports four enabled KGS non-Tax
+  features while its current assertion expects six. This is not authorization
+  to invent or enable two features; the full feature inventory must establish
+  whether the assertion is stale.
+- Added SELECT-only detail
+  `supabase/diagnostics/kgff_retail_commercial_blocker_detail.sql`. Authorized
+  staging execution PASS as one four-row result set; it reports the exact
+  Expense Category resolution, complete KGS/KGFF feature inventory, and an
+  explicit four-feature non-Tax contract. It performs no mutation.
+- Status: `COMMERCIAL PRODUCTION PREFLIGHT BLOCKED / DETAIL DIAGNOSTIC READY`.
+  Next user action is only the new detail diagnostic in Production. Do not run
+  the commercial migration, and do not rerun closed location/Finance/Product
+  phases.
+
+#### Commercial blockers classified; corrected preflight ready
+
+- Production blocker detail proves the single Expense Category is
+  `EXP-GENERAL / Biaya Operasional Umum`, transaction function
+  `EXPENSE_SETTLEMENT`, and source system account `6110 / EXPENSE`. Its exact
+  KGFF transaction category exists, but same-code target account correctly does
+  not exist because KGFF is restricted to the approved user-owned authority.
+- Existing approved KGS/KGFF Finance authority supplies the deterministic
+  translation `EXPENSE -> 630115 / BEBAN UMUM DAN LAIN LAIN`. The corrected
+  commercial preflight and migration require the exact `6110 / EXPENSE` source
+  and exact active, postable, non-system `630115` target; the postflight proves
+  the cloned Expense Category uses that target. No account is created or
+  inferred by this phase.
+- Full Production feature inventory proves the exact enabled non-Tax set is
+  `expense_enabled`, `ketul_enabled`, `offline_pos_enabled`, and
+  `pos_negative_stock_enabled`. The old numeric expectation of six was a test-
+  harness defect. Preflight, migration guard, and postflight now compare these
+  four identities exactly; both Tax features remain disabled.
+- Authorized staging evidence: corrected preflight executes as one eight-row
+  read-only result set; expected business blockers reflect absent Production
+  KGFF data. Corrected migration compiles rollback-only and stops only at its
+  expected missing Production phase dependency. Corrected postflight executes
+  as one eight-row read-only result set. SHA-256: preflight
+  `a6b7180d6aa446d9063c91afd40bd8f0d5e3e28cc002198f07327c9da11ef7a7`;
+  migration
+  `2d5481179d88147e67e7e8f1e9d2897cbfbd3ee5556869a25bcfcf137e015c17`.
+- Status: `COMMERCIAL CORRECTED PRODUCTION PREFLIGHT RERUN PENDING`. Next user
+  action is only the corrected preflight. Do not run migration until every
+  non-INFO row passes.
+
+#### Corrected commercial Production preflight PASS
+
+- User returned PASS for every blocking check: exact Company/location and three
+  dependencies; migration absent; exact source and target inventories; zero
+  ambiguous mapping; complete reference resolution including approved Expense
+  remap; exact four-feature non-Tax contract; Tax disabled; zero business data;
+  and idle Finance/Offline queues.
+- Status: `COMMERCIAL PRODUCTION PREFLIGHT PASS / MIGRATION USER ACTION READY`.
+  Run complete migration `20261008130000` once. On success do not rerun it;
+  proceed to its SELECT-only postflight. Opening balances remain excluded.
+
+#### First commercial migration attempt rolled back at Sales Process guard
+
+- User execution stopped on `SALES_PROCESS_SETTING_RUNTIME_REQUIRED` while the
+  migration directly updated `company_sales_process_settings`. Because the
+  complete file is enclosed in `BEGIN`/`COMMIT` and the ledger write is last,
+  this attempt is expected to have rolled back; the corrected preflight must
+  reconfirm ledger absence and the complete baseline before retry.
+- Root cause is a migration-design defect, not KGFF data drift. Company
+  provisioning already initialized KGFF as `RETAIL_CONFIRM_INVOICE`, exactly
+  matching KGS. Copying only KGS's `mode_effective_at` was not a business
+  cutover, while the canonical trigger correctly forbids every direct UPDATE.
+- Audited the Sales Process trigger and all tables mutated by the commercial
+  migration using SELECT-only
+  `kgff_retail_commercial_mutation_guard_audit.sql`; staging returns the exact
+  guard contract PASS. No trigger is disabled and no mutation GUC is spoofed.
+- Migration now asserts both KGS and KGFF are already in exact Retail mode and
+  preserves KGFF's canonical initialization row/history without UPDATE.
+  Corrected preflight exposes `targetSalesMode`; corrected migration compiles
+  rollback-only on staging to the expected absent Production dependency.
+  SHA-256: preflight
+  `c91f5af470f60e6c9cb647ab45f69d3f962075284306e8208f518c050fbd85e7`;
+  migration
+  `29828766fc25a746d95e6c1e6e6cd710f009f73e576c613807aea12ede166766`.
+- Status: `FAILED ATTEMPT EXPECTED ROLLED BACK / CORRECTED PREFLIGHT RERUN
+  PENDING`. Next user action is only the corrected preflight. Do not retry the
+  migration until every non-INFO check passes again.
+
+#### Commercial failed-attempt rollback confirmed; corrected retry ready
+
+- Corrected Production preflight returned PASS for every blocking row. It
+  proves migration ledger 0, exact original KGFF baseline, zero business data,
+  idle queues, complete reference/feature contracts, and both KGS and KGFF in
+  `RETAIL_CONFIRM_INVOICE`.
+- The failed attempt therefore rolled back completely. Status:
+  `COMMERCIAL CORRECTED MIGRATION USER ACTION READY`. Run the complete corrected
+  `20261008130000` file once; after success do not rerun it and proceed only to
+  postflight.
+
+#### Corrected commercial migration Production success
+
+- User reports corrected migration `20261008130000` completed successfully.
+- Status: `COMMERCIAL DATABASE LIVE / POSTFLIGHT PENDING`. Migration and
+  preflight must not be rerun. Next and only database action is the SELECT-only
+  `kgff_retail_commercial_policy_clone_postflight.sql`; opening balances remain
+  blocked until its complete output passes.
+
+#### KGFF complete master/config Production postflight PASS
+
+- User returned PASS for the complete four-migration chain, exact commercial
+  master counts/identities, `EXP-GENERAL -> 630115`, zero opening Customer
+  balances, exact four-feature Retail policy, 37 active user-owned COA, zero
+  visible/referenced system COA, and zero operational/Finance business effect.
+- All four master/config phases are now `DATABASE LIVE / POSTFLIGHT PASS` and
+  must not be rerun. KGFF still has no Stock/FIFO, Sales/Purchase/Return,
+  AR/AP/Customer Balance, Cash/Bank/GL opening, Event, or Journal rows.
+- Remaining gate before generating/posting opening balances is authenticated
+  read-only UI smoke in KGFF: workspace selection, POS/catalog visibility,
+  Customer/Pricelist/Payment Method visibility, and Finance COA visibility.
+  Do not open a cashier session or create a transaction during this smoke.
+- Status: `MASTER CONFIG COMPLETE / AUTHENTICATED SMOKE + UAT PENDING /
+  OPENING BALANCE NOT STARTED`.
+
+#### KGFF session-close procurement diagnosis ready
+
+- Code audit proves `close_cashier_session` does not create a Supplier Order/PO
+  directly. Its inherited close chain may call
+  `ensure_session_procurement_stock_request`, which creates only a submitted
+  Stock Request when the session snapshot policy is enabled and outstanding
+  frozen demand exists.
+- Daily procurement is independent: after the 23:59 local cutoff, `AUTO_PO`
+  may create Supplier Orders directly, `AUTO_RO` creates Draft RO, and `MANUAL`
+  creates neither automatically.
+- Added SELECT-only
+  `kgff_session_close_procurement_mode_diagnosis.sql` to expose exact live KGS
+  and KGFF flags/modes plus current KGFF generated-document inventory. Its
+  runtime contract executes PASS on staging; expected setting-data blocker is
+  caused by staging not containing Production KGS/KGFF rows.
+- Next user action is only this Production read-only diagnostic. No setting or
+  business document is changed.
+
+#### KGFF session-close procurement diagnosis PASS
+
+- Production confirms KGS and KGFF both use `MANUAL`, cutoff `23:59`, target On
+  Hand 0, Stock Match OFF, Draft roll-forward OFF, and Session-close Stock
+  Request OFF.
+- Therefore closing a KGFF Cashier Session creates neither REQ, RO, nor PO;
+  the nightly scheduler also creates neither RO nor PO. Purchasing remains a
+  manual user action unless these settings are deliberately changed later.
+- Current KGFF inventory is clean: zero Cashier Sessions, session Stock
+  Requests, daily batches, and daily Supplier Orders. No mutation is needed.
+
+## 2026-10-08 - KGFF Retail master/config clone: original four-phase preparation
+
+- First user-run location migration failed on `SYSTEM_CODE_IMMUTABLE` while
+  attempting to rename auto-provisioned Warehouse code `KGS`; the transaction
+  rolled back, so no partial Production effect exists. Root cause is canonical
+  trigger `private.trg_g2_automatic_master_code()`, not KGFF data.
+- Forward fix preserves that trigger: retire the old `KGS` Warehouse inactive,
+  create a new `KGFF` Store Warehouse, and preserve audit lineage. Staging
+  rollback-only behavior proves explicit code on INSERT, non-code update, and
+  rejection of code mutation. Updated migration/postflight await user re-run.
+- V2 then rolled back on `uq_warehouses_company_normalized_name` because an
+  inactive Warehouse still reserves `Gudang Toko`. V3 now renames that retained
+  legacy row to `Gudang Toko (Arsip)` before inserting the active replacement.
+  An exact staging rollback test proves the archive rename plus same-display-name
+  replacement succeeds while immutable-code mutation remains rejected.
+- Added guarded KGFF phases `20261008110000`, `20261008120000`, and
+  `20261008130000` after location phase V3 `20261008100600`.
+- Finance uses KGFF-owned copies of approved KGS user COA and clean Retail/POS
+  mappings. Product phase targets 9 Categories, 6 UOM, 74 Products,
+  76 Product-UOM and active Tax. Commercial phase targets 207 Customers with
+  zero balance, Supplier/Product-Supplier, 4 Pricelists/10 rules, 4 Payment
+  Methods, adjustment reasons, Expense default, and Retail policies.
+- System COA is hidden only after active mapping/Tax/Expense references prove
+  user-owned. Stock/FIFO, transactions, opening balances, Events/Journals,
+  memberships, credentials, device identifiers, and document numbers remain
+  excluded.
+- All new SQL reaches its expected Production-data guard on authorized staging;
+  both new SELECT-only postflights execute against the staging schema. Because
+  staging has no Production KGFF dataset, this is compile/schema evidence, not
+  behavioral proof.
+- Status: `LOCAL READY`; Production preflight, user-run ordered rollout,
+  behavior, authenticated Retail smoke, and UAT remain pending. Opening balance
+  remains a separate package generated only from final live KGFF IDs.
+
+## 2026-10-08 - KGFF Retail master clone: location foundation local-ready
+
+- User approved the first KGFF location layout and confirmed it may later be
+  adjusted through the application: retain `STORE-MAIN / Toko Utama`; configure
+  `GDS / Gudang Utama` as Transit/Purchase; rename/configure the target `KGS`
+  warehouse to `KGFF / Gudang Toko` as the Store Sale/Purchase warehouse;
+  create `SCRAP / Reject/Rusak KGFF`; create `POS-1 / Kasir Utama POS-1`
+  without copying a device identifier.
+- Added guarded KGFF-only migration; never-applied V1 `20261008100000` and V2
+  `20261008100500` drafts are superseded by V3 `20261008100600`, with postflight and staging compile
+  helper, and rollout runbook. The migration locks source/target, requires exact
+  KGS/KGFF identities and zero KGFF operational history, audits Warehouse and
+  Terminal writes, and excludes every transaction, balance, Stock/FIFO, Finance,
+  Product, Customer, Supplier, user, and opening effect.
+- Evidence: postflight is SQL/schema-valid on authorized staging (six rows;
+  expected business failures because staging has no KGFF); migration rollback
+  compile reaches the exact KGFF identity guard; delimiter/static diff checks
+  pass. Production was not accessed.
+- Status: `LOCATION UNIT LOCAL READY / FULL MASTER PACKAGE INCOMPLETE /
+  PRODUCTION NOT AUTHORIZED`. Do not run this phase by itself yet. Next safe
+  work is the user-owned Finance authority clone, then remaining operational
+  masters, full behavior/postflight, and authenticated empty-Company POS smoke.
+  Opening balances remain blocked until the final KGFF master IDs are live.
+
+## 2026-10-08 - KGFF clean operational template from KGS: Production preflight ready
+
+- User created Company code `KGFF` and authorized preparation of the same
+  Retail/POS master and Finance configuration as KGS, excluding every KGS
+  transaction and balance. Production remains user-operated; the agent did not
+  access or mutate it.
+- Added impact map
+  `docs/audits/KGFF_KGS_OPERATIONAL_TEMPLATE_CLONE_IMPACT_2026-10-08.md` and
+  SELECT-only gate
+  `supabase/diagnostics/kgff_kgs_operational_template_clone_preflight.sql`.
+- Planned clone uses new KGFF IDs and remaps dependencies for location,
+  Product, Customer, Supplier, price/tax/payment, current approved Finance
+  configuration, features, and Retail policies. It explicitly excludes Stock,
+  FIFO, opening balances, Customer balances, transactions, documents, sessions,
+  events, Journals, audit history, users, document numbers, and terminal device
+  identifiers.
+- The preflight discovers KGFF by exact code, verifies the exact KGS source,
+  checks 27 operational relations plus nonzero Product Stock, inventories 24
+  master/config groups, lists physical locations/terminals and Retail policies,
+  validates the 91-rule KGS Finance/category runtime, and lists manual opening
+  and external setup gaps.
+- Evidence: one SELECT statement, zero persistent mutation tokens, balanced SQL
+  parentheses, scoped `git diff --check` PASS, and authorized staging
+  `STAGING_READ_ONLY_EXECUTION_PASS` with 10 fail-visible rows. Staging blockers
+  are expected because staging has neither Production KGFF nor the live KGS COA
+  activation; they are not Production conclusions.
+- Status: `LOCAL PREFLIGHT READY / PRODUCTION OUTPUT PENDING`. Next safe step is
+  for the user to run the complete preflight once in Production and return all
+  10 rows. Do not build or run the clone migration until identity, zero-history,
+  target baseline, location review, and current KGS contract are classified.
+- Production preflight output received: exact KGFF identity
+  `a59c534b-909f-4b3f-aba0-ae9db6d90b76 / KGFF / Kidul Gunung Frozen Food`,
+  zero operational rows across the checked relations, and zero Stock balance.
+  KGFF has an auto-provisioned baseline (37 accounts, 36 active direct rules,
+  seven fallbacks, three approved rule sets, one Customer/Category/Store), so
+  later work must reconcile by business identity rather than append duplicates.
+- KGS currently reports 109 active direct rules, while the approved Retail/POS
+  activation contract contains 91 targets. This invalidates the preflight's
+  old total-count assertion but does not authorize copying all 109. The first
+  target-aware classifier was withdrawn after repeated Production input
+  resolved `KGFF` as a relation. It has been replaced by the simpler SELECT-only
+  `supabase/diagnostics/kgs_active_finance_rules_export.sql`, which contains no
+  target lookup/token and exports every current KGS rule with an explicit
+  Retail-scope classification. The replacement executes successfully on
+  staging; Production export is pending.
+- User reconfirmed sequencing: complete and postflight the KGFF master/config
+  clone first. Only afterward generate/load Odoo-style Opening Stock and
+  Finance opening balances against final KGFF master IDs. Never combine opening
+  balances with the master clone migration.
+- Production KGS mapping export classified 109 current rules exactly: 91 rows
+  fell within the earlier Retail event list and 18 outside it. Of those 18, 13
+  are Backoffice-only and remain excluded; five are general Cash In and
+  Customer/Supplier Debit/Credit Note routes but still point to system accounts.
+  The KGFF design remaps those five to user-owned `1010100-3`, `1020100`, and
+  `2010100`. Four of the 91 rows belong to duplicate test category `TEST1/tes1`
+  and are not clean operational master. The proposed clean contract is therefore
+  87 approved non-test Retail rows plus five remapped general Finance rows = 92;
+  no KGS system account or Backoffice rule is copied.
+- Added SELECT-only target-baseline export
+  `supabase/diagnostics/new_company_master_baseline_export.sql`. It is locked to
+  the proven target UUID, contains no Company-code lookup, returns eight master/
+  policy groups, and has `STAGING_READ_ONLY_EXECUTION_PASS`. Production output
+  is pending before mutation design.
+- Production target-baseline output received. KGFF is a clean provisioned
+  tenant with `STORE-MAIN / Toko Utama`, two unconfigured Warehouses (`GDS /
+  Gudang Utama` and incorrectly generic `KGS / Gudang Toko`), no terminal, only
+  system `GENERAL/WALK-IN`, default `GLOBAL` Pricelist, Cash plus disabled
+  Customer Balance payment methods, 37 active system COA, 28 system Finance
+  categories, 36 direct rules, seven fallbacks, and three rule sets.
+- Missing master/config versus KGS: nine Product Categories, six UOM, 74
+  Products, 76 Product-UOM, four Pricelists/ten rules reconciliation, four
+  Payment Methods reconciliation, five Customer Categories/207 Customers
+  reconciliation, one Supplier/one Product-Supplier, one Tax Rule/version,
+  approved user-owned COA and mappings, six Company features, Finance policy,
+  offline policies, enabled negative-stock policy, and a physical POS terminal.
+- Balance boundary remains exact: system WALK-IN is preserved/remapped, but its
+  balance and every cloned Customer balance start at zero. No Stock, FIFO, AR,
+  AP, Customer deposit, Cash/Bank, Tax, fixed-asset, or GL opening value enters
+  the master migration.
+
+## 2026-10-07 - Posted Backoffice Invoice template now reads effective revision
+
+- Root cause: the export correctly used the canonical effective Invoice
+  identity/amount readers, while `BackofficeSalesInvoiceView` built Print/PDF
+  from the immutable original Invoice object plus only the legacy price
+  correction context. Initial detail loading could also replace the effective
+  detail response with a stale workspace row.
+- Changed only
+  `backoffice/src/components/BackofficeSalesInvoiceView.tsx`. Detail, Print,
+  PDF, and PDF filename now prefer the unified `revisionContext` for customer,
+  Invoice date, shifted due date, unit price, line discount, subtotal, tax, and
+  grand total. Accepted-overage lines and every immutable fulfillment field
+  remain unchanged. Legacy price-only correction is a fallback and is never
+  added a second time when unified context exists.
+- Impact boundary: no schema/RPC/migration, SO, DO, Stock, reservation, FIFO,
+  COGS, Receipt, payment, Return, Finance Event, or Journal mutation.
+- Evidence: scoped ESLint PASS; full `backoffice` Next production build and
+  TypeScript PASS; scoped `git diff --check` PASS.
+- Status: `LOCAL READY`; `CLIENT DEPLOYED`, authenticated Print/PDF smoke, and
+  UAT remain pending. Next safe step is deploy the reviewed client commit, open
+  one revised Posted Regular Invoice, and compare detail + Print + PDF against
+  the effective export for customer/date/due date/price/discount/tax/total.
+
+## 2026-10-02 - Sales export Detail Penjualan Bersih
+
+- User authorized one additive XLSX sheet for fixed quantity reconciliation.
+  Existing `Daftar Invoice` and `Detail Produk` remain gross immutable Invoice
+  history; they are not rewritten after Return/cancellation.
+- `Detail Penjualan Bersih` is `DATABASE LIVE`. Production preflight,
+  behavioral test, and closing postflight PASS across all five active Companies.
+  It separates net commercial Sales
+  from net physical Stock out in base UOM. `DESTROY`/no-physical Return lowers
+  Sales but does not fake a Stock return. Retail uses exact Sale/detail lineage
+  and posted Stock Movement; Backoffice uses exact Invoice-line Return
+  allocation and exposes accepted-Invoice-qty as its Stock basis.
+- Files: migration `20261002100000`, preflight, rollback-only read behavior,
+  postflight, API workbook renderer, impact map, and rollout runbook. Scoped
+  route ESLint and full Next production build PASS. Runtime inventory is KGS
+  67 rows, KMS 380, LSM 594, SMS 126, and the empty test Company 0; arithmetic
+  has zero invalid rows. Client deployment, authenticated XLSX smoke, and UAT
+  are still pending.
+- Next safe step: deploy the matching client, then download a real workbook and
+  verify the new sheet. KGS net Sales 194.55 versus net Stock out 151 is not an
+  arithmetic violation because the metrics intentionally differ, but its exact
+  Return/disposition composition must be reviewed during smoke.
+
+## 2026-10-01 - KMS COA raw-only forensic reconciliation
+
+- User rejected prior workbook-wide interpretation and set an explicit source
+  boundary: only the pasted `Akun Baru` raw rows and pasted KMS mapping names
+  are authoritative. Snapshots are stored under `docs/audits/` and the Excel
+  workbook must not be consulted for this correction.
+- Production read-only audit is complete: 119 raw accounts versus 92 live KMS
+  accounts; 23 exact identities, 13 existing-code differences, 83 missing raw
+  codes, and 56 live codes outside the raw account list. There are 106 active
+  rules and 21 require review against the raw boundary.
+- The 2026-09-29 migration introduced three accounts without raw authority:
+  `4020100-1`, `5010100-1`, and `6030115`; all have zero observed Journal rows
+  but active rules, so they cannot be deactivated before approved replacements.
+  Legacy `630117` and `7010101` “stock opname” accounts also have zero Journal
+  rows/rules and no raw authority, but were not created by that migration.
+- Forward-fix for the remaining discrepancies remains blocked on an
+  exact process/function/code mapping table, hierarchy/postability for 83
+  missing accounts, the `4040100` CREDIT-vs-contra-revenue contract, approved
+  replacements for four unsupported runtime functions, and user approval of
+  the 56 outside-raw account dispositions.
+- Full evidence and impact boundary:
+  `docs/audits/KMS_COA_RAW_RECONCILIATION_2026-10-01.md`.
+- Safe Phase 1 migration `20261001150000` is now `DATABASE LIVE`: Production
+  preflight, rollback-only behavior, and closing postflight PASS. Only
+  unused/unreferenced `630117` and `7010101` were made inactive; no account was
+  deleted and no mapping changed. Authenticated KMS COA-selector smoke and UAT
+  remain pending. `6030115` remains active because it is still the live
+  `STOCK_LOSS` mapping and no authorized replacement has been defined. Nine tempting renames were
+  deliberately excluded because their live `system_function_key` semantics do
+  not match the raw names; `8010101` was excluded because `BANK_ADMIN_FEE`
+  currently permits only `EXPENSE`.
+- Phase 2 preflight is `LOCAL READY` for the remaining 25 candidates that were
+  outside both raw authorities with zero observed Journal/active-rule usage.
+  It dynamically checks every Production foreign key targeting
+  `chart_of_accounts`, legacy `coa_code` Journals, and active children. No Phase
+  2 migration exists until the full Production output passes and is reviewed.
+- Production Phase 2 preflight found a real 12-row reference blocker across 39
+  inspected foreign keys: two account-function fallbacks, nine transaction
+  account rules, and one purchase-return shortage cost adjustment. Company,
+  dependency, candidate identity (25/25), Finance/offline boundary, legacy
+  Journal, and active-child checks passed. A read-only exact reference-detail
+  audit is ready; no Phase 2 migration has been created.
+- Reference detail classifies the blocker: `2130` has five ended/inactive rules
+  and `6130` has two ended/inactive rules; both may be hidden while preserving
+  history. `5130` remains tied to one `APPLIED` purchase-return cost adjustment,
+  while `6150` and `7120` remain current rounding fallbacks and must stay active.
+  Final guarded migration `20261001151000` is `DATABASE LIVE`; Production final
+  preflight, rollback-only behavior, and closing postflight PASS. Exactly the
+  other 22 accounts are inactive, audit coverage is 22/22, and all seven
+  historical rules remain unchanged. No mapping or historical reference was
+  modified. Authenticated KMS COA-selector smoke and UAT remain pending.
+- User clarified the Phase 2 authority interpretation: raw mapping labels are
+  not permission to retain duplicate legacy COA. Runtime mappings must use the
+  official `Akun Baru` identities, then duplicate `1110 Kas Laci`, `1120 Kas
+  Besar/Brankas`, and `1130 Bank` should be hidden when safe. A read-only exact
+  diagnosis now inventories all 39 FK paths, current rules/fallbacks, Journal
+  history, official targets (`1010100-1/-2/-3`, `1010200`), and the already
+  activated official runtime mappings. No new migration exists yet.
+- Latest user authority is now explicit and supersedes the earlier union
+  interpretation: only the 119 `Akun Baru` codes may remain active/visible in
+  KMS. A comprehensive read-only audit is ready to list every still-active
+  outside-authority account, every effective process/function resolving to an
+  unauthorized/inactive/unmapped target, the authorized resolutions, and every
+  missing authorized code. This output is the required basis for the remap and
+  final legacy-account deactivation; no target will be inferred.
+- Production output from the first authority audit found 32 active accounts
+  outside `Akun Baru`, 53 process/function resolutions using outside accounts,
+  13 unmapped process/functions, and 83 authorized codes not yet present. That
+  first query also exposed an audit defect: code-only authorization falsely
+  classified live `8030101 RUGI SELISIH PEMBULATAN` as valid even though raw
+  `Akun Baru` defines `8030101 BEBAN NON OP - DENDA PAJAK` and puts rounding
+  loss at missing code `8040101`. The diagnostic is therefore revised to embed
+  all 119 exact code/name/type/normal-balance identities (normalizing workbook
+  `OTHER_EXPENSES` to schema `OTHER_EXPENSE`) and classify mismatched targets
+  as `INVALID_AKUN_BARU_IDENTITY`. No remap/deactivation migration exists from
+  the code-only output; rerun the revised read-only audit before any write.
+- Revised exact-identity Production audit is complete: 59 effective
+  process/function resolutions are exact-authorized; 69 remain invalid (53
+  outside `Akun Baru`, 13 unmapped, and three mapped to invalid raw identity).
+  There are still 32 active outside-authority accounts, 13 live code-identity
+  mismatches, and 83 authorized raw codes absent from KMS. The three newly
+  exposed invalid resolutions are `SALE_DISPATCHED/ROUNDING_LOSS` on corrupted
+  `8030101` and `CUSTOMER_CREDIT_NOTE` plus `SALES_RETURN` return-discount paths
+  on `4040100` whose live DEBIT balance contradicts raw CREDIT. No mutation is
+  authorized from this evidence alone. Exact same-function replacements may be
+  prepared separately; cash-control, delivery fee, expense clearing, purchase
+  variance, stock gain/loss, opening clearing, and the raw contra-revenue
+  balance conflicts require explicit Finance account-code decisions.
+- Finance decision workbook is `LOCAL READY` at
+  `docs/audits/KMS_MAPPING_DECISION_FOR_FINANCE_2026-10-02.xlsx`. It contains
+  seven sheets: summary, 13 unmapped process rows, 23 legacy mappings without
+  an explicit official replacement, four plain-language special conflicts, 30
+  same-function remaps with an already-proven official target, 13 live identity
+  mismatches, and the exact 119-row official account list. Business descriptions
+  are primary; technical keys are retained only in trailing trace columns.
+  Workbook structure was verified from the XLSX package (7 sheets; expected
+  row counts 13/23/4/30/13/119). No database or mapping mutation occurred.
+- A second Finance workbook is `LOCAL READY` at
+  `docs/audits/KMS_MAPPING_DECISION_FOR_FINANCE_BACKOFFICE_ONLY_2026-10-02.xlsx`.
+  Per user direction it excludes only clear Retail/POS system events
+  (`CASH_DEPOSIT`, `CASH_IN`, `CASH_VARIANCE`, `SALE_DISPATCHED`,
+  `SALE_PAYMENT_VERIFIED`, and `SALE_POSTED`) while retaining Expense,
+  Backoffice Invoice/Return, Supplier, Purchase, Stock, and Ketul operations.
+  Verified Backoffice-only counts are 8 unmapped rows, 13 legacy mappings
+  without an explicit replacement, three special conflicts, 23 proven remaps,
+  13 identity mismatches, and the same exact 119 official accounts. No database
+  mutation occurred.
+
+## 2026-10-01 - Backoffice completed SO Invoice action-state correction
+
+- Production read-only evidence for SMS `SO-20260930-0000000187`, `0188`, and
+  `0189` proves all accepted quantities are fully represented by Posted Invoice
+  `INV-20261001-0000000541`, `0542`, and `0543`; every line has accepted equal
+  invoiced and `to_invoice_base_qty=0`. No accepted quantity was erased.
+- Root cause is client navigation: SO detail displayed `Buat Invoice` for every
+  completed SO without considering `invoiceStatus`, although the list already
+  routed `READY`, `DRAFT`, and invoiced states separately. Clicking a fully
+  invoiced SO therefore entered create mode and correctly hit the zero-remaining
+  quantity guard.
+- `BackofficeSalesOrderView.tsx` now routes `READY` to creation, `DRAFT` to its
+  exact draft, and `PARTIALLY_INVOICED`/`INVOICED` to the existing Invoice list;
+  the button label reflects the state. No database/RPC/schema or business ledger
+  changes.
+- Evidence: scoped ESLint PASS; full Next production build and TypeScript PASS.
+  Status `LOCAL READY`; client deployment plus authenticated smoke for one READY,
+  one DRAFT, and one INVOICED SO remain pending. Do not create/repair Invoice
+  rows for 0187-0189 because their Posted Invoices already exist.
+
+## 2026-10-01 - Daily RO PostgreSQL UUID client compatibility fix
+
+- Authenticated confirmation of `RO-20261001-0000000033` failed before RPC with
+  `PURCHASE_DAILY_BATCH_ID_INVALID`. Root cause is proven: its PostgreSQL-valid
+  deterministic ID `9e2dff17-3dec-b4ab-fa3a-5c6f9d04aec9` does not encode an
+  RFC UUID version/variant, while shared `uuidValue()` requires version 1-5 and
+  RFC variant. The replacement migration therefore violated the client route
+  contract even though database behavior/postflight passed.
+- Product fix is intentionally narrow. Daily RO confirm, Stock Match read/write,
+  and cancel now use `purchaseDailyBatchIdValue()`, which accepts PostgreSQL UUID
+  text shape but still rejects malformed identifiers. Body IDs, operation IDs,
+  tenant/role checks, RPCs, versions, idempotency, Stock, FIFO, PO, and Finance
+  remain unchanged.
+- Evidence: scoped ESLint PASS and full Next production build/TypeScript PASS.
+  Status `LOCAL READY`; no database migration or data repair is needed. Client
+  deployment/restart plus authenticated confirmation smoke on RO 0033 remains
+  mandatory before calling this fixed. The failed UI attempt did not reach RPC,
+  so the RO remains Draft unless separately changed by the user.
+
+## 2026-10-01 - LSM canceled PO 0087 adjusted replacement RO audit
+
+- User requests canceled `PO-20261001-0000000087` be represented again as an
+  adjusted RO for the current business date after BRB10-2 correction.
+- Do not copy the canceled PO or its old 12-unit BRB10-2 line: corrected On Hand
+  is +162 and canonical requirement is expected zero.
+- Read-only Production preflight PASS. Old PO total 492; BRB10-2 12 is now
+  excluded at On Hand +162; exact current uncovered need is six lines / 480.
+  There is no LSM batch for business date 2026-10-01.
+- Exact migration `20261001140000` is user-confirmed `DATABASE LIVE`; behavior
+  and closing postflight are user-confirmed PASS. Exact result is Draft
+  `RO-20261001-0000000033`, six lines / 480 base qty, zero uncovered current
+  need, no BRB10-2, and canceled PO 0087 remains immutable.
+  Migration creates one
+  audited current-date Draft AUTO_RO using the canonical candidate snapshot;
+  canceled PO/RO history, Stock, FIFO, Sales, Return, Finance, and Journal are
+  unchanged.
+- Manual gate: deploy/restart the client containing the Daily RO PostgreSQL UUID
+  compatibility fix, then repeat authenticated UI check, supplier assignment,
+  confirmation into a new PO, and business UAT.
+  Stop on any error or drift. Because the new same-date batch is created before
+  normal cutoff, review/confirm promptly; later same-day demand is not silently
+  merged by the scheduler.
+
+## 2026-10-01 - LSM RTN 0028 repeated 174 RO diagnosis ready
+
+- Closing correction preflight is user-confirmed PASS after PO 0087 was
+  canceled, and migration `20261001130000` is user-confirmed successful.
+  Rollback-only duplicate-reversal behavior and closing postflight are
+  user-confirmed PASS. Status `DATABASE LIVE / STOCK SCOPE CLOSED / PHYSICAL
+  COUNT + UAT + COMMERCIAL RETURN/FINANCE PENDING`.
+- Closing state: On Hand 162, reversal +174, exact-cost FIFO remaining 162,
+  Backoffice shortage 12 fully replenished with zero cost variance, no active
+  PO or uncovered Draft RO, and Return remains immutable `RECEIVED/DESTROY`.
+  Finance correctly remains `WAITING`: source Event 0, Credit Note 0, and this
+  Stock migration created no Journal.
+- Expected committed result: On Hand 162, correction FIFO 174 at Rp13,592 consumes
+  exact Backoffice shortage 12 and leaves 162, no active RO/PO, immutable
+  Return/Sale history, and no Journal creation. Next safe step is behavior,
+  then postflight; stop on any error.
+- User confirms the 174-unit transaction was purely duplicate input and no
+  physical goods left. Correction design is therefore source-linked SALE
+  reversal +174 with exact-cost FIFO layer Rp13,592/unit. Given current -12 and
+  open procurement 12, expected corrected state is On Hand/FIFO +162 before
+  any new receipt.
+- Exact correction preflight added. It intentionally blocks while active PO/RO
+  coverage exists; `PO-20261001-0000000087` remaining 12 must be canceled by
+  the business workflow, not silently by migration. Finance source/Return state
+  is reported for final migration-boundary design.
+- First Production output confirms: exact retained-Retail Return received 174,
+  all 174 classified `DESTROY`, no Return Stock movement, original Sale -174
+  remains POSTED with no reversal, and its source shortage is already fully
+  replenished. Current On Hand is -12 and the only active coverage is confirmed
+  PO 0087 for 12; a direct +174 reversal would project On Hand to +162 before
+  that PO is received.
+- Added read-only step-2 replenishment lineage audit to identify the exact
+  historical RO/PO/receipt/FIFO batches which already covered the original
+  -174 and the full movement timeline since the source Sale. Correction remains
+  unauthorized until this output is reconciled to physical stock.
+- User reports retained-Retail Return `RTN-20260927-0000000028`, source
+  `DRF-20260907-000333`, SKU `BRB10-2`, quantity 174 continues to be requested
+  by every RO. No correction is authorized yet.
+- Added a read-only exact diagnosis covering Return/receipt disposition,
+  source Sale movement and reversal, FIFO/shortage, current On Hand, and active
+  Draft RO/PO coverage. It reuses verified runtime columns from the prior SMS
+  diagnosis and makes no business-data mutation.
+- Status: `DIAGNOSTIC READY / NOT RUN`. Next safe step is user execution of
+  `docs/audits/LSM_RTN_20260927_0000000028_STOCK_RO_DIAGNOSIS_2026-10-01.sql`.
+  Do not design or execute a correction before interpreting that output.
+
+## 2026-10-01 - Backoffice effective Tanggal Kirim local ready
+
+- Behavior attempt terbaru tidak menguji runtime: ia berhenti pada
+  `TEST_PRECONDITION_FAILED: dispatchable Backoffice DO and manager required`.
+  Root cause test harness adalah ketergantungan pada adanya DO produksi `READY`
+  atau `PARTIALLY_SHIPPED`, bukan kegagalan migration.
+- Behavior test sudah direvisi menjadi self-created rollback-only header fixture:
+  clone SO/reservation/DO valid memakai ID dan nomor test baru, uji partial tidak
+  men-stamp tanggal, direct `READY -> IN_TRANSIT`, retry, guard mutasi langsung,
+  parity/filter SO-DO dan activity source DO, lalu rollback seluruh write/context.
+  User-confirmed revised Production behavior PASS: self-created rollback-only
+  fixture, partial/full boundary, server timestamp, exact retry, planned-date
+  preservation, SO/DO parity, effective-date filter, immutable activity, dan
+  direct mutation guards seluruhnya terbukti. Closing postflight, client deploy,
+  authenticated UI smoke, dan UAT masih pending. User kemudian mengonfirmasi
+  closing postflight seluruhnya PASS: migration ledger 1, tiga kolom, tujuh
+  routine, tiga enabled trigger, delivery/order invalid rows 0, active Finance
+  queue 0, dan business boundary PASS. Status `DATABASE SCOPE CLOSED / CLIENT
+  DEPLOY + AUTHENTICATED SMOKE + UAT PENDING`.
+- User melanjutkan rollout. Production preflight user-confirmed PASS: seluruh
+  dependency/runtime/lifecycle valid, tidak ada object collision atau active
+  Finance queue, dan backfill inventory mempunyai exact 171 departed rows / 171
+  affected orders / 171 dispatch-lineage rows. Migration `20261001120000` lalu
+  user-confirmed sukses; status `DATABASE LIVE`, behavior/postflight/client
+  deploy/smoke/UAT masih pending.
+- User menetapkan satu label **Tanggal Kirim**: rencana sebelum dispatch dan
+  tanggal server ketika DO mencapai `IN_TRANSIT` setelah dispatch. Jangan
+  tampilkan label “Tanggal Kirim Aktual” pada header.
+- Added migration `20261001120000`, read-only preflight/postflight,
+  rollback-only behavior, impact audit, runbook, dan UI SO. DO read model/print
+  menerima effective `scheduledAt`; tanggal Invoice tidak diubah.
+- Partial dispatch tidak mengubah tanggal SO. Setiap DO mendapat timestamp saat
+  full transit; SO mengikuti DO terakhir. Planned date tetap tersimpan dan
+  immutable activity `DEPART_FULL` ditampilkan pada Log Aktivitas SO.
+- Evidence lokal: scoped ESLint PASS, Next production build 88 pages PASS,
+  balanced SQL dollar tags, dan scoped diff check PASS. Local PostgreSQL parser
+  tidak tersedia; Production preflight tetap menjadi schema/runtime gate.
+- First Production behavior attempt did not execute any business assertion:
+  fixture selector projected only Delivery `id` and `sales_order_id`, then read
+  `delivery.scheduled_date` from that narrowed lateral row. Classified as
+  `TEST HARNESS FIX`, not runtime failure. Selector now explicitly projects the
+  existing canonical `scheduled_date`; migration/runtime are unchanged.
+- Next safe step: jalankan rollback-only behavior, lalu postflight. Deploy
+  client hanya sesudah kedua SQL gate tersebut PASS.
+
+## 2026-10-01 - Delivery Return status overlay database live
+
+- User meminta seluruh rangkaian SO/DO/Invoice/Return mudah dibaca tanpa bolak-
+  balik. Scope implementasi saat ini adalah indikator Return pada Surat Jalan;
+  tidak mengubah lifecycle atau data transaksi.
+- Added migration `20261001110000_delivery_return_status_overlay.sql`, read-only
+  preflight/postflight, authenticated behavior test, Inventory API route, dan UI
+  badge/panel pada `DeliveryDocumentView`.
+- Overlay mengembalikan setiap Return beserta status, requested, received,
+  restocked, destroyed, dan receipt count. Canceled history tetap terlihat.
+- Attribution boundary wajib dipertahankan: retained Retail = exact Delivery;
+  Backoffice = SO-level karena `backoffice_sales_returns` tidak mempunyai
+  `delivery_order_id`. Jangan mengganti copy menjadi klaim exact DO.
+- Status `DATABASE LIVE / PREFLIGHT + DUAL-BRANCH BEHAVIOR + POSTFLIGHT PASS`.
+  Scoped ESLint, Next production build, diff check, Production preflight,
+  migration, revised behavior, dan closing postflight PASS/user-confirmed.
+- Revised behavior memakai real retained-Retail link, membuat Backoffice Return
+  fixture terhadap existing SO/DO di dalam transaksi, membuktikan
+  `SALES_ORDER` SO-level overlay, dan me-rollback seluruh fixture/context.
+  Dengan demikian tidak ada test row yang tertinggal.
+- Next safe step: deploy client, lalu authenticated UI smoke pada DO Retail
+  yang memiliki Return dan DO tanpa Return. Branch Backoffice sudah terbukti
+  secara behavioral; real-data UAT dapat dilakukan saat Return Backoffice nyata
+  pertama tersedia. Tidak ada SQL tambahan yang perlu dijalankan.
+
+## 2026-10-01 - SMS RTN 0016 stock-only correction closed
+
+- Closing postflight user-confirmed seluruh domain Stock PASS: ledger 1,
+  reversal Movement 2/+80, On Hand/open shortage T20B `-820/820`, T22B `0/0`,
+  dua correction batches 80 unit/Rp1,532,520 consumed to zero, cost variance
+  zero, immutable Return tetap `COMPLETED`, Draft RO menjadi T20B 820 tanpa
+  T22B, dan SMS stock-match policy tetap `false`.
+- Scope Stock berstatus `DATABASE LIVE / BEHAVIOR + POSTFLIGHT PASS` dan selesai.
+  Finance boundary tetap `WAITING`: source `SALE_POSTED` masih HOLD/no Journal,
+  Credit Note sudah POSTED. Karena replenishment variance nol, follow-up setelah
+  source posts adalah exact Rp1,532,520 Inventory/COGS reversal; jangan gabungkan
+  status Finance pending ini dengan keberhasilan koreksi Stock.
+
+- Migration `20261001100000` sudah user-confirmed sukses setelah dua execution
+  terdahulu rollback penuh pada assertion. Status sekarang `DATABASE LIVE /
+  BEHAVIOR + POSTFLIGHT PASS`: rollback-only behavior membuktikan
+  duplicate SALE reversal ditolak, canonical Draft RO rematch exact retry, dan
+  seluruh test mutation rollback; closing postflight membuktikan state akhir.
+  Finance tetap follow-up terpisah dan belum boleh dinyatakan selesai.
+
+- Finance detail confirmed the source `SALE_POSTED` Event is still `HOLD` with
+  no Journal and immutable `fifoCostTotal=1,532,520`; the Posted Credit Note
+  already records Dr Sales Return Discount / Cr Customer Receivable 1,960,000.
+  Therefore no Inventory/COGS Journal is posted ahead of its source. The later
+  entry is explicitly Dr Inventory / Cr COGS 1,532,520 after the source posts.
+- Root-cause treatment was narrowed after runtime audit: this is reversal of a
+  duplicate Sale, not replenishment. Migration
+  `20261001100000_sms_return_duplicate_sale_stock_correction.sql` appends exact
+  +40/+40 `REVERSAL` movements against the two immutable original SALE
+  movements, leaving Return/receipt/Credit Note history untouched. Two exact-cost
+  correction FIFO layers are externally linked in
+  `retained_retail_return_stock_corrections`; the canonical negative-shortage
+  trigger consumes both to zero and records replenishment cost variance. They
+  are correction layers, not Purchase lineage.
+- The same transaction invokes canonical Draft RO stock reconciliation. It
+  requires the generic feature gate, so the migration opens that flag only
+  transactionally and restores the existing SMS `false` policy before commit.
+  Expected target is T20B 860 to 820 and T22B 40 removed; any pre-existing RO
+  staleness, active PO lineage, Finance drift, or Stock drift aborts everything.
+- First migration execution safely rolled back on the final assertion because
+  movement-only reversal left open-shortage at 860/40. The second execution
+  also safely rolled back: the canonical correction batch routed T20B through
+  the Backoffice shortage ledger, while the new assertion counted only Retail
+  replenishment rows. The assertion was not removed: all quantity, variance,
+  and open-shortage proofs now union the canonical Retail and Backoffice paths.
+  Expected combined shortage remains 820/0.
+- Added rollback-only behavior and read-only postflight. Static checks pass:
+  balanced migration dollar delimiters and 136/136 parentheses, plus scoped
+  `git diff --check`. No local PostgreSQL parser is installed; Production SQL
+  execution remains the syntax/schema gate. Status `LOCAL READY / DATABASE
+  ROLLOUT + BEHAVIOR + POSTFLIGHT PENDING`; do not claim Finance complete.
+
+- Production rerun then completed. Exact Return/source/line/cost/Movement gates
+  PASS: T20B +40 at 17,330 (693,200) and T22B +40 at 20,983 (839,320), total
+  correction quantity 80 and cost 1,532,520. Current projection is T20B
+  -860 to -820 and T22B -40 to 0; corresponding open shortages project to 820
+  and zero. Both target FIFO remaining balances are currently zero.
+- Active procurement review is safe for canonical rematch: the only target
+  coverage is Draft `RO-20260930-0000000032`, version 1, no active PO. Target
+  lines currently T20B 860 and T22B 40, so an exact post-correction rematch is
+  expected to reduce T20B to 820 and remove zero-need T22B. No PO may be edited.
+- Finance boundary is not yet design-complete: source `SALE_POSTED` event
+  `dab83795-83df-4052-8b1c-65f9fc0175f5` is HOLD with no Journal, while Credit
+  Note `CN-20260918-0000000011` is POSTED with balanced 1,960,000 Journal.
+  Added SELECT-only detail audit
+  `docs/audits/SMS_RTN_20260918_0000000016_STOCK_CORRECTION_FINANCE_DETAIL_2026-10-01.sql`
+  to freeze both Event payloads and exact Credit Note account lines before the
+  correction event/Journaling strategy is chosen. Do not invent a Stock Gain
+  or COGS Journal before this output is reviewed.
+- First Production run stopped before returning any audit row with PostgreSQL
+  `42703`: the preflight incorrectly referenced nonexistent
+  `sale_stock_requirements.warehouse_id`. This is a `TEST HARNESS FIX`, not a
+  business precondition change. Canonical schema proves the requirement grain
+  stores `sales_id`, `sales_detail_id`, `stock_product_id`, UOM, and quantity;
+  Warehouse authority belongs to `sales_headers.sales_warehouse_id` and is
+  independently checked against the source Stock Movement. The query now uses
+  exact existing `requirement.sales_id` and `requirement.quantity_base`; no
+  assertion was removed or weakened.
+- User mengonfirmasi fakta bisnis bahwa T20B 40 dan T22B 40 pada
+  `RTN-20260918-0000000016` adalah koreksi duplicate input, bukan barang fisik
+  yang benar-benar dihancurkan, dan meminta saldo diperbaiki dari backend serta
+  RO aktif disesuaikan.
+- Koreksi tidak boleh berupa `UPDATE product_stocks`. Positive quantity tetap
+  wajib mempunyai immutable Movement dan FIFO cost walau tidak berasal dari
+  Purchase. Exact cost tersedia pada immutable retained-Retail restoration
+  `LEGACY_AGGREGATE_COST`.
+- Canonical Stock Adjustment generik belum tepat untuk kasus ini: ia memposting
+  `Dr Inventory / Cr Stock Gain Income` dan line contract lama mewajibkan final
+  physical quantity nonnegative, sedangkan target masih negatif setelah +40.
+  Koreksi yang benar harus source-linked dan membalik inventory/COGS effect
+  tanpa mengubah Return, receipt, Invoice, Credit Note, Delivery, atau jurnal
+  historis.
+- Ditambahkan impact audit
+  `docs/audits/SMS_RTN_20260918_0000000016_STOCK_CORRECTION_IMPACT_2026-10-01.md`
+  dan SELECT-only Production preflight
+  `docs/audits/SMS_RTN_20260918_0000000016_STOCK_CORRECTION_PREFLIGHT_2026-10-01.sql`.
+  Preflight mengunci exact Return/line/cost/source movement, current Stock/FIFO
+  dan shortage, source Sale/Credit Note Finance, active RO/PO, queue boundary,
+  policy SMS, serta absence target migration `20261001100000`.
+- Static evidence: 408 SQL lines, zero DDL/DML token, balanced 185/185
+  parentheses, dan scoped `git diff --check` PASS. PostgreSQL parser execution
+  belum tersedia karena local temporary cluster gagal diinisialisasi pada
+  restricted Windows token; Production execution remains the required syntax
+  and schema proof.
+- Status `IMPACT AUDITED / PREFLIGHT LOCAL READY / PRODUCTION RESULT PENDING`.
+  Jangan membuat atau menjalankan migration sebelum seluruh output preflight
+  diterima dan setiap `BLOCKER` nol. `REVIEW` active procurement harus dibaca:
+  Draft RO tanpa PO boleh dirematch secara canonical; PO aktif tidak boleh
+  diedit diam-diam dan memerlukan keputusan atas excess coverage.
+
+## 2026-09-28 - KMS COA workbook review noted; injection deferred
+
+- User meminta temuan workbook `COA MADS.xlsx` dicatat untuk dilanjutkan nanti.
+  Scope hanya sheet `KMS` dan `Akun Baru`; file dibaca read-only.
+- Catatan canonical ada di
+  `docs/audits/FINANCE_COA_KMS_WORKBOOK_REVIEW_2026-09-28.md`.
+- Ditemukan 71 sel kuning pada kolom Nama COA, sembilan kelompok mapping yang
+  perlu koreksi/keputusan Finance, 119 candidate account: 17 exact existing,
+  10 code/name conflicts, dan 92 absent menurut katalog KMS dalam workbook.
+- Tidak ada COA atau mapping yang dibuat. Continuation wajib mulai dari audit
+  live database KMS/SMS/LSM; workbook bukan authority database.
+
+## 2026-09-28 - Sales export clean RO reconciliation DATABASE LIVE
+
+- User menyetujui pemisahan kondisi export agar daftar Invoice gross tidak lagi
+  dipakai langsung sebagai pembanding RO. Sheet lama `Daftar Invoice`, `Detail
+  Produk`, dan `Informasi Export` tetap dipertahankan.
+- API export lokal menambahkan `Kebutuhan RO Bersih`, `Pembatalan Reversal`, dan
+  `Retur Customer`. Sheet bersih memakai open negative-stock source Retail dan
+  Backoffice, mengecualikan allocation yang sudah reconciled/reversed, lalu
+  merekonstruksi coverage tanpa double count: remaining PO aktif, sisa Stock
+  Request aktif, dan hanya RO yang masih Draft/belum Ordered.
+- Workbook memakai satu RPC komposit agar Invoice dan rekonsiliasi membaca satu
+  database snapshot; perubahan Stock bersamaan tidak menghasilkan dua sheet
+  dengan waktu baca berbeda.
+- Retur dipisahkan menjadi quantity fisik masuk, DESTROY, dan tanpa barang
+  fisik. Credit Note/Refund tidak dianggap penambah Stock. Pembatalan Retail
+  menampilkan exact SALE versus REVERSAL; pembatalan Backoffice menampilkan
+  quantity dispatch yang pernah keluar.
+- File scope: migration `20260928100000`, preflight, rollback-only authenticated
+  behavior, postflight, impact map, dan route export XLSX.
+- Local evidence PASS: targeted ESLint, `tsc --noEmit`, Next production build
+  87 halaman, dan `git diff --check` (hanya warning line-ending existing).
+- Production preflight, migration `20260928100000`, authenticated rollback-only
+  behavior, dan closing postflight sudah user-confirmed PASS. Ledger tepat satu,
+  tiga routine dan permission boundary tepat, arithmetic clean requirement serta
+  Return classification valid, dan SMS reversed trial Invoice tidak bocor.
+- Runtime inventory saat postflight: KMS 5 Return/1 cancellation/0 open clean
+  requirements; LSM 10/1/0; SMS 2/4/9. Angka ini inventory `INFO`, bukan error.
+- Status `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS`; client belum
+  dideploy. Next safe step: deploy Backoffice client lalu authenticated smoke
+  download XLSX pada KMS, LSM, dan SMS, baru UAT Operations.
+- Compatibility: RPC export lama tidak diubah. Karena route baru memanggil RPC
+  tambahan, database harus live lebih dahulu sebelum client deploy. Tidak ada
+  mutasi Invoice, Return, Stock/FIFO, RO/Request/PO, Payment, atau Finance.
+
+## 2026-09-28 - SMS active RO/PO versus outgoing Stock audit ready
+
+- User meminta deep audit SMS untuk current minus Stock, seluruh RO/PO aktif,
+  dan barang keluar yang benar-benar dicakup tiap dokumen.
+- Ditambahkan audit read-only
+  `docs/audits/SMS_ACTIVE_RO_PO_OUTGOING_COVERAGE_AUDIT_2026-09-28.sql` pada
+  grain Company/Product/Warehouse/base UOM. Audit memakai exact SMS identity.
+- No-double-count mengikuti runtime canonical: daily batch hanya saat Draft dan
+  belum Ordered; setelah menjadi PO hanya remaining PO aktif yang dihitung;
+  Stock Request hanya menyumbang sisa yang belum dialokasikan ke PO; final/
+  canceled documents bernilai nol.
+- Barang keluar dibatasi ke Retail dan Backoffice Sales shortage yang masih
+  terbuka. Receipt/replenishment yang sudah terjadi dikurangkan dari source;
+  penjualan yang dulu keluar dari stok positif tidak dipaksakan masuk RO.
+- Output mencakup product reconciliation, active document inventory, diagnostic
+  FIFO-by-time source-to-document capacity reconstruction, dan exact uncovered
+  source list. Hasil rekonstruksi juga diwajibkan parity terhadap output runtime
+  canonical `get_purchase_daily_auto_ro_candidates_core`; drift menjadi
+  `BLOCKER`. Reconstruction bukan persisted lineage; actual receipt lineage
+  tetap berasal dari replenishment allocation.
+- Tidak ada RO, PO, Request, Receipt, Stock, FIFO, Sales, atau Finance row yang
+  dimutasi. Production result belum tersedia; jangan menyimpulkan SMS balance
+  sebelum seluruh row `REVIEW/BLOCKER` dari output diperiksa.
+- First Production execution menemukan SQL ambiguity pada output
+  `sms_active_document_inventory`: `coverage_document` dan
+  `coverage_match_total` sama-sama memiliki `document_type`. Audit telah
+  diperbaiki dengan mengualifikasi seluruh kolom blok tersebut memakai alias
+  `coverage`/`match`; audit perlu dijalankan ulang dari file terbaru.
+- Production rerun berhasil. SMS memiliki satu Draft AUTO_RO
+  `RO-20260924-0000000020`, 5 line/3.240 base qty; tidak ada active PO atau
+  active Stock Request. Runtime parity PASS dan RO sama persis dengan current
+  negative On Hand 3.240: T17B 400, T20B 860, T22B 40, T23B 820, T25MC 1.120.
+- Source-shortage lineage tidak sama untuk T20B dan T23B. Open shortage masing-
+  masing 900 dan 860, yaitu 40 lebih besar daripada current negative On Hand
+  860 dan 820. Total source shortage 3.320 versus current minus/RO 3.240.
+  Karena source-to-RO output hanya capacity reconstruction, label 40 terakhir
+  pada `SO-20260923-0000000114` tidak membuktikan SO itu yang salah. Perlu audit
+  movement/reversal/replenishment timeline untuk menemukan positive Stock 40
+  per SKU yang tidak tercermin pada `replenished_base_qty` shortage lineage.
+- SMS policy saat hasil diambil: `AUTO_RO`, Stock Match OFF dan Roll Forward
+  OFF. RO cocok pada saat audit, tetapi perubahan Stock sesudah audit tidak
+  otomatis memberi freshness/rematch guard seperti trial LSM.
+- Root cause 80-unit source mismatch identified: the initial audit counted two
+  reversed Retail negative allocations from SMS trial order
+  `DRF-20260829-000155` / sale `11381498-c4e7-4c8f-86ff-880a8d649447`.
+  Migration `20260917100000` intentionally retained `replenished_base_qty=0`
+  while marking both allocations `reversed_at` + `reconciled_at` and creating
+  exact `REVERSAL +40` Stock movements. These are history, not open shortage.
+- Main SMS audit is corrected: open Retail sources now require both
+  `reconciled_at IS NULL` and `reversed_at IS NULL`; Backoffice sources require
+  `reconciled_at IS NULL`. Added read-only proof
+  `docs/audits/SMS_T20B_T23B_REVERSAL_SOURCE_DIAGNOSIS_2026-09-28.sql`.
+  Production proof now PASS: exact two allocations / 80 base qty and exact two
+  posted Stock REVERSAL movements / 80 base qty. Corrected valid open shortage
+  equals negative On Hand exactly: T20B 860 and T23B 820, both difference zero.
+  This is cancellation of an erroneous/trial Retail Sale, not Customer Return;
+  it creates no Return/Credit Note/Refund meaning by itself.
+
+## 2026-09-25 - Gross Sales Discount accounting database live
+
+- Status `DATABASE LIVE / RETAIL + NATIVE ODR DISPATCH + BACKOFFICE INVOICE
+  BEHAVIOR PASS / POSTFLIGHT PENDING`.
+- Production preflight terbaru PASS setelah memperbaiki dua asumsi audit:
+  `SALES_DISCOUNT` memang sudah ada dan hanya Dispatch/Regular Invoice yang
+  memakai versioned rule set. Final collision guard juga PASS untuk catalog,
+  mapping, fallback, migration ledger, dan kolom Dispatch baru.
+- Migration `20260925100000` menerapkan metode gross pada Retail/POS,
+  Dispatch, dan Regular Backoffice Invoice. Mapping memakai existing account
+  system `SALES_RETURN_DISCOUNT`; tidak membuat COA baru. Settlement/AR tetap
+  net; Tax, delivery, surcharge, rounding, Stock/FIFO/COGS/Return/Refund tidak
+  berubah.
+- Compatibility: posted Journal immutable; historical Dispatch effect tetap
+  snapshot net (`gross=commercial`, `discount=0`); mapping dan approved rule-set
+  boundary tetap dapat menyelesaikan Event HOLD lama.
+- File baru/diubah dalam scope: impact audit, preflight, migration, Retail
+  rollback behavior, strengthened Backoffice Invoice behavior, native ODR
+  Dispatch behavior terpisah, postflight, rollout runbook, serta
+  router/gate/handoff.
+- `discountedHoldRetailEvents=0` bukan blocker: Retail behavior sekarang membuat
+  Event `HOLD` sendiri dari Sale berdiskon immutable, lalu me-rollback seluruh
+  fixture write. Source Sale tidak dimutasi.
+- User menjalankan migration `20260925100000`; exact ledger row terverifikasi
+  dengan `migration_name=gross_sales_discount_accounting`. Ini membuktikan
+  migration committed, tetapi belum membuktikan hasil jurnal runtime.
+- User menjalankan Retail rollback-only behavior terbaru dan mendapat satu row
+  PASS. Non-zero test membuktikan self-created HOLD Event, Revenue gross credit,
+  Sales Discount debit, settlement net tetap, Journal balance, audit version,
+  exact retry, source Sale immutable, dan seluruh fixture write rollback.
+- Gate setelah Retail PASS semula adalah Backoffice Invoice behavior; hasil dan
+  koreksi harness-nya dicatat di bawah.
+- Run pertama file Backoffice berhenti dengan `P0002` pada pencarian
+  `sales_dispatch_financial_effects`. Root cause diklasifikasikan sebagai
+  `TEST HARNESS FIX`: harness salah menganggap
+  `dispatch_backoffice_sales_delivery()` memakai ODR Finance Dispatch, padahal
+  runtime itu hanya memindahkan Stock ke Warehouse transit; pengakuan Finance
+  Backoffice terjadi lewat Invoice. Transaksi test rollback sehingga tidak ada
+  fixture yang tertinggal.
+- Assertion Dispatch tidak dinyatakan PASS atau dihilangkan dari scope. Ia harus
+  diuji terpisah melalui native ODR/POS `dispatch_sales_delivery`. Test
+  Backoffice terkoreksi tetap menguji Regular Invoice gross, Down Payment
+  compatibility, balance, retry, dan immutability.
+- Setelah koreksi pertama, Backoffice test tetap direrun terpisah dan
+  postflight ditahan karena native ODR Dispatch belum mempunyai bukti behavior.
+- Rerun berikutnya mencapai negative permission assertion tetapi gagal karena
+  fixture masih memakai Super Admin dan mengharapkan `TANPA_AKSES` memblokirnya.
+  Runtime canonical `20260918110000` menetapkan Super Admin/Company Owner sebagai
+  privileged authority yang sengaja mengabaikan per-user restriction; kegagalan
+  kembali diklasifikasikan `TEST HARNESS FIX`, bukan runtime regression.
+- Harness sekarang membuat aktor `FINANCE` rollback-only, membuktikan baseline
+  mempunyai `POST`, membuktikan override `TANPA_AKSES` menghapus `POST`, lalu
+  menjalankan denial, stale-version, dan successful posting dengan identity yang
+  tepat. Assertion permission dipertahankan dan dibuat lebih eksplisit; seluruh
+  actor/membership/context/override fixture tetap rollback.
+- Rerun masih mencapai denial assertion karena harness hanya mengganti JSON
+  `request.jwt.claims`, sementara claim tunggal `request.jwt.claim.sub` dari
+  Super Admin masih tersimpan dan dipakai `auth.uid()` oleh RPC. Akibatnya
+  resolver manual membaca Finance tetapi posting tetap dieksekusi sebagai Super
+  Admin. Klasifikasi tetap `TEST HARNESS FIX`; transaksi gagal rollback.
+- Harness kini menyetel serta memulihkan `request.jwt.claim.sub`,
+  `request.jwt.claim.role`, dan JSON `request.jwt.claims` secara konsisten, lalu
+  mengassert `auth.uid()` sebelum denial dan setelah restore. Ini menutup identity
+  leak tanpa mengubah runtime, migration, atau expected permission behavior.
+- Backoffice Invoice rerun terbaru user-confirmed `PASS`: fixture membuktikan
+  stale denial, DP compatibility, Finance custom override denial, shared
+  numbering, DP application, Regular quantity finalization, Revenue gross,
+  Sales Discount debit, balanced AR/Advance/Tax Journal, exact retry, dan POS
+  source tidak berubah. Seluruh fixture write rollback.
+- Ditambahkan `supabase/tests/gross_sales_discount_dispatch_behavior.sql` untuk
+  gap terakhir yang memang berbeda call chain. Test membuat discounted
+  Retail/POS Order, Stock/FIFO dan Delivery sendiri, memakai canonical
+  `confirm_pos_sales_order` lalu native `dispatch_sales_delivery`, memposting
+  source-linked `SALE_DISPATCHED`, menguji Revenue gross, Sales Discount debit,
+  settlement net, Stock/FIFO exact, balance, active rule-set audit version,
+  Dispatch/post retry, source commercial immutability, lalu rollback semuanya.
+- Next safe step: jalankan hanya Dispatch behavior tersebut. Postflight belum
+  boleh dijalankan atau dinyatakan aman sampai hasilnya benar-benar `PASS`.
+- Attempt pertama Dispatch behavior berhenti pada fixture precondition sebelum
+  membuat Order: harness membatasi source POS ke KMS/LSM/SMS, sedangkan tidak
+  ada satu pun dari tiga Company tersebut yang sekaligus memenuhi active Retail
+  mode, Store, Terminal, Warehouse, Customer, dan Product-UOM tuple. Ini
+  `TEST HARNESS FIX`, bukan bukti runtime PASS/FAIL; transaksi rollback.
+- Harness kini memilih Company aktif mana pun yang memang menjalankan canonical
+  `RETAIL_CONFIRM_INVOICE`, dengan tambahan syarat approved `SALE_DISPATCHED`
+  rule set dan effective active `SALES_DISCOUNT` mapping ke akun aktif/postable.
+  Runtime Dispatch yang diuji tetap sama dan migration memang memasang catalog,
+  mapping, serta rule untuk seluruh active Company. Rerun Dispatch behavior
+  tetap menjadi next safe step; postflight masih ditahan.
+- Rerun fixture Dispatch terkoreksi user-confirmed `PASS`: self-created
+  discounted Retail/POS Delivery melewati canonical confirmation dan native ODR
+  Dispatch; gross Revenue, Sales Discount debit, net settlement, exact
+  Stock/FIFO consumption, balanced Journal, active rule-set audit version,
+  Dispatch retry, Finance posting retry, source commercial immutability, dan
+  full rollback seluruhnya terbukti. Semua tiga behavioral path kini PASS.
+- Next safe step sekarang adalah closing read-only
+  `supabase/diagnostics/gross_sales_discount_postflight.sql`. Database belum
+  boleh disebut `POSTFLIGHT PASS`, `SMOKE PASS`, atau `UAT PASS` sebelum bukti
+  masing-masing tersedia.
+
 ## 2026-09-24 - LSM PO 20 SEPTEMBER VS LATEST RO SOURCE AUDIT READY
 
 - User reports one LSM PO shown as completed on 20 September and asks whether
@@ -15867,3 +18505,3172 @@ belum scheduler postflight, belum CLIENT DEPLOYED, belum SMOKE/UAT PASS.
   kolom yang salah, sehingga tidak memerlukan perubahan.
 - Next safe step: jalankan ulang behavioral test lengkap dari file terbaru.
   Hanya setelah menghasilkan satu PASS, jalankan postflight yang sudah ada.
+
+# 2026-09-24 - Finance Mapping Catalog Completeness
+
+- User memilih melanjutkan gap Finance catalog/mapping yang risikonya lebih kecil
+  sebelum Gross Sales Discount. Scope sengaja dibatasi pada metadata catalog,
+  API/read model, editor, dan completeness visibility; Supplier Refund
+  settlement, rumus jurnal, serta bulk mapping Finance tidak dibuka.
+- Call-chain audit membuktikan `post_backoffice_purchase_return` selalu resolve
+  `INVENTORY_ASSET` dan `SUPPLIER_AP_PROVISIONAL`, serta conditional resolve AP
+  Final, Piutang Refund Supplier, PPV, dan Input Tax. `system_events` lama hanya
+  mendeklarasikan sebagian; API/UI juga tidak membaca
+  `optional_account_functions`.
+- Migration lokal `20260924120000` mengubah tepat satu metadata row
+  `PURCHASE_RETURN` setelah guard dependency, runtime anchors, active queue,
+  Offline queue, active category, dan effective account resolution exact
+  KMS/SMS/LSM. Company lain tetap terlihat di UI namun tidak memblokir rollout
+  tiga entitas ini. Tidak ada COA/mapping/Stock/FIFO/Payment/Event/Journal mutation.
+- API Finance Master kini menghitung completeness konfigurasi server-side: satu
+  direct active rule, lalu satu Company fallback. Compatibility lookup lama
+  melalui `system_function_key` sengaja tidak diberi status siap karena bukan
+  pengganti mapping eksplisit Finance.
+  Mapping ganda, account inactive/non-postable, tipe akun incompatible, dan
+  function inactive ditandai tidak siap. Timestamp efektif berasal dari server.
+- UI menambah tab `Kelengkapan mapping`, memasukkan fungsi optional ke editor,
+  dan mengganti banner usang yang menyatakan Finance posting belum aktif.
+- Paket database lengkap: read-only preflight, guarded migration, rollback-only
+  nonzero behavior, postflight, impact audit, dan rollout runbook. Test behavior
+  memerlukan minimal satu active Company dan enam resolved function per runtime
+  category; PASS nol row dilarang.
+- Evidence lokal: helper unit contract PASS untuk direct/fallback/missing/
+  ambiguous/invalid/future-effective; targeted ESLint PASS; Next 16.2.10 build,
+  TypeScript, dan 87 static pages PASS; SQL dollar delimiter/transaction shape
+  check PASS.
+- Production preflight kemudian PASS seluruh gate: exact 3 Company, 18/18
+  runtime account resolution, dependency lengkap, tanpa queue aktif/collision.
+  User selanjutnya melaporkan migration `20260924120000` berhasil dijalankan.
+  Behavioral test kemudian PASS tepat 3 Company/18 runtime account resolution
+  serta membuktikan tidak ada mutasi Financial Event, Journal, atau Stock
+  Movement. Status kini `DATABASE LIVE + BEHAVIOR PASS`; belum `POSTFLIGHT
+  PASS`, `CLIENT DEPLOYED`, authenticated `SMOKE PASS`, atau `UAT PASS`.
+  Production postflight kemudian PASS: ledger tepat satu, exact catalog
+  contract tepat satu, active Finance queue kosong, serta 3 Company/18 resolusi
+  valid tanpa invalid row. Status kini `DATABASE VERIFIED`; belum `CLIENT
+  DEPLOYED`, authenticated `SMOKE PASS`, atau `UAT PASS`. Next safe step:
+  commit/deploy scoped client files lalu smoke Finance Master pada KMS/SMS/LSM.
+# Finance mapping catalog SQL Editor compatibility correction (2026-09-24)
+
+- First Production preflight attempt failed before evaluating any business data because the new diagnostic report table used `ON COMMIT DROP`. Supabase SQL Editor can commit between statements and removed that TEMP table before the audit block accessed it.
+- Corrected the preflight, postflight, and read-only behavior test to use rerunnable session-local TEMP tables without `ON COMMIT DROP`, following the established `g0_schema_baseline.sql` repository pattern.
+- This correction has no schema or business-data effect. Corrected Production
+  preflight subsequently PASS and user reported migration `20260924120000`
+  installed successfully; behavioral test selanjutnya PASS tepat 3 Company/18
+  resolusi tanpa mutasi bisnis. Postflight berikutnya juga PASS seluruh gate;
+  database kini terverifikasi dan gate berikutnya adalah client deploy/smoke.
+# 2026-09-25 - GROSS SALES DISCOUNT IMPACT AUDIT / PREFLIGHT READY
+
+- User melanjutkan deferred point 2: pencatatan diskon Penjualan metode gross.
+- Audit call chain menemukan tiga pengakuan revenue aktif yang membawa diskon:
+  Retail/POS `SALE_POSTED`, ODR `SALE_DISPATCHED`, dan Regular
+  `BACKOFFICE_SALES_INVOICE`. Seluruhnya saat ini mengkredit revenue net.
+- Approved target: debit `SALES_DISCOUNT` sebesar diskon DPP, credit
+  `SALES_REVENUE` gross DPP, sementara settlement/AR, Output Tax, delivery fee,
+  surcharge, rounding, COGS, Inventory, Return, dan Refund tidak berubah.
+- Added impact audit `docs/audits/GROSS_SALES_DISCOUNT_IMPACT_2026-09-25.md`
+  and read-only Production preflight
+  `supabase/diagnostics/gross_sales_discount_preflight.sql`.
+- Preflight checks exact runtime/dependency anchors, all active Company source
+  contra-revenue account/category/rule-set shape, KMS/SMS/LSM identity, Finance
+  queue, Offline queue, object collision, and discounted in-flight partial
+  Dispatch. It intentionally uses a session TEMP table without `ON COMMIT DROP`.
+- Status `AUDIT/PREFLIGHT READY`; no runtime, schema, mapping, rule set, Journal,
+  Payment, Stock, or Production data has been changed. Next safe step is run the
+  full preflight and stop on any SQL error or `BLOCKER` before migration design
+  is finalized against exact Production evidence.
+- First Production preflight found two audit-assumption blockers, not broken
+  transactions: all five active Companies have exactly two approved rule sets,
+  and `SALES_DISCOUNT` already exists. Repository call-chain evidence confirms
+  `SALE_POSTED` has no versioned rule set, while `SALE_DISPATCHED` and Regular
+  Backoffice Invoice do. The preflight now validates the exact existing
+  `SALES_DISCOUNT` contract and requires two approved sets per active Company;
+  no blocker was merely removed without a replacement assertion.
+
+# 2026-09-28 - POSTED BACKOFFICE INVOICE PRICE CORRECTION DATABASE LIVE / BEHAVIOR + POSTFLIGHT PASS
+
+- User menyetujui koreksi harga produk saja pada Regular Backoffice Invoice
+  Posted; tanpa note/reason dan tanggal berasal dari timestamp server.
+- Implementasi lokal memakai correction header/lines/operation immutable,
+  independent price revision, Debit/Credit Note delta Journal, effective AR dan
+  Customer Receipt cap, Customer Statement row, UI history, serta harga efektif
+  untuk Return Credit Note yang dibuat sesudah koreksi. Original Invoice,
+  original Journal, Stock/FIFO/COGS, qty/UOM, dan Receipt tidak dimutasi.
+- Guard: hanya KMS/LSM/SMS; accepted overage tidak editable; mixed up/down dalam
+  satu dokumen ditolak; Invoice dengan Draft/Posted Return Credit Note lama
+  ditolak; retry exact dan stale price revision dilindungi.
+- Settlement split memakai posisi net sebelum/sesudah koreksi: penurunan harga
+  mengurangi AR lalu membentuk Refund Liability; kenaikan berikutnya mengurangi
+  liability itu lebih dulu sebelum membentuk AR. Customer Receipt workspace,
+  save/post guard, aging, statement, detail, print, dan PDF memakai total efektif
+  yang sama. Debit Note juga mewajibkan mapping conditional Utang Refund Customer.
+- File utama: migration/diagnostics/test bernama
+  `backoffice_posted_invoice_price_correction*`, route
+  `backoffice-invoices/[id]/price-corrections`, Invoice component, impact audit,
+  dan rollout runbook.
+- Evidence lokal terbaru: targeted ESLint PASS; Next 16.2.10 production build,
+  TypeScript, dan 87 static pages PASS; scoped `git diff --check`, trailing
+  whitespace, serta basic SQL delimiter check PASS (line-ending warning existing
+  saja).
+- Production migration `20260928110000` sudah terpasang. Rollback-only behavior
+  user-confirmed PASS untuk server timestamp, Debit/Credit Note, jurnal balance,
+  signed AR/refund split, effective payment context, exact retry, stale revision,
+  immutability Invoice/line, dan tanpa Stock mutation. Closing postflight juga
+  user-confirmed seluruhnya PASS. Status database: `DATABASE LIVE / BEHAVIOR
+  PASS / POSTFLIGHT PASS`; client masih belum `CLIENT DEPLOYED`, authenticated
+  `SMOKE PASS`, atau `UAT PASS`.
+- Production preflight pertama berhenti benar pada Receipt anchor, tetapi akar
+  masalahnya adalah audit lokal masih mengharapkan runtime lama. Runtime live
+  sudah memakai helper canonical dari migration `20260919110000`. Paket lokal
+  diperbaiki untuk mewajibkan dependency tersebut, memverifikasi helper anchor,
+  dan tidak lagi mencoba mem-patch ulang Save Receipt; belum ada migration baru
+  yang dijalankan dari paket ini.
+- Percobaan migration berikutnya juga rollback di guard karena paket lokal salah
+  mendeklarasikan signature permission `(uuid,uuid)` sementara runtime canonical
+  adalah `(uuid)`. Preflight lama belum memeriksa seluruh dependency guard.
+  Paket kini memakai daftar 22 relation dan 15 routine eksternal yang identik
+  pada preflight dan migration, error guard menyebut dependency exact, seluruh
+  dynamic patch anchor diperiksa exact-count, dan pemanggilan permission sudah
+  memakai satu argumen. Migration gagal tersebut transactional; belum ada objek
+  atau data price-correction yang terpasang.
+- Deliberate gap: penurunan harga yang melebihi AR terbuka membuat liability
+  Refund Customer terlihat sebagai `REFUND_PENDING`; payout Cash/Bank untuk
+  correction tersebut belum dibuka karena refund runtime existing mewajibkan
+  Return Credit Note lineage. Jangan menyebut refund selesai.
+# 2026-09-29 - KMS Finance COA/mapping preflight local ready
+
+- User authorized continuation after the hardened Production preflight returned
+  no blocker. Added guarded KMS-only COA migration `20260929110000` and read-only
+  postflight. Its exact dataset is 22 accounts: 12 `CREATE`, 9 `REUSE`, and one
+  approved `UPDATE_NAME` (`1030100-1`) without changing account type or Journal
+  history. The existing `7110 — Pendapatan Selisih Stok` is reused; no duplicate
+  Stock Gain account is created.
+- Workbook SHA256 used as source evidence is
+  `536D96D340D5B613BE7203AA22D3FEE75E8A38D14891F69B2EB7F114A5F6C958`.
+  Its target `Kode Induk` cells are blank, and current KMS suffix accounts are
+  standalone, so the migration leaves new suffix accounts with null parent and
+  does not mutate legacy postable accounts into grouping accounts.
+- Status is `COA MIGRATION LOCAL READY`; no Production mutation has been run.
+  Next safe step is migration `20260929110000`, then the read-only COA behavior
+  gate and `kms_finance_coa_workbook_alignment_postflight.sql`. The behavior
+  gate proves 25 function targets, type compatibility, 67 workbook pairs, and
+  expansion to 71 live KMS category targets. Stop on SQL error or `FAIL`. Do not
+  prepare/execute mapping cutover until both evidence files pass.
+- Local structural evidence: migration has one transaction, 22 unique targets
+  (`12 CREATE / 9 REUSE / 1 UPDATE_NAME`), and its only public-table writes are
+  `chart_of_accounts` plus `finance_master_audit`. The read-only behavior gate
+  contains exactly 25 function targets and 67 process/function pairs, performs
+  zero public-table DML, and is transaction-rolled back. Migration checksum
+  `e0a374dc17f02e329c1ebc1dda9fb98038ca4aea1c6fcea91cad19e5abd5e6e9`
+  matches the manifest; scoped `git diff --check` passes with line-ending
+  warnings only. No local PostgreSQL runtime was available, so database parsing
+  and behavior remain manual Production gates.
+- Latest Production preflight leaves one real collision: proposed `7060100 —
+  PENDAPATAN SELISIH STOK` conflicts by normalized name with the existing active,
+  postable KMS account `7110 — Pendapatan Selisih Stok` of the same
+  `OTHER_INCOME` type. Following the approved rule to reuse an existing KMS COA,
+  the preflight target now uses exact account `7110`; collision checks remain
+  enforced. No database mutation occurred; rerun the complete preflight before
+  preparing migrations.
+- Rerun evidence confirms the resolution is physical, not an omitted assertion:
+  live KMS account `7110` is exactly one active/postable `OTHER_INCOME` row and
+  is classified `REUSE`; the other three recommended accounts remain explicit
+  `CREATE` actions. All 18 yellow accounts are enumerated as 8 `REUSE`, 9
+  `CREATE`, and 1 `UPDATE_NAME`. The runtime catalog has 67 workbook pairs and
+  expands to 71 mapping rows because both active `CUSTOMER_BALANCE_RECEIPT`
+  categories are intentionally mapped for four functions. The preflight name
+  collision comparison was additionally hardened to use the exact whitespace
+  normalization used by the live unique-name index. No database mutation has
+  occurred.
+- Corrected Production preflight then returned three apparent blocker groups.
+  Root-cause review classified them as diagnostic planning errors, not runtime
+  defects: missing yellow accounts are intended `CREATE` actions; the Inventory
+  name drift is an approved `UPDATE_NAME`; an exact recommended account is
+  reusable; and multiple active categories for one system key are supported by
+  schema and must be expanded, not rejected.
+- The assertion was not simply removed. Account checks now produce explicit
+  `REUSE`, `CREATE`, `UPDATE_NAME`, or `BLOCKER` actions and still block code/name,
+  type, active, postable, or multiplicity conflicts. Recommended accounts also
+  distinguish exact reusable rows from conflicting collisions. Runtime coverage
+  now requires at least one active category and reports the expanded category
+  mapping count plus every multi-category pair; missing category/function remains
+  a blocker.
+
+- First Production attempt stopped before returning any audit row with
+  `42703 companies.name`. Root cause was a diagnostic-only wrong column name;
+  canonical schema uses `companies.company_name`. Classified as
+  `TEST HARNESS FIX`; no Production mutation occurred.
+- The preflight now uses `company.company_name` and explicitly requires ledger
+  dependency `20260810210000`, the migration that creates the statically read
+  `finance_posting_queue_runs` relation. All remaining referenced columns and
+  routine signatures were rechecked against their defining migrations before
+  requesting a rerun.
+
+- User approved KMS-first COA creation and mapping based only on yellow cells in
+  sheet `KMS` plus new accounts from `Akun Baru` in
+  `C:\Users\sbi_l\Downloads\COA MADS Revisi.xlsx`.
+- Exact account code/name should follow the workbook. Existing KMS accounts may
+  not be overwritten. The initial parent requirement was superseded by exact
+  workbook evidence: target Kode Induk cells are blank and suffix accounts are
+  standalone. User accepted the recommended Delivery Fee, single signed PPV,
+  Stock Gain Income, and Stock Loss Expense corrections.
+- Added:
+  - `docs/audits/KMS_FINANCE_COA_MAPPING_ROLLOUT_IMPACT_2026-09-29.md`;
+  - `supabase/diagnostics/kms_finance_coa_mapping_preflight.sql`;
+  - `docs/runbooks/KMS_FINANCE_COA_MAPPING_ROLLOUT.md`.
+- Preflight is read-only and checks exact KMS identity, 18 yellow-selected live
+  accounts, four recommended account collisions/compatibility, 67 runtime
+  category/function pairs, active Finance queue, dependencies, future migration
+  collisions, and read-only KMS/SMS/LSM inventory.
+- Local evidence: files exist, SQL `$audit$` delimiter count is two, nine result
+  rows are emitted, and scoped `git diff --check` passes.
+- Status: `PREFLIGHT LOCAL READY`. No migration, COA, parent, mapping, Journal,
+  Stock/FIFO, Payment, database, deployment, smoke, or UAT change has occurred.
+- Next safe step: user runs the complete preflight and returns every row. Stop
+  on SQL error or `BLOCKER`. Only then create two guarded migrations: KMS COA
+  first, KMS versioned mapping second. SMS/LSM remain out of write scope until
+  their sheets are separately approved.
+# 2026-09-29 - KMS COA 4040100 normal-balance package fix
+
+- Percobaan Production migration `20260929110000` berhenti pada
+  `MIGRATION_PRECONDITION_FAILED: reusable COA 4040100 invalid` dan rollback
+  penuh. Tidak ada COA, rename, atau audit row dari migration tersebut yang
+  terpasang.
+- Root cause adalah target paket lokal yang salah: akun KMS live
+  `4040100 — RETUR PENJUALAN` bertipe `REVENUE` dengan saldo normal `DEBIT`,
+  sedangkan migration sempat menargetkan `CREDIT`. Runtime canonical
+  `SALES_RETURN_DISCOUNT` juga menetapkan `DEBIT`; akun ini contra-revenue.
+- Target migration dan postflight dikoreksi ke `DEBIT`. Preflight diperkeras
+  agar 18 akun yellow serta empat akun rekomendasi memeriksa saldo normal,
+  bukan hanya code/name/type/active/postable. Behavior gate juga sekarang
+  mewajibkan saldo normal akun sama dengan `account_functions.default_normal_balance`.
+- Klasifikasi: `PACKAGE TARGET + PREFLIGHT CONTRACT FIX`, bukan perubahan data
+  bisnis dan bukan penghilangan blocker. Status tetap `LOCAL READY`; preflight
+  Production yang baru wajib dijalankan ulang, lalu migration, behavior, dan
+  postflight. Mapping belum boleh dilanjutkan sebelum ketiganya PASS.
+- Percobaan menjalankan full preflight sesudah fix gagal parse karena teks yang
+  benar-benar dikirim ke SQL Editor terpotong pada
+  `INSERT ... VALUES(` lalu ditambahi statement RLS oleh editor; penutup
+  `$audit$` tidak ikut terkirim. File workspace sendiri mempunyai dua delimiter
+  dan penutup lengkap. Untuk menghilangkan kelas kegagalan copy/editor ini,
+  ditambahkan `kms_finance_coa_workbook_alignment_retry_preflight.sql`: satu
+  SELECT read-only, tepat satu semicolon, nol temp table/DO/dollar quote, 22
+  target account, dan 11 result rows yang mencakup seluruh migration guard.
+- Migration attempt sesudah retry gate PASS berhenti pada
+  `relation kms_finance_coa_target does not exist`. Repo runbook G0 sudah
+  menjelaskan Supabase SQL Editor dapat membuat commit boundary antar-statement;
+  paket lama melanggar kontrak ini dengan TEMP table `ON COMMIT DROP`.
+- Migration `20260929110000` direstruktur menjadi tepat satu statement `DO`
+  atomik. Dataset 22 target berada dalam JSONB lokal dan dibaca dengan
+  `jsonb_to_recordset`; tidak ada TEMP relation, top-level `BEGIN`, atau
+  top-level `COMMIT`. Ledger ditulis di akhir statement yang sama. Audit IDs
+  dari 12 create + 1 rename ditangkap dan diverifikasi exact, bukan dihitung
+  dari histori lama.
+- Local structural evidence: retry gate dan migration masing-masing mempunyai
+  22 target dengan diff nol (`12 CREATE / 9 REUSE / 1 UPDATE_NAME`); postflight
+  22 target juga diff nol; hanya `chart_of_accounts`, `finance_master_audit`,
+  dan migration ledger yang ditulis. Checksum baru
+  `688cf7bd5b0531c15e4872465272adf8d7c078de59dcafff51fba24dc699c898`.
+  Status tetap `LOCAL READY`, bukan `DATABASE LIVE`; belum ada instruksi rerun
+  sampai handoff audit ini selesai.
+- Setelah user menolak lompatan langsung ke migration, ditambahkan execution
+  gate `kms_finance_coa_workbook_alignment_rollback_behavior.sql`. Gate ini
+  menjalankan write path nyata untuk 12 COA, satu Inventory rename, 13 exact
+  audit IDs, dan ledger di dalam PL/pgSQL subtransaction; sentinel exception
+  me-rollback seluruh row lalu gate membuktikan created IDs/audit IDs/ledger
+  tidak ada dan nama Inventory kembali ke nilai lama. Test adalah satu statement,
+  tanpa TEMP atau external transaction boundary. Dua daftar CREATE dalam test
+  mempunyai 12 unique target dan diff nol terhadap migration. Identity sequence
+  audit dapat skip; tidak ada business row yang persisten.
+- Rollback behavior kemudian melaporkan `migration already installed`. Ini
+  tidak dianggap sukses: multi-statement migration lama berpotensi menulis
+  ledger secara terpisah setelah guard/apply gagal pada commit boundary SQL
+  Editor. Seluruh write dihentikan. Ditambahkan SELECT-only forensic audit
+  `kms_finance_coa_workbook_alignment_forensic_audit.sql` untuk membedakan
+  `INSTALLED_CONSISTENT`, `FALSE_LEDGER_ONLY`, dan
+  `PARTIAL_OR_INCONSISTENT`. Audit mengembalikan enam row, tanpa temp/DO/dollar
+  quote/DML, dan 22 targetnya diff nol terhadap migration. Jangan menghapus
+  ledger atau menjalankan forward-fix sebelum hasil forensic tersedia.
+
+# 2026-09-29 - KMS COA DATABASE LIVE / FORENSIC PASS
+
+- User menjalankan forensic audit Production. Hasilnya
+  `INSTALLED_CONSISTENT`: 22/22 target exact, terdiri dari 12 akun dibuat,
+  sembilan akun reuse, satu rename, 13/13 target audit tercakup, dan satu row
+  ledger migration `20260929110000`.
+- Hipotesis `FALSE_LEDGER_ONLY` dan partial install gugur. Database KMS pada
+  scope migration ini konsisten; migration tidak boleh dijalankan ulang,
+  dihapus ledger-nya, di-rollback secara manual, atau diedit in-place.
+- Artefak migration historis dikembalikan persis ke bentuk yang terpasang
+  dengan SHA-256
+  `8681776254aeefff3b6ede9595912f2d3a8dac6fc8db51148bfdbe49746a406f`.
+  Percobaan refactor satu-statement dengan checksum `688cf7...` dibatalkan
+  karena version yang sama sudah live.
+- Pre-install rollback behavior yang berprecondition ledger absent dihapus.
+  Behavior gate diganti menjadi satu SELECT read-only terhadap installed state:
+  exact 22 akun, 25 function target, 67 pasangan proses/function, 71 expanded
+  category rows, compatibility tipe akun, dan saldo normal canonical.
+- Status: `DATABASE LIVE / FORENSIC PASS`. Belum boleh disebut behavior PASS
+  atau closing postflight PASS sebelum dua file read-only tersebut benar-benar
+  dijalankan. Finance mapping belum dipasang; Stock, Journal, Payment, SMS, dan
+  LSM tidak diubah oleh migration COA ini.
+- Next safe step: jalankan
+  `supabase/tests/kms_finance_coa_workbook_alignment_behavior.sql`, lalu
+  `supabase/diagnostics/kms_finance_coa_workbook_alignment_postflight.sql`.
+  Hentikan pada SQL error, `FAIL`, atau `BLOCKER`; jangan rerun migration.
+
+# 2026-09-29 - EVIDENCE-FIRST / NO-INVENTION PROTOCOL DIKUNCI
+
+- Atas instruksi user, `AGENTS.md` kini mewajibkan ulang pada setiap task:
+  tidak boleh mengarang schema identifier atau header file; semua identifier
+  harus ditelusuri ke defining migration/schema/runtime atau output database.
+- Setiap pekerjaan database wajib lebih dahulu mengklasifikasikan state sebagai
+  `NOT_INSTALLED`, `INSTALLED_CONSISTENT`, `PARTIAL/INCONSISTENT`, atau
+  `UNKNOWN`. Applied migration immutable dan test harus memakai precondition
+  yang sesuai state tersebut.
+- Sebelum SQL diberikan kepada user, agent wajib memeriksa source identifier,
+  statement/delimiter utuh, kecocokan state, invariant yang benar-benar diuji,
+  dan batas write. Bukti tidak cukup berarti `BELUM TERBUKTI` dan berhenti,
+  bukan mengisi gap dengan asumsi.
+- Perubahan ini adalah aturan kerja repository saja; tidak mengubah database,
+  COA, mapping, Journal, Stock, Payment, atau runtime aplikasi.
+
+# 2026-09-29 - KMS COA INSTALLED-STATE BEHAVIOR PASS
+
+- User menjalankan SELECT-only installed-state behavior dan hasilnya PASS:
+  ledger satu, 25 function target valid, nol invalid function, 67 pasangan
+  proses/function mempunyai kategori aktif, dan total expanded category target
+  sesuai bukti live yaitu 71.
+- Scope PASS hanya COA identity/type/normal balance serta kesiapan target
+  kategori. Finance mapping dan Journal tidak dibuat atau diuji oleh gate ini.
+- Audit paket menemukan closing postflight lama masih memakai TEMP relation dan
+  multi-statement DO block. Ini diklasifikasikan sebagai `TEST HARNESS FIX` dan
+  ditulis ulang menjadi satu SELECT read-only dengan enam result rows; assertion
+  exact 22 akun, shape 12 created account, rename Inventory, ledger, Finance
+  queue, dan business boundary tidak dikurangi.
+- Status: `DATABASE LIVE / FORENSIC + INSTALLED-STATE BEHAVIOR PASS`; closing
+  postflight masih menunggu output user. Jangan rerun migration.
+
+# 2026-09-29 - KMS COA CLOSURE PASS
+
+- User menjalankan closing postflight versi satu-SELECT dan seluruh enam check
+  PASS: ledger, exact 22-account contract, shape 12 created account, Inventory
+  display-name alignment, zero active Finance queue, dan COA-only boundary.
+- Status tahap COA KMS: `DATABASE LIVE / FORENSIC + BEHAVIOR + CLOSING
+  POSTFLIGHT PASS`. Migration `20260929110000` tidak boleh dirun ulang.
+- Mapping belum dipasang. Pembacaan read-only terhadap workbook aktual
+  `C:\Users\sbi_l\Downloads\COA MADS Revisi.xlsx` memastikan sheet `KMS`
+  memiliki fill kuning aktual pada kolom mapping; salinan repo lama tidak
+  mempertahankan style tersebut dan tidak boleh dijadikan bukti warna.
+- Next safe step adalah mapping-specific read-only preflight terhadap pasangan
+  workbook yang sudah disetujui dan override rekomendasi yang telah dicatat,
+  kemudian migration versioned baru. Tidak boleh memakai version COA lama.
+- Ditambahkan
+  `supabase/diagnostics/kms_finance_mapping_activation_preflight.sql`: satu
+  SELECT read-only, sepuluh result rows, exact list 25 function/account dan 67
+  process/function yang identik dengan behavior Production-PASS. Preflight
+  memverifikasi 71 expanded active-category targets, dependency/Company/actor,
+  target version `20260929120000` absent, Finance queue, Offline submission,
+  current/future rule timeline, serta inventory mapping exact/replace/missing.
+- Local evidence: 25/25 function list dan 67/67 pair list mechanically match
+  behavior gate; seluruh relation ditelusuri ke defining migrations; mutation
+  scan nol dan scoped `git diff --check` PASS. Belum ada mapping migration atau
+  database mapping write.
+
+# 2026-09-29 - KMS FINANCE MAPPING PREFLIGHT PASS / MIGRATION LOCAL READY
+
+- User menjalankan mapping activation preflight dan seluruh sembilan contract
+  rows PASS; inventory INFO menunjukkan 71 target: 3 already exact, 29 replace,
+  39 missing, dengan 101 total rule rows existing. Finance queue dan Offline
+  nonterminal nol, future rule timeline bersih, dan target version absent.
+- Ditambahkan single-statement atomic migration `20260929120000`: KMS-only,
+  table/advisory lock, exact dependency/Company/account/category guard,
+  versioned effective-time cutover, audit UPDATE/CREATE, final verification,
+  installed-state exact retry, dan stale-preflight guard tepat 68 create / 29
+  replace / 3 unchanged.
+- Ditambahkan SELECT-only behavior yang memanggil canonical
+  `private.resolve_financial_event_account` untuk 68 rule baru serta closing
+  postflight enam row untuk 71 final target, 68 create audit, 29 update audit,
+  queue, ledger, dan business boundary.
+- Dataset preflight/migration/postflight dibandingkan mekanis: masing-masing 25
+  function targets dan 67 unique pairs, diff nol. Dollar tag migration 2,
+  parenthesis migration/postflight/behavior seimbang, mutation target migration
+  hanya `transaction_account_rules`, `finance_master_audit`, dan ledger;
+  scoped `git diff --check` PASS. PostgreSQL parser lokal tidak tersedia, jadi
+  engine execution masih manual.
+- Status: `LOCAL READY / PRODUCTION PREFLIGHT PASS`; migration, behavior,
+  postflight, authenticated smoke, dan UAT belum dijalankan.
+
+# 2026-09-29 - KMS MAPPING MIGRATION GUARD FUNCTION FIX
+
+- Percobaan pertama migration `20260929120000` gagal pada guard catalog dengan
+  PostgreSQL `42883`: paket lokal memakai fungsi yang tidak tersedia
+  `jsonb_object_length(jsonb)`. Ini adalah `PACKAGE CODE FIX`, bukan masalah
+  schema Production dan bukan alasan menghapus assertion.
+- Error terjadi sebelum statement DML pertama dalam satu atomic `DO`, sehingga
+  tidak ada rule, Finance audit, atau ledger migration yang ditulis oleh
+  percobaan tersebut. Status mapping tetap `NOT INSTALLED` berdasarkan
+  preflight sebelumnya ditambah posisi kegagalan dalam statement; konfirmasi
+  akhir tetap berasal dari rerun migration/ledger.
+- Guard kini tetap membuktikan tepat 25 function-account target melalui
+  `SELECT count(*) FROM jsonb_each_text(v_function_map)`. Fungsi
+  `jsonb_each_text(jsonb)` diverifikasi terhadap dokumentasi resmi PostgreSQL
+  dan juga digunakan oleh guard account berikutnya pada file yang sama.
+- SHA-256 migration lokal setelah fix adalah
+  `0e1534e042fffcd014b2281483495040c1a50d7cb50f51682afb55ac8e23db0d` dan
+  manifest diselaraskan. Next safe step hanya rerun file migration lengkap;
+  behavior dan postflight tetap dilarang bila rerun menghasilkan SQL error.
+
+# 2026-09-29 - KMS MAPPING MIGRATION DATABASE LIVE
+
+- User melaporkan rerun lengkap migration `20260929120000` sukses setelah guard
+  function diperbaiki. Status mapping sekarang `DATABASE LIVE` berdasarkan
+  eksekusi user; resolver behavior dan closing postflight masih pending.
+- Resolver behavior diperiksa ulang secara lokal: SELECT-only, nol mutation,
+  memanggil signature canonical
+  `private.resolve_financial_event_account(public.financial_events,text)`, dan
+  delimiter/parenthesis seimbang. Next safe step adalah menjalankan hanya
+  `supabase/tests/kms_finance_workbook_mapping_behavior.sql`; hentikan bila SQL
+  error atau status `FAIL` sebelum closing postflight.
+
+# 2026-09-29 - KMS MAPPING RESOLVER BEHAVIOR PASS
+
+- User menjalankan SELECT-only resolver behavior setelah migration live. Hasil
+  PASS dengan satu ledger, 68 rule baru benar-benar dievaluasi, 15 system event,
+  23 distinct function pada rule baru, dan nol resolver/account mismatch.
+- Angka 23 bukan target catalog yang hilang: behavior ini sengaja memeriksa 68
+  rule yang baru dibuat, sedangkan tiga target lain dipertahankan sebagai exact
+  existing rules; final 71-target coverage diperiksa oleh closing postflight.
+- Audit postflight menemukan `business_boundary` sebelumnya hard-coded `PASS`.
+  Assertion database utama tidak dikurangi, tetapi baris deskriptif tersebut
+  dikoreksi menjadi `INFO` agar tidak menjadi pseudo evidence. Next safe step:
+  jalankan `supabase/diagnostics/kms_finance_workbook_mapping_postflight.sql` dan
+  hentikan bila salah satu dari lima contract database menghasilkan `FAIL`.
+
+# 2026-09-29 - KMS FINANCE MAPPING CLOSING POSTFLIGHT PASS
+
+- User menjalankan closing postflight dan seluruh lima assertion database PASS:
+  satu ledger, 71/71 final mapping exact, 68/68 audit CREATE, 29/29 audit UPDATE,
+  serta nol active Finance queue. Baris write-boundary tetap `INFO`, sesuai
+  sifatnya sebagai deskripsi statis dan bukan pseudo runtime proof.
+- Status KMS mapping kini `DATABASE LIVE / RESOLVER BEHAVIOR + CLOSING
+  POSTFLIGHT PASS`. Belum `SMOKE PASS` atau `UAT PASS` karena belum ada bukti
+  transaksi operasional authenticated setelah cutover.
+- Jangan rerun migration KMS. Next safe gate adalah transaksi KMS nyata melalui
+  UI/API authenticated dan pemeriksaan Journal hasilnya. Jangan membuat fixture
+  Production diam-diam. Rollout SMS/LSM baru disiapkan setelah smoke/UAT KMS
+  disetujui atau user secara eksplisit menerima risiko memperluas sebelum UAT.
+
+# 2026-09-29 - BACKOFFICE INVOICE SCHEDULE REGRESSION LOCAL READY
+
+- Authenticated KMS Backoffice smoke pada SO `SO-20260928-0000000166` gagal saat
+  membuat Invoice dengan PostgreSQL `23502`: schedule writer meng-insert tanpa
+  `original_amount_due`, sedangkan migration koreksi harga `20260928110000`
+  telah menjadikan kolom tersebut `NOT NULL`.
+- Root cause ditelusuri ke defining runtime
+  `private.rebuild_backoffice_sales_invoice_schedules(uuid,uuid,uuid)`; ini
+  regresi paket koreksi harga, bukan masalah SO, user input, atau mapping COA.
+- Paket `20260929130000` menambah BEFORE INSERT/UPDATE trigger yang mengisi
+  baseline dari `amount_due` pada schedule baru, menolak explicit mismatch, dan
+  melarang perubahan baseline. Scope DML migration hanya ledger; tidak ada
+  backfill atau mutation Invoice/SO/Journal/COA/Stock/Payment/POS.
+- Existing rollback-only canonical Invoice posting behavior diperkuat untuk
+  membuktikan schedule DP dan Regular baru memiliki baseline exact. Status
+  `LOCAL READY`; next safe step adalah preflight, bukan migration langsung.
+
+# 2026-09-29 - INVOICE SCHEDULE BRIDGE PREFLIGHT PASS
+
+- User menjalankan Production preflight `20260929130000`; seluruh delapan gate
+  PASS dan inventory INFO menunjukkan 125 Posted schedule, nol Draft Invoice.
+  Existing baseline invalid nol, canonical runtime 3/3, target function/trigger
+  absent, ledger target nol, Finance queue nol, dan Offline nonterminal nol.
+- Failed UI attempt terbukti tidak meninggalkan Draft Invoice. Status sekarang
+  `PRODUCTION PREFLIGHT PASS / MIGRATION PENDING`. Next safe step hanya migration
+  `20260929130000`; hentikan pada SQL error dan jangan menjalankan behavior atau
+  postflight terhadap migration yang gagal.
+
+# 2026-09-29 - INVOICE SCHEDULE BRIDGE DATABASE LIVE
+
+- User mengonfirmasi migration `20260929130000` sukses setelah preflight PASS.
+  Status `DATABASE LIVE / BEHAVIOR + POSTFLIGHT + AUTHENTICATED RETRY PENDING`.
+- Next safe step adalah existing canonical rollback-only
+  `backoffice_sales_invoice_posting_runtime_behavior.sql` yang sekarang juga
+  menguji baseline schedule DP dan Regular. Jangan retry UI sebelum behavior dan
+  closing postflight lulus.
+
+# 2026-09-29 - INVOICE SCHEDULE TEST DELIVERY FAILURE / FOCUSED RETRY READY
+
+- Behavior penuh belum menghasilkan bukti runtime: SQL yang benar-benar diterima
+  editor berhenti setelah assignment `allow_negative_stock`, tidak memuat
+  penutup `END $test$`/`ROLLBACK`, lalu editor menambahkan statement RLS untuk
+  variabel PL/pgSQL. PostgreSQL gagal parse `42601`; tidak ada fixture/write yang
+  dijalankan.
+- File behavior penuh di workspace tetap utuh. Tidak ada assertion yang dibuat
+  PASS atau dihapus untuk menyembunyikan kegagalan.
+- Ditambahkan test terfokus satu-statement
+  `backoffice_invoice_schedule_original_amount_bridge_behavior.sql`. Test ini
+  memakai KMS dan `SO-20260928-0000000166`, memanggil workspace serta Save Draft
+  RPC authenticated yang sama dengan UI, menuntut schedule non-zero dan
+  `original_amount_due = amount_due`, lalu me-rollback seluruh context, Invoice,
+  allocation, dan schedule melalui subtransaction.
+- Status tetap `DATABASE LIVE / BEHAVIOR PENDING`. Next safe step hanya jalankan
+  file test pendek lengkap. Expected adalah SQL sukses dengan notice `PASS`;
+  hentikan bila ada error. Postflight dan retry UI belum boleh diklaim PASS.
+
+# 2026-09-29 - FOCUSED BRIDGE TEST PAYLOAD FIX
+
+- Percobaan pertama test terfokus berhenti atomik sebelum insert Invoice pada
+  `invoice_type NOT NULL`. Root cause: test memanggil RPC database langsung
+  tetapi belum menyertakan dua field yang normalnya ditambahkan API parser,
+  yaitu `invoiceType='REGULAR'` dan `paymentTermId=null`.
+- Ini `TEST HARNESS FIX`, bukan runtime/product migration. Assertion schedule,
+  authenticated RPC, exact KMS SO, dan rollback tidak diubah atau dilemahkan.
+  Error terjadi di dalam subtransaction dan dire-raise, sehingga seluruh update
+  active-company context dan write fixture test sudah rollback.
+- Test sekarang membentuk payload keluaran
+  `parseBackofficeInvoicePayload` secara exact untuk dua field tersebut. Status
+  tetap `DATABASE LIVE / BEHAVIOR PENDING` sampai rerun benar-benar PASS.
+
+# 2026-09-29 - INVOICE SCHEDULE BRIDGE FOCUSED BEHAVIOR PASS
+
+- User menjalankan ulang test terfokus setelah payload diselaraskan dengan API
+  parser dan SQL Editor mengembalikan `Success` tanpa error. Test berupa satu
+  `DO`; result grid memang kosong dan `NOTICE` dapat disembunyikan dashboard.
+- Karena seluruh precondition/assertion melempar exception pada kegagalan dan
+  rollback sentinel wajib tercapai, sukses membuktikan exact KMS SO melewati
+  authenticated workspace + Save Draft, schedule non-zero mempunyai
+  `original_amount_due = amount_due`, dan fixture tidak persisten.
+- Status `DATABASE LIVE / FOCUSED BEHAVIOR PASS / POSTFLIGHT + AUTHENTICATED UI
+  RETRY PENDING`. Next safe step adalah closing postflight read-only; jangan
+  menyebut smoke PASS sebelum transaksi UI nyata berhasil dan efek akhirnya
+  diaudit.
+
+# 2026-09-29 - INVOICE SCHEDULE BRIDGE CLOSING POSTFLIGHT PASS
+
+- User menjalankan closing postflight dan seluruh lima database assertion PASS:
+  satu ledger, satu enabled trigger, function definition canonical hadir, nol
+  baseline schedule existing invalid, dan nol active Finance queue. Boundary
+  migration dilaporkan sebagai `INFO`, bukan pseudo-PASS.
+- Status `DATABASE LIVE / FOCUSED BEHAVIOR + CLOSING POSTFLIGHT PASS / UI SMOKE
+  + UAT PENDING`. Database gate aman untuk meminta user mengulangi flow Invoice
+  UI yang sebelumnya gagal.
+- Smoke pertama harus memakai SO `SO-20260928-0000000166`, memastikan
+  `Konfirmasi & Terbitkan` tidak lagi menghasilkan error `original_amount_due`,
+  Invoice menjadi `POSTED`, dan Journal/total Invoice sesuai. Jangan rerun
+  migration `20260929130000`.
+
+# 2026-09-29 - ALL-COMPANY RO/PO + KGS POS READ-ONLY REAUDIT READY
+
+- User meminta audit ulang kesesuaian RO/PO terhadap negative On Hand untuk
+  keseluruhan Company replenishment dan flow POS/COA khusus KGS Company.
+- Ditambahkan dua single-statement SELECT-only audit dan scope/impact note.
+  RO/PO memakai guard anti-double-count canonical: RO hanya DRAFT/non-ORDERED,
+  Stock Request hanya residual yang belum dialokasikan ke PO aktif, dan PO hanya
+  remaining setelah Receipt POSTED. Hasil juga dibandingkan dengan private
+  AUTO_RO candidate resolver dan open outgoing shortage.
+- POS KGS dibatasi exact Company ID/name dan memeriksa Reservation header-line,
+  confirmed Invoice/SJ, Draft tanpa final effect, payment total, auto Cash,
+  Dispatch allocation/Stock movement/Finance quantity, Event-Journal state,
+  posted Journal balance/account validity, Offline queue, serta direct/fallback
+  COA resolution untuk `SALE_POSTED`, `SALE_DISPATCHED`,
+  `SALE_PAYMENT_VERIFIED`, dan `SALES_RETURN`.
+- Static evidence: kedua file tidak memiliki DDL/DML atau dollar-quoted block;
+  `git diff --check` PASS. Status `LOCAL AUDIT READY / PRODUCTION RESULT
+  PENDING`; belum ada kesimpulan data atau flow Production sebelum output user.
+
+# 2026-09-29 - RO/PO + KGS POS FIRST PRODUCTION RESULT / AUDIT HARNESS FIX
+
+- First Production result membuktikan negative On Hand tepat sama dengan open
+  outgoing shortage pada seluruh scope (`ro_po_stock_vs_outgoing_source PASS`).
+  Namun active document coverage belum sama dengan negative On Hand: KMS
+  uncovered 292, LSM uncovered 1.582, SMS uncovered 680; KGS MANUAL mempunyai
+  uncovered 14 dan excess coverage 337,26. Ini belum boleh disebut balance.
+- `ro_po_runtime_candidate_parity` menghasilkan empat mismatch tetapi versi
+  awal hanya mencetak count. Audit diperkuat untuk menampilkan Company, SKU,
+  Product, Warehouse, reconstructed/runtime On Hand, coverage, dan requested
+  quantity. Tidak ada runtime/data yang diubah; rerun diperlukan sebelum
+  menentukan apakah mismatch berasal dari rekonstruksi audit atau runtime.
+- KGS POS menunjukkan Reservation, confirmed document coverage, payment total,
+  auto Cash, Dispatch Stock/Finance quantity, Event/Journal state, Offline
+  queue, dan 36 posted POS Journal balance/account validity seluruhnya PASS.
+- Empat row `kgs_pos_draft_has_no_final_effect FAIL` diklasifikasikan sebagai
+  `TEST HARNESS FIX`: canonical ODR memang mempertahankan
+  `document_status='DRAFT'` untuk runtime status CONFIRMED sampai DELIVERED.
+  Final progression ditentukan `order_runtime_status`. Assertion diperbaiki
+  agar hanya CONFIRMED/RESERVED yang dilarang mempunyai Dispatch final effect;
+  assertion tidak dihapus.
+- Dua gap KGS `SALE_POSTED` (`CUSTOMER_BALANCE_LIABILITY` dan
+  `PAYMENT_CLEARING`) benar-benar tidak mempunyai direct rule maupun fallback,
+  tetapi keduanya berasal dari conditional account functions. Audit kini
+  membedakan REQUIRED versus CONDITIONAL: missing required tetap BLOCKER,
+  sedangkan hanya missing conditional menjadi REVIEW dan tetap dicetak. Existing
+  posted Journals yang PASS tidak membuktikan dua jalur kondisional masa depan
+  aman.
+- Status tetap `PRODUCTION REVIEW / RERUN REQUIRED`; belum ada migration,
+  mapping, Stock, RO/PO, POS, Payment, Event, atau Journal mutation dari audit.
+- Dua percobaan menjalankan ulang audit RO/PO besar dilaporkan berhenti dengan
+  PostgreSQL `42601 syntax error at end of input`. Salinan workspace lengkap
+  kemudian diuji dengan parser PostgreSQL 18 lokal dan lolos grammar sampai
+  semantic resolution (`public.companies` memang tidak dibuat pada instance
+  parser kosong), sehingga error Production konsisten dengan delivery/paste
+  yang terpotong, bukan grammar file workspace.
+- Audit besar ditahan dan tidak boleh diminta ulang. Ditambahkan query read-only
+  pendek `RO_PO_RUNTIME_CANDIDATE_DETAIL_SHORT_2026-09-29.sql` untuk mengambil
+  hanya candidate runtime canonical yang dibutuhkan guna mengidentifikasi empat
+  parity row. Query pendek juga parser-checked dengan PostgreSQL 18 sampai tahap
+  relation resolution. Audit POS kedua tetap ditahan sampai masalah pertama
+  selesai.
+- Output query pendek mengidentifikasi empat parity row sebagai KGS `BB`,
+  `BK0`, `BK1`, dan `EGEP`. Root cause terdapat pada audit reconstruction:
+  audit memakai direct join dari Stock Request line ke beberapa Sales demand,
+  sedangkan runtime canonical telah diperbaiki migration `20260915141000`
+  memakai aggregate `LEFT JOIN LATERAL` agar shared request tidak diduplikasi
+  dan Warehouse hanya terpilih bila seluruh demand sepakat. Audit diselaraskan
+  ke exact runtime patch; user tidak perlu menjalankan audit besar lagi.
+- Canonical runtime output menjadi authority untuk current need. Current
+  requested quantity: KGS 32, KMS 292, LSM 1.582, SMS 680. KGS negative-row
+  excess tinggal BB 4,48 dan DB 10; full document view juga memiliki active
+  coverage pada nonnegative BK2 200, T22BB 1, dan T22BC 1, sehingga total KGS
+  excess current 216,48. Stock-versus-open-outgoing audit sebelumnya tetap
+  PASS; gap ini adalah current document coverage versus Stock, bukan source
+  Stock movement mismatch.
+
+# 2026-09-30 - SMS RO 20260924 T20B/T22B SOURCE FORENSIC READY
+
+- User melaporkan admin menduga T20B 860 dan T22B 40 pada SMS
+  `RO-20260924-0000000020` berasal dari SO yang sudah dibatalkan.
+- RO tidak memiliki persisted direct SO lineage. Ditambahkan audit read-only
+  `docs/audits/SMS_RO_20260924_T20B_T22B_SOURCE_SO_AUDIT_2026-09-30.sql`
+  yang merekonstruksi kontribusi FIFO dari negative-stock allocation pada exact
+  immutable `cutoff_at` RO, bukan dari status/current Stock saja.
+- Audit menghitung replenishment yang sudah terjadi tepat sampai cutoff,
+  mengecualikan Retail allocation yang sudah reversed sebelum cutoff, lalu
+  menampilkan nomor SO/Invoice, status kini, waktu/reason cancel, waktu reversal,
+  source/open quantity saat cutoff, quantity yang berkontribusi ke RO, dan
+  klasifikasi canceled/reversed sebelum atau sesudah cutoff.
+- Direct impact hanya SELECT atas batch/line, Sales source, negative allocation,
+  dan replenishment lineage. Tidak ada mutasi RO, PO, SO, Invoice, Stock, FIFO,
+  Return, Payment, Event, Journal, atau COA.
+- Evidence lokal: PostgreSQL 18 menerima grammar lengkap sampai semantic
+  relation resolution pada instance parser kosong; 137 baris, nol DDL/DML,
+  delimiter/parenthesis seimbang, dan scoped `git diff --check` PASS. Status
+  `LOCAL AUDIT READY / PRODUCTION RESULT PENDING`; belum boleh menyimpulkan
+  admin benar atau salah sebelum output Production diperiksa.
+- Production output kemudian membuktikan dugaan canceled SO tidak benar untuk
+  dua line tersebut. T20B 860 berasal dari tiga Backoffice SO yang semuanya
+  current `CONFIRMED`, tanpa `canceled_at`, cancel reason, atau reversal:
+  `SO-20260918-0000000054` menyumbang 40 dari source 100 setelah 60 telah
+  replenished sebelum cutoff; `SO-20260923-0000000115` menyumbang 20; dan
+  `SO-20260923-0000000114` menyumbang 800. Total exact 860.
+- T22B 40 seluruhnya berasal dari `SO-20260916-0000000008`, current
+  `CONFIRMED`, tanpa cancellation/reversal, dan menyumbang exact 40. Seluruh
+  empat source diklasifikasikan `ACTIVE_AT_AND_AFTER_RO_CUTOFF`.
+- Status audit ini `PRODUCTION EVIDENCE COMPLETE` untuk exact RO/T20B/T22B.
+  Tidak ada mutation. Jika admin menunjuk nomor SO canceled lain, nomor tersebut
+  harus diaudit terpisah; ia tidak termasuk sumber kontribusi dua line ini.
+
+# 2026-09-30 - SMS SO 0008 ALL-LINE RO TRACE READY
+
+- User menunjukkan `SO-20260916-0000000008` berisi T26B, T22BB, T20B, T22B,
+  dan T23B, lalu menanyakan mengapa hasil forensic RO sebelumnya hanya
+  mengaitkan T22B dari SO tersebut.
+- Audit sebelumnya memang sengaja memfilter target RO hanya ke `T20B` dan
+  `T22B`; karena itu T26B, T22BB, dan T23B tidak pernah masuk ruang hasil dan
+  output tersebut tidak dapat dipakai untuk menyimpulkan nasib tiga line itu.
+- Ditambahkan audit read-only
+  `docs/audits/SMS_SO_20260916_0000000008_ALL_LINE_RO_TRACE_2026-09-30.sql`
+  yang memeriksa kelima line SO terhadap exact cutoff
+  `RO-20260924-0000000020`: ordered/shipped/received, shortage allocation,
+  replenishment sampai cutoff dan saat ini, sisa shortage, serta snapshot line
+  RO. Tidak ada mutation SO, RO, PO, Stock, FIFO, Finance, atau Journal.
+- Status `LOCAL AUDIT READY / PRODUCTION RESULT PENDING`. Belum boleh
+  menyimpulkan T20B/T26B/T22BB/T23B sudah direplenish atau hilang secara salah
+  sebelum output query ini diperiksa.
+- Production result kemudian membuktikan seluruh lima line SO telah shipped dan
+  received penuh serta masing-masing membentuk shortage sesuai qty order.
+  T26B 100, T22BB 40, T20B 100, dan T23B 600 telah direplenish penuh sebelum
+  cutoff RO sehingga open shortage SO tersebut nol. Hanya T22B 40 yang belum
+  direplenish dan karena itu menjadi kontribusi SO ini pada RO.
+- T20B tetap hadir pada RO sebesar 860 dan T23B sebesar 820, tetapi shortage
+  SO 0008 untuk kedua SKU sudah nol; quantity RO tersebut berasal dari shortage
+  transaksi lain yang masih terbuka. T26B dan T22BB tidak hadir karena shortage
+  SO ini sudah nol dan tidak ada net negative requirement untuk keduanya pada
+  snapshot target RO. SO tetap `CONFIRMED`, bukan canceled.
+- Status audit `PRODUCTION EVIDENCE COMPLETE` untuk alasan hanya T22B dari SO
+  0008 yang muncul sebagai source contribution. Exact Receipt/PO yang menutup
+  empat shortage dapat ditelusuri terpisah melalui replenishment product-batch
+  lineage bila dibutuhkan; belum diaudit pada langkah ini.
+
+# 2026-09-30 - SMS FULL SALES / RETURN / STOCK / RO / PO RECONCILIATION READY
+
+- User meminta rekonsiliasi menyeluruh SMS: seluruh Backoffice SO confirmed dan
+  canceled, cancellation/reversal, Customer Return, seluruh PO/Receipt, dan RO
+  yang masih aktif terhadap Stock movement dan current negative On Hand.
+- Impact boundary read-only: Sales/Delivery/negative allocation, Retail
+  cancellation, native dan Backoffice Customer Return, Stock Movement/Product
+  Stock, Daily RO, PO, dan Posted Goods Receipt. Finance/Journal tidak menjadi
+  mutation maupun target rekonsiliasi quantity ini.
+- Existing `SMS_ACTIVE_RO_PO_OUTGOING_COVERAGE_AUDIT_2026-09-28.sql` tetap
+  menjadi authority coverage current dengan guard anti-double-count: hanya RO
+  Draft/non-ORDERED, residual Stock Request, dan remaining PO setelah Posted
+  Receipt yang dihitung.
+- Ditambahkan
+  `SMS_FULL_SALES_PURCHASE_STOCK_LIFECYCLE_AUDIT_2026-09-30.sql` untuk gate
+  full-history: Product Stock versus seluruh Posted Movement, latest balance,
+  open shortage harus memiliki source CONFIRMED dan movement, canceled source
+  tidak boleh tetap open, physical Return harus memiliki exact movement, serta
+  inventory seluruh status PO/RO.
+- Status `LOCAL AUDIT READY / PRODUCTION RESULT PENDING`. Urutan aman: jalankan
+  lifecycle audit baru dahulu; hanya bila tidak ada `BLOCKER`, jalankan audit
+  active RO/PO coverage existing. Output INFO bukan PASS dan tidak boleh dipakai
+  sendiri sebagai bukti balance.
+- User menjalankan lifecycle Step 1 di Production. Seluruh delapan contract
+  rows PASS: identity, 27 Product-Warehouse Stock versus Posted Movement,
+  latest movement balance, Backoffice/retail open shortage source integrity,
+  canceled Backoffice allocation absence, serta native/Backoffice Customer
+  Return stock effect. Histori berisi 30 Backoffice SO (28 CONFIRMED, 2
+  CANCELED), satu Posted Backoffice Return receipt, dan tidak ada native Retail
+  Return Posted.
+- Inventory INFO menunjukkan 18 PO: 12 CANCELED tanpa receipt, 4 RECEIVED exact
+  27.640/27.640, dan 2 CONFIRMED tersisa 1.640. Terdapat satu RO DRAFT lama
+  `RO-20260924-0000000020` sebesar 3.240; enam RO READY semuanya mempunyai PO
+  non-canceled terkait, dan dua RO CANCELED tidak menjadi coverage.
+- Status kini `PRODUCTION LIFECYCLE PASS / CURRENT COVERAGE PENDING`. Draft
+  3.240 + remaining PO 1.640 belum boleh disebut balance atau double count
+  sebelum `SMS_ACTIVE_RO_PO_OUTGOING_COVERAGE_AUDIT_2026-09-28.sql` dijalankan.
+- User menjalankan Step 2 dan seluruh empat gate penentu PASS: runtime candidate
+  parity, Stock versus open outgoing source, active RO/PO coverage, dan
+  uncovered source inventory. Current SMS negative On Hand 4.880 = valid open
+  Sales shortage 4.880 = active coverage 4.880; uncovered dan excess keduanya
+  nol.
+- Exact current coverage: T17B 400 RO; T20B 1.100 = RO 860 + PO 240; T22B 40
+  RO; T23B 880 = RO 820 + PO 60; T20Z 100 PO; T20ZB 40 PO; T25B 60 PO; dan
+  T25MC 2.260 = RO 1.120 + PO 1.140. Total RO Draft 3.240 + remaining PO
+  Confirmed 1.640 = 4.880. Stock Request aktif nol dan seluruh active document
+  quantity terpakai; unused coverage nol.
+- Status audit `PRODUCTION CURRENT BALANCE PASS` untuk snapshot saat query
+  dijalankan. Batas temporal: SMS masih `auto_ro_stock_match_enabled=false` dan
+  `auto_ro_draft_roll_forward_enabled=false`; karena itu PASS ini tidak menjadi
+  stale-change guard bila Stock/SO/Return/Receipt berubah sebelum RO Draft
+  dikonfirmasi. Tidak ada mutation dari kedua audit.
+- Atas permintaan user, dibuat workbook operasional sederhana
+  `docs/exports/SMS_REKONSILIASI_SO_RO_PO_2026-09-30.xlsx` dari exact output
+  Step 1 dan Step 2. Empat sheet: Ringkasan, Per Produk, Dokumen Aktif, dan
+  Sumber SO; tanpa merged cell atau styling kompleks.
+- Generator reproducible berada di
+  `scripts/create_sms_reconciliation_workbook_2026_09_30.ps1`. Verifikasi
+  read-only melalui Excel COM membuktikan sheet/shape 14x3, 9x12, 13x14, dan
+  25x13; Ringkasan berisi status `SESUAI / BALANCE`, total coverage 4.880,
+  uncovered 0, dan excess 0.
+
+# 2026-09-30 - LSM RECONCILIATION WORKBOOK INPUT AUDITS READY
+
+- User meminta workbook LSM dengan struktur yang sama seperti workbook SMS.
+  Workbook belum dibuat dari data lama; exact Production output LSM diwajibkan
+  agar tidak menghasilkan klaim balance palsu.
+- Ditambahkan dua audit read-only exact-scope LSM:
+  `LSM_FULL_SALES_PURCHASE_STOCK_LIFECYCLE_AUDIT_2026-09-30.sql` dan
+  `LSM_ACTIVE_RO_PO_OUTGOING_COVERAGE_AUDIT_2026-09-30.sql`.
+- Kedua file mempertahankan assertion SMS yang telah Production-PASS, mengganti
+  hanya exact Company ID/name dan prefix hasil menjadi LSM. Scan mutation nol,
+  tidak ada identifier SMS tersisa, dan scoped `git diff --check` PASS.
+- Status `LOCAL AUDIT READY / LSM PRODUCTION OUTPUT PENDING`. Jalankan lifecycle
+  dahulu; hentikan pada SQL error atau BLOCKER. Coverage hanya dijalankan bila
+  lifecycle tidak memiliki BLOCKER. Workbook baru dibuat dari kedua output
+  aktual tersebut.
+- User menjalankan LSM lifecycle Step 1 dan seluruh delapan contract rows PASS:
+  identity, 64 Product-Warehouse Stock versus Posted Movement, latest balance,
+  Backoffice/retail shortage source integrity, canceled allocation absence,
+  serta native/Backoffice Customer Return stock effect.
+- Inventory Production: 76 Backoffice SO (75 CONFIRMED, 1 CANCELED), lima
+  Posted Backoffice Return receipt, 26 PO (22 CANCELED tanpa Receipt, tiga
+  RECEIVED exact 28.786/28.786, satu CONFIRMED remaining 2.262), dan 11 RO
+  (tujuh CANCELED, empat READY dengan linked non-canceled PO). Tidak ada RO
+  DRAFT aktif.
+- Status `LSM PRODUCTION LIFECYCLE PASS / CURRENT COVERAGE PENDING`. Step 2
+  wajib membuktikan apakah satu PO Confirmed 2.262 sama persis dengan current
+  negative On Hand/open shortage per Product-Warehouse.
+- User menjalankan LSM coverage Step 2. Stock versus source dan runtime
+  candidate parity PASS: current negative On Hand 2.754 sama dengan valid open
+  outgoing shortage 2.754. Namun active procurement coverage baru 2.262 dari
+  satu PO Confirmed `PO-20260930-0000000085`; tidak ada RO Draft aktif.
+- Coverage berlebih nol, tetapi uncovered total 492 pada tujuh SKU: BRB10-2 12,
+  BRBD6 40, T20B 20, T22A 80, T22WF 300, T25BC 20, dan T27BC 20. Delapan baris
+  sumber belum ter-cover berasal dari SO 0172 sampai 0176 tanggal 29 September
+  2026. Karena itu status tepatnya `PRODUCTION STOCK/SOURCE PASS / CURRENT
+  PROCUREMENT COVERAGE REVIEW`, bukan balance PASS.
+- Dibuat workbook
+  `docs/exports/LSM_REKONSILIASI_SO_RO_PO_2026-09-30.xlsx` dari exact output
+  Step 1 dan Step 2. Lima sheet: Ringkasan, Per Produk, Dokumen Aktif, Sumber
+  SO, dan Belum Ter-cover. Status workbook `BELUM SESUAI`, kebutuhan 2.754,
+  coverage 2.262, uncovered 492, excess 0.
+- Generator reproducible berada di
+  `scripts/create_lsm_reconciliation_workbook_2026_09_30.ps1`. Verifikasi
+  read-only Excel COM membuktikan shape sheet 14x3, 22x12, 22x14, 46x13, dan
+  9x10 serta delapan baris sumber gap sesuai output Production.
+
+# 2026-09-30 - KMS FULL LIFECYCLE AND ACTIVE COVERAGE AUDITS READY
+
+- User meminta rekonsiliasi KMS dengan pola bukti yang sama seperti SMS dan
+  LSM. Workbook belum dibuat karena exact output Production KMS belum tersedia.
+- Ditambahkan dua audit SELECT-only exact-scope KMS:
+  `KMS_FULL_SALES_PURCHASE_STOCK_LIFECYCLE_AUDIT_2026-09-30.sql` dan
+  `KMS_ACTIVE_RO_PO_OUTGOING_COVERAGE_AUDIT_2026-09-30.sql`.
+- Scope dikunci pada Company ID
+  `4eedbf12-3c60-40e0-b2b7-1a48ca62b6f8` dan nama
+  `Khadijah Muda Sejahtera`. Kedua file identik secara canonical dengan audit
+  LSM yang baru dijalankan, selain Company identity dan prefix check KMS.
+- Validasi lokal: canonical normalized match keduanya `True`, tidak ada sisa
+  identifier LSM, tidak ada keyword mutation, dan scoped `git diff --check`
+  PASS.
+- Status `LOCAL AUDIT READY / KMS PRODUCTION OUTPUT PENDING`. Jalankan lifecycle
+  Step 1 dahulu. Step 2 hanya dijalankan bila Step 1 tidak memiliki BLOCKER.
+  Workbook KMS harus dibuat dari dua output aktual dan tidak boleh mewarisi
+  status PASS/REVIEW dari Company lain.
+- User mengirim output KMS Step 2. Runtime candidate parity dan Stock versus
+  outgoing source keduanya PASS: current negative On Hand 1.950 sama dengan
+  valid open outgoing shortage 1.950. Active coverage hanya 480 dari PO
+  Confirmed `PO-20260930-0000000083`, linked ke
+  `RO-20260928-0000000025`; tidak ada RO Draft atau Stock Request aktif.
+- Current procurement gap KMS adalah 1.470, excess nol, mencakup seluruh 13 SKU
+  minus dan 19 source rows. Semua source yang belum ter-cover adalah Backoffice
+  SO tanggal 29 September (`SO-...0177` sampai `SO-...0183`). Setting KMS adalah
+  `AUTO_RO`, cutoff 23:59, sementara Stock Match dan Draft Roll Forward sama-sama
+  OFF.
+- Status tepatnya `KMS STOCK/SOURCE PASS / CURRENT PROCUREMENT COVERAGE
+  REVIEW`. Step 2 sendiri belum membuktikan histori scheduler/RO sesudah source
+  tersebut; output lifecycle Step 1 tetap diperlukan sebelum workbook final
+  dibuat atau akar kegagalan scheduler disimpulkan.
+- User kemudian mengirim KMS lifecycle Step 1 dan seluruh delapan contract rows
+  PASS: Stock versus Posted Movement, latest balance, open shortage integrity,
+  canceled allocation absence, serta Return stock effects semuanya konsisten.
+  Inventory berisi 59 Backoffice SO (58 CONFIRMED, satu CANCELED), lima Posted
+  Backoffice Return receipt, 27 PO, dan sembilan Daily RO.
+- Step 1 membuktikan `RO-20260929-0000000028` memang terbentuk sebesar 292,
+  menjadi `PO-20260930-0000000084`, dan sudah diterima penuh 292. Sementara PO
+  aktif 480 berasal dari `RO-20260928-0000000025`. Karena Step 2 menunjukkan
+  seluruh gap 1.470 berasal dari SO bertanggal 29, tanggal dokumen saja belum
+  membuktikan apakah shortage dibuat sebelum atau sesudah cutoff RO 29;
+  `backoffice_negative_stock_allocations.created_at` harus dibandingkan dengan
+  `purchase_daily_batches.cutoff_at` sebelum menyebut generator melewatkannya.
+- Dibuat workbook
+  `docs/exports/KMS_REKONSILIASI_SO_RO_PO_2026-09-30.xlsx` dari exact output
+  kedua step. Lima sheet: Ringkasan, Per Produk, Dokumen Aktif, Sumber SO, dan
+  Belum Ter-cover. Status `BELUM SESUAI`, kebutuhan 1.950, active coverage 480,
+  uncovered 1.470, excess 0.
+- Generator reproducible berada di
+  `scripts/create_kms_reconciliation_workbook_2026_09_30.ps1`. Verifikasi
+  read-only Excel COM membuktikan shape 14x3, 14x12, 7x14, 11x13, dan 20x10,
+  termasuk 19 source rows belum ter-cover.
+- Ditambahkan audit causal read-only
+  `KMS_RO_20260929_UNCOVERED_SHORTAGE_CUTOFF_AUDIT_2026-09-30.sql`. Audit ini
+  membandingkan timestamp pembuatan 19 allocation shortage SO 0177-0183 dengan
+  exact `cutoff_at` RO 0028, menampilkan scheduler run dan snapshot lima line
+  RO. `PASS` pada cutoff timing berarti seluruh gap lahir setelah cutoff;
+  `REVIEW` berarti ada shortage yang sudah ada saat cutoff dan memerlukan audit
+  generator snapshot lanjutan. Belum ada Production output untuk audit ini.
+
+# 2026-10-01 - SMS RETAINED-RETAIL RETURN STOCK / DELIVERY DIAGNOSIS READY
+
+- User melaporkan `RTN-20260918-0000000016`, sumber Retail
+  `DRF-20260827-000106`, selesai menerima T22B 40 dan T20B 40 tetapi Delivery
+  asal tidak menampilkan tanda retur dan On Hand dinilai masih minus.
+- Active call chain sudah diaudit. Retur `source_kind=RETAINED_RETAIL` memang
+  memakai immutable Retail sale/Invoice/Delivery sebagai sumber; Return receipt
+  tidak mengubah row Delivery asal. Invoice/Office Retail history mempunyai
+  derived commercial-return overlay, sedangkan `sales_delivery_documents`
+  tidak mempunyai persisted Return status dan Delivery read model belum
+  menggabungkan Return receipt. Karena itu absennya tanda retur pada DO adalah
+  read-model/UI gap, bukan bukti stock receipt gagal.
+- Stock effect bergantung pada receipt-line `disposition`: `RESTOCK` wajib
+  membuat Posted `SALES_RETURN` movement dan menambah On Hand pada source
+  Warehouse; `DESTROY` tercatat diterima tetapi sengaja tidak membuat movement
+  atau usable On Hand. RESTOCK batch juga dapat langsung dikonsumsi trigger
+  canonical untuk merekonsiliasi negative-stock shortage tertua, sehingga FIFO
+  batch remaining dapat nol walau movement/On Hand benar.
+- Ditambahkan exact SELECT-only diagnosis
+  `SMS_RTN_20260918_0000000016_RETAIL_RETURN_STOCK_DELIVERY_DIAGNOSIS_2026-10-01.sql`.
+  Audit mengunci SMS Company ID, Return No, dan source Draft No lalu memeriksa
+  source contract, disposition, source/receipt Warehouse, Stock Movement,
+  current source-Warehouse stock, FIFO restoration, negative-shortage
+  reconciliation, source Delivery lines, dan Invoice lineage.
+- Status `LOCAL DIAGNOSIS READY / PRODUCTION OUTPUT PENDING`. Belum boleh
+  menyimpulkan DESTROY, wrong Warehouse, missing Movement, atau sekadar net
+  negative dari transaksi lain sebelum output exact audit tersedia. Tidak ada
+  mutation atau client change dalam langkah ini.
+- User menjalankan exact diagnosis. Root cause Production terbukti: kedua line
+  T20B 40 dan T22B 40 diposting `DESTROY`, bukan `RESTOCK`; total received 80,
+  destroyed 80, restocked 0, tanpa Stock Movement sesuai kontrak DESTROY.
+  Receipt juga memakai legacy wrong Warehouse `Gudang Toko`, sedangkan source
+  Delivery `SJ/2026/08/000001` berasal dari `Gudang Utama`. Dokumen diposting 18
+  September, sebelum source-Warehouse guard 21 September.
+- Alasan bisnis adalah `dobel input`. Jika memang tidak ada 80 barang fisik
+  yang keluar/dihancurkan, workflow DESTROY salah merepresentasikan kejadian:
+  outbound source tetap mengurangi On Hand dan receipt tidak memulihkannya.
+  Namun exact source negative allocations T20B/T22B masing-masing 40 sudah
+  direplenish penuh dan reconciled pada 20 September; source Invoice ini tidak
+  lagi menjadi open-shortage contributor langsung pada RO sekarang.
+- Dampak residual: Stock ledger/On Hand tetap 80 lebih rendah dibanding realitas
+  bisnis duplicate-input, sementara procurement pernah menutup shortage itu.
+  Koreksi tidak boleh sekadar mengubah posted receipt atau menambahkan Stock
+  tanpa audit Finance/FIFO karena berisiko double stock/cost. Safe next step
+  adalah audit source outbound Movement, replenishment batch, DESTROY/credit
+  Finance effect, dan current FIFO sebelum merancang append-only correction
+  pada Gudang Utama. Delivery return badge tetap merupakan derived read-model
+  gap terpisah.
+
+# 2026-10-02 - KMS COA REMEDIATION HOLD
+
+- User menginstruksikan seluruh pekerjaan koreksi, penggantian, deaktivasi,
+  penyembunyian, atau perubahan mapping COA KMS untuk dihentikan sementara.
+- Jangan membuat atau menjalankan migration, preflight eksekusi, backfill,
+  mapping, rename, deactivate/hide, maupun perubahan UI COA tanpa konfirmasi
+  eksplisit baru dari user.
+- Data raw yang sudah diberikan user tetap menjadi authority untuk pembahasan
+  berikutnya; jangan menambah nama akun, kode akun, atau keputusan mapping dari
+  asumsi sistem.
+- Status: `HOLD BY USER`. Tidak ada perubahan Database, Finance runtime,
+  Journal, Stock, atau aplikasi pada langkah pencatatan ini.
+
+# 2026-10-05 - KGS BACKOFFICE COA MAPPING AUDIT READY
+
+- User meminta audit KGS Company sebagai calon toko Retail yang akan memakai
+  flow Backoffice: proses mana yang sudah dipetakan ke akun non-system milik
+  Company, proses mana yang masih memakai akun bawaan sistem, dan proses mana
+  yang belum memiliki mapping.
+- Scope dikunci read-only pada KGS ID
+  `d290f1ee-6c54-4b01-90e6-d701748f0851`, kode `KGS`, nama `KGS Company`.
+  POS-native, cashier session, Cash Drawer, dan POS payment verification tidak
+  dimasukkan kecuali prosesnya memang dipakai call chain Backoffice.
+- Ditambahkan preflight
+  `docs/audits/KGS_BACKOFFICE_COA_MAPPING_PREFLIGHT_2026-10-05.sql` dan matrix
+  detail `docs/audits/KGS_BACKOFFICE_COA_MAPPING_AUDIT_2026-10-05.sql`.
+  Keduanya SELECT-only; tidak mengubah COA, mapping, Journal, Event, Stock,
+  Sales, Purchase, Payment, KMS, SMS, atau LSM.
+- Matrix mengikuti resolver canonical yang terbukti dari migration source:
+  direct `transaction_account_rules`, lalu
+  `company_account_function_fallbacks`. Kolom legacy
+  `chart_of_accounts.system_function_key` tidak dianggap resolver fallback.
+- Kepemilikan akun dibedakan dari persisted
+  `chart_of_accounts.is_system_account`. CREATE audit dan `created_by`
+  ditampilkan sebagai provenance tambahan, tetapi tidak dipakai untuk menebak
+  siapa perancang akun dari nama akun.
+- Validasi lokal: nama tabel/kolom dan signature resolver dicocokkan dengan
+  migration source; delimiter kurung seimbang; scoped `git diff --check` PASS;
+  tidak tersedia PostgreSQL parser/`psql` lokal. Status
+  `LOCAL AUDIT READY / PRODUCTION PREFLIGHT PENDING`.
+- Next safe step: user menjalankan preflight utuh. Detailed matrix hanya
+  dijalankan jika seluruh row berstatus `BLOCKER` sudah PASS. Row `REVIEW`
+  category absence merupakan temuan yang sengaja akan ditampilkan detail,
+  bukan izin untuk membuat atau mengubah mapping.
+- Production preflight kemudian dijalankan user: ketujuh checks PASS, nol
+  violation. Identitas KGS exact, seluruh relation dan canonical resolver ada,
+  seluruh Backoffice event catalog mempunyai fungsi, dan tidak ada active
+  category yang hilang. Status menjadi
+  `PRODUCTION PREFLIGHT PASS / DETAIL MATRIX PENDING`.
+- User kemudian menjalankan detail matrix Production. Terdapat 67 target rows:
+  48 `MAPPED_TO_SYSTEM_ACCOUNT`, 15 `UNMAPPED`, tiga
+  `NO_MAPPING_REQUIRED`, dan satu `USER_SELECTS_ACCOUNT`. Tidak ada satu pun
+  `MAPPED_TO_NON_SYSTEM_ACCOUNT`; jadi belum ada proses Backoffice KGS yang
+  memakai akun Company non-system.
+- Lima belas gap terdiri dari tiga REQUIRED dan dua belas CONDITIONAL. REQUIRED:
+  penetapan supplier setelah penerimaan belum mempunyai
+  `PURCHASE_UNASSIGNED_CLEARING` dan `SUPPLIER_AP_PROVISIONAL`; Purchase Return
+  belum mempunyai `SUPPLIER_AP_PROVISIONAL`. Conditional gaps mencakup
+  Payment Clearing, Purchase Price Variance, Input Tax, Supplier AP
+  provisional/final, Main Cash, serta Supplier Refund Receivable sesuai proses.
+- Runtime evidence KGS yang sudah mempunyai Posted Journal: Goods Receipt 6
+  dari 7 Event (satu canceled), Supplier Invoice 3, Supplier Payment 2,
+  Expense Disbursement 2, Stock Opening 2, dan Stock Gain 2. Seluruh akun pada
+  mapping aktif proses tersebut adalah akun system. Matrix ini menghitung
+  jurnal tetapi tidak mengaudit account_id setiap historical journal line;
+  karena itu jangan menyatakan jurnal lama pasti memakai mapping aktif saat
+  ini tanpa audit journal-line terpisah. Flow Backoffice Sales/Invoice, Receipt,
+  Credit/Debit Note, Refund, Purchase Return, Expense Settlement, Stock Loss,
+  dan Transfer belum mempunyai Event Production pada snapshot ini; mapping
+  yang ada untuk flow tersebut baru configuration evidence, bukan behavioral
+  posting evidence.
+- Status: `KGS BACKOFFICE COA GAP CLASSIFIED / NO MAPPING MUTATION`. Next safe
+  step memerlukan authority akun KGS non-system dari user/Finance untuk setiap
+  fungsi. Jangan mengganti mapping dengan menebak nama akun atau memakai akun
+  system lain.
+
+# 2026-10-05 - KGS COA SCOPE CORRECTED TO RETAIL/POS
+
+- User mengoreksi authority bisnis: KGS akan beroperasi sebagai toko Retail dan
+  input penjualan berasal dari POS. Audit Backoffice sebelumnya tetap valid
+  secara teknis untuk flow Backoffice, tetapi tidak boleh dipakai sebagai scope
+  mapping penjualan KGS.
+- Scope pengganti mencakup `SALE_POSTED`, `SALE_DISPATCHED`,
+  `SALE_PAYMENT_VERIFIED`, `SALES_RETURN`, `CASH_DEPOSIT`, `CASH_VARIANCE`,
+  `CUSTOMER_BALANCE_RECEIPT`, dan `CUSTOMER_BALANCE_USAGE`, ditambah proses
+  bersama Purchase, Stock, Expense, Opening Balance, dan Manual Journal.
+  Backoffice SO/DO/Invoice/Credit-Debit Note/Customer Refund dikeluarkan.
+- Ditambahkan tiga audit SELECT-only:
+  `KGS_RETAIL_POS_COA_MAPPING_PREFLIGHT_2026-10-05.sql`,
+  `KGS_RETAIL_POS_COA_MAPPING_AUDIT_2026-10-05.sql`, dan
+  `KGS_NON_SYSTEM_COA_INVENTORY_2026-10-05.sql`.
+- Matrix POS memisahkan current active mapping dari historical Journal-line
+  evidence, termasuk jumlah line yang memakai system versus non-system account.
+  Inventaris COA hanya menampilkan akun aktif, postable, non-system KGS beserta
+  current reference dan pemakaian jurnal. Daftar fungsi compatible berdasarkan
+  account type diberi label eksplisit bukan rekomendasi mapping.
+- Validasi lokal: nama tabel/kolom dicocokkan dengan migration source, delimiter
+  seimbang, mutation statement scan bersih, dan scoped `git diff --check` PASS.
+  PostgreSQL parser lokal tidak tersedia. Status:
+  `LOCAL RETAIL/POS AUDIT READY / PRODUCTION PREFLIGHT PENDING`; belum ada COA
+  atau mapping yang diubah.
+- User menjalankan Production Retail/POS preflight dan seluruh tujuh checks
+  PASS dengan nol violation: identitas KGS, relations, canonical resolver,
+  event catalog, function catalog, serta category shape exact. Scope boundary
+  juga mengonfirmasi Retail/POS included dan Backoffice Sales excluded. Status
+  menjadi `PRODUCTION RETAIL/POS PREFLIGHT PASS / MATRIX AND NON-SYSTEM ACCOUNT
+  INVENTORY PENDING`.
+- User kemudian menjalankan matrix dan non-system inventory. Matrix berisi 90
+  rows: Retail/POS 43 system-mapped, delapan unmapped, dua no-net-journal;
+  shared operation 20 system-mapped, 14 unmapped, dua no-net-journal, dan satu
+  user-selected manual journal. Tidak ada current
+  `MAPPED_TO_NON_SYSTEM_ACCOUNT` maupun historical non-system Journal line.
+- Inventaris menemukan 41 akun aktif/postable/non-system KGS, tetapi semuanya
+  mempunyai nol active direct rule, nol active fallback, dan nol Posted Journal
+  line. `is_system_account=false` membuktikan klasifikasi non-system; create
+  audit/created_by tidak membuktikan siapa manusia pembuatnya.
+- Runtime POS yang terbukti: SALE_POSTED 30/30 Posted, SALE_DISPATCHED 4/4,
+  SALE_PAYMENT_VERIFIED sembilan Event (satu Posted, delapan HOLD), SALES_RETURN
+  1/1, CASH_DEPOSIT 2/2, dan CASH_VARIANCE 1/1. Semua historical account lines
+  yang terlihat masih system account.
+- Ada active trial category tambahan `TEST1` untuk
+  `CUSTOMER_BALANCE_RECEIPT`, selain kategori canonical
+  `DEFAULT-CUSTOMER-BALANCE-RECEIPT`. Jangan ikut memetakan atau menonaktifkan
+  kategori ini tanpa keputusan user; tandai sebagai cleanup trial terpisah.
+- Exact/strong non-system candidate berdasarkan nama, tipe, saldo normal, dan
+  fungsi bisnis tersedia untuk Bank BCA, Piutang Usaha, Persediaan Barang
+  Dagang, Hutang Usaha, Hutang Belum Tertagih, Saldo Customer, Potongan
+  Penjualan, Retur Penjualan, Beban Pokok Penjualan, Beban Operasional, Selisih
+  Stock Opname gain/loss, dan Rounding Gain. Penjualan Trading adalah kandidat
+  generic SALES_REVENUE, tetapi KGS juga memiliki Penjualan Ketul dan Penjualan
+  Kardus; current event/category resolver tidak otomatis memisahkan revenue per
+  product class, sehingga ini wajib keputusan bisnis/runtime, bukan tebakan.
+- Fungsi tanpa pasangan exact di COA non-system saat ini mencakup Kas Laci/Kas
+  Besar distinction, Kas Dalam Perjalanan, Payment Clearing, Output/Input Tax,
+  Customer Advance/Refund Liability, Delivery Fee Revenue, Payment Surcharge
+  Income, Rounding Loss, Opening Balance Clearing, Outstanding Expense,
+  Purchase Price Variance, Purchase Unassigned Clearing, Supplier Refund
+  Receivable, Cash Overage/Shortage, dan Under Deposit Control. Beberapa nama
+  mirip seperti Kas Kecil, Hubungan Rekening Koran, dan Biaya Dibayar Dimuka
+  tidak boleh dianggap exact tanpa Finance approval.
+- Status `KGS RETAIL/POS MAPPING EVIDENCE COMPLETE / MAPPING DESIGN BLOCKED BY
+  FINANCE DECISIONS AND MISSING ACCOUNTS`. Tidak ada mutation dilakukan.
+- User meminta pembahasan ini dicatat dan dihentikan sementara untuk direcall
+  kemudian. Status menjadi `HOLD BY USER`: jangan membuat migration, mengganti
+  rule/fallback, membuat COA baru, menonaktifkan kategori `TEST1`, atau mengubah
+  jurnal KGS sampai user membuka kembali task ini. Saat direcall, mulai dari
+  tiga keputusan: akun pendapatan POS umum versus pemisahan Trading/Ketul/Kardus,
+  Kas Kecil versus Kas Laci, dan pembuatan akun yang belum mempunyai pasangan
+  exact. Bukti audit dan daftar pasangan exact di atas tetap menjadi authority.
+
+# 2026-10-05 - SURAT JALAN DELIVERY DATE TEMPLATE LOCAL READY
+
+- User meminta Tanggal Kirim ditambahkan pada template Surat Jalan dan nama
+  file PDF, tepat setelah nama Customer pada nama file.
+- Impact map: hanya renderer read-only Surat Jalan di
+  `backoffice/src/lib/sales-document-print.ts`; consumer-nya PDF satuan, PDF
+  bulk ZIP, dan Cetak browser. Tidak ada perubahan API/RPC/schema, lifecycle
+  DO, Invoice, Stock, Reservation, FIFO, Payment, Event, Journal, atau Finance.
+- Nama PDF sekarang `CUSTOMER_YYYY-MM-DD_DELIVERY-NO.pdf`. Snapshot historis
+  tanpa tanggal tetap dapat diunduh memakai `TANGGAL-TIDAK-ADA`; nama Invoice
+  tidak berubah.
+- Header PDF dan Cetak browser sama-sama menampilkan judul `SURAT JALAN`, nomor
+  SJ, dan `Tanggal Kirim: DD/MM/YYYY`. Backoffice tetap membaca effective date
+  existing (`in_transit_at`, fallback planned date); tidak ada authority tanggal
+  baru di client.
+- Evidence lokal: scoped ESLint
+  `node_modules/.bin/eslint.cmd src/lib/sales-document-print.ts` PASS dan
+  `npm.cmd run build` PASS termasuk TypeScript serta 88 static pages.
+- Status `LOCAL READY`. Browser runtime tidak dapat mengambil sesi lokal pada
+  environment agent, sehingga authenticated smoke PDF satuan, Cetak browser,
+  PDF di bulk ZIP, fallback snapshot lama, deployment, dan UAT masih pending.
+- Rollback sempit: revert perubahan renderer dan dua catatan status ini. Tidak
+  ada migration atau data rollback.
+
+# 2026-10-05 - KMS AR VERSUS GENERAL LEDGER DIAGNOSIS READY
+
+- User melaporkan saldo Buku Besar KMS tidak sama dengan laporan AR. Scope saat
+  ini diagnosis read-only; tidak ada otorisasi untuk koreksi jurnal, COA,
+  mapping, Invoice, receipt, atau saldo.
+- Call chain aktif membuktikan Buku Besar hanya membaca
+  `finance_journals.status='POSTED'` untuk satu `account_id`, sedangkan AR Aging
+  membaca residual dokumen operasional melalui
+  `public.get_finance_ar_aging(date,uuid,uuid)`.
+- Audit
+  `docs/audits/KMS_AR_VS_GENERAL_LEDGER_DIAGNOSIS_2026-10-05.sql` membandingkan
+  kedua sumber pada cutoff tanggal lokal KMS yang sama. GL dijumlahkan dari
+  seluruh snapshot fungsi `CUSTOMER_RECEIVABLE`, sehingga akun Piutang lama dan
+  baru tidak hilang hanya karena UI membuka satu account.
+- Output sekaligus menginventaris saldo per akun Piutang, mapping efektif,
+  open-item tanpa jurnal Posted, dokumen final tanpa jurnal Posted, dan breakdown
+  source jurnal. Audit tidak memakai satu kode akun hard-coded dan tidak
+  melakukan persistent mutation.
+- Evidence lokal: nama relation/column ditelusuri ke migration aktif; scan kata
+  mutation bersih; tanda kurung 164/164; scoped `git diff --check` PASS.
+  PostgreSQL parser/runtime Production tidak tersedia pada environment agent.
+- Status `LOCAL DIAGNOSTIC READY / PRODUCTION OUTPUT PENDING`. Next safe step:
+  user menjalankan seluruh audit di SQL Editor dan mengembalikan semua row.
+  Jangan membuat adjustment atau remap sebelum row mismatch dan document/account
+  lineage terbukti dari output tersebut.
+- User menjalankan audit Production untuk cutoff KMS `2026-10-05`; mismatch
+  terkonfirmasi. AR outstanding `178,937,928`, sedangkan seluruh Posted GL line
+  snapshot `CUSTOMER_RECEIVABLE` menghasilkan saldo `-73,990,512`, sehingga
+  `AR - GL = 252,928,440`.
+- Ini bukan historical account split: seluruh 124 line / 124 journal AR historis
+  yang ter-post masih pada akun sistem `1210 Piutang Customer`. Breakdown-nya
+  `BACKOFFICE_SALES_INVOICE` debit `179,303,800`, `CUSTOMER_CREDIT_NOTE` credit
+  `618,400`, dan 69 `SALE_PAYMENT` credit `252,675,912`. Tidak ada Posted AR
+  debit `SALE_POSTED` atau `SALE_DISPATCHED` pada breakdown tersebut.
+- Tujuh open Retail AR items dengan total outstanding `23,348,068` mempunyai
+  source Event `SALE_POSTED`/`SALE_DISPATCHED` berstatus `HOLD` dan nol Journal.
+  Backoffice Invoice, Customer Receipt, Credit Note, dan price-correction final
+  yang diaudit berjumlah 154 dan seluruhnya mempunyai posting coverage; defect
+  terlokalisasi pada Retail sale/dispatch source posting dan historical/current
+  receivable-account continuity, bukan pada final Backoffice document coverage.
+- Mapping efektif sekarang juga terpecah: beberapa direct rule termasuk
+  `BACKOFFICE_SALES_INVOICE`, `SALE_POSTED`, `SALE_DISPATCHED`, dan
+  `SALE_PAYMENT` mengarah ke workbook account `1020100 PIUTANG USAHA`, sedangkan
+  fallback, Down Payment, Customer Debit Note, dan Payment Verified masih ke
+  `1210 Piutang Customer`. Ini adalah risiko split baru meskipun histori saat ini
+  baru terlihat pada 1210.
+- Jangan langsung post seluruh HOLD atau membuat adjustment. Sebelum remediasi,
+  inventaris seluruh Retail receivable source (termasuk yang sudah lunas),
+  cocokkan receipt allocation versus `SALE_PAYMENT` journal, lalu putuskan
+  continuity 1210 -> 1020100 secara append-only agar posting backlog tidak
+  membuat dua saldo Piutang yang sama-sama aktif.
+
+## 2026-10-05 — KMS workbook receivable cutover preflight prepared
+
+- User authorized repairing the KMS AR-versus-GL mismatch and requested that the default system receivable account no longer be used; workbook account `1020100 — PIUTANG USAHA` is the authority for this scope.
+- Added read-only impact map `docs/audits/KMS_WORKBOOK_RECEIVABLE_CUTOVER_IMPACT_2026-10-05.md`.
+- Added read-only production preflight `docs/audits/KMS_WORKBOOK_RECEIVABLE_CUTOVER_PREFLIGHT_2026-10-05.sql`.
+- The preflight inventories exact account identity, currently-effective receivable routes, Finance/offline queues, all KMS Retail `SALE_POSTED`/`SALE_DISPATCHED` source contracts, partial Journal states, postable periods, the exact unposted Retail AR debit, current posted GL split, and projected AR-versus-GL difference.
+- No migration has been created and no production mutation is authorized yet. Next safe step: user runs the complete preflight and returns every output row. Migration design may proceed only if source, Journal, period, queue, and account-contract blockers pass.
+- Planned safe order is mapping cutover -> canonical backlog posting -> combined AR/GL proof -> append-only `1210` to `1020100` reclassification -> zero-balance/no-current-reference proof -> deactivate/hide `1210` -> behavioral/postflight/authenticated smoke/UAT.
+- Follow-up review found that the first cutover preflight is not sufficient as
+  the final correction authority: its backlog projection is driven by current
+  Retail outstanding/source balance and therefore does not independently prove
+  the full Sale -> settlement event chain for Sales no longer present in the
+  AR open-item output. Do not build or run the cutover migration from that
+  preflight alone.
+- Added SELECT-only forensic audit
+  `docs/audits/KMS_RETAIL_AR_EVENT_CHAIN_FORENSIC_2026-10-07.sql`. It inventories
+  every KMS TEMPO Retail Sale source, immutable `SALE_POSTED`/`SALE_DISPATCHED`
+  receivable amount, Posted source AR debit, Customer Receipt allocation and
+  journal, post-dispatch verified payment, retained-Retail Credit Note, current
+  Retail AR residual, and the complete AR-versus-GL residual. It explicitly
+  includes fully settled Sales rather than using only current open items.
+- Local evidence: relation/column contracts were traced to their creating
+  migrations and scoped `git diff --check` passed. PostgreSQL execution against
+  Production has not occurred. Status remains `ROOT-CAUSE PATH IDENTIFIED /
+  EXACT PRODUCTION ROW SET PENDING`.
+- Next safe step: user runs the complete forensic audit in Production and
+  returns all rows. A correction design is allowed only when source/settlement
+  contracts pass and `kms_retail_ar_chain_ar_gl_explanation` returns
+  `ROOT_CAUSE_PROVEN`; otherwise resolve the reported exception first.
+- User ran the event-chain forensic audit in Production at KMS local cutoff
+  `2026-10-07`. Exact source contract and Retail open-item projection passed.
+  All 70 Retail TEMPO source events are `HOLD` with no Journal and their missing
+  receivable debit totals `243,006,040`. Current Retail outstanding is exactly
+  `23,348,068` across seven rows.
+- The first closing equation returned `REVIEW`: total AR `221,855,328`, GL
+  selected by `account_function_key_snapshot='CUSTOMER_RECEIVABLE'`
+  `-73,990,512`, and apparent residual `52,839,800`. Two mixed Customer Receipts
+  and one retained-Retail Credit Note had Posted Journals but zero line selected
+  by that snapshot filter.
+- Root-cause review of the journal-line trigger proved the snapshot filter is
+  incomplete for user-owned COA: `account_function_key_snapshot` is copied from
+  `chart_of_accounts.system_function_key`; workbook account `1020100 PIUTANG
+  USAHA` can therefore have a NULL function snapshot despite being selected by
+  the canonical `CUSTOMER_RECEIVABLE` resolver. The exact `52,839,800` residual
+  is consistent with an omitted 1020100 balance, but this remains an inference
+  until the account-ID closing proof runs.
+- Added SELECT-only
+  `docs/audits/KMS_AR_GL_ACCOUNT_ID_CLOSING_PROOF_2026-10-07.sql`. It totals
+  exact account IDs for legacy `1210` plus workbook `1020100`, verifies there is
+  no third referenced receivable account, rechecks Receipt/Credit Note lines by
+  account identity, and proves the equation `combined GL + missing Retail source
+  debit = AR`. No correction migration exists yet.
+- User ran the account-ID closing proof in Production. The two-account contract
+  passed with no unexpected referenced receivable account. Exact balances are
+  `1020100 = 52,839,800` and `1210 = -73,990,512`, for combined Posted GL
+  receivable `-21,150,712`. All 81 Customer Receipts passed by exact account ID.
+- The closing equation has exact zero residual:
+  `-21,150,712 + 243,006,040 = 221,855,328 AR`. This proves the entire KMS
+  AR-versus-GL difference is explained by the 70 missing Retail source-event
+  debits after both receivable accounts are included.
+- One retained-Retail Credit Note check still reports FAIL because
+  `CN-20260919-0000000012` has AR reduction `78,400` in a separate append-only
+  `RETAINED_CREDIT_SPLIT_RECLASSIFICATION` Journal created by migration
+  `20260919131000`, not in the Journal linked by the Credit Note's original
+  `financial_event_id`. This is a known lineage shape, not an unexplained
+  residual. Re-run the existing SELECT-only
+  `supabase/diagnostics/retained_credit_note_ar_split_fix_postflight.sql` before
+  correction design to prove its ledger, exact Journal/accounts, and Refund
+  reversal remain intact. Do not post or recreate that Credit Note effect.
+
+## 2026-10-05 - LSM RO 0039 source workbook
+
+- Read-only Supabase audit found Draft `RO-20261004-0000000039`, cutoff October 4 23:59 WIB. Fifteen products total 2,730 with zero open-purchase snapshot.
+- Current open Backoffice shortages created by cutoff match each product: 21 CONFIRMED SO, total 2,730, all differences zero. Retail open shortage returned zero rows.
+- Added `scripts/build-lsm-ro-0039-pivot.ps1` and generated `docs/exports/LSM_RO_20261004_0039_SUMBER_SO_PRODUK.xlsx` from that audited snapshot.
+- Sheets: Ringkasan and SO per Produk, with dates, status, 15 SKU columns, totals and difference formulas. Excel calculated source=2730, RO=2730, difference=0. Quantities represent residual shortage, not full commercial SO quantity; later changes are outside this snapshot.
+- No database/application changes or deployment needed.
+
+## 2026-10-05 Backoffice Koreksi Invoice approved scope
+
+User approved expanding posted Backoffice Invoice correction, and requested
+recording the decisions before implementation. This turn is documentation only.
+Status: SCOPE RECORDED; expansion is not LOCAL READY, DATABASE LIVE,
+CLIENT DEPLOYED, SMOKE PASS, or UAT PASS.
+
+### Approved user flow and authority
+
+- One action named **Koreksi Invoice** opens one form for product unit price,
+  product discount, invoice date, and invoice billing customer/identity.
+- Common case: Sales/Customer reports a discount or correct billing PT/branch
+  after posting. Invoice customer may differ from SO customer.
+- Invoice customer is the authority for invoice accounting and receivables,
+  not merely a replacement name on PDF. Invoice-based reports, AR, customer
+  statement and related accounting must consistently reflect the effective
+  invoice customer. Preserve original historical evidence.
+- Example: SO remains Toko Cabang A; corrected Invoice and its receivable belong
+  to PT ABC. Do not rename the SO, DO, or global customer master as a side effect.
+- Preserve invoice-line links to original SO lines and products. Quantity,
+  product and UOM are locked. Changes to goods already received use Return and
+  its stock handling, not the invoice correction editor.
+- User sees old/new values and financial impact before confirmation. Correction
+  timestamp is server-owned; invoice date is a separate editable business date.
+  Notes are optional, following the earlier approved correction flow.
+- Invoice log must retain before/after values, actor, timestamp, revision and
+  linked correction documents. New downloads use the effective revision;
+  historical versions remain traceable.
+
+### Boundaries and unresolved implementation decisions
+
+- SO/DO dates, shipment quantities, Stock, reservation, FIFO and COGS must not be
+  changed by this billing correction. No automatic COA creation or remapping.
+- Preserve posted journals; use traceable accounting corrections for amount,
+  date/period or receivable-customer changes. Do not silently overwrite posted
+  journal dates or move historical payments to another customer.
+- Already-paid, partially-paid, DP-applied, returned, refunded and closed-period
+  invoices require explicit dependency analysis before correction can post.
+  The exact correction/reallocation mechanism is NOT yet designed or verified.
+- Existing Return Credit Note price-correction guard stays in force until an
+  explicitly reviewed replacement covers its invariants. Do not remove it just
+  to permit the expanded editor. Overpayment is not automatically paid out.
+- Customer identity versus actual debtor changes must be modeled accurately;
+  whether a PT/branch is the same debtor cannot be inferred from display names.
+- Scope does not automatically include Retail/POS, DP invoice editing, delivery
+  fees, payment terms, master-data edits or every field on the invoice.
+  Company rollout scope must be checked: existing price correction enables
+  KMS/LSM/SMS; do not silently enable other companies.
+
+### Existing evidence and next safe step
+
+- Existing price-only UI: `backoffice/src/components/BackofficeSalesInvoiceView.tsx`.
+- Existing implementation: migration
+  `20260928110000_backoffice_posted_invoice_price_correction.sql`, its API route,
+  impact document and rollout runbook. It preserves original Invoice/lines and
+  posts price-delta Credit/Debit Notes; this is not full invoice editing.
+- Odoo research is a reference, not an implementation contract: official customer
+  invoice documentation describes Reset to Draft; Credit Note documentation
+  describes Reverse and Create Invoice. Do not claim Odoo supports unrestricted
+  rewriting of all posted dependencies or copy that lifecycle without review.
+  Sources: https://www.odoo.com/documentation/19.0/applications/finance/accounting/customer_invoices.html
+  and https://www.odoo.com/documentation/19.0/applications/finance/accounting/customer_invoices/credit_notes.html.
+- Next: audit active UI -> API -> RPC -> migration chain and every effective
+  invoice consumer. Write direct/downstream impact map and resolve customer,
+  payment, Return, tax and period behavior before coding. Verify exact live
+  schema; do not invent columns/functions from these requirements.
+- Test plan must cover increase/decrease/discount, identity-only versus debtor
+  change, invoice-date/closed-period changes, unpaid/partial/paid/DP/Return cases,
+  original product lineage, print/export/AR/GL parity, authorization/tenant scope,
+  stale revision, concurrency, exact retry and transaction rollback.
+- Any schema change needs preflight, guarded migration, backfill policy,
+  representative behavior test, postflight, forward-fix plan and authenticated
+  smoke. Production rollout remains manual and separately authorized.
+- Documentation evidence: approved chat decisions recorded; no application,
+  database, financial document or existing business flow changed in this turn.
+
+### Implementation audit started on 2026-10-05
+
+- User authorized implementation. Added impact/dependency audit at
+  `docs/audits/BACKOFFICE_INVOICE_CORRECTION_EXPANSION_IMPACT_2026-10-05.md`.
+- Verified price-only RPC cannot handle identity/date-only changes because it
+  requires a financial delta; discount and journal customer still read original
+  invoice data. Receipt Save/Post enforce same customer and receipt-date cutoff.
+  AR/statement/export also directly read original invoice customer/date.
+- Two business choices requested before dependent implementation: block customer
+  changes after payment/DP or implement settlement transfer; change document
+  date only or also move accounting recognition across open periods.
+- Do not silently decide these financial behaviors or ship a partial editor.
+  No runtime/migration changes yet. Resume from the impact document after user
+  decisions, then audit live definitions and implement the full consumer chain.
+
+- User answered both choices: ALLOW payment/DP transfer through a special
+  correction, and MOVE accounting recognition with invoice date when periods
+  are open. Prior pending-decision wording is superseded by these answers.
+- Transfer only invoice-specific allocations; original shared Receipt/DP and
+  other invoice allocations remain intact. Do not mutate posted journals.
+- CLI read-only query access failed before execution (`Unsupported Config Type`)
+  even with explicit standard profile. Local psql/Docker were not found on PATH.
+- Added catalog-only runtime discovery:
+  `supabase/diagnostics/backoffice_invoice_correction_expansion_runtime_audit.sql`.
+  No business table queries, mutation or PASS claims. Needs user-run full output
+  to verify installed definitions before migration design/guards are finalized.
+- Expansion remains NOT IMPLEMENTED. No UI, API, migration or runtime changes;
+  documentation and read-only diagnostic only. Next safe step is obtain runtime
+  export, then finish transaction/settlement/as-of design and full implementation.
+
+### Latest approved unified correction decisions
+
+- Runtime export received: attachment `684465b8-f509-4815-9352-02f16f544af8`,
+  17 relations / 223 constraints / 31 triggers / 52 routines; no missing targets.
+- Customer must come from master. Default due date follows previous tempo;
+  explicit due-date override is allowed for admin, not a master-term change.
+- Real payments before a revised invoice date become advance then reapply;
+  false payment with no money is reversed, never credited/refunded as if paid.
+- Invoice and Finance share ONE canonical posting path. Credit Note reduces
+  billing; real refund is a separate linked disbursement. Finance must select
+  source invoice, and all effects must appear there with source trace.
+- User authorized recording these decisions and continuing implementation.
+  Shared command contract is the first local component; no partial UI activation.
+
+### Local command component implemented
+
+- Files: `backoffice/src/lib/backoffice-invoice-correction-command.ts` and
+  `backoffice/tests/backoffice-invoice-correction-command.test.mjs`.
+- Implements strict shared request types/parsing for INVOICE_REVISION,
+  PAYMENT_CORRECTION (wrong date versus no money), and REFUND; exact decimal
+  serialization; source identity/version requirements; duplicate-line and
+  immutable-field rejection; canonical payload identity; due-date interval and
+  admin-override helper. No production caller is wired yet.
+- Test command: from `backoffice`, run
+  `node --test tests/backoffice-invoice-correction-command.test.mjs`.
+  43 tests PASS; full `tsc --noEmit --incremental false` PASS. No database
+  financial behavior, tenant permission, persisted retry, or concurrency is
+  proven by these tests. Node warns about inferred module type; do not change
+  package-wide module configuration just to silence the warning.
+- Root README and docs router mark this as IN DEVELOPMENT, not deployable.
+- Remaining implementation: canonical transactional correction and settlement
+  ledger, source-allocated payment/DP transfer, real refund/reversal, source
+  journal reversal/replacement across open periods, consistent effective/as-of
+  readers, audited activity, shared API and Invoice/Finance UI, legacy price
+  endpoint integration and all migration/behavior/smoke/UAT gates.
+- No migration created/applied, no UI behavior changed, no payment/Invoice/SO/DO/
+  Stock/FIFO/Finance data altered. Do not ask user to deploy this component alone.
+
+### Financial baseline and isolated test target needed
+
+- Added read-only REST inventory script
+  `scripts/audit-invoice-correction-baseline.ps1` and optional detailed one-SELECT
+  diagnostic `supabase/diagnostics/backoffice_invoice_correction_settlement_baseline.sql`.
+- REST audit succeeded: 210 posted Regular invoice sources with one original
+  posted journal each, 8 shared Backoffice Receipt documents, 227 posted/10
+  canceled Receipts, zero posted DP applications, 9 open periods, zero unbalanced
+  posted journal headers. Separate REST reads are not an atomic snapshot or
+  proof of complete accounting correctness.
+- No more catalog rerun requested; user runtime output remains valid evidence.
+  SQL baseline itself is unexecuted, not a rollout preflight.
+- Remaining prerequisite for high-risk transactional verification: user-designated
+  isolated database and explicit permission for local-development migrations and
+  rollback-only fixtures there. Do not assume linked Development is disposable,
+  create production DP examples, or request database secrets in chat.
+- Runtime implementation is still incomplete; no correction migration/UI was
+  deployed. User's next action is designate an isolated test target, not run a
+  production migration. Preserve this distinction when continuing.
+
+### 2026-10-05 - Staging selected; Production agent access prohibited
+
+- Latest user authority supersedes earlier read-only Production access:
+  agent MUST NOT connect to Production, including REST, SQL, catalog queries,
+  or application calls. Production database work is user-executed only; supply
+  reviewed scripts and consume the user's exports. Do not run
+  `scripts/audit-invoice-correction-baseline.ps1` against existing environment.
+- Approved staging target: `yjxpddwrjdczuqyixqwi`, dashboard project supplied
+  by user as POINTOFSALES-KGS-STAGING. User authorizes staging access and
+  alignment with Production before invoice-correction rehearsal.
+- Historical staging access is documented (August/September), but latest CLI
+  `SUPABASE_PROFILE=supabase` project inventory exposes only backup project
+  `idrufihckscppsyclmsu`. This does not prove staging is absent. Current staging
+  authentication is unresolved; do not substitute the backup as target.
+- First user-run Production comparison artifact: whole file
+  `supabase/diagnostics/office_purchase_production_delta_catalog.sql`.
+  Despite its historical filename, scope is public/private schema catalog plus
+  application migration ledger, not Purchase business rows. One SELECT, no
+  application RPC calls, routine bodies hashed, output grouped by kind. Export
+  ALL rows as CSV. This is initial inventory, NOT a restore file or full parity
+  proof (CLI ledger, grants, sequences, integrations and test data need further
+  inspection). Migration entry digests include environment-specific metadata;
+  compare installed versions separately, not digest equality as readiness.
+- Impact boundary: eventual schema/runtime changes on staging only; preserve
+  existing staging data until assessed. Do not reset, blindly replay local
+  migrations, copy Production credentials/jobs/webhooks, replace `.env.local`,
+  or relink the repository. Use an isolated staging workdir after access works.
+- Next: obtain user-exported current Production catalog and staging access;
+  compare installed definitions/ledgers, inventory staging integrations/data,
+  then design a guarded staging-only synchronization package and representative
+  fixtures. No staging parity, schema rollout, smoke or UAT is proven yet.
+- This turn changes documentation only; no database access or mutation occurred.
+
+### Production catalog received; staging authentication still pending
+
+- User supplied CSV attachment `b846032f-124b-413b-ada4-d30f81fc0662/Pasted text.txt`.
+  Captured 2026-10-05T09:53:39.169157Z, PostgreSQL 17.6. All ten groups parse
+  as JSON and declared counts equal exported array counts: 360 application
+  migrations, 307 relations, 1066 routines, 3278 constraints, 1221 indexes,
+  304 triggers, 220 policies, 14 enums, 6 extensions, 1 execution contract.
+- Highest application migration version: `20261002100000`. This is export
+  completeness within the query's scope, not full schema/data parity or
+  behavioral PASS. Production not accessed by agent.
+- Rechecked Management project inventory: only `projectkgs-backup-14092026`
+  (`idrufihckscppsyclmsu`) visible. Approved staging remains inaccessible to
+  current CLI authentication. No database query, linking or mutation attempted.
+- Next: user authenticates CLI with staging-authorized account (never paste
+  token in chat); then agent obtains staging catalog in isolated workdir and
+  compares against this export. Do not rerun Production export unnecessarily.
+
+### Staging access restored and catalog compared (2026-10-05)
+
+- User completed CLI login. Target `yjxpddwrjdczuqyixqwi` is confirmed as
+  POINTOFSALES-KGS-STAGING, ACTIVE_HEALTHY. Agent linked ONLY isolated workdir
+  `%TEMP%/mads-invoice-staging-20261005`; repository link remains
+  `fkywtxucmyjvpwdiqpix` and application environment unchanged.
+- Staging read-only catalog compared to supplied CSV: 139 application versions
+  versus Production 360 (222 missing, staging-only `20260810175000`); 113 missing
+  relations, 509 missing routine signatures, 529 shared routine hash differences.
+  See `docs/audits/INVOICE_STAGING_ALIGNMENT_2026-10-05.md` for full impact/counts.
+- Staging inventory: 1 company/2 sales/2 Auth users/0 journals, no cron.job or
+  foreign servers. CLI ledger 138 versions through `20260814170000`; application
+  ledger highest `20260825131000`. Do not blindly push/repair historical drift.
+- All 360 Production versions match one local filename, but data-specific
+  repairs and deployed-body drift make unreviewed replay unacceptable.
+- Two new SELECT diagnostics:
+  `supabase/diagnostics/invoice_staging_alignment_inventory.sql` and
+  `supabase/diagnostics/invoice_staging_alignment_runtime_export.sql`.
+  Both executed successfully on staging. Runtime export returned 104 chunks;
+  all count assertions passed (557 routines, 257 relation ACL entries,
+  63 sequences, 2 schemas, 138 CLI ledger entries). No definitions printed in
+  terminal; summary only. Not behavioral PASS or parity proof.
+- Windows CLI relative file path failed before SQL execution; absolute path
+  succeeded. Multiline inline query hit CLI quoting/parser error; same inventory
+  via file succeeded. Use absolute --file paths, not inline multiline SQL.
+- Next manual gate: user runs runtime_export SQL on Production and provides
+  whole CSV. Existing catalog only has function/view hashes, insufficient for
+  exact deployed-body reconstruction. Definitions may contain embedded
+  integration settings; review and never execute blindly. Agent MUST NOT
+  connect to Production, even though current login can see its project name.
+- No staging business/schema writes, reset, migration repair, db push or
+  Production connection. Runtime feature still incomplete; synchronization,
+  authenticated smoke and UAT pending. README updated accordingly.
+
+### 2026-10-06 - Production optional CLI ledger mismatch fixed in diagnostic
+
+- User runtime export failed 42P01: Production lacks
+  `supabase_migrations.schema_migrations`. This was an invalid assumption in
+  the diagnostic, not a reason to create a ledger or bypass parity checks.
+- Updated `invoice_staging_alignment_runtime_export.sql`: replaces direct
+  CLI-ledger read with `ledger_availability` (`PRESENT`/`ABSENT`,
+  `versionsExported=false`). Coverage change is explicit: this export no longer
+  retrieves CLI versions. Supplied 360 application versions are still baseline;
+  earlier staging CLI version inventory remains evidence.
+- Staging PRESENT and read-only missing-schema fixture ABSENT both succeed,
+  each preserving 557 routines; chunk/group counts validated. Test fixture at
+  `%TEMP%/mads-invoice-staging-20261005/missing-ledger-export-test.sql` contains
+  SELECT only. No database fixture writes or schema mutation.
+- Root cause/impact/test documented in staging alignment audit. No Production
+  access, no migration/repair. Next user step: rerun updated whole runtime
+  export on Production and return CSV. Do not imply synchronization is done.
+
+### 2026-10-06 - Production runtime definitions received and verified
+
+- Attachment `023156e9-b9ac-403e-900d-35e5f8481a22/Pasted text.txt`: 160
+  chunks; 1066 routines, 406 relation ACL entries, 99 sequences, 2 schemas,
+  1 optional CLI ledger availability entry (ABSENT).
+- All chunk/group counts and unique keys verified. MD5 of each UTF-8 routine
+  definition matches supplied digest, and all hashes match previous user
+  Production catalog. No repeat Production export needed now.
+- Integration flag applies to 28 routines; literal scanning did not find
+  Production project ref, HTTP-call markers or token/service-key markers there.
+  This is limited static screening, not complete integration clearance.
+- No database calls in this turn. Production prohibition unchanged. Next work:
+  guarded dependency-ordered staging sync package; preserve data, inspect
+  data-specific migration boundaries and recovery, then staging-only rehearsal.
+  Inputs validated, NOT schema parity/behavior PASS and not migration installed.
+
+### 2026-10-06 - Staging synchronization started; exact sequence input needed
+
+- User explicitly requested synchronization. Added capture/planner/compiler and
+  guarded rehearsal runners listed in INVOICE_STAGING_ALIGNMENT audit. Snapshot
+  path: `%TEMP%/mads-invoice-staging-20261005/capture-20261006-094939`.
+- ONLY committed change: two additive stock_movement_type labels
+  BACKOFFICE_SALE/BACKOFFICE_DISCREPANCY_LOSS. Main schema not committed.
+- Compiled rollback-only ~5 MB package from exports, not migration replay.
+  Existing column-value checksums must remain unchanged; exact routine hashes
+  asserted. 8 new immutable audit triggers preserve ENABLE ALWAYS. No cron,
+  company/COA/transaction data seeds or fake applied versions.
+- API transport hit 413. Direct driver installed in TEMP (pg@8.16.3), not app.
+  CLI dry-run PG credentials passed in memory; host/user target guards and
+  verified TLS with official public CA. No credentials logged or persisted.
+- Actual main rehearsal failed SQLSTATE 22003 and rolled back: source sequence
+  max 9223372036854776000 exceeds bigint. Original user CSV already has rounded
+  JSON numeric metadata. Do not clamp it or invent max/default values.
+- Updated runtime export to cast sequence numeric fields to text. Added minimal
+  `supabase/diagnostics/invoice_staging_sequence_exact_export.sql`; verified on
+  staging (63 rows, exact string 9223372036854775807, no invalid bounds).
+- Compiler now rejects invalid sequence inputs BEFORE generation, direct runner
+  rejects old invalid MAXVALUE SQL. Existing generated rehearsal is stale;
+  regenerate ONLY after exact user sequence export is merged/validated.
+- Boundary diagnostic `invoice_staging_alignment_boundary.sql` confirmed:
+  194 relations, 557 routines, 139 application versions, 1 company/2 sales/0
+  journals, enum 13 labels. Schema sync remains pending; nothing on Production.
+- Next user action: run minimal sequence_exact_export on Production and return
+  CSV. No need to rerun prior routine/catalog exports. Then continue rehearsal,
+  strengthen full catalog/ACL checks before generating any commit package.
+  New correction feature is still NOT deployed/ready. Root README updated.
+
+### 2026-10-06 - Exact sequences accepted; schema rollback rehearsal runs
+
+- Latest user attachment `97b675c1-c6c8-4cc0-a56e-274975df4f32/Pasted text.txt`
+  supplies 99 exact sequences. Third compiler argument accepts this strict CSV,
+  validates identities and safe prior values, overlays numeric strings in memory.
+  Keep original production-runtime.json evidence unchanged.
+- Same TEMP capture `capture-20261006-094939`. Rebuild with the third argument
+  before running `run-invoice-staging-direct.ps1`; process-local PowerShell
+  ExecutionPolicy Bypass needed here (do not change machine policy).
+- Compiler now includes original historical metadata backfills from migrations
+  20260910153000 (3 legacy authorizations; evidence valid) and 20260828100000
+  (sales runtime classification). No old columns altered, no trigger bypass;
+  old-data fingerprints asserted and deferred triggers flushed. See audit for
+  failed rehearsal evidence and root causes, not weakened constraints.
+- Complete SQL rehearsal succeeded with 1066 routine hashes and old-data
+  fingerprints, then rolled back. Stronger catalog comparison currently FAILS
+  only physical column order of products and pos_terminals. Every routine,
+  constraint,index,trigger,policy,enum otherwise exactly matches exported catalog.
+  Do not present that as full parity or silently ignore column order.
+- Fixed compiler search_path to keep pg_catalog implicitly first, eliminating
+  gen_random_uuid shadowing; no string-normalization workaround.
+- Changed scripts: build-invoice-staging-schema-rehearsal.mjs and
+  rehearse-invoice-staging-direct.mjs. New read-only diagnostic:
+  invoice_staging_legacy_authority_inventory.sql. Audit and root README updated.
+- TEMP rehearsal-catalog.json/rehearsal-parity.json describe rolled-back state.
+  Current staging boundary verified 194 relations/557 routines/139 app versions,
+  1 company/2 sales/0 journals. Only prior 2 enum additions are committed.
+- LOCAL verification: Node syntax and scoped git diff checks pass. No production
+  access, no main schema commit, client deployment, behavioral smoke or UAT.
+- Next safe work: audit positional consumers for 2 column-order differences,
+  verify relation/schema/sequence ACL and sequence parity, configuration baseline,
+  then prepare guarded staging commit and smoke. No further user export currently
+  requested. Do not relink repo, use production credentials, or fake ledger.
+
+### 2026-10-06 - STAGING SCHEMA COMMITTED; reference configuration pending
+
+- User said continue. Authorized target remains ONLY yjxpddwrjdczuqyixqwi.
+  Production remains forbidden including reads; user exports only.
+- Audited 106 routine references for physical column order: four direct writers
+  use named columns; eight ROWTYPE consumers use matching live table types and
+  named fields/JSON. Backoffice src readers use named selections. Permit ONLY
+  products/pos_terminals order differences when full named column metadata equals;
+  keep exception list in evidence. No table rebuild or weakened field checks.
+- Added offline audit-invoice-staging-column-order.mjs. Compiler/runner now check
+  all access and sequence definitions as well as original catalog. Already-exact
+  ACLs preserved to avoid changing NULL ACL representation. Locks stabilize all
+  original tables before fingerprinting; rollback on contention/assertion failure.
+- run-invoice-staging-direct.ps1 supports Rehearse/Apply/Verify. Apply requires
+  <1h successful rehearsal bound to SQL/input SHA256, performs full checks INSIDE
+  open transaction, COMMIT only afterward. Verify is fresh read-only transaction.
+- Final SQL hash 7c88d5f56fa11f65f8523c728ac49613cb0f45f8b6e6c5476cbcbb963ca8cb84.
+  Applied 03:28:05Z; fresh Verify PASS 03:29:20Z on 2026-10-06. Evidence in same
+  TEMP capture-20261006-094939: schema-apply-receipt.json,
+  schema-postflight-receipt.json, postflight-{catalog,access,parity,column-order}.
+- Live staging:307 tables/1066 routines/99 sequences,1 company/2 sales/0 journals.
+  Original column data checksums passed; only new legacy metadata populated.
+  App ledger remains139; DON'T mark missing222 migrations applied. No cron copied.
+  Do NOT re-run Apply or overwrite old baseline captures. Verify is safe.
+- Status: STAGING SCHEMA LIVE / POSTFLIGHT PASS. NOT full functional parity,
+  invoice correction deployment, authenticated smoke or UAT. No prod or app env
+  access/change; no git commit/push. Recovery is forward-fix, not automatic downgrade.
+- Config inventory:38 functions,27 events,26 categories,33 mappings,11 fallbacks,
+  1 posting set/2 lines; zero company_sales_process_settings/Backoffice terms/SO/
+  invoices. 61 products/1 terminal. No active queue/offline jobs. Do not start
+  financial posting on this incomplete configuration.
+- Next USER ACTION: whole read-only
+  supabase/diagnostics/invoice_staging_reference_configuration_export.sql on
+  Production, export ALL CSV rows. Tested on staging:24 chunks/180 objects,10
+  nonempty groups/counts exact. No transactions/customers/auth/credentials/config
+  values exported. Source-grounded accounts/mappings only, no invented names.
+- After receiving export: validate counts and identities, inspect existing stage
+  tenant/config references, design transactional reference sync and fixtures,
+  then authenticated invoice baseline smoke before expanded correction work.
+  docs/audits/INVOICE_STAGING_ALIGNMENT_2026-10-05.md and root README updated.
+
+### 2026-10-06 - Reference data validated; no reference writes yet
+
+- User file d50428f5-281e-4f14-9458-b43978725ab0/Pasted text.txt received.
+  172 chunks/1655 objects across11 groups; unique keys,contiguous chunks,all
+  declared counts valid. No broken or cross-tenant exported links. This is
+  reference integrity only, not Finance resolver/smoke/approval PASS.
+- Captured live staging SELECT only via new capture-invoice-staging-reference.ps1;
+  offline audit-invoice-staging-reference.mjs builds graph/delta report. Evidence
+  TEMP mads-invoice-staging-20261005/reference-20261006-103544. Source file hashed,
+  preserved; no DB data mutation/Production access/app env change/commit/push.
+- Source counts:371 accounts,504 rules,79 fallbacks,75 functions,43 events,
+  174 categories,63 posting sets/321 lines,5 modes/5 companies,15 feature flags.
+  No payment_term group returned. Do not assume empty means tested/ready.
+- Staging KGS UUID matches production KGS, but all existing reference IDs for
+  accounts/categories/rules/fallbacks/sets differ. Blind INSERT would duplicate
+  codes; wholesale replacement risks existing transaction references. Preserve
+  those references, plan explicit ID reconciliation before import.
+- Missing companies:KMS/LSM/SMS/NB-01020120. KMS/LSM/SMS Backoffice mode,
+  KGS/NB retail mode. Do not change KGS mode for invoice testing.
+- Need exact company_slug (required,no default),timezone,currency/subscription;
+  also access_permission_catalog and platform_features for runtime prerequisites.
+  Added invoice_staging_reference_dependencies_export.sql. User should run WHOLE
+  file on Production, return ALL CSV. Tested staging:7 chunks/44 objects
+  (34 permissions,8 features,1 company setup,1 term-count row). No account re-export.
+- IMPORTANT earlier docs overclaimed removal of actor IDs: original rules and
+  fallbacks retain581 approved_by references. Nonsecret UUIDs, but not transferable
+  staging authorization. Don't impersonate/copy approval actors blindly; keep
+  source provenance and inspect real staging profiles and guards before writes.
+- README and audit updated. Next safe step after supplemental file: validate,
+  plan transactional source-grounded config reconciliation/fixtures, rehearse,
+  then authenticated baseline invoice smoke. Schema is already live; DO NOT
+  re-run schema Apply. No reference-sync or feature completion claim.
+
+### 2026-10-06 - Dependency accepted; four GLOBAL CATALOGS STAGING LIVE
+
+- User supplement8faad184-d165-44b0-803b-fdc149f2c857/Pasted text.txt valid:
+  8 chunks/62 objects (43 permissions,9 features,5 Company setups,5 term counts).
+  All5 Backoffice term counts explicitly0. Company identities match prior source;
+  permission/feature refs valid. No additional user export currently requested.
+- Enhanced capture-invoice-staging-reference.ps1 with optional DependenciesCsv.
+  Fresh evidence dir TEMP mads-invoice-staging-20261005/reference-20261006-104342
+  includes both source hashes,production/staging-reference and dependencies JSON.
+- Global catalog-only phase implemented using build-invoice-staging-global-catalogs.mjs,
+  run-invoice-staging-global-catalogs.mjs, wrapper `-Task Catalogs`. It uses original
+  source values,exact before/after guards,all-table locks,303-table checksum
+  preservation and current old-stage mapping compatibility. No trigger disabling.
+- Hash f4b893e0117e01245d35ec46fe0d11ff690e163251dddbe90fcc608565740cf4.
+  Rehearsal rollback03:46:46Z,commit03:47:27Z,fresh postflight03:48:13Z.
+  GLOBAL CATALOGS LIVE:75 functions,43 events,9 features,43 permissions. Only
+  account_functions/system_events/platform_features/access_permission_catalog
+  updated. COA,mapping,Company,feature flags,stock,journal/payment untouched.
+- Evidence global-catalogs-{rehearsal,apply,postflight}.json and SQL in TEMP.
+  Do not rerun Apply after install; use Verify. Schema remains as prior sync;
+  no production access,repo relink,env change,deployment,git commit or push.
+- New offline plan-invoice-staging-reference-identities.mjs:37 KGS accounts
+  uniquely match company/code/name/type/normal balance;26 categories match
+  company/code/system_key. identity-plan.json records source->stage ID candidates.
+  DO NOT insert duplicates or rewrite existing transaction IDs. Full configs,
+  history and bootstrap-created rows still need reconciliation/audit.
+- Missing companies remain KMS/LSM/SMS/NB-01020120. Company INSERT has many
+  provisioning triggers; inspect canonical routines before creating entities.
+  KGS mode remains RETAIL; do not flip it to pass Backoffice tests. No tenant
+  reference writes or synthetic approvals yet. Original exported approved_by
+  IDs remain source evidence only (do not impersonate production actors).
+- Next: audit bootstrap and mapping immutability/history paths, prepare tenant
+  identity-preserving config rehearsal,then authenticated invoice fixtures/smoke.
+  No full runtime parity,invoice correction deployment,smoke or UAT claim.
+  Audit and root README updated; local syntax checks and database rehearsal/
+  postflight cover this narrow phase only.
+
+### 2026-10-06 - Tenant Finance reference STAGING LIVE (modes still pending)
+
+- User authorized continuing staging autonomously until a necessary Production
+  user action. Production access remains absolutely forbidden, including reads.
+- Company bootstrap rollback probe passed for all4 missing entities.307-table
+  original row preservation,31 bootstrap tables gained rows inside rollback.
+- Source-grounded tenant Finance sync committed04:01:20Z; fresh read-only
+  postflight PASS04:02:27Z. SQL hash63c2b6b56f8b0b379a682b9bfd87c47e7d6717d332eaed3f02f2a1d2d3ec3679.
+  Five Company setups,371 account targets,174 categories,504 source mapping rows,
+  79 fallback rows,63 posting sets/321 lines imported. Old stage mappings INACTIVE,
+  sets RETIRED,not deleted; old account/category IDs retained by Company+code.
+  Versions offset to avoid history collision;1191 identity/version correspondences
+  in TEMP reference-20261006-104342/tenant-finance-apply.json. Original operational
+  rows unchanged; source business fields and direct/fallback resolver checked.
+- Source approval actors NOT copied; genuine linked staging admin recorded with
+  import provenance. Source dumps immutable. Source historical rows loaded with
+  account temporarily active inside isolated transaction then exact flags restored.
+  No triggers/guards disabled. No mode/feature flag sync yet; bootstrap Companies
+  still start RETAIL and old KGS still has no explicit mode setting.
+- First Verify failed25006 TEMP creation in READ ONLY; TEST HARNESS FIX moved
+  session-only temp evidence creation before BEGIN READ ONLY. Same assertions,
+  migration NOT rerun. Failure receipt retained, fresh Verify passed.
+- New scripts: probe-invoice-staging-tenants.mjs,build-invoice-staging-tenant-finance.mjs,
+  run-invoice-staging-tenant-finance.mjs; wrapper Task TenantProbe/TenantFinance.
+  No re-Apply: initial baseline guard correctly rejects installed state. Verify
+  is safe. Schema/global catalog Apply also must NOT be rerun.
+- Audit/root README updated. No Production access,client env edit,deployment,
+  commit/push,Invoice correction runtime or UAT claim. Next: canonical mode setup
+  (KMS/LSM/SMS Backoffice,KGS/NB Retail),source feature flags,synthetic fixtures,
+  authenticated invoice baseline before new corrections. No user export needed yet.
+
+### 2026-10-06 - STAGING baseline passed; waiting Production settlement inventory
+
+- Sales mode/flags sync committed04:05:44Z, independent postflight04:06:01Z.
+  Hash9dd4735d8b2e07e2646cce479cbda5e144bb904fc34ca433f77da9dca9f6639e.
+  KMS/LSM/SMS canonical cutover to exported Backoffice mode/effective dates,
+  KGS/NB remain Retail.15 source feature booleans; existing config retained.
+  301 other tables unchanged. Source unexported config/operational data NOT cloned.
+- New build/run-invoice-staging-sales-setup.mjs, wrapper Task SalesSetup. Already
+  installed: do NOT re-Apply. Verify is read-only. No source transaction converted.
+- New build/run-invoice-staging-baseline.mjs, wrapper Task InvoiceBaseline (only
+  Rehearse). Reuses original3 invoice-posting/price-correction/payment tests with
+  unchanged business assertions. Staging-only harness replaces ledger checks with
+  exact1066 routine digests, pins KMS, asserts imported mode (no forced override),
+  creates named synthetic masters/period inside rollback. Original tests untouched.
+- Baseline passed04:12:11Z: taxed SO/DO/receipt,DP+Regular Invoice,price correction,
+  partial/full Receipt,AR/statement,journals,retry/stale/overpayment/strict Finance
+  override. Actual authenticated SQL-role context reads also PASS.308 table full
+  fingerprints preserved after rollback. No HTTP/browser smoke or UAT claim.
+- Existing settlement diagnostic tested with nonzero2 invoices/2 payments/1 DP/
+  7 source-journal rows. Added explicit snapshot timestamp, no data mutation.
+  Query is inventory INFO/REVIEW,not a safety PASS or deployment approval.
+- NEXT USER ACTION: execute WHOLE single SELECT in
+  supabase/diagnostics/backoffice_invoice_correction_settlement_baseline.sql on
+  Production, return ALL CSV rows. Required current Invoice/Receipt/DP/period
+  evidence before expanded customer/date correction design; previous source
+  schema/config exports omit business dependencies. Do not request source export
+  repeats. Agent never connects Production. Do not offer new migration yet.
+- Continue after result: validate shared-allocation/as-of/source Journal cases,
+  finish immutable revision/settlement/period-relocation design, implement/test
+  on staging. Expanded correction still only local command contract43 tests;
+  existing price-only runtime stays unchanged. README/audit updated, no commit,
+  push,client env change or deployment. Existing dirty work preserved.
+- Final rerun after adding snapshot timestamp passed04:13:49Z, baseline SQL hash
+  6c3c9777c5ef298383c3564b6a700edd2b2743b41f5ee843aa28670ce688311e.
+  Diagnostic includes00_snapshot plus all6 nonzero expected sections. Scoped
+  Node syntax,PowerShell parser and tracked diff whitespace checks passed.
+
+### 2026-10-06 - Production settlement export received and analyzed offline
+
+- User attachment f899e7b2-6626-4886-b18a-16bb78191ec0/Pasted text.txt,
+  SHA256160fda3e7044aa553c59f89315f2ec1ce7984e52b41706b1bf97d849da35ff97,
+  snapshot04:22:05Z.595 rows,all JSON parsed,zero REVIEW. Do NOT ask user to
+  repeat this export; prior manual inventory gate is closed.
+-210 posted Regular Invoices:KMS73 (46 unpaid,2 partial,25 paid),LSM98
+  (54 unpaid,44 paid),SMS39 (31 unpaid,8 paid). Each has one schedule;
+  effective amount/schedule/payment sums agree. Two KMS price corrections;
+  no DP applications or Return Credits linked to scoped posted Regular invoices.
+  Absence not a global DP/Return inventory and not permission to omit tests.
+-80 posted allocations,70 unique Receipts;8 shared (1 KMS,7 LSM).3 shared LSM
+  documents CR/2026/09/000219,000253,000261 have other allocations outside this
+  export. Preserve them; do not treat as mismatch or assume they are Retail.
+-292 journal-source rows=282 distinct POSTED journals. All exported line debit/
+  credit totals match headers and balance; one original posted journal per source.
+  This is NOT proof of full GL/AR parity or mapping classification. All9 exported
+  Aug/Sep/Oct periods OPEN at snapshot; must recheck under lock at correction.
+-Expanded impact doc records evidence and required shared2/4 invoice+outside
+  scope,partial/full,DP,multi-installment,closed-period fixture coverage.
+  No DB access this turn,no mutation/deploy,old posted price path unchanged.
+  Next: implement revision/settlement-transfer/period-relocation in staging using
+  approved design. No expanded SQL/UI yet; no further production action needed
+  merely to repeat current baseline. Production agent access remains forbidden.
+
+### 2026-10-06 - Revision calculation candidate implemented and staging tested
+
+- Authorization unchanged: staging yjxpddwrjdczuqyixqwi only. NO production
+  connection, deployment, environment edit, commit or push this turn.
+- New `supabase/staging/backoffice_invoice_revision_amount_preview.sql` is a
+  development candidate OUTSIDE migration chain. Two private SECURITY INVOKER,
+  STABLE functions: amount preview and date/KEEP_TERM preview. Both revoke
+  PUBLIC/anon/authenticated/service_role execution. Neither writes business rows
+  nor provides posting authority. Both exist only during staging test transaction.
+- Amount preview loads exact original product-line set and current price
+  corrections, computes price+discount inclusive-tax/gross/net deltas with the
+  existing canonical tax calculator, rejects extra fields/NULL/NaN/precision,
+  foreign source, duplicate IDs and stale master/price revisions. No original
+  function is replaced. Future effective expanded revisions must be integrated
+  before this can become a runtime service. No expanded correction persisted.
+- Date preview preserves individual schedule identities/amounts/paid values and
+  shifts due dates using each original term. Both date periods must be OPEN or
+  REOPENED for a change. This is NOT a journal move and holds no posting locks.
+  Manual due-date override/customer master checks remain for final orchestrator.
+- New `supabase/tests/backoffice_invoice_revision_amount_preview_behavior.sql`;
+  build/run-invoice-staging-baseline.mjs now support optional --revision-preview
+  at BUILD time. RUN still uses InvoiceBaseline/Rehearse only. Test checks both
+  new functions absent after rollback, exact four behavioral PASS result rows,
+  existing actual-authenticated-role RPC reads and308 table fingerprints.
+- Evidence04:43:27.638Z: SQL hash
+  4a47024dbba65fd4007ffae664ddc1dfed44f4f9e0777fe6a10e32d824a9ccb2.
+  Three original canonical suites plus new taxed/untaxed/old-correction/discount,
+  zero-net-change/stale/tenant/invalid-input/next-month/locked-period tests PASS.
+  First run failed because fixture serialized numeric qty multiplication with6
+  decimals; fixed fixture rounding only, strict4-decimal contract unchanged.
+  All transactional business rows and candidate DDL rolled back; sequence gaps
+  allowed. Existing command tests43/43 PASS; JS syntax and diff check PASS.
+- Evidence/manifests in TEMP/mads-invoice-staging-20261005/reference-20261006-104342:
+  invoice-baseline-result.json,invoice-revision-preview-manifest.json and retained
+  failure receipt. Rebuild using existing postflight-catalog.json and optional
+  --revision-preview; no need to reapply earlier schema/reference synchronization.
+- Updated README, correction impact and staging audit. No browser/API/UI changes.
+  Status: LOCAL/STAGING CALCULATION PROTOTYPE TESTED; DATABASE LIVE expanded
+  feature NO, CLIENT DEPLOYED NO, expanded authenticated SMOKE/UAT NO.
+- Remaining: append-only revision/operation storage and orchestrator; customer
+  master authority; shared Receipt/DP selected-share transfer; fake-payment
+  reversal and real-date correction; journal period relocation; effective AR/
+  statement/payment/return/export consumers; multi-installment/2-and4-shared-
+  receipt/out-of-scope-allocation/concurrency fixtures; unified Invoice/Finance
+  API/UI. Do not present this preview as completion or a production-ready package.
+  Next safe step: implement source-linked revision/settlement architecture against
+  captured runtime and test representative shared allocations in staging. No user
+  production action is required yet; do not request repeated baseline exports.
+
+### 2026-10-06 - USER HOLD: revision preparation slice IN PROGRESS / UNTESTED
+
+User interrupted implementation and explicitly asked to record progress before
+switching to an urgent unrelated issue. STOP invoice correction development here;
+resume only when user recalls it. Production access remains forbidden.
+
+Last VERIFIED boundary remains the previous entry: price/discount and KEEP_TERM
+date preview candidates, four staging behavioral result rows PASS, 308 original
+table fingerprints preserved after rollback, 43 command contract tests PASS.
+Neither candidate was persistently installed and no expanded posting/UI exists.
+
+This interrupted turn made LOCAL file edits ONLY; NO staging execution, Production
+access, deployment, client change, commit or push. Added:
+- `supabase/staging/backoffice_invoice_revision_preparation.sql`: prototype private
+  immutable PREPARED_NOT_POSTED operation storage; source snapshot for invoice,
+  schedules, Customer, price corrections, Credit Notes, Receipt target/sibling
+  Backoffice/Retail allocations, DP applications and tax lineage. Permission-
+  checked capture, payload normalization/idempotency and freshness recheck.
+- `supabase/tests/backoffice_invoice_revision_preparation_behavior.sql`: UNRUN
+  fixture/test draft expecting four canonical invoices with applied DP, posted
+  shared Receipts spanning four/two invoices, plus a pending Receipt. Intended
+  assertions cover selected-share ownership, stable retry, drift, immutability,
+  auth and existing business-row fingerprint preservation.
+- Correction expansion impact document: next-slice design/lock/boundary notes.
+
+IMPORTANT: both new SQL files are incomplete candidates, NOT migrations and NOT
+safe for user execution. No parser/build/SQL/behavior verification has run on
+them. The test's dynamic SQL `format(...)` fingerprint strings need syntax review
+(quote construction was not validated before interruption). `saved_claims` in
+the test is unused. Do not label this stage LOCAL READY or STAGING PASS.
+
+Harness is NOT YET wired for these files. Existing builder still supports only
+the baseline and `--revision-preview`; it does not generate the four-invoice
+fixture required by the new preparation test. Existing runner still expects
+three baseline PASS rows or four preview PASS rows and 308 original tables.
+Do not run the new test directly or relax its nonzero/shared-allocation assertions.
+
+Preparation is not an effective revision or completed financial correction. It
+must not alter source Invoice/Receipt/DP or be wired to UI/API. Current Receipt
+writers lock Receipt then Invoice; prototype preparation locks operation key and
+Invoice only, avoiding a reversed Receipt lock order. Snapshot recheck alone is
+NOT final posting concurrency safety; final coordinated writer locks remain TODO.
+
+On authorized resume: inspect both local candidate files end-to-end, validate SQL
+and captured schema, finish shared canonical fixtures and staging-only harness
+wiring, run rollback-only behavior with exact required results and candidate
+DDL absence after rollback. Then implement full revision/journal/settlement
+orchestration and effective consumers. Remaining scope is unchanged: payment/DP
+transfer, date relocation, payment errors/refund, effective AR/report/export,
+manual due overrides, multi-installment/concurrency tests, unified Invoice/Finance
+UI and full migration/preflight/postflight/smoke/UAT package. No Production script
+or repeat baseline export is needed from user at this hold boundary.
+
+### 2026-10-06 - LSM AUTO_RO Stock Match activated and postflight PASS
+
+- Production activation was run by the user and returned
+  `lsm_auto_ro_stock_match_activation PASS`: exact LSM Company, `AUTO_RO`, and
+  `auto_ro_stock_match_enabled=true`. Agent did not access Production.
+- The first read-only activation postflight failed before returning checks because
+  target PostgreSQL has no `min(uuid)` aggregate. This is classified as a
+  `TEST HARNESS FIX`; activation state and business data were not rolled back or
+  mutated by the failed SELECT.
+- `purchase_auto_ro_stock_match_lsm_activation_postflight.sql` now checks the
+  exact UUID/name/mode with `count(*)=1` plus `bool_and(exact equality)`. No
+  assertion was removed or weakened; the file remains SELECT-only.
+- A proposed staging validation was explicitly stopped by the user before the
+  database query ran. No staging or Production mutation occurred, and the
+  temporary validator file was removed.
+- Corrected Production postflight returned three PASS rows plus one expected
+  inventory INFO row. Exactly LSM is enabled; one audited policy change exists;
+  Draft `RO-20261005-0000000040` remains version 1, unmatched, and no invalid
+  matched Draft exists. `matchedAt=null` is expected before the first match.
+- Next safe step: hard refresh, confirm `Cocokkan Stok` is visible for that LSM
+  Draft RO, perform the match, then confirm to PO. Status is DATABASE LIVE and
+  activation POSTFLIGHT PASS; authenticated client SMOKE and UAT remain pending.
+
+### 2026-10-06 - Invoice revision preparation resumed; STAGING PASS / ROLLED BACK
+
+- Production was not accessed. User authorization remains staging-only until an
+  exact production package is handed to the user for manual execution.
+- Completed the previously untested preparation slice and wired it into the
+  staging baseline harness with `--revision-preparation`.
+- Added a rollback-only canonical fixture that creates three unpaid Regular
+  Backoffice Invoices for the same Customer as the DP-backed target through the
+  existing SO -> confirm -> dispatch -> receive -> Invoice -> post RPC chain.
+- Corrected the DP fixture predicate from invented `APPLIED` to the captured
+  canonical application status `POSTED`. The instrumented failed run proved the
+  exact mismatch and rolled back; no assertion was removed.
+- Staging `yjxpddwrjdczuqyixqwi` evidence at `2026-10-06T05:52:13.818Z`:
+  SQL SHA256 `b6a1e74a98a09b1f8d895589c5a3c7e39a10f0d3b4af1dcef7e8997185cc2c25`.
+  Five behavior rows PASS: unchanged posting, posted-price correction and
+  payment collection suites, amount/date preview, and immutable preparation.
+- Preparation behavior exercised a nonzero posted DP, posted Receipts shared by
+  four and two Backoffice Invoices, one Draft Receipt, exact retry, changed-
+  payload conflict, invalid Customer, stale Invoice version, Customer/Receipt
+  dependency drift, immutable history and unauthenticated denial. Only the
+  target allocation is selected while sibling allocations remain represented.
+- All 308 tracked table fingerprints were identical before/after rollback.
+  Candidate table and routines were absent afterward. Evidence is under
+  `%TEMP%/mads-invoice-staging-20261005/reference-20261006-104342/`.
+- Status: LOCAL/STAGING PREPARATION PROTOTYPE TESTED; DATABASE LIVE expanded
+  feature NO; CLIENT DEPLOYED NO; expanded authenticated SMOKE/UAT NO.
+- Next safe step: private atomic execution with canonical dependency lock order,
+  immutable revision/journal records, selected-share Receipt/DP transfer,
+  period relocation, and effective consumer reads. Preparation must not be
+  exposed through API/UI.
+
+### 2026-10-06 - Invoice revision execution plan STAGING PASS / ROLLED BACK
+
+- Added a private rollback-only execution planner; it writes no revision,
+  settlement, journal or business document. It locks shared Receipt documents
+  in stable UUID order before the target Invoice, then locks DP source Invoices
+  and accounting periods before revalidating the immutable preparation snapshot.
+- Staging evidence at `2026-10-06T05:55:54.364Z`, SQL SHA256
+  `0bf029d02f67a9e315861c4df19103eaac93d03c46ffe4b90e4083e284ddf18c`:
+  six behavior rows PASS and all 308 tracked table fingerprints restored after
+  rollback; planner routine absent afterward.
+- Representative plan found exactly three target Receipt dependencies: posted
+  target shares totaling 1,100 across four-way/two-way shared Receipts, plus a
+  Draft target share of 50. Moving the Invoice date forward classified the 1,100
+  as advance-until-Invoice-date, preserved all sibling allocations, and retained
+  the nonzero posted DP attribution transfer. Original source Journal and old/new
+  period relocation were nonzero and balanced.
+- Added a further writer gate: every genuine Receipt that predates the revised
+  Invoice must have an OPEN/REOPENED Receipt-date period, its posted AR account,
+  and resolvable `CUSTOMER_ADVANCE_LIABILITY`. Missing evidence blocks execution.
+  The first run correctly rejected resolving the advance function from the
+  Receipt event (`ACCOUNT_MAPPING_MISSING_OR_AMBIGUOUS`) and rolled back. Runtime
+  evidence shows this function belongs to `BACKOFFICE_SALES_INVOICE`, so the
+  gate now resolves from the source Invoice event, not from an invented Receipt
+  mapping. Rerun PASS at `2026-10-06T05:57:28.898Z`, SQL SHA256
+  `9fbd5f96ba1df2e831748056eee1d6ad1b5cdf9f3688d9bc40a09b5a247585e0`;
+  all 308 table fingerprints were preserved.
+- Production remains untouched. No user action is required at this boundary.
+
+### 2026-10-06 - Invoice revision journal plan STAGING PASS / ROLLED BACK
+
+- Added a private journal planner after the execution-plan gate. It produces
+  exact line-level plans only and performs no writer effect.
+- Recognition reversal copies the posted source Invoice Journal with debit and
+  credit swapped. Recognition replacement preserves accounts/amounts while
+  applying the revised billing Customer and Invoice accounting date.
+- For a genuine posted Receipt before the revised Invoice date, the plan creates
+  two independently balanced legs: AR -> Customer Advance on the Receipt date,
+  then Customer Advance -> revised Invoice AR on the revised Invoice date.
+  Posted Receipt shares after/on the Invoice date use direct AR attribution
+  transfer. Draft Receipt target shares remain a separate rewrite action.
+- Posted DP application attribution produces its own balanced transfer on the
+  canonical `CUSTOMER_ADVANCE_LIABILITY` account. Amount deltas are planned as
+  gross Sales Revenue, Sales Discount, per-line Output Tax and AR; the tested
+  identity/date scenario intentionally has a zero amount leg.
+- First behavior run failed only because PL/pgSQL variable `leg` conflicted with
+  a SQL alias of the same name. Alias was made explicit; no business assertion
+  changed. Final staging evidence `2026-10-06T06:06:29.712Z`, SQL SHA256
+  `0a37de6ae7f9b2ba6221a4d5bee9dff67e783403176b981212e4969816e8c074`:
+  seven behavioral rows PASS and all 308 table fingerprints restored after
+  rollback; all candidate routines/tables absent afterward.
+- Next safe step is the append-only atomic writer plus effective read models.
+  It must persist these exact plans, create source-linked posted Journals/events,
+  rebuild schedules, expose one canonical server RPC and pass amount-changing,
+  retry, stale/concurrency, multi-installment and report/export parity tests.
+  Production remains untouched; no user action is required yet.
+
+### 2026-10-06 - Invoice revision atomic writer STAGING PASS / ROLLED BACK
+
+- Production was not accessed. Staging target remained exactly
+  `yjxpddwrjdczuqyixqwi`; every execution used the project-ref/host guard and an
+  outer rollback.
+- Added private immutable revision/header/line/settlement-attribution candidates,
+  source-linked Finance journal writer, effective identity/price/discount/total
+  readers, schedule rebuild, legacy price-writer guard, authenticated atomic
+  post RPC and effective context RPC.
+- Finance's global automatic reversal guard was preserved. The candidate uses a
+  balanced `PRIOR_PERIOD_ADJUSTMENT` recognition offset and retains the original
+  Journal ID in its immutable execution plan; no global trigger was relaxed.
+- Behavior covers customer/date relocation, posted shared Receipts with four/two
+  Invoice siblings, applied DP, Draft Receipt attribution, nonzero price delta,
+  a second amount-only revision, exact retry, immutable source Invoice/lines/
+  Journal/Receipt/DP, due-date shift, deferred Finance trigger evaluation and
+  authenticated RPC/context. A second customer/date move is fail-closed pending
+  full prior-leg relocation support.
+- Latest staging evidence `2026-10-06T06:25:30.996Z`, SQL hash
+  `635ce2b3cf0cdde636253604fc717740f676b234e0f284d37fbef6d00e780710`:
+  eight behavior rows PASS and all 308 tracked table fingerprints restored;
+  candidate DDL absent afterward. Prior failed receipts are retained and were
+  rollback-only (test variable collisions, Finance reversal guard, test fixture
+  permission), with no weakened assertion.
+- Status: LOCAL/STAGING WRITER PROTOTYPE TESTED. DATABASE LIVE expanded feature
+  NO; CLIENT DEPLOYED NO; browser SMOKE NO; UAT NO. Next: effective AR/customer
+  statement/payment/return/export consumer cutover, multi-installment and
+  concurrency cases, then guarded migration/preflight/postflight and API/UI.
+  No user action is required yet.
+
+### 2026-10-06 - Unified Invoice revision staging API smoke PASS; Production preflight next
+
+- Production was not accessed. The only database target used by the agent was
+  authorized staging `yjxpddwrjdczuqyixqwi` with explicit project-ref, host and
+  user guards. Repository `.env.local` was not edited.
+- Generated guarded migration
+  `20261006140000_backoffice_unified_posted_invoice_revision.sql` from the nine
+  individually tested candidates. Production SHA256 is
+  `b07ad43c2dfd629d557ae07902a646838c5e5231700d52cd57372c1e1fa8ad1e`.
+  Staging alone used an in-memory dependency-ledger exception because the aligned
+  staging runtime intentionally lacks nine historical metadata rows; exact ten
+  runtime digests were still mandatory. Production package remains strict.
+- Staging preflight classified only that exact metadata condition; migration was
+  then installed persistently. Postflight PASS: one target ledger row, four
+  relations, expected routines/permissions, zero invalid history/schedules and
+  zero active Finance queue.
+- Installed-runtime rollback suite PASS at `2026-10-06T07:01:14.593Z`, receipt
+  SHA256 `990f2bad3239a0ac957de6ff9f1b102672dc42def76beb8302e90ed9e4b097b3`.
+  All eight suites passed against the persisted runtime and all 312 table
+  fingerprints were restored after fixture rollback. Closing postflight PASS at
+  `2026-10-06T07:01:30.125Z`.
+- Return/Credit Note behavior uses the revised effective customer and amounts,
+  preserves source Invoice/DO, posts the canonical AR/refund-liability split,
+  and changes Stock only through the existing RESTOCK receipt. Shared Receipt
+  overpayment correctly yields `REFUND_PENDING`; the earlier COMPLETED assertion
+  was a test-fixture expectation error, not a product relaxation.
+- Client route/UI are wired. Local command tests 43/43 PASS; TypeScript and scoped
+  ESLint PASS. Next build completed with BUILD_ID `hq_yBeqraa4hLvrBo_7d3` using
+  process-local staging environment: three built files contain the staging ref,
+  zero built files contain Production ref. Client is NOT deployed.
+- Added self-contained rollback-only Production behavior package
+  `supabase/tests/backoffice_unified_posted_invoice_revision_behavior.sql`,
+  generated from the exact canonical posting/price/payment fixtures plus all five
+  installed revision suites. SHA256
+  `a8a50c41b9019a7e5f7bcc407efc175e17926befa78f5edac696a7d1322b4fac`
+  (superseded after the Production fixture defect described below). That initial
+  package passed rollback rehearsal on staging at
+  `2026-10-06T07:15:50.025Z`: nine PASS rows and all 312 tracked table
+  fingerprints restored. Two earlier runs failed only on intentionally absent
+  staging ledger metadata; validator fixtures those rows inside the rolled-back
+  transaction. Production behavior package retains strict real-ledger guards.
+- Explicit remaining gaps: no posted Receipt payment-error reversal writer, no
+  posted Receipt date-correction writer, no refund payout from the Invoice form,
+  no manual due-date override UI/runtime, and second customer/date relocation is
+  fail-closed. Existing canonical Credit Note refund remains separate. Do not
+  claim these flows from the Invoice revision PASS.
+- Authenticated HTTP smoke ran against the staging-bound BUILD_ID
+  `hq_yBeqraa4hLvrBo_7d3` through the real Next routes. Final PASS at
+  `2026-10-06T07:26:42.229Z`: unauthenticated denial, Company Admin Invoice read,
+  revision POST, exact retry, effective reload, cross-Company denial, immutable
+  source Invoice/lines and balanced posted revision journals. Two prior harness
+  runs had already committed valid revisions, then failed only on harness output
+  formatting (`152002` versus `152002.0000`, then JSON journal-id parsing). No
+  runtime code or business assertion was weakened. The staging-only canonical
+  fixture consequently has three valid revisions and three balanced journals.
+- Closing postflight PASS again at `2026-10-06T07:27:13.373Z`: runtime inventory
+  one Invoice / three revisions / three Journals, zero invalid history/schedules,
+  zero active Finance queue. Read-only cleanup verification at
+  `2026-10-06T07:28:13.507Z` proves all three temporary smoke actors have zero
+  active memberships and zero unbanned Auth users. They remain as disabled audit
+  identities because revision history is immutable.
+- Browser skill was followed, but its connector failed internally before any
+  page opened (`sandboxPolicy` metadata missing). No alternate rogue browser
+  automation was used. Visual browser smoke is therefore pending and must not be
+  called PASS.
+- Added staging-only harnesses
+  `scripts/run-invoice-revision-authenticated-staging-smoke.ps1/.mjs` and
+  `scripts/verify-invoice-revision-staging-smoke-cleanup.mjs`. They hard-reject
+  every project ref/host/URL except `yjxpddwrjdczuqyixqwi`; secrets remain
+  process-local and are not written to repository/artifacts.
+- Status: LOCAL READY; STAGING DATABASE LIVE; STAGING INSTALLED-RUNTIME BEHAVIOR
+  PASS; AUTHENTICATED NEXT API SMOKE PASS; CLIENT DEPLOYED NO; VISUAL BROWSER
+  SMOKE PENDING; UAT NO; PRODUCTION NOT INSTALLED.
+- Next safe step requiring user action: run the complete read-only Production
+  preflight from
+  `supabase/diagnostics/backoffice_unified_posted_invoice_revision_preflight.sql`
+  and return all rows. Do not run the migration until those rows are reviewed.
+  Exact sequence and boundaries are in
+  `docs/runbooks/BACKOFFICE_UNIFIED_POSTED_INVOICE_REVISION_ROLLOUT.md`.
+- User returned the Production preflight output on 2026-10-06. All required
+  gates PASS: dependency/runtime/Company identity exact, migration ledger zero,
+  object collision empty, Finance queue zero, Offline queue zero. Inventory is
+  three target Companies and 226 eligible Posted Regular Invoices. The agent did
+  not access Production. Next safe step is now the exact guarded migration file,
+  run once by the user; behavior and postflight must wait for confirmed success.
+- User then ran the exact migration once and returned only
+  `pg_advisory_xact_lock`, with no SQL error. That is the migration file's normal
+  result set. Record status as `PRODUCTION MIGRATION USER-RUN SUCCESS / BEHAVIOR
+  + POSTFLIGHT PENDING`; never rerun migration `20261006140000`. Next user gate
+  is the complete self-contained rollback-only Production behavior package.
+- The first user-run Production behavior attempt stopped before its business
+  assertions with `TEST_PRECONDITION: one-line canonical fixture required`.
+  The package transaction rolled back; no test fixture was committed. Root cause
+  is a test harness defect: amount-preview iterated arbitrary real Posted
+  Invoices while its canonical fixture requires exactly one line. Runtime and
+  migration were not changed.
+- `scripts/build-backoffice-invoice-revision-production-behavior.mjs` now records
+  exactly two one-line Invoices created by the package itself (taxed correction
+  seed and untaxed paid seed) and scopes amount-preview to those IDs. No business
+  assertion was removed or weakened. The staging validator also skips redundant
+  empty-baseline bootstrap when the aligned staging Company fixture already
+  exists; any missing staging ledger metadata remains rollback-only.
+- Subsequent Production retries exposed the same harness-only portability issue
+  in both the new `invoice_revision_behavior_seed` table and the older
+  `staging_revision_invoice_fixture`. The final generator removes all three
+  temporary tables, including authenticated/report handoff tables, and carries
+  all cross-block fixture values through transaction-local PostgreSQL settings.
+  Static scan confirms zero `CREATE TEMP` and zero removed-table references.
+  No persistent helper, runtime definition, business assertion, or migration
+  changed.
+- Final corrected behavior SQL SHA256 is
+  `fe4e8dbdd70781660407a793dddabac07061a5240d205e8f763e0f8a53b607a6`.
+  Fresh guarded staging rehearsal PASS at `2026-10-06T08:15:00.022Z`: all nine
+  expected result rows PASS and all 312 tracked table fingerprints restored.
+  Next safe user action is to run the complete corrected behavior file once and
+  return all rows. Do not rerun the migration; do not run postflight until the
+  corrected Production behavior output is reviewed.
+- User returned the corrected Production package's terminal aggregate row:
+  `backoffice_unified_posted_invoice_revision_behavior PASS`, with all nine
+  named suites through `all fixture writes rolled back`. Supabase SQL Editor
+  exposed only the final result set; this row is reached only after every prior
+  exception-guarded block completes. Record `PRODUCTION BEHAVIOR PASS`. Do not
+  rerun migration or behavior. Next safe user action is the complete read-only
+  closing postflight; client deployment, visual smoke and UAT remain pending.
+- User returned the complete Production closing postflight. All required checks
+  PASS: active Finance queue 0, migration ledger exactly 1, relations/routines
+  present, authenticated public/private permission boundary exact, invalid
+  history 0 and invalid schedules 0. The two INFO rows are expected: approved
+  editable/immutable boundaries are unchanged, and runtime inventory is zero
+  because no real Production Invoice correction has yet been posted. Behavioral
+  evidence remains the preceding nonzero rollback fixture; zero inventory is not
+  treated as proof. Record `PRODUCTION DATABASE LIVE / BEHAVIOR + POSTFLIGHT
+  PASS`. Do not rerun preflight, migration, behavior or postflight. Next gates:
+  deploy the reviewed client, authenticated Production smoke, then user UAT.
+# 2026-10-06 - KGS RETAIL/POS USER-OWNED COA AUTHORITY PREFLIGHT READY
+
+## 2026-10-06 - KGS Retail/POS final activation preflight prepared
+
+- First Production execution stopped before all audit queries with PostgreSQL
+  `25006`: Supabase does not permit `CREATE TEMP TABLE` inside `BEGIN READ ONLY`.
+  This is a preflight wrapper defect, not a KGS data/runtime blocker; no
+  application row was touched. The wrapper now uses `BEGIN`, writes only two
+  session-local temporary tables, emits the same assertions, and always ends in
+  `ROLLBACK`. No business assertion or target contract was changed.
+- The next execution also rolled back before returning results because the
+  informational runtime inventory referenced nonexistent generic
+  `sales_headers.status`. Canonical Retail lifecycle columns are
+  `document_status` and `order_runtime_status`; the query now counts open sales
+  from `document_status='DRAFT'` excluding runtime `CANCELED`/`DELIVERED`.
+  This is a query-column fix only; no assertion was removed and Production
+  application data remained unchanged.
+
+- User authorized preparation for direct user-run Production rollout, strictly
+  KGS-only. The agent still must not access Production.
+- Added
+  `supabase/diagnostics/kgs_retail_pos_user_coa_activation_preflight.sql` as the
+  next complete read-only gate. Its final contract defines 37 exact account
+  targets: 22 must be reused unchanged and 15 must be absent before creation.
+- The target function map now includes two previously omitted runtime needs:
+  `CASH_IN_TRANSIT -> 1010200 BANK SUSPENSES` and
+  `PURCHASE_UNASSIGNED_CLEARING -> 2010104 HUTANG BELUM TERTAGIH`.
+- Mapping scope is 23 active KGS transaction categories across Retail/POS,
+  cashier, Customer Balance, Purchase, Stock, Expense, and existing Ketul
+  events. KGS Backoffice Sales categories and all other Companies are excluded.
+- Product routing remains exact-ID based: current Ketul Category
+  `6a66a570-521f-47e9-981e-4fda051df13e` has four active Products; every other
+  current category is Trading. No Kardus category exists, so `4010100-3` is
+  reserved and not activated from `PACKAGING` or Product text.
+- The preflight records exact live routine MD5 values for the Retail sale,
+  Dispatch capture/posting, and POS repricer call chain. Those digests will be
+  used as migration guards after the user returns the complete output.
+- Local static evidence: balanced SQL parentheses, no public application-data
+  mutation statement, and scoped `git diff --check` PASS. Database runtime is
+  not claimed because Production was not accessed.
+- Next safe step requiring user action: run the complete final preflight in the
+  Production SQL Editor and return all rows. Do not run any activation migration
+  yet. The migration, rollback-only behavior test, postflight, and authenticated
+  smoke are still pending.
+- After two Production SQL Editor portability failures, the preflight was
+  rewritten as one SELECT-only CTE statement with no transaction wrapper, DO
+  block, DDL, or temporary relation. The exact file then executed end-to-end on
+  authorized staging `yjxpddwrjdczuqyixqwi` with status
+  `STAGING_SQL_EXECUTION_PASS`. Staging-specific blockers were reported normally
+  instead of causing SQL failure.
+- That staging execution exposed a real target collision before Production:
+  existing `1040100 BIAYA DIBAYAR DIMUKA` has the same name as proposed
+  `1060100`. Per the user's skip-existing instruction, `1060100` was removed and
+  `OUTSTANDING_EXPENSE` now reuses `1040100`; no duplicate name is created.
+  The existing `1040100` identity is itself included in the reuse contract so
+  its ASSET/DEBIT/active/postable shape is validated before mapping.
+- Final corrected SQL was executed again end-to-end on staging on 2026-10-07
+  and returned `STAGING_SQL_EXECUTION_PASS`. Account contract is 37 targets / 22
+  reuse / 15 create, name collisions 0, function contract 34/34, mapping catalog
+  23 categories / 91 targets, Finance queue 0, Offline queue 0, and partial
+  Dispatch 0. Remaining staging BLOCKER rows are expected environment drift
+  (missing historical ledger metadata, absent Production Ketul fixture, and an
+  older repricer); they did not cause SQL failure and are not Production facts.
+  Final Production preflight SHA256 is
+  `1886fdd13fabc15529354c4a5abd6a0d2f9a5a1307eb63755be8f3d037e5cd8e`.
+
+### 2026-10-07 - KGS repricer preflight assertion corrected
+
+- Production returned only `kgs_user_coa_activation_runtime_anchor=BLOCKER`;
+  `retail`, `capture`, and `dispatch` were true while `reprice` was false.
+  The returned repricer digest
+  `df5c23c654575e2457910537dd0d3794` exactly matched authorized staging.
+- Root cause is classified as `TEST HARNESS FIX`, not Product drift. The old
+  assertion required `price_override_reason`, which is absent from the
+  canonical wrapper created by migration `20260825120000`. The wrapper instead
+  persists `canonical_resolved_unit_price`, `price_override_applied`,
+  `price_override_unit_price`, and `price_override_source`, delegates through
+  `reprice_pos_sale_draft_before_terminal_override`, and retains both
+  fail-closed errors.
+- The corrected assertion preserves and strengthens the runtime guard by
+  checking all four persisted snapshot anchors, the delegate, and errors
+  `POS_TERMINAL_PRICE_OVERRIDE_DISABLED` and
+  `PRICE_OVERRIDE_LINE_SNAPSHOT_NOT_FOUND`. No business assertion, account,
+  mapping, migration, runtime, Journal, Stock, Payment, or Company data changed.
+- Static verification: one SQL statement, no DDL/temp table/transaction or
+  application mutation, balanced parentheses `297/297`, and scoped
+  `git diff --check` PASS. Corrected preflight SHA256 is
+  `3c727ad28e483ebbf687b645c45c5d483571e7acdc564cc23e07af2ac5fa113c`.
+- Exact corrected SQL executed on staging `yjxpddwrjdczuqyixqwi` with
+  `STAGING_SQL_EXECUTION_PASS`; its runtime anchor is PASS and returns the same
+  four runtime digests as Production. Staging dependency/Ketul-fixture blockers
+  remain environment differences and are not Production facts.
+- Next safe step: user reruns the complete corrected preflight in Production
+  and returns all rows. Do not execute migration `20261006150000` yet.
+
+### 2026-10-07 - KGS COA activation package ready for user-run Production migration
+
+- User returned the corrected Production preflight with every blocking row
+  PASS. The live contract is 22 exact reused plus 15 absent-to-create accounts,
+  34 function targets expanded across 23 active categories to 91 mappings,
+  four exact Ketul Products, zero active Finance queue, zero nonterminal Offline
+  submission, and zero in-flight partial Dispatch. Eight existing
+  `SALE_PAYMENT_VERIFIED` Events remain HOLD and are not posted by migration.
+- Added guarded migration `20261006150000`. It creates 15 user-owned accounts,
+  version-cuts direct KGS mappings without deleting history, and patches only
+  the KGS branch of Retail/Dispatch Journal composition. Exact Ketul Revenue and
+  Inventory use `4010100-2` / `1030100-4`; every other current category uses
+  `4010100-1` / `1030100-1`. Kardus remains reserved.
+- A first staging rehearsal caught an invalid `sales_details` alias and a second
+  caught a CRLF-sensitive dynamic patch anchor. Both stopped transactionally
+  before persistence. After root corrections, the exact migration plus behavior
+  and postflight passed a combined staging transaction rehearsal.
+- Staging rehearsal suppresses only its known missing dependency-ledger metadata
+  and absent exact Production Ketul Category fixture in memory. Production
+  preflight independently proved both conditions. All migration DDL/DML,
+  91-rule activation, runtime patches, behavior assertions, and postflight ran;
+  rollback restoration proved ledger 0, helper routines absent, and created
+  accounts 0 afterward.
+- Exact hashes: migration
+  `f1fdcdae38f61ca6f26cbc840359423a2bc70705f7f1b1f5fcec8a327cf23609`,
+  behavior `35ceeb9e208e7651850bfe6d605140ee1c096f7ed31d8d9a708ae2813c963a66`,
+  postflight `b065be15f5d543b5c0f5782eb2d81ca492bae94948308ca550c85cfe7422ac38`.
+- Status: `PRODUCTION PREFLIGHT PASS / STAGING ROLLBACK REHEARSAL PASS /
+  PRODUCTION MIGRATION USER ACTION READY`. Agent did not access Production.
+  Next safe step is user-run migration only; behavior and postflight follow
+  after the migration succeeds. Authenticated smoke/UAT remain pending.
+
+### 2026-10-07 - KGS COA rollout explicitly held by user
+
+- User explicitly paused this rollout before confirming any Production execution
+  of migration `20261006150000`.
+- Last proven state: corrected Production preflight PASS; exact migration,
+  rollback-only behavior, and postflight pass a combined staging rehearsal with
+  complete rollback restoration.
+- Not yet proven: Production migration installation, Production behavior,
+  Production postflight, authenticated smoke, and UAT.
+- Resume boundary: first determine whether ledger version `20261006150000` is
+  absent or installed from user-provided Production evidence. Do not assume it
+  was run and do not rerun it blindly.
+
+### 2026-10-07 - KGS COA migration CRLF transport failure corrected
+
+- User resumed the rollout and the Production migration stopped with
+  `MIGRATION_PRECONDITION_FAILED: Retail Return category-query drift`. The
+  migration transaction did not reach `COMMIT`; no Database Live claim is made.
+- SELECT-only staging diagnosis used the same canonical Retail Return digest
+  `2a927517da35825afd8574cbbf6bd844`. The raw multiline anchor occurred zero
+  times because the stored body contained CRLF; after removing carriage returns
+  it occurred exactly once. This proves formatting drift, not a changed Return
+  query or changed accounting behavior.
+- Corrected migration `20261006150000` now removes carriage returns from every
+  dynamic runtime definition, patch needle, and replacement before exact-one
+  checks and replacement. This remains fail-closed: digest checks and exact-one
+  anchor assertions are preserved.
+- Added SELECT-only diagnosis
+  `supabase/diagnostics/kgs_retail_pos_user_coa_activation_patch_anchor_diagnosis.sql`
+  and extended staging rehearsal with an explicit forced-CRLF transport mode.
+- Both source-transport and forced-CRLF rehearsals passed the complete migration,
+  rollback-only behavioral test, and postflight. Each rollback restoration
+  proved ledger rows `0`, helper routines absent, and created target accounts
+  `0`. Only the documented staging dependency-ledger and exact Ketul fixture
+  guards were suppressed in memory; Production already proved both PASS.
+- Corrected migration SHA256:
+  `34233363A14B6CC45DD382AD07F976336A49BC676BC51BDD00FC736D1136CF7F`.
+  Status: `PRODUCTION PREFLIGHT PASS / FAILED ATTEMPT ROLLED BACK / CORRECTED
+  MIGRATION USER RETRY READY`. Next safe step is to reopen the migration file,
+  copy its complete current content into a fresh Production SQL Editor query,
+  run it once, and return the complete output/error. Do not use the prior tab.
+
+### 2026-10-07 - KGS COA second execution stopped on missing work relation
+
+- The next user-run attempt returned `relation "kgs_coa_target" does not
+  exist`. Do not retry the migration from this evidence alone. That relation is
+  created only at the migration header and is used later in guard/account/
+  mapping/verification blocks; the error proves a consumer statement executed
+  without the migration work relation but does not prove whether Production is
+  clean, partial, or already installed.
+- Added one-statement, SELECT-only forensic gate
+  `supabase/diagnostics/kgs_retail_pos_user_coa_activation_failed_attempt_state.sql`.
+  It uses no temporary relations and classifies exact ledger, 15 create-target
+  accounts, three helper routines, and two runtime patches as
+  `CLEAN_ROLLED_BACK`, `INSTALLED_CANDIDATE_RUN_POSTFLIGHT`, or
+  `PARTIAL_STOP_DO_NOT_RERUN`.
+- The forensic gate executed successfully on authorized staging and returned
+  `CLEAN_ROLLED_BACK` with ledger/accounts/helpers/runtime patches all zero.
+  Production remains untouched by the agent. Next safe step: user runs only
+  this complete forensic SELECT in Production and returns its single row; no
+  migration, behavior, or postflight retry before classification.
+
+### 2026-10-07 - KGS COA Production installation confirmed forensicly
+
+- User returned the SELECT-only failed-attempt classifier with state
+  `INSTALLED_CANDIDATE_RUN_POSTFLIGHT`, not partial and not rolled back.
+- Exact evidence: migration ledger rows `1`; all 15 create-target accounts exist
+  with exact names and are active, postable, non-system; all three helper
+  routines exist; Retail Return and Dispatch runtime patches are both present.
+- Migration `20261006150000` is therefore `DATABASE LIVE` and must never be
+  rerun. The prior missing `kgs_coa_target` error concerned an execution fragment
+  after permanent installation, not an absent installation.
+- Next safe sequence: run only
+  `supabase/tests/kgs_retail_pos_user_coa_activation_behavior.sql` (rollback-only),
+  return its output, then run the SELECT-only postflight only after behavior
+  passes. Authenticated smoke and UAT remain pending.
+
+### 2026-10-07 - KGS COA Production behavioral test PASS
+
+- User ran only the rollback-only behavior file and returned PASS with zero
+  violations. Tested: installed migration identity; Ketul and Trading Revenue
+  routing; Ketul and Trading Inventory routing; cross-Company denial; all 91
+  user-owned direct mappings; Retail Sale Return and Dispatch composer anchors;
+  and complete test-transaction rollback.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PENDING`. Do not rerun the
+  migration or behavior. Next safe step is the SELECT-only
+  `supabase/diagnostics/kgs_retail_pos_user_coa_activation_postflight.sql`, then
+  authenticated KGS Retail/POS smoke and user UAT if postflight has no blocker.
+
+### 2026-10-07 - KGS COA Production postflight PASS
+
+- User returned the full SELECT-only postflight with every contract PASS:
+  ledger `1`, all 37 accounts exact, all 91 mappings exact, Retail category
+  split, Dispatch category split, Retail Return Inventory split, exact Ketul
+  Revenue `4010100-2`, and exact Ketul Inventory `1030100-4`.
+- Active Finance queue is zero. KGS-only boundary is intact; KMS, LSM, SMS,
+  historical Journals, and existing Events were unchanged. Kardus remains
+  deliberately `RESERVED_NOT_ACTIVE` until an explicitly approved exact
+  Category exists.
+- Eight pre-existing `SALE_PAYMENT_VERIFIED` events remain HOLD and were not
+  posted or mutated by rollout. They require separate Finance review and must
+  not be treated as a migration/postflight violation.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS / AUTHENTICATED
+  SMOKE AND UAT PENDING`. Migration and SQL behavior test must not be rerun.
+  Next safe step is authenticated KGS Retail/POS smoke covering one Trading-only
+  sale, one Ketul-only sale, and one mixed basket, including balanced Journal,
+  account split, payment, Stock/FIFO parity, retry, and cross-Company boundary.
+
+### 2026-10-07 - Retail Company opening input workbook prepared
+
+#### User correction — opening-balance template contract (authoritative)
+
+- The two generic workbooks previously produced are rejected and must not be
+  used as an opening-balance import source. They incorrectly mixed Company
+  onboarding/system configuration with opening balances.
+- An opening-balance template may be generated **only after** the target
+  Company exists and its approved target master data has been created or
+  cloned: target COA, Customer, Supplier, Product, Store, and Warehouse. Never
+  ask Finance/HR/Warehouse users to supply UUIDs, internal keys, role codes,
+  settlement routes, mapping functions, or future system document numbers.
+- For the planned legacy manual business cutover, first copy only explicitly
+  approved clean KGS configuration/master data. Never copy KGS transactions,
+  balances, Journals, Stock/FIFO, AR/AP, business documents, or KGS UUIDs.
+- The opening workbook must be generated from the **new target Company's live
+  master identities**, with human-readable dropdowns already populated. Its
+  input scope is limited to:
+  1. opening trial balance;
+  2. outstanding Customer invoices/credit notes;
+  3. outstanding Supplier bills/refunds;
+  4. opening physical Stock quantity and unit cost per target Warehouse;
+  5. opening Bank/Cash balances;
+  6. automatic reconciliation controls.
+- Company profile, users/roles, payment methods, settlement routing, category
+  routing, and Finance mapping are onboarding/configuration work and must not
+  appear as opening-balance input sheets.
+- System document numbers and technical IDs are generated by the application
+  or guarded import. A legacy/manual document reference is optional evidence,
+  not a required future system number.
+- Prevent duplicated opening effects: trial-balance AR/AP/Inventory and their
+  detailed subledgers must reconcile through the approved clearing design, not
+  be posted twice. Required controls are balanced trial balance, AR detail = AR
+  control, AP detail = AP control, Stock quantity x cost = Inventory control,
+  and final clearing balance = zero.
+- Therefore the next safe sequence is: create target Company -> clone approved
+  KGS master/config only -> create/import target masters -> generate the target-
+  backed opening workbook -> user fills balances -> read-only dry-run and
+  reconciliation -> guarded posting. Do not generate another generic opening
+  workbook before those prerequisites exist.
+
+- User plans a new Company using KGS Finance configuration and Retail/POS mode,
+  with some setup later executed by guarded scripts. No Company or Production
+  data was created or changed in this task.
+- Added generator `scripts/create_retail_company_opening_template.ps1` and
+  workbook `docs/exports/TEMPLATE_OPENING_COMPANY_RETAIL_KGS.xlsx`.
+- Workbook has 20 sheets covering Company identity, locations, users/roles,
+  payment methods, category routing, Product overrides, Customer, Supplier,
+  Opening Stock, GL opening, AR, AP, Customer deposits, Cash/Bank, Tax, fixed
+  assets, the exact 37-account KGS reference, data dictionary, and reconciliation
+  controls.
+- The original workbook exposed technical `source_key`/entity-key and
+  `include_in_script` fields to Finance. User correctly rejected that input
+  contract because a not-yet-created Company cannot have database identifiers
+  and business users must not invent or memorize loader keys.
+- Generator is revised to keep all UUID/key generation behind the later import
+  script. Human input now uses Company/location/Product/account business codes,
+  Customer/Supplier names selected from workbook dropdowns, and optional
+  Customer/Supplier codes that the script may generate when blank. Populated
+  rows are processed and blank rows ignored; there is no technical include
+  flag.
+- Because the original workbook was open and Windows correctly blocked an
+  overwrite, the corrected output is
+  `docs/exports/TEMPLATE_OPENING_COMPANY_RETAIL_KGS_REVISI.xlsx`; the open
+  original was preserved. Read-only Excel verification confirms 20 sheets,
+  zero occurrences of the removed technical key/input-flag headers,
+  `AR_Customer!A2` validation points to `DaftarCustomer`, and the GL difference
+  formula remains `=B3-B4`.
+- README separates `SCRIPT`, canonical application workflow, and controlled
+  import boundaries. It explicitly forbids duplicating Inventory value in
+  `GL_Opening` after canonical `Opening_Stock` creates On Hand/FIFO/Finance.
+- Workbook was reopened read-only through Excel: 20 sheets, 37 COA rows, three
+  routing rows, exact Ketul Revenue `4010100-2`, and live control formula
+  `SUMPRODUCT(Opening_Stock quantity, unit cost)` verified. SHA256:
+  `64FF424E4501A5A62F1A4AE79394E2AD0D66B519034F1D5B7404FA222FD73D84`.
+- Next safe step: user fills the workbook. Before any build, classify the target
+  as `NEW_BUSINESS` or `LEGACY_MIGRATION` and review opening AR/AP/Customer
+  deposit/Tax requirements; KGS category routing is currently KGS-UUID-specific
+  and must be generalized or installed explicitly for the new Company.
+
+### 2026-10-07 - KMS PO 0079 exact SO coverage export pending Production data
+
+- User requested an Excel showing which KMS Sales Orders were covered by
+  `PO-20260927-0000000079`.
+- Added SELECT-only audit
+  `docs/audits/KMS_PO_20260927_0079_SO_COVERAGE_EXPORT_2026-10-07.sql`.
+  It follows persisted PO -> Posted Goods Receipt -> Product batch -> negative
+  stock replenishment lineage and does not infer SO coverage from matching SKU
+  or dates.
+- No Production access or mutation was performed. Next user action is to run
+  the complete SQL in Production and return/export the single result set. The
+  result will then be converted into the requested readable Excel workbook.
+- KGS COA rollout remains held and is unrelated to this read-only KMS audit.
+- The first Production execution returned zero rows because the audit used
+  inner Company/PO/header joins and therefore hid the failed lookup boundary.
+  This is a diagnostic harness defect; no Production data was changed and no
+  coverage conclusion may be drawn from that output.
+- The audit is now fail-visible: lookup starts from the exact PO number across
+  `supplier_order_documents`, all identity/header/line joins preserve a result,
+  and missing/wrong-Company states return explicit `coverage_result` values.
+  The corrected file executed successfully against authorized staging and
+  returned the expected explicit `PO_NOT_FOUND_IN_SUPPLIER_ORDER_DOCUMENTS`
+  row there, proving it cannot silently return zero rows again. Production data
+  output remains pending user rerun.
+- User returned the corrected Production export: exact KMS identity, Received
+  PO version 4, source RO `RO-20260925-0000000022`, one Posted Goods Receipt,
+  and only persisted `EXACT_SO_COVERAGE` rows. Added workbook generator
+  `scripts/create_kms_po_0079_so_coverage_workbook.ps1`; its output separates
+  SO detail/summary, Product totals, over-receipt quantities, and raw evidence.
+- Generated and read-back verified
+  `docs/exports/KMS_PO_20260927_0079_COVERAGE_SO.xlsx` (SHA256
+  `85F93B8404B0ED0D11529D7112CBC6DDFC98E03A8F55405ED2ACCF8D22F02AA0`).
+  Workbook evidence: 10 Products, 5 unique Backoffice SOs, PO qty 1,054,
+  exact SO coverage 1,054, receipt qty 1,334, and 280 receipt qty not used to
+  close prior SO shortages. Current remaining qty across those receipt batches
+  is zero. Six sheet shapes and both SO/Product totals were re-opened through
+  Excel and verified before handoff.
+
+- User resumed the held KGS COA task and confirmed KGS-only scope. KMS, LSM,
+  SMS, and every other Company remain outside the task.
+- Revenue authority is product-category based, not payment-method based:
+  Trading uses `4010100-1`, Ketul uses `4010100-2`, and Kardus uses the existing
+  `4010100-3`. A mixed basket must produce separate revenue lines in one balanced
+  Journal. Current runtime still resolves one `SALES_REVENUE` account per Event,
+  so this is a later runtime/composer change, not a simple mapping update.
+- Cash/settlement authority: POS Cash uses user-owned `1010100-3 KAS KECIL`,
+  main operational Cash uses `1010100-2 KAS BESAR`, verified Bank uses
+  `1010100-1 BANK BCA`, and QRIS clearing uses `1080100 HUBUNGAN REKENING KORAN`.
+- The second user-supplied COA list adds exact candidates for Input/Output Tax,
+  customer advance, rounding gain/loss, Bank administration, MDR, and detailed
+  expense accounts. Generic receivable/liability/expense candidates remain
+  `FINANCE_REVIEW`; no semantic substitution is approved silently.
+- Added impact map
+  `docs/audits/KGS_RETAIL_POS_COA_AUTHORITY_RECONCILIATION_IMPACT_2026-10-06.md`
+  and SELECT-only preflight
+  `docs/audits/KGS_RETAIL_POS_COA_AUTHORITY_PREFLIGHT_2026-10-06.sql`.
+- The preflight is hard-scoped to KGS ID
+  `d290f1ee-6c54-4b01-90e6-d701748f0851`. It classifies the combined supplied
+  account list into exact, missing, code/name conflict, system-account
+  collision, and inactive states; validates mapping function/type/normal-balance
+  compatibility; inventories current direct/fallback mappings; and reports KGS
+  Product Category IDs/product counts for later approved routing.
+- Known contract correction: `OPENING_BALANCE_CLEARING` requires an Equity/Credit
+  account. `8050101 PENYESUAIAN PERSEDIAAN` cannot be treated as exact merely
+  because its label sounds related; `3010100 MODAL` is reported only as
+  `FINANCE_REVIEW`, not approved mapping.
+- The supplied authority itself contains duplicate normalized depreciation
+  names on different codes, and the last KGS inventory contains several
+  same-code/different-name rows. These are reported explicitly; they are not
+  hidden to produce a pseudo-PASS.
+- Local evidence: SQL parentheses `328/328`, mutation statement scan `0`, and
+  scoped `git diff --check` PASS. A local PostgreSQL parser/runtime is not
+  available. Status: `LOCAL PREFLIGHT READY / PRODUCTION OUTPUT PENDING`.
+- Next safe step: user runs the complete preflight in Production SQL Editor and
+  returns all rows. Do not create/rename/deactivate accounts, end system rules,
+  or implement category routing before that output is classified.
+
+## Production authority output classified
+
+- User returned all Production preflight rows. KGS identity is exact and the
+  query remained read-only. It found 24 exact active/postable non-system
+  accounts, 92 supplied accounts absent, zero system-account collisions, and
+  zero inactive exact accounts.
+- The 10 same-code/different-name rows are not automatic rename targets. The
+  user's explicit rule for the second list was to skip an account when its code
+  already exists. Therefore existing KGS non-system identities are preserved;
+  the later duplicate-code label is not created and is not allowed to overwrite
+  history. This includes `1030100-1 PERSEDIAAN BARANG DAGANG` and
+  `630115 BEBAN UMUM DAN LAIN LAIN`.
+- Missing master/header rows are not automatically created. Only accounts that
+  are needed by an approved runtime mapping may enter a later guarded migration.
+  Missing mappings and Finance-review candidates remain unresolved, not PASS.
+- Exact category evidence shows only Category
+  `6a66a570-521f-47e9-981e-4fda051df13e / CAT-000011 / KETUL` is classified.
+  There is no Kardus-named KGS category. Creating a Kardus revenue route from
+  Product text or assuming all `PACKAGING` products are Kardus is forbidden.
+- Added SELECT-only Product detail gate
+  `docs/audits/KGS_RETAIL_POS_COA_PRODUCT_ROUTING_REVIEW_2026-10-06.sql`.
+  It lists exact Category/Product IDs and marks keyword hits as review evidence
+  only. Status is `PRODUCTION CLASSIFICATION RECEIVED / PRODUCT ROUTING REVIEW
+  PENDING`; no migration has been prepared or run.
+
+## KGS Product routing Production output received
+
+- Exact Ketul routing is now evidenced: Category
+  `6a66a570-521f-47e9-981e-4fda051df13e / CAT-000011 / KETUL` contains four
+  active Products (`KTL2KG`, `KTL4KG`, `KTLNS2KG`, `KTLNS4KG`). These four may
+  use `4010100-2 PENJUALAN KETUL` and `1030100-4 PERSEDIAAN KETUL` in the later
+  design.
+- No KGS Category is named Kardus. Category
+  `fa104b66-a1da-4de5-8d55-569d7c650f7e / CAT-000013 / PACKAGING` contains 15
+  active Products, but only `PKKC / Pembungkus Kebab Kecil (CARTON)` explicitly
+  identifies Carton in its Product name. Product text is not accounting
+  authority and no Kardus route is inferred from it.
+- User decision is required whether Kardus means the entire exact PACKAGING
+  Category or only an explicit subset of Product IDs. Until then,
+  `4010100-3 PENJUALAN KARDUS` routing and all runtime/migration work remain
+  blocked. Every non-Ketul/non-approved-Kardus Product remains a Trading
+  candidate, not an installed rule.
+
+### 2026-10-07 - KMS Retail AR exception closed; execution preflight ready
+
+- User returned the complete Production postflight for retained Credit Note
+  migration `20260919131000`. Every assertion passed: ledger `1`, canonical
+  runtime present, exact Posted Credit Note
+  `CN-20260919-0000000012 / INV-20260904-0000000236` for Rp78.400, one balanced
+  correction Journal, exact Refund Liability debit / Customer Receivable
+  credit, and one Refund plus one reversal with net Refund zero.
+- This closes the only exception from the exact account-ID AR proof. Confirmed
+  root cause remains 70 Retail/POS tempo Sale/Dispatch events with missing
+  receivable debit Rp243.006.040. Combined Posted GL receivable Rp-21.150.712 +
+  missing source debit Rp243.006.040 = operational AR Rp221.855.328; residual 0.
+- Added SELECT-only Production gate
+  `supabase/diagnostics/kms_retail_ar_canonical_backlog_repair_preflight.sql`.
+  It does not trust the earlier open-balance-only preflight. It derives the
+  immutable missing source-event set, digest, source/runtime parity, complete
+  projected Journal lines, historical resolver accounts versus the exact KMS
+  workbook authority, period/rule readiness, current receivable routes,
+  Credit Note closure, Finance/Offline safety, and closing equation.
+- Added guarded generic staging runner
+  `scripts/run-readonly-diagnostic-staging.{ps1,mjs}`. It permits only one SQL
+  file under `supabase/diagnostics`, rejects persistent DML/DDL, verifies exact
+  project `yjxpddwrjdczuqyixqwi` and pooler host, and wraps execution in
+  `BEGIN READ ONLY` / `ROLLBACK`.
+- Staging execution result: `STAGING_READ_ONLY_EXECUTION_PASS`, 20 rows, no SQL
+  or schema error. Its missing Production dependencies/data correctly produce
+  blockers; zero runtime target rows are explicitly blocked rather than used as
+  false behavioral evidence. Production was not accessed.
+- Status: `ROOT CAUSE PROVEN / CREDIT NOTE POSTFLIGHT PASS / EXECUTION PREFLIGHT
+  READY`. Next safe step is user-run complete Production preflight and return of
+  all 20 rows. Do not create or run migration `20261007100000`, post the 70
+  events, write an AR-only adjustment, change mappings, or reclassify `1210`
+  until the Production output is classified. Broader KMS COA remediation remains
+  held pending Finance authority.
+
+#### First Production execution-preflight output classified
+
+- Production returned the same exact target: 70 HOLD Events with zero Journals,
+  digest `82018a2acc7673aa7434c614c08d0124`, split into 63 Dispatch Events for
+  Rp223.317.840 and 7 retained Sale Events for Rp19.688.200. Total missing AR
+  debit remains Rp243.006.040.
+- Source/runtime parity, resolver uniqueness/type compatibility, projected
+  Journal balance, posting periods, Dispatch rule sets, Credit Note closure,
+  idle Finance/Offline boundaries, and closing equation all PASS. Projected GL
+  receivable is exactly Rp221.855.328 with residual zero.
+- The workbook blocker is deterministic, not ambiguous: 280 Event/function
+  resolutions are exactly 70 each for COGS `5110 -> 5010100` Rp229.547.654,
+  Receivable `1210 -> 1020100` Rp243.006.040, Inventory
+  `1310 -> 1030100-1` Rp229.547.654, and Revenue
+  `4110 -> 4010100-1` Rp243.006.040. A guarded backfill must write the complete
+  four-line source Journal directly to those exact workbook accounts; editing
+  historical mapping windows or using an AR-only plug remains forbidden.
+- Current/future receivable continuity also requires ending exactly three
+  direct legacy `1210` routes (`BACKOFFICE_SALES_DOWN_PAYMENT`,
+  `CUSTOMER_DEBIT_NOTE`, `SALE_PAYMENT_VERIFIED`) plus the one `1210` fallback,
+  then creating versioned `1020100` replacements. Existing six workbook routes
+  stay unchanged.
+- Existing `1210` credit balance must be zeroed through a separate append-only
+  balanced reclassification against `1020100` after the 70 complete Journals;
+  historical Posted Journals remain immutable.
+- The first reported `runtime_contract` blocker was a `TEST HARNESS FIX`, not
+  runtime drift. A complete wrapper audit then proved the active outer purchase
+  bridge delegates through `post_financial_event_core_before_purchase_step6a`.
+  The corrected preflight retains both source-poster receivable/source guards,
+  resolver ambiguity protection, and the outer purchase branch; its runtime
+  contract passes on staging.
+- Final Production output retained every exact event/amount/route/balance fact
+  and closed the preflight gate. Added migration `20261007100000`, rollback-only
+  behavior, closing postflight, impact map, runbook, and staging compile helper.
+- Migration boundary: KMS only; 70 complete four-line Journals use workbook
+  `1020100/4010100-1/5010100/1030100-1`; three direct rules and one fallback are
+  versioned from `1210` to `1020100`; one append-only Dr 1210 / Cr 1020100
+  Rp73.990.512 reclassification clears the legacy balance. It never mutates
+  Sales/POS/Payment documents, Stock, FIFO, Return, or historical Posted Journals.
+- Evidence: corrected preflight staging read-only execution PASS (21 rows,
+  runtime PASS); migration rollback-only compile PASS with expected staging
+  dependency stop and no commit; postflight staging read-only SQL/schema
+  execution PASS (12 rows, business checks correctly fail because the repair is
+  absent there). Production was not accessed by the agent.
+- Status: `LOCAL READY / PRODUCTION USER ACTION PENDING`. Next safe step is the
+  user running the complete migration file once in Production SQL Editor and
+  returning its result. Do not rerun if ledger `20261007100000` exists and do
+  not create a manual AR-only journal.
+
+#### First Production migration attempt: rollback and harness correction
+
+- User execution stopped at `MIGRATION_STALE_PREFLIGHT: exact Credit Note
+  closure changed` before entering the 70-event posting loop. The surrounding
+  transaction rolled back; no ledger/event/journal/mapping write from
+  `20261007100000` committed.
+- Root cause classification: `TEST HARNESS FIX`. The migration compared the
+  immutable September correction line to workbook account `1020100`, although
+  migration `20260919131000` intentionally resolved Customer Receivable using
+  the historical source-event window. Its Production postflight had already
+  proven the exact Rp78.400 functional line and balanced Journal.
+- Corrected guard now requires exactly one Posted/balanced Rp78.400 correction
+  Journal, exactly two lines, and exact historical resolver accounts for Refund
+  Liability debit / Customer Receivable credit. No runtime/business mutation or
+  expected value was relaxed.
+- Evidence: full corrected migration staging rollback-only compile PASS and
+  expected fail-closed dependency stop; SHA-256
+  `c09838cb8fd0454a42f0176bebc681c9468d7c49172c50e34dfeaa0206097351`;
+  scoped diff check PASS.
+- Status: `LOCAL READY / CORRECTED PRODUCTION RETRY PENDING`. Next safe step is
+  user rerunning the corrected complete migration file. Behavior and postflight
+  remain blocked until that run succeeds.
+
+#### Migration and behavior live; postflight route-audit harness corrected
+
+- User reran migration `20261007100000` successfully. Rollback-only behavior
+  PASS: installed identity, canonical retry idempotency, duplicate Journal
+  rejection, source immutability, ten workbook routes, zero legacy route.
+- First Production postflight passed every accounting/runtime boundary except
+  `kms_retail_ar_repair_route_audit`, which returned zero. This is a
+  `TEST HARNESS FIX`, not missing business/audit data: the query required
+  `finance_master_audit.created_at >= kgs_schema_migrations.applied_at`, while
+  the migration writes all eight audit rows before its ledger row at transaction
+  end.
+- Corrected postflight removes the impossible ledger-time comparison and proves
+  the exact audit lineage through four known old route IDs, four current active
+  replacements, `1210 -> 1020100`, one shared cutover, and exact UPDATE/CREATE
+  counts. No Production write or new migration is required.
+- Evidence: corrected complete postflight `STAGING_READ_ONLY_EXECUTION_PASS`, 12
+  rows; business failures there are expected because staging lacks this
+  Production repair dataset.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / CORRECTED POSTFLIGHT PRODUCTION RERUN
+  PENDING`. Next safe step: user reruns only the corrected postflight file.
+
+#### Corrected Production postflight PASS
+
+- User reran the corrected postflight; all rows pass except the intentional
+  business-boundary `INFO`.
+- Final evidence: ledger 1; 70 Posted source Journals; 280 exact workbook lines;
+  70 Posted Events; 63 Dispatch audits; eight route audits (four UPDATE/four
+  CREATE); ten current `1020100` routes and zero `1210` route; one balanced
+  Rp73.990.512 reclassification; `1020100` Rp221.855.328; `1210` zero;
+  operational AR Rp221.855.328; residual zero; Finance/Offline queues idle.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS / AUTHENTICATED SMOKE
+  AND UAT PENDING`. No migration, behavior, or postflight rerun is required.
+  Next safe step is UI smoke of KMS AR Aging and General Ledger at 7 October
+  2026, then one new Retail tempo transaction when operationally appropriate.
+
+### KMS Finance-approved missing mapping reconciliation (2026-10-09)
+
+- Finance supplied eight exact KMS process/function/account decisions covering
+  Expense advance cash, Expense input tax, pending-supplier receipt clearing/AP,
+  and Supplier Credit/Debit Note input tax/price variance.
+- Added SELECT-only diagnostic
+  `supabase/diagnostics/kms_finance_approved_gap_mapping_preflight.sql`; it
+  verifies exact KMS identity, eight unique decisions, user-owned account
+  identity, canonical account-function type/balance compatibility, active
+  transaction categories, current effective mappings, and idle Finance queue.
+- Static contract audit proves five choices compatible. Three are blocked:
+  `1010200 BANK SUSPENSES` is ASSET/DEBIT while
+  `PURCHASE_UNASSIGNED_CLEARING` requires LIABILITY/CREDIT; both Supplier
+  Credit Note and Supplier Debit Note choices of `1030100-1 PERSEDIAAN BARANG
+  TRADING` are ASSET/DEBIT while `PURCHASE_PRICE_VARIANCE` requires
+  COGS-or-EXPENSE/DEBIT.
+- No mapping, Account, Event, Journal, Stock, Purchase, or Payment mutation was
+  made. Status: `READ-ONLY PREFLIGHT READY / FINANCE REMAP DECISION PENDING`.
+  Next safe step is user execution of the diagnostic in Production and Finance
+  replacement choices for the three blocked lines; do not build activation
+  migration before both are available.
+- Staging evidence on authorized project `yjxpddwrjdczuqyixqwi`:
+  `STAGING_READ_ONLY_EXECUTION_PASS`, eight result rows; Company/account/process
+  checks PASS and the expected three contract incompatibilities are reported as
+  fail-visible blockers. Production was not accessed by the agent.
+
+#### Finance authority accepted; KMS-scoped activation preflight ready
+
+- User explicitly directed implementation to follow all eight Finance choices,
+  including `1010200 BANK SUSPENSES` for unassigned-receipt clearing and
+  `1030100-1 PERSEDIAAN BARANG TRADING` for Supplier Credit/Debit Note price
+  corrections. These choices supersede the earlier request for replacement
+  account decisions.
+- Impact audit found one mandatory derived route: pending-supplier
+  `GOODS_RECEIPT` must credit the same `1010200` account later debited by
+  `GOODS_RECEIPT_SUPPLIER_ASSIGNMENT`; otherwise an in-flight receipt would
+  fail its immutable clearing-account reconciliation.
+- Supplier Credit/Debit Note remains catalog/foundation only. Mapping its price
+  correction to Inventory does not activate Note UI/runtime and must not be
+  represented as FIFO mutation. Canonical spec requires any eventual runtime
+  to allocate value between remaining FIFO inventory and sold-quantity PPV as
+  appropriate, without changing quantity.
+- Added SELECT-only
+  `supabase/diagnostics/kms_finance_approved_gap_activation_preflight.sql`.
+  It validates the eight Finance rows plus one derived clearing route, exact
+  user-owned accounts/categories, two exact controlled compatibility
+  exceptions, current route precedence, no open supplier-pending receipt,
+  relevant history, runtime digests, Finance/Offline boundaries, and migration
+  object absence.
+- Corrected one test-harness count after staging exposed that four mapping rows
+  reuse two exception pairs. Final authorized staging execution:
+  `STAGING_READ_ONLY_EXECUTION_PASS`, 11 rows, every gate PASS/INFO.
+- Status: `IMPACT MAP COMPLETE / PRODUCTION PREFLIGHT USER ACTION PENDING`.
+  No migration exists yet and Production was not accessed by the agent. Next
+  safe step is user execution of the complete activation preflight; migration
+  authoring remains gated by that exact output.
+
+#### Production preflight PASS; guarded activation package local-ready
+
+- User returned the complete Production activation preflight: all non-INFO
+  checks PASS. Exact evidence: nine targets, two exception pairs, no open
+  supplier-pending Receipt, no active Finance queue, no nonterminal Offline
+  submission, target ledger/object absent, and unchanged purchase runtime
+  digests. Seventeen KMS `GOODS_RECEIPT` HOLD Events exist but none is an open
+  supplier-pending Receipt; the migration leaves all 17 untouched.
+- Added migration `20261009100000_kms_finance_approved_gap_activation.sql`,
+  rollback-only behavior, SELECT-only postflight, impact map, runbook, staging
+  compile/verification runners, README status and manifest entry.
+- Migration adds one internal exact compatibility-exception relation, extends
+  the mapping guard to accept only an active exact Company/function/account
+  exception, inserts two KMS-only exception rows, and creates nine active direct
+  mappings with nine Finance Master Rule audit rows. Canonical function types
+  remain unchanged for every non-excepted mapping and Company.
+- Staging evidence on authorized `yjxpddwrjdczuqyixqwi`: full migration
+  rollback rehearsal PASS; combined migration + behavior + seven-row postflight
+  returned `STAGING_ROLLBACK_BEHAVIOR_AND_POSTFLIGHT_PASS`. Behavior resolves all
+  nine nonzero paths, accepts the two exact Finance exceptions, rejects a
+  different incompatible account, and proves no cross-Company exception.
+- Migration SHA-256:
+  `3b27d167a61040f6d75e43cfe43308361c8366a832c73325ef51db6d880f4596`.
+  Production was not accessed by the agent.
+- Status: `LOCAL READY / PRODUCTION MIGRATION USER ACTION PENDING`. Next safe
+  action is the user running the complete migration once, then returning its
+  result before behavior and postflight are run. Supplier Credit/Debit Note is
+  still catalog/foundation only; this rollout does not activate that workflow.
+
+#### Production database closure verified (2026-10-12)
+
+- User installed migration `20261009100000` in Production and returned the
+  complete rollback-only behavior result:
+  `kms_finance_approved_gap_activation_behavior = PASS`. Evidence covers the
+  installed migration identity, all nine nonzero resolver paths, both exact
+  Finance exceptions, rejection of an unapproved incompatible account,
+  cross-Company exception absence, and rollback of the test transaction.
+- User then returned the complete SELECT-only postflight. All contract rows are
+  PASS/INFO: one migration ledger row, nine mappings with no invalid row, nine
+  audit rows, two active exact exceptions, zero active Finance queue, and zero
+  nonterminal Offline submission.
+- Supplier Credit/Debit Note remains `CATALOG_FOUNDATION_ONLY`; no Note runtime,
+  Stock, FIFO, Event, Journal, Purchase-document, Payment, or other-Company
+  history was activated or rewritten by this rollout.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS / AUTHENTICATED SMOKE
+  AND UAT PENDING`. Do not rerun the migration. Next safe step is authenticated
+  KMS UI smoke for Expense Disbursement/Settlement account preview. Supplier
+  Note UI/runtime is outside this rollout.
+# 2026-10-13 - HR REGULAR / DAILY WORKER GROUPING PROTOTYPE LOCAL-READY
+
+- Scope remains only ignored `hr-sandbox/` plus product/handoff documentation.
+  No Supabase, schema, auth, Finance, operational application, or Production
+  runtime was changed.
+- Employee contract now separates `workerGroup` (`REGULAR` or `DAILY_WORKER`)
+  from employment status. Compensation basis is monthly salary for Regular and
+  attendance-approved daily wage for Daily Worker.
+- Directory has All/Regular/Daily Worker grouping, table/detail labels, and one
+  fictional Daily Worker fixture. Organization master includes a separate
+  Worker Group catalog.
+- Payroll workspace and Employee Payroll detail show separate monthly/daily
+  lanes. Daily rate and formula remain intentionally empty; attendance source,
+  half-day/absence/late, holiday/overtime, incentive/deduction, rate authority,
+  cut-off/frequency, tax/BPJS, leave, approval and correction are unresolved
+  product decisions.
+- Evidence: `npm run lint` PASS; TypeScript/Vite `npm run build` PASS; preview
+  HTTP 200; built bundle contains all grouping/payroll-boundary labels. Browser
+  visual automation could not connect, so manual click/visual smoke remains.
+- Status: `LOCAL SANDBOX / NO DATABASE OR PRODUCTION EFFECT / MANUAL VISUAL
+  SMOKE PENDING`.
+
+# 2026-10-12 - BFF Finance configuration clone from KGFF
+
+- User created active Company code `BFF` and requested its Finance settings be
+  duplicated from `KGFF`.
+- Scope is Finance master/configuration only: user-owned COA, current direct
+  mappings, fallbacks, Posting Rule Sets, Finance Company policy and required
+  Retail category-account runtime scope. Opening balance, Accounting Period,
+  Event, Journal, balance, Stock/FIFO, Sales, Purchase, Payment, Customer,
+  Product, Tax, membership and other Companies are excluded.
+- Added impact map
+  `docs/audits/BFF_KGFF_FINANCE_CONFIGURATION_CLONE_IMPACT_2026-10-12.md` and
+  SELECT-only preflight
+  `supabase/diagnostics/bff_kgff_finance_clone_preflight.sql`.
+- The preflight resolves both Companies by exact code, proves the installed KGFF
+  source chain, validates the current 37/92/14 Finance authority, inventories
+  BFF automatic baseline/collisions/history/policy, checks exact Transaction
+  Category resolution, Posting Rules, runtime scope, Finance queue, Offline
+  work and migration absence.
+- Status: `IMPACT MAP COMPLETE / PRODUCTION PREFLIGHT USER ACTION PENDING`.
+  Production was not accessed. No migration exists. Next safe step is for the
+  user to run the complete preflight in Production and return every output row;
+  do not author or execute a clone migration until that state is classified.
+- Authorized staging execution returned
+  `STAGING_READ_ONLY_EXECUTION_PASS` with all 14 result rows. Its Company/source
+  contract blockers are expected because staging does not contain the new BFF
+  tenant or the Production KGFF clone state; they are not Production business
+  evidence. This run proves the single-statement diagnostic executes against
+  the current staging schema. The optional Finance-exception inventory safely
+  handles staging before and Production after migration `20261009100000`.
+- Production preflight returned all core contracts PASS but correctly blocked on
+  three BFF Transaction Categories absent from automatic onboarding:
+  `GR-SUPPLIER-ASSIGN`, `ODR-SALE-DISPATCHED`, and
+  `ODR-SALE-PAYMENT-VERIFIED`. BFF otherwise has the exact fresh baseline:
+  37 system COA, zero user COA, 36 active direct rules, seven fallbacks, three
+  approved Posting Rule Sets, zero period/history/queue/Offline rows, and no
+  account collision. KGFF source remains exact 37/92/14 with four current
+  approved Posting Rule Sets.
+- Added SELECT-only blocker detail
+  `supabase/diagnostics/bff_kgff_finance_clone_blocker_detail.sql`. It captures
+  the exact three category definitions/dependents, source and target digests,
+  system-account runtime references, Sales mode, Finance exception counts and
+  runtime-function digests. The original optional exception XPath was corrected
+  to match `query_to_xml(..., tableforest=true)` output.
+- Migration authoring remains blocked until the complete Production detail is
+  returned; the missing categories may then be recreated from exact KGFF rows
+  with BFF-owned IDs as part of the guarded Finance cutover.
+- Authorized staging execution of the detail returned
+  `STAGING_READ_ONLY_EXECUTION_PASS` with eight rows. Expected Company/source
+  blockers remain because staging does not contain Production KGFF/BFF data;
+  this is schema/SQL execution evidence only and is not accepted as business
+  evidence.
+
+## Production detail classified; guarded BFF Finance package local-ready
+
+- Production blocker detail proves the exact three BFF-owned categories to
+  create: `GR-SUPPLIER-ASSIGN`, `ODR-SALE-DISPATCHED`, and
+  `ODR-SALE-PAYMENT-VERIFIED`, with exact names/descriptions, 2/12/6 source
+  mapping rows, and the two applicable approved Posting Rule Sets.
+- Exact KGFF source digests are locked for 37 accounts, 92 direct mappings, 14
+  fallbacks and four Posting Rule Sets. Exact BFF automatic baseline digests,
+  36/7/3 active runtime references, Retail sales mode, zero Finance exception,
+  and the three active runtime-function digests are also guarded.
+- Added migration
+  `supabase/migrations/20261012100000_bff_kgff_finance_configuration_clone.sql`,
+  rollback-only behavior, SELECT-only postflight, staging compile runners and
+  rollout runbook. The migration clones only BFF-owned Finance configuration,
+  follows DRAFT-to-APPROVED Posting Rule lifecycle, versions/deactivates the
+  automatic baseline safely, remaps the active Expense Category, and extends
+  only the existing Retail category/Return/Dispatch runtime scope to BFF.
+- Staging evidence: both diagnostics execute read-only; every migration block,
+  behavior file and postflight compile against the current schema; each
+  Production-only guard stops fail-closed at its expected missing staging state.
+  This is schema/guard evidence, not Production behavioral proof.
+- Migration SHA-256:
+  `9f3dd58a26628c5db15b822b1f88773621915358d8c4daf0867c33d000bbe537`.
+- Status: `LOCAL READY / PRODUCTION PREFLIGHT AND DETAIL PASS / STAGING SCHEMA
+  COMPILE PASS / PRODUCTION MIGRATION USER ACTION PENDING`. Production was not
+  accessed by the agent. Next safe step is the user running the complete
+  migration file once and returning only its result before behavior/postflight.
+  Do not copy opening balances or operational masters in this rollout.
+
+### Production migration installed; behavior gate pending
+
+- User confirmed successful installation of complete migration
+  `20261012100000`. This establishes `DATABASE LIVE` only; the migration must
+  not be rerun.
+- No behavior or postflight output has been returned yet. Next safe action is
+  the rollback-only
+  `supabase/tests/bff_kgff_finance_configuration_clone_behavior.sql`, followed
+  by postflight only after behavior PASS.
+- Status: `DATABASE LIVE / BEHAVIOR, POSTFLIGHT, AUTHENTICATED SMOKE AND UAT
+  PENDING`.
+
+### First behavior attempt: temporary-result harness corrected
+
+- Production behavior execution returned `42P01` for
+  `bff_finance_clone_behavior_result` when the SQL Editor read the temporary
+  output relation after the assertion block. Migration `20261012100000` is not
+  implicated and must not be rerun.
+- Classification: `TEST HARNESS FIX`. The behavior file now keeps the same
+  migration, resolver, fallback, category routing, cross-Company, Posting Rule,
+  and zero-history assertions but emits its PASS row directly with no temporary
+  relation. The outer transaction still rolls back all fixture writes.
+- Next safe action: rerun the complete corrected behavior file once. Postflight
+  remains pending until that result is PASS.
+- Corrected file staging evidence: authorized project
+  `yjxpddwrjdczuqyixqwi` returned
+  `STAGING_SCHEMA_COMPILE_AND_GUARD_PASS`; the behavior block compiled and
+  stopped only at the expected missing installed-BFF-migration precondition.
+
+### Corrected Production behavior PASS
+
+- User returned PASS for the corrected rollback-only behavior. The executed
+  coverage proves the installed migration identity, all 92 nonzero direct
+  resolver paths, all 14 user-owned fallbacks, BFF Trading Revenue/Inventory
+  category routing, cross-Company route rejection, balanced approved Posting
+  Rule Sets, zero Event/Journal effect, and rollback of fixture writes.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT, AUTHENTICATED SMOKE AND
+  UAT PENDING`. Next safe action is the complete SELECT-only postflight. Do not
+  rerun migration `20261012100000`.
+
+### Production postflight PASS; BFF Finance database scope closed
+
+- User returned the complete closing postflight with every contract PASS and
+  only the intended business-boundary INFO row.
+- Final database evidence: ledger 1; 37 valid user-owned COA; 92 direct
+  mappings; 14 fallbacks; four approved Posting Rule Sets; all three exact
+  Transaction Categories; one Finance policy and one user-owned Expense
+  Category account; zero active system account and zero active system runtime
+  reference; Retail helper/Return/Dispatch scope all present; zero Event,
+  Journal, Accounting Period or opening-balance effect.
+- Status: `DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS / AUTHENTICATED
+  SMOKE AND UAT PENDING`. Migration, behavior and postflight must not be rerun.
+  Opening balance and operational master clone are separate scopes.
+
+# 2026-10-13 - HR TALENTA PARITY RESET / RESEARCH GATE ACTIVE
+
+- User explicitly requires the complete HR product to use Mekari Talenta as the
+  reference for Backoffice web, Employee Mobile and shared tablet attendance.
+- User clarified that visual parity is not required. MADS may use its own UI and
+  branding; the required parity is the complete function and workflow contract,
+  including actors, fields, states, transitions, calculations, approvals,
+  history, audit and downstream effects.
+- Audit proves the existing prototype was not built from a feature-level
+  traceability matrix. The previous `LOCAL SANDBOX READY` claim for Payroll
+  Component and Employee Loan is revoked.
+- Added
+  `docs/audits/HR_TALENTA_PARITY_RESEARCH_GATE_2026-10-13.md` with evidence
+  classes, first official-source inventory, current prototype conflicts, impact
+  map and a mandatory no-code approval gate.
+- Known invalid assumptions include placing Loan in Payroll, direct assignment
+  from component cards, the invented Loan approval/disbursement lifecycle, and
+  Employee App Loan submission without a reviewed source.
+- No HR code, database, Supabase, production runtime or deployment was changed
+  in this reset. Status: `RESEARCH IN PROGRESS / IMPLEMENTATION BLOCKED`.
+- Next safe step: complete the full feature/role/state parity matrix, classify
+  every existing `hr-sandbox/` flow as KEEP/REWORK/REMOVE/UNKNOWN_BLOCKED, and
+  obtain user approval before editing the prototype.
+
+# 2026-10-13 - SUPERSEDED: HR PAYROLL COMPONENT / EMPLOYEE LOAN PROTOTYPE LOCAL-READY
+
+- Scope is restricted to ignored local `hr-sandbox/` fixtures/UI plus tracked
+  documentation. No database, Supabase, Production, Finance or deployment was
+  accessed.
+- Added typed Payroll Component definitions for Allowance, Deduction and
+  employer Benefit; calculation methods are fixed monthly, approved-attendance
+  daily, and one-time input. Employee assignment remains separate from master.
+- Added typed Employee Loan contracts and installment schedules. Loan remains
+  separate from manual deductions; only a due installment may surface in a
+  future payroll snapshot. Draft Loan has zero business effect.
+- Payroll workspace now has Ringkasan, Komponen Payroll and Employee Loan tabs,
+  with fictional component, assignment, active Loan and Draft Daily Worker Loan
+  fixtures. Employee detail has a Komponen & Loan tab.
+- Follow-up corrected the initial read-only/cosmetic controls. Component creation
+  and eligible-Employee assignment now mutate local session state. HR Loan can
+  move Draft -> Submitted -> Approved -> Active with simulated schedule creation;
+  Employee App can submit a Loan request that appears in Backoffice in the same
+  session. Reload intentionally resets all state.
+- Daily Worker pay formula, shortfall handling, early settlement, direct Loan
+  repayment, restructure/resignation, interest/fees, tax/BPJS, approvals, COA
+  and final calculation order remain explicit unresolved business decisions.
+- Verification: `npm run lint` PASS; TypeScript/Vite `npm run build` PASS;
+  local preview HTTP 200. Browser-controlled visual smoke could not connect in
+  this session, so visual interaction remains `MANUAL PENDING` and is not
+  claimed as PASS.
+- Status: `LOCAL SANDBOX READY / NO DATABASE OR PRODUCTION EFFECT / MANUAL
+  VISUAL SMOKE PENDING`.
+## 2026-10-16 - HR Payment Schedule PAY-03 local-ready
+
+- Added a local Company-scoped Payment Schedule engine and Payroll UI for
+  Monthly, Weekly, Daily and Custom cycles. Supported proven fields are name,
+  description, optional active same-Company parent/inheritance, tax toggle,
+  payday, attendance/payroll cutoff, previous-month attendance, start date and
+  custom duration.
+- Only a Super Admin holding HR Settings and Payroll permission may create,
+  edit, activate or inactivate. Draft has zero Payroll effect; names are unique
+  per Company; stale writes, cross-Company parents, invalid cycle fields and
+  mutation-key reuse fail closed. Audit stores an immutable request
+  fingerprint so exact retries remain stable even after later row versions.
+- Update Component approval ownership remains configurable by Company using
+  the role catalog available in the prototype. No HR/Finance/Director role was
+  hardcoded as the final owner because the user has not made that decision.
+- Evidence PASS: PAY-03 behavior; all existing approval/Loan/Overtime/Payroll
+  Component/Update Component/Time Request suites; lint; production build;
+  local HTTP 200 and bundle-label check.
+- Manual click/visual smoke is intentionally deferred and appended to
+  `docs/audits/HR_CONSOLIDATED_UAT_CHECKLIST_2026-10-16.md`.
+- Status: `PAY-01 + PAY-02 + PAY-03 LOCAL READY / DATABASE NOT STARTED /
+  CLIENT NOT DEPLOYED / SMOKE + UAT DEFERRED`. Run Payroll, schedule assignment,
+  tax/BPJS, lock/publish, payslip and Finance remain not implemented.
+## 2026-10-16 - HR Employee Payroll Info PAY-04 local-ready
+
+- Implemented the user-approved optional approval contract per Company. Super
+  Admin alone configures ON/OFF, editor role and ordered approver roles.
+  Approval OFF applies immediately; approval ON preserves active values until
+  final approval. Existing transactions retain a policy/route snapshot.
+- Added effective-dated Employee Payroll Info for active Payment Schedule,
+  Monthly/Daily Salary Type, four prorate modes with custom divisor, Overtime
+  eligibility, note and source-linked history. Basic salary/component values
+  remain on their existing historical adjustment paths.
+- Behavior proves direct and approval paths, policy snapshot, wrong-role and
+  Super Admin boundary, schedule identity, custom-prorate validation, immutable
+  history, cancellation and retry/conflict. Every prior HR suite, lint, build,
+  HTTP preview and bundle-label check also pass.
+- Manual smoke is deferred in the consolidated UAT checklist. Status:
+  `PAY-01 THROUGH PAY-04 LOCAL READY / DATABASE NOT STARTED / CLIENT NOT
+  DEPLOYED / SMOKE + UAT DEFERRED`.
+- Automatic Run Payroll nominal completion remains blocked by unresolved
+  overtime-money, tax/BPJS and deduction rules. PAY-05B may carry an explicitly
+  entered HR final amount through Finance reconciliation, but must not be
+  represented as automatic payroll calculation or a published payslip.
+
+## 2026-10-16 - HR Daily Worker payroll formula and acceptance source decided
+
+- User approved Daily Worker source logic: approved attendance through cutoff;
+  full required hours earn the daily rate; short attendance is paid hourly as
+  daily rate divided by required hours times actual hours; accepted-call no-show
+  earns zero and must warn; cuti/izin/libur entitlement does not apply; excess
+  hours remain separate approved Overtime.
+- Communication remains manual through WhatsApp. HR records the agreed work
+  call in the application; an active versioned Daily Worker assignment is the
+  operational acceptance record.
+- The schedule source and dynamic kiosk eligibility are locally implemented as
+  described in the latest handoff section. Wage/prorata/no-show projection is
+  still pending; no nominal Payroll, database or Production effect exists.
+
+## 2026-10-29 - MADS Retail E2E / KGFF opening checkpoint
+
+- Added `qa-e2e/` with a Windows-safe Playwright runner for built Backoffice
+  and POS PWA on ports 3197/5197. System Chrome is used; `npm.cmd test` is
+  `7/7 PASS`.
+- Browser coverage includes Backoffice protected boundary, POS public boundary
+  without external Supabase calls and KGFF-shaped Retail Catalog/Customer/
+  Pricelist/Cash/Draft/Confirm client orchestration. Source contracts cover
+  remaining approved POS operations and guarded Opening Stock.
+- Fixed Backoffice login label/input association. Updated Sales Return UI
+  contract for the current navigation catalog and wording; this is a
+  `TEST HARNESS FIX`, not a business-flow change.
+- Local evidence: Backoffice lint PASS with zero errors/five existing warnings;
+  build/TypeScript PASS; PWA lint/build PASS; invoice command 43/43 and all
+  available command contracts PASS.
+- Production was not accessed by the agent. The user reran all five KGFF
+  SELECT-only Production gates on 2026-10-29: Location, Finance, Product/Tax,
+  Commercial/Policy and procurement/session are PASS with zero business/
+  opening effect. Authenticated KGFF UI smoke remains pending.
+- Opening Stock runtime exists. AR/AP/Customer Deposit/GL opening remain
+  `MENUNGGU RUNTIME` and data collection only. Do not inject or fake them.
+- Full report:
+  `docs/audits/MADS_RETAIL_E2E_KGFF_OPENING_READINESS_2026-10-29.md`.
+- Next safe step: perform the authenticated read-only KGFF UI smoke. Opening
+  Stock preparation may follow; other opening datasets stay held until their
+  runtimes exist.
+# 2026-10-29 - Backoffice E2E/form requiredness audit
+
+- Added `qa-e2e/tests/backoffice-form-contract.spec.ts` to compare active
+  Backoffice mutation forms with their exact parser/API contracts.
+- Inventory requiredness is consistent: Adjustment/Transfer/Opening notes are
+  optional; Adjustment reason and zero-HPP/override reasons remain correctly
+  required or conditional.
+- Required lifecycle reasons audited across Purchase/Sales/Finance all have a
+  visible input; no missing reason field was proven in this set.
+- Ten optional metadata fields have unclear UI labels across Goods Receipt,
+  Supplier Order, Backoffice Invoice, Customer Receipt, and Supplier Payment.
+  Supplier Payment evidence is especially ambiguous because `Wajib HTTPS`
+  describes format, while the parser makes the field itself optional.
+- Evidence: `qa-e2e npm.cmd test` => `10 PASS / 2 FAIL`; the two failures are
+  retained product-contract findings, not hidden or weakened assertions.
+- Status: `LOCAL AUDIT / PRODUCT UI FIX PENDING / AUTHENTICATED DATABASE E2E
+  PENDING`. No Production/database/schema/deployment mutation occurred.
+- Full impact and field list:
+  `docs/audits/BACKOFFICE_E2E_AND_FORM_REQUIREDNESS_AUDIT_2026-10-29.md`.
+
+# 2026-10-29 - Finance mapping worklist local-ready
+
+- User requested a Finance-owned place to review and fill conditional mappings
+  without the system choosing accounts. The existing Company-scoped
+  `Kelengkapan mapping` view is now the worklist rather than a new module.
+- It defaults to unresolved rows, adds unresolved/conditional/required/
+  optional/all filters and search, and opens the existing versioned mapping
+  editor with the exact category and function preselected. Finance still
+  selects the account, status and effective period.
+- Direct impact is limited to Backoffice presentation and pure filtering. The
+  existing API/RPC, tenant/role guards, account compatibility, effective-date
+  versioning and Posted Journal immutability remain unchanged. No Production,
+  database, mapping, Event, Journal, Stock or FIFO mutation occurred.
+- Evidence: focused ESLint PASS; finance completeness unit contract PASS;
+  Next.js build/TypeScript PASS with 88 routes; new Playwright source contract
+  PASS. Full QA is `11 PASS / 2 FAIL`; the two failures are retained prior
+  optional-field-label findings and are not weakened.
+- Opening entry boundary was rechecked. Opening Stock is available through
+  `Inventory > Stok Awal`; create/open October 2026 period first and use
+  effective date `2026-10-29`. AR, AP, Customer deposit and non-subledger GL
+  opening remain `MENUNGGU RUNTIME` and have no safe entry page. Ordinary Sale,
+  Receipt, Supplier Invoice, Payment, Manual Journal and direct SQL must not be
+  used as substitutes.
+- Status: `LOCAL READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE AND UAT
+  PENDING`. Next safe step is deploy only when authorized, then authenticated
+  Finance smoke of filter/search/prefill/save against a non-Production fixture.
+  Separately design the guarded opening subledger/GL package before entering
+  AR/AP balances.
