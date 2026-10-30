@@ -60,7 +60,6 @@ import {
   adoptBackofficeCutoverSaleDraft,
   cancelSaleDraft,
   closeCashierSession,
-  confirmSalesOrder,
   getCurrentSession,
   heartbeatSaleDraftLock,
   listSaleDrafts,
@@ -68,11 +67,13 @@ import {
   loadBootstrap,
   loadCatalog,
   loadCompanies,
+  loadNegativeStockReadiness,
   loadReceipt,
   loadSalesDeliveryDocument,
   loadSalesInvoiceDocument,
   loadResolvedSaleLines,
   openCashierSession,
+  postSale,
   previewPosSalePrices,
   quickCreatePosCustomer,
   recordSalesDocumentPrint,
@@ -2965,36 +2966,52 @@ export default function App() {
         finalDraft = await persistDraft(pricedDraft, [], negativeStockReason)
       }
 
-      const confirmation = await confirmSalesOrder(
+      const postResult = await postSale(
         finalDraft.salesId,
         finalDraft.masterVersion,
         crypto.randomUUID(),
-        negativeStockReason || null,
       )
-      const orderNo = finalDraft.draftNo || String(confirmation.salesId ?? '')
+      if (postResult.documentStatus === 'DRAFT') {
+        const nextDraft = {
+          ...finalDraft,
+          masterVersion: Number(postResult.masterVersion),
+        }
+        setDraft(nextDraft)
+        setShortages(
+          Array.isArray(postResult.shortages)
+            ? (postResult.shortages as Array<Record<string, unknown>>)
+            : [],
+        )
+        let shortageMessage =
+          'Stok minus tidak dapat diotorisasi untuk transaksi ini. Bundle dan transaksi Offline tetap tidak mendukung stok minus.'
+        try {
+          const readiness = await loadNegativeStockReadiness()
+          if (readiness.blockerCode) {
+            shortageMessage = friendlyError(readiness.blockerCode)
+          }
+        } catch {
+          // The canonical Draft result is authoritative even if the optional
+          // readiness diagnostic cannot be refreshed.
+        }
+        setError(`${shortageMessage} Transaksi tetap Draft tanpa efek final.`)
+        return
+      }
+
+      const finalReceipt = await loadReceipt(companyId, finalDraft.salesId)
+      setReceipt(finalReceipt)
       try {
-        const [invoice, delivery] = await Promise.all([
-          loadSalesInvoiceDocument(finalDraft.salesId),
-          loadSalesDeliveryDocument(finalDraft.salesId),
-        ])
+        const invoice = await loadSalesInvoiceDocument(finalDraft.salesId)
+        const delivery = fulfillmentMode === 'DELIVERY'
+          ? await loadSalesDeliveryDocument(finalDraft.salesId)
+          : null
         setSalesDocuments({ invoice, delivery })
       } catch {
         setSalesDocuments(null)
       }
-      setConfirmedOrder({
-        orderNo,
-        orderRuntimeStatus: String(
-          confirmation.orderRuntimeStatus ?? 'RESERVED',
-        ),
-        plannedOrderDate: finalDraft.plannedOrderDate,
-      })
-      setNotice(
-        `${orderNo} dikonfirmasi. Stok dicadangkan dan menunggu proses gudang.`,
-      )
+      setNotice('Penjualan Retail berhasil diposting oleh server.')
       resetSale()
       await refreshCatalog(cashierSession)
       await refreshSaleDrafts(cashierSession)
-      await refreshSalesOrders(cashierSession)
     } catch (reason) {
       const code = errorMessage(reason)
       if (
@@ -5038,7 +5055,7 @@ export default function App() {
                     {busy
                       ? 'Memproses...'
                       : isOnline
-                        ? 'Konfirmasi Order'
+                        ? 'Selesaikan Transaksi'
                         : 'Offline belum didukung'}
                   </button>
                 </div>

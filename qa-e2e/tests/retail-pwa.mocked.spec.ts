@@ -23,6 +23,8 @@ const jsonHeaders = {
   'content-type': 'application/json',
 }
 
+const pwaBaseUrl = process.env.PWA_QA_URL ?? 'http://127.0.0.1:5197'
+
 async function reply(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, headers: jsonHeaders, body: JSON.stringify(body) })
 }
@@ -111,10 +113,14 @@ async function installRetailServerMock(page: Page) {
           grandTotalAfterRounding: 25000, deliveryFeeAmount: 0,
           deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE',
         },
-        confirm_pos_sales_order: {
-          salesId: IDS.sale, orderRuntimeStatus: 'RESERVED', masterVersion: 2,
+        post_pos_sale_with_pricelist: {
+          salesId: IDS.sale, documentStatus: 'POSTED', masterVersion: 2,
         },
-        get_pos_sales_invoice_document: null,
+        get_pos_sales_invoice_document: {
+          invoiceSnapshotId: '80000000-0000-4000-8000-000000000001',
+          invoiceNo: 'INV-QA-0001', invoiceDate: '2026-10-30', snapshotVersion: 1,
+          snapshotProvenance: 'LIVE_POST', snapshot: {},
+        },
         get_pos_sales_delivery_document: null,
         get_pos_negative_stock_readiness: {
           enabled: false, blockerCode: 'FEATURE_DISABLED', onlineOnly: true,
@@ -152,7 +158,22 @@ async function installRetailServerMock(page: Page) {
       product_categories: [{ id: IDS.category, category_name: 'Frozen Food' }],
       company_features: { is_enabled: true },
       sales_details: [],
-      sales_headers: [],
+      sales_headers: objectResponse ? {
+        receipt_snapshot: {
+          saleId: IDS.sale, invoiceNo: 'INV-QA-0001', postedAt: '2026-10-30T04:00:00.000Z',
+          subtotal: 25000, itemDiscount: 0, orderDiscount: 0,
+          totalBeforeRounding: 25000, roundingAdjustment: 0, grandTotal: 25000,
+          deliveryFeeAmount: 0, customerSurcharge: 0, amountPaid: 25000,
+          lines: [{
+            productName: 'Ayam Frozen QA', sku: 'QA-AYAM', uomName: 'PACK',
+            quantity: 1, unitPrice: 25000, discount: 0, taxAmount: 0, lineTotal: 25000,
+          }],
+          payments: [{
+            paymentMethodName: 'Cash', amount: 25000, configuredFee: 0,
+            customerSurcharge: 0, tenderedAmount: 25000, changeAmount: 0,
+          }],
+        },
+      } : [],
       sales_payments: [],
     }
     const response = rows[table]
@@ -162,9 +183,9 @@ async function installRetailServerMock(page: Page) {
   return rpcCalls
 }
 
-test('runs the KGFF Retail catalog, pricing, payment, Draft and confirmation flow in browser', async ({ page }) => {
+test('posts KGFF Pickup directly as Retail with receipt and Invoice but without Order reservation or Surat Jalan', async ({ page }) => {
   const rpcCalls = await installRetailServerMock(page)
-  await page.goto('http://127.0.0.1:5197')
+  await page.goto(pwaBaseUrl)
   await page.getByLabel('Email').fill('qa.cashier@example.test')
   await page.getByLabel('Password').fill('not-a-real-password')
   await page.getByRole('button', { name: 'Masuk' }).click()
@@ -182,8 +203,11 @@ test('runs the KGFF Retail catalog, pricing, payment, Draft and confirmation flo
   await expect(paymentDialog.getByText('Rp 25.000', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Simpan Draft' }).click()
   await expect(page.getByText(/Draft tersimpan/)).toBeVisible()
-  await page.getByRole('button', { name: 'Konfirmasi Order' }).click()
-  await expect(page.getByText(/DRF-QA-0001 dikonfirmasi/)).toBeVisible()
+  await page.getByRole('button', { name: 'Selesaikan Transaksi' }).click()
+  await expect(page.getByText('Transaksi Posted')).toBeVisible()
+  await expect(page.getByText('INV-QA-0001')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Invoice A4' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Surat Jalan' })).toHaveCount(0)
 
   for (const required of [
     'get_company_branding',
@@ -193,6 +217,9 @@ test('runs the KGFF Retail catalog, pricing, payment, Draft and confirmation flo
     'get_pos_payment_method_references',
     'preview_pos_sale_prices',
     'save_pos_sale_draft_with_pricelist',
-    'confirm_pos_sales_order',
+    'post_pos_sale_with_pricelist',
+    'get_pos_sales_invoice_document',
   ]) expect(rpcCalls, `Retail flow must call ${required}`).toContain(required)
+  expect(rpcCalls, 'Pickup Retail must not enter the Order/reservation runtime').not.toContain('confirm_pos_sales_order')
+  expect(rpcCalls, 'Pickup Retail must not create or load a Surat Jalan').not.toContain('get_pos_sales_delivery_document')
 })

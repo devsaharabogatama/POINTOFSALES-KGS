@@ -5,7 +5,7 @@ Sasaran pembaca: pemilik perusahaan, administrator, manajer toko, staf gudang, k
 
 Manual ini menjelaskan penggunaan Backoffice dan PWA MADS berdasarkan fitur yang tersedia saat ini. Menu dan tindakan yang terlihat dapat berbeda karena akses ditentukan oleh perusahaan aktif, peran, pengaturan modul, penugasan toko, serta pembatasan khusus pengguna.
 
-> Catatan penting: status **Draft**, **Diajukan**, atau **Menunggu Persetujuan** belum menimbulkan dampak final terhadap stok, kas, utang, saldo pelanggan, atau jurnal. Khusus penjualan, **Konfirmasi Order** membuat `Reserved Out`, tetapi belum mengurangi `On Hand`, FIFO, atau membuat jurnal penjualan. Stok dan FIFO baru berkurang saat Surat Jalan di-**Dispatch**. Dampak keuangan mengikuti event dan antrean posting Finance.
+> Catatan penting: status **Draft**, **Diajukan**, atau **Menunggu Persetujuan** belum menimbulkan dampak final terhadap stok, kas, utang, saldo pelanggan, atau jurnal. Pada mode **Retail**, **Selesaikan Transaksi** mem-posting penjualan langsung; Pickup menghasilkan receipt/Invoice tanpa Surat Jalan, sedangkan Delivery juga menghasilkan Surat Jalan. Pada mode **Backoffice**, Quotation, Sales Order, fulfillment, dan invoicing mengikuti lifecycle Backoffice yang terpisah. Mode aktif ditentukan oleh pengaturan proses penjualan Company, bukan oleh checkbox pengiriman.
 
 Checklist UAT, skenario negatif, edge case, serta daftar area yang masih rawan
 tersedia pada [Matriks UAT dan Risk Register](USER_UAT_EDGE_CASE_RISK_REGISTER.md).
@@ -812,23 +812,20 @@ aktif dapat ditolak.
 2. Pilih produk/Bundle dan kuantitas.
 3. Pilih pelanggan atau Pelanggan Umum.
 4. Periksa pricelist dan ubah bila diizinkan.
-5. Pilih transaksi langsung, TEMPO, atau tanggal Order terjadwal sesuai
-   kebutuhan dan kewenangan.
+5. Pilih transaksi langsung atau TEMPO sesuai kebutuhan dan kewenangan.
 6. Bila barang dikirim, aktifkan **Perlu dikirim** sebelum konfirmasi. Nama
    penerima wajib; nomor telepon, alamat, rencana kirim, catatan, dan ongkir
    boleh kosong. Data ini hanya menjadi snapshot transaksi dan tidak mengubah
    master Customer.
 7. Periksa diskon, pajak, pembulatan, ongkir, tanggal, dan total.
 8. Pilih metode pembayaran dan isi nilai diterima.
-9. Klik **Konfirmasi Order**. Sistem menghitung ulang harga dan membuat
-   reservasi; `On Hand`, FIFO, dan jurnal penjualan belum berubah.
+9. Klik **Selesaikan Transaksi**. Server menghitung ulang harga dan mem-posting
+   transaksi Retail secara atomik. Stock, FIFO, Movement, Payment, dan event
+   Finance hanya berubah setelah hasil final berhasil.
 10. Setelah sukses, keranjang kembali ke awal.
 11. Buka nota/invoice pada tab baru dan cetak.
 12. Untuk transaksi Delivery, cetak Surat Jalan.
-13. Gudang melakukan Dispatch parsial atau penuh. Pada tahap inilah `On Hand`,
-    FIFO, Movement, dan event komersial Dispatch berubah.
-14. Gudang mengonfirmasi diterima tanpa efek stok kedua.
-15. Finance meninjau pembayaran dan memproses controlled posting queue.
+13. Finance meninjau event dan controlled posting queue sesuai status transaksi.
 
 Jika kebijakan **Buat Surat Jalan untuk semua transaksi** di Profil Perusahaan
 aktif, pilihan **Perlu dikirim** pada transaksi baru otomatis tercentang. Data
@@ -836,9 +833,10 @@ penerima, telepon, dan alamat diambil dari Customer yang dipilih bila tersedia.
 Kasir tetap dapat mengubah pilihan serta data pengiriman sebelum menyimpan atau
 mem-posting transaksi; draft lama mempertahankan pilihannya.
 
-Konfirmasi, Dispatch, dan posting Finance masing-masing bersifat atomik serta
-idempoten. Harga, reservasi, stok/FIFO, payment, event, dan jurnal dihitung
-server, bukan dari nilai buatan client.
+Posting Retail dan posting Finance masing-masing bersifat atomik serta
+idempoten. Harga, stock/FIFO, payment, event, dan jurnal dihitung server, bukan
+dari nilai buatan client. Quotation/Sales Order Backoffice tidak memakai tombol
+atau lifecycle checkout Retail ini.
 
 ### Ongkir
 

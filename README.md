@@ -1,5 +1,14 @@
 # MADS — Management Distribution System
 
+> **POS Retail direct checkout correction (2026-10-30):** mode Company menjadi
+> switch proses. `RETAIL_CONFIRM_INVOICE` memakai finalizer Retail langsung;
+> Pickup menghasilkan receipt/Invoice tanpa Surat Jalan dan Delivery dapat
+> menghasilkan Surat Jalan. Runtime Quotation/Sales Order Backoffice tetap
+> terpisah dan tidak diubah. PWA lint/build, source contract `7/7`, dan mocked
+> Pickup browser flow `1/1` PASS. Status: `LOCAL READY / CLIENT NOT DEPLOYED /
+> AUTHENTICATED SMOKE AND UAT PENDING`. Detail:
+> [impact map](docs/audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md).
+
 > **Finance Saldo Awal direct-entry (2026-10-29):** paket lokal baru
 > menambahkan workspace **Finance > Jurnal Keuangan > Saldo Awal** untuk Draft
 > GL serta satu saldo awal agregat per Customer/Supplier tanpa histori invoice

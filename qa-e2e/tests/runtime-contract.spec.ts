@@ -17,7 +17,7 @@ test('every declared Backoffice navigation view has an active rendering branch',
   expect(missing, `views without a render branch: ${missing.join(', ')}`).toEqual([])
 })
 
-test('Retail runtime keeps canonical Draft, price, confirm, payment and offline boundaries', async () => {
+test('Retail checkout keeps canonical Draft, price, direct posting, payment and offline boundaries', async () => {
   const [app, runtime] = await Promise.all([
     read('pwa/src/App.tsx'),
     read('pwa/src/lib/pos.ts'),
@@ -25,15 +25,29 @@ test('Retail runtime keeps canonical Draft, price, confirm, payment and offline 
   for (const rpc of [
     'save_pos_sale_draft_with_pricelist',
     'preview_pos_sale_prices',
-    'confirm_pos_sales_order',
+    'post_pos_sale_with_pricelist',
     'get_pos_payment_method_references',
     'get_pos_stock_availability',
   ]) expect(runtime).toContain(rpc)
+  const checkout = app.match(/async function postSaleWithNegativeReason[\s\S]*?\n  function resetSale/)?.[0]
+  expect(checkout, 'active Retail checkout function must remain discoverable').toBeTruthy()
+  expect(checkout).toContain('postSale(')
+  expect(checkout).not.toContain('confirmSalesOrder(')
+  expect(checkout).toContain("fulfillmentMode === 'DELIVERY'")
+  expect(checkout).toContain('loadSalesDeliveryDocument')
   expect(app).toContain('PAYMENT_LEG_TOTAL_MISMATCH')
   expect(app).toContain('NEGATIVE_STOCK_REASON_REQUIRED')
   expect(app).toContain('Simpan Offline')
   expect(app).toContain('BELUM TERSINKRON')
-  expect(app).toContain('Konfirmasi Order')
+  expect(app).toContain('Selesaikan Transaksi')
+})
+
+test('Backoffice Sales Order remains on its separate canonical runtime', async () => {
+  const migration = await read('supabase/migrations/20260908120000_backoffice_sales_order_runtime.sql')
+  expect(migration).toContain('CREATE FUNCTION public.confirm_backoffice_sales_order')
+  expect(migration).toContain('private.transition_backoffice_sales_order')
+  expect(migration).toContain('public.backoffice_sales_orders')
+  expect(migration).not.toContain('post_pos_sale_with_pricelist')
 })
 
 test('Retail PWA keeps every approved operational workspace wired to canonical RPCs', async () => {

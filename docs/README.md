@@ -1,5 +1,19 @@
 # Router Dokumen KGS POS
 
+## 2026-10-30 - POS Retail direct checkout routing correction
+
+- Company mode is the process switch. `RETAIL_CONFIRM_INVOICE` now routes the
+  active POS checkout back to the canonical direct Retail finalizer;
+  `BACKOFFICE_DELIVERED_QTY_INVOICE` remains on its separate Backoffice
+  Quotation/Sales Order runtime.
+- Pickup produces receipt/Invoice without Surat Jalan. Delivery may load Surat
+  Jalan after the same Retail posting; it does not select the Backoffice flow.
+- No schema, database data, Backoffice runtime, or deployment changed.
+- Local evidence: PWA lint/build PASS, source contract `7/7 PASS`, and mocked
+  Pickup browser flow `1/1 PASS`.
+- Status: `LOCAL READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE AND UAT
+  PENDING`. See the [impact map](audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md).
+
 ## 2026-10-29 - Opening Balance direct-entry local package
 
 - Workspace baru **Finance > Jurnal Keuangan > Saldo Awal** menyiapkan Draft

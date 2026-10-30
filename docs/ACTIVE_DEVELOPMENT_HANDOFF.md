@@ -1,5 +1,55 @@
 # Active Development Handoff — KGS POS
 
+## 2026-10-30 - POS Retail direct checkout routing correction
+
+- User reaffirmed the process boundary: Company mode
+  `RETAIL_CONFIRM_INVOICE` means direct Retail checkout. Pickup finalizes
+  Payment, Stock/FIFO/Movement, Finance event, receipt and Invoice atomically
+  and does not create Surat Jalan. Delivery remains inside Retail and may
+  produce Surat Jalan. Checkbox `Perlu dikirim` is not the Retail/Backoffice
+  switch.
+- Root cause: active PWA checkout called `confirm_pos_sales_order`, forcing a
+  Pickup Draft into the Order/reservation fulfillment shape and triggering
+  `sales_headers_fulfillment_shape_check`.
+- `pwa/src/App.tsx` now calls the existing canonical
+  `post_pos_sale_with_pricelist` adapter, preserves Draft shortage behavior,
+  loads receipt/Invoice, and loads Surat Jalan only for Delivery. Button copy is
+  `Selesaikan Transaksi`.
+- Backoffice `backoffice_sales_orders`,
+  `confirm_backoffice_sales_order`, Quotation/SO lifecycle, and Company mode
+  settings were not changed. Historical Order runtime remains intact.
+- Evidence: PWA lint PASS; TypeScript/Vite build PASS; Playwright runtime/source
+  contract `7/7 PASS`; mocked Pickup browser flow `1/1 PASS`, including absence
+  of Order confirmation and Surat Jalan calls.
+- Status: `LOCAL READY / DATABASE RUNTIME ALREADY EXISTS / CLIENT NOT DEPLOYED /
+  AUTHENTICATED SMOKE AND UAT PENDING`. No Production write, schema migration,
+  or deployment occurred. Next safe step is deploy only on user instruction,
+  then authenticated Pickup, Delivery, retry, and Backoffice non-regression
+  smoke. Rollback is client-only.
+- Impact: `docs/audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md`.
+
+## 2026-10-30 - KGFF Production price-list snapshot
+
+- User meminta daftar seluruh Product KGFF beserta harga dasar dan harga pada
+  setiap Pricelist sebagai Markdown yang nantinya dapat menjadi authority input
+  import backend.
+- Production dibaca melalui Supabase REST menggunakan service role server-side;
+  operasi hanya `GET`. Tidak ada Product, UOM, Pricelist, rule, transaksi,
+  Stock, FIFO, Payment, Finance, database, atau deployment yang diubah.
+- Snapshot terverifikasi: Company `KGFF` aktif; 74 Product (73 aktif dan satu
+  Product UAT nonaktif); empat Pricelist aktif; sepuluh histori rule dengan
+  tujuh rule aktif. Seluruh rule aktif memakai `FIXED_PRICE` dan tidak ada lebih
+  dari satu rule aktif pada pasangan Product/Pricelist, sehingga bentuk satu
+  kolom per Pricelist aman untuk state snapshot ini.
+- Artifact: `docs/exports/KGFF_PRICE_LIST_2026-10-30.md`. Kolom kosong berarti
+  belum ada rule eksplisit dan runtime memakai harga dasar; kolom kosong bukan
+  harga nol. Product nonaktif dipisahkan dan tidak boleh diaktifkan/import
+  otomatis.
+- Status: `READ-ONLY PRODUCTION SNAPSHOT COMPLETE / IMPORT BACKEND NOT BUILT /
+  NO PRODUCTION MUTATION`. Next safe step setelah user mengisi/mengoreksi file:
+  audit ulang header dan current Production state, lalu buat preview/dry-run
+  KGFF-only sebelum merancang mutation versioned.
+
 ## 2026-10-29 - Finance Opening Balance direct-entry local-ready
 
 - Keputusan cutover user: physical stock KGFF dihitung dan diposting sebagai
