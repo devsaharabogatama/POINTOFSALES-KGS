@@ -706,7 +706,6 @@ export function FinanceOperationsView(props: Props) {
           session={props.session}
           companyId={props.companyId}
           notify={props.notify}
-          openQueue={() => setTab("queue")}
         />
         )}
       {tab === "queue" && (

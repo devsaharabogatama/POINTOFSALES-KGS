@@ -6,7 +6,6 @@ import {
   BadgeCheck,
   CircleAlert,
   ExternalLink,
-  FileClock,
   Loader2,
   RefreshCcw,
   ShieldCheck,
@@ -69,6 +68,14 @@ const errors: Record<string, string> = {
     "Pembayaran tunai hanya dapat ditolak saat sesi kasir sumber masih terbuka.",
   PAYMENT_TRANSACTION_CATEGORY_MISSING_OR_AMBIGUOUS:
     "Mapping kategori Finance untuk verifikasi pembayaran belum siap.",
+  POSTABLE_ACCOUNTING_PERIOD_NOT_FOUND:
+    "Belum ada periode akuntansi terbuka untuk tanggal pembayaran ini.",
+  POSTING_RULE_SET_MISSING_OR_AMBIGUOUS:
+    "Aturan posting Finance untuk verifikasi pembayaran belum siap.",
+  ACCOUNT_MAPPING_MISSING_OR_AMBIGUOUS:
+    "Mapping akun Finance untuk verifikasi pembayaran belum lengkap.",
+  ACCOUNT_MAPPING_INVALID:
+    "Mapping akun Finance untuk verifikasi pembayaran tidak valid.",
   ACTIVE_COMPANY_CONTEXT_MISMATCH:
     "Company aktif berubah. Muat ulang workspace sebelum melanjutkan.",
 };
@@ -116,12 +123,10 @@ export function SalesPaymentVerificationPanel({
   session,
   companyId,
   notify,
-  openQueue,
 }: {
   session: Session;
   companyId: string;
   notify: (message: string) => void;
-  openQueue: () => void;
 }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -199,14 +204,19 @@ export function SalesPaymentVerificationPanel({
           }),
         },
       );
-      const result = await readJson<{ data?: { status?: string }; error?: string }>(
+      const result = await readJson<{
+        data?: { status?: string; posting?: { status?: string } };
+        error?: string;
+      }>(
         response,
       );
       if (!response.ok) throw new Error(friendly(result.error));
       setReview(null);
       notify(
         review.action === "VERIFY"
-          ? "Pembayaran terverifikasi dan masuk event HOLD. Proses melalui Antrian Jurnal."
+          ? result.data?.posting?.status === "CANCELED"
+            ? "Pembayaran terverifikasi. Tidak ada jurnal tambahan karena akun sumber dan clearing sama."
+            : "Pembayaran terverifikasi dan jurnal berhasil diposting."
           : "Permintaan pembayaran ditolak.",
       );
       await load();
@@ -247,12 +257,6 @@ export function SalesPaymentVerificationPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={openQueue}
-              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-700"
-            >
-              <FileClock className="h-4 w-4" /> Antrian Jurnal
-            </button>
             <button
               onClick={() => void load()}
               disabled={loading}
@@ -482,7 +486,7 @@ function ReviewDialog({
 
         <div className={`mt-5 rounded-2xl border p-4 text-sm leading-6 ${verify ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
           {verify ? (
-            <><ShieldCheck className="mr-2 inline h-4 w-4" />Keputusan ini membuat event HOLD; jurnal belum terposting otomatis.</>
+            <><ShieldCheck className="mr-2 inline h-4 w-4" />Verifikasi dan posting jurnal diproses bersamaan. Jika posting gagal, pembayaran tetap berstatus menunggu.</>
           ) : (
             <><CircleAlert className="mr-2 inline h-4 w-4" />Penolakan pembayaran tunai memerlukan sesi kasir sumber masih terbuka.</>
           )}

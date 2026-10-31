@@ -1,12 +1,49 @@
 # MADS — Management Distribution System
 
-> **POS Retail direct checkout correction (2026-10-30):** mode Company menjadi
+> **Agent impact-audit tooling (2026-10-31):** persistent setup and completion
+> checklist is available at
+> [docs/runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md](docs/runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md).
+> Git/ripgrep/Node/Playwright/TypeScript/lint, Supabase CLI, PostgreSQL 18.4 and
+> ast-grep are already available. Docker Desktop is the only current user-owned
+> prerequisite; guarded local Supabase configuration and regression fixtures
+> remain agent work after Docker verification. No application/runtime status
+> changed from this documentation update.
+
+> **POS Retail direct checkout correction (2026-10-30):** klaim fix client-only
+> sebelumnya dicabut setelah Production membuktikan constraint ODR kedua masih
+> menolak final post. Mode Company tetap menjadi
 > switch proses. `RETAIL_CONFIRM_INVOICE` memakai finalizer Retail langsung;
 > Pickup menghasilkan receipt/Invoice tanpa Surat Jalan dan Delivery dapat
 > menghasilkan Surat Jalan. Runtime Quotation/Sales Order Backoffice tetap
-> terpisah dan tidak diubah. PWA lint/build, source contract `7/7`, dan mocked
-> Pickup browser flow `1/1` PASS. Status: `LOCAL READY / CLIENT NOT DEPLOYED /
-> AUTHENTICATED SMOKE AND UAT PENDING`. Detail:
+> terpisah dan tidak diubah. Client commit `2746746` sudah deployed dan user
+> telah mengonfirmasi database bridge atomik `20261030120000` terpasang.
+> Production behavior reached the finalizer but failed downstream verification:
+> `Movement 1 / Event 1 / Payment 1 / Invoice 1 / Delivery 1 / FIFO 0`. The
+> rollback-only transaction did not persist that Sale. Active runtime evidence
+> originally showed that the old assertion omitted Company automatic-document
+> policy and the unified Warehouse negative-stock allocation path. The closing
+> Production diagnostic now proves both roots: `ALL_POSTED_SALES` creates an
+> unwanted Pickup Delivery Document, while the exact Bawang Bombay shortage is
+> correctly covered by Warehouse-authorized negative allocation with zero
+> positive FIFO. Forward package `20261030130000` is locally ready and has not
+> been run. Status: `CLIENT DEPLOYED / 20261030120000 DATABASE LIVE / ROOT CAUSE
+> PROVEN / 20261030130000 DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS /
+> AUTHENTICATED POS SMOKE PENDING`.
+> All
+> six forward-fix preflight rows returned the expected PASS/ROOT_CAUSE state;
+> user then confirmed the complete migration succeeded. It must not be rerun;
+> the exact rollback behavior also passed Invoice-without-Delivery, downstream
+> effects, negative allocation and retry. No additional migration, diagnostic,
+> preflight or behavior is required. The
+> revised Production preflight proved
+> `NOT_INSTALLED`, the failed Draft
+> clean, but a compatibility audit found the initial POS-only bridge would
+> reject adopted `BACKOFFICE_CUTOVER` Retail Drafts. The local candidate now
+> preserves only that exact adopted path; detached cutover and active
+> Backoffice remain excluded. User confirmed guarded migration
+> `20261030120000` succeeded; it must not be rerun. Do not rerun behavior or
+> checkout. Run only the SELECT-only mismatch diagnostic next; postflight/UI
+> smoke remain pending. Detail:
 > [impact map](docs/audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md).
 
 > **Finance Saldo Awal direct-entry (2026-10-29):** paket lokal baru
@@ -4372,3 +4409,33 @@ Production output before any clone migration is designed or run.
   as fake transactions.
 - Evidence and required human opening data:
   `docs/audits/MADS_RETAIL_E2E_KGFF_OPENING_READINESS_2026-10-29.md`.
+# POS Retail non-cash atomic verification (rollout package, 2026-10-31)
+
+- Migration `20261031100000` is `DATABASE LIVE`, but its first postflight found
+  four global `CASH_DRAWER + MANUAL_REVIEW` rows. A focused Production
+  SELECT-only diagnosis proved all four are immutable terminal history created
+  before the Auto-Cash cutover; none is pending or created by the new migration,
+  and the active runtime blocks new manual Cash.
+- This is a `TEST_HARNESS FIX`, not a Product/data correction. The postflight
+  now rejects manual Cash created on/after Auto-Cash or any manual Cash still
+  pending, while reporting compatible pre-cutover terminal history. The
+  corrected postflight rerun is PASS.
+- The first rollback behavior run exposed a fixture-order error: all 17 POS
+  makers lack Finance `APPROVE`, so permission denial correctly occurs before
+  maker-checker. A SELECT-only inventory proved two independent approvers per
+  request. The rollback fixture now tests unauthorized-maker and maker-checker
+  denial separately without changing Product permissions or live requests.
+- The corrected Production rollback behavior is PASS across authorization,
+  atomic posting, Bank reclassification, stale version, exact retry, Clearing
+  no-effect, cross-Company isolation, unchanged Sale Event ownership, and full
+  rollback.
+
+The repository now contains a guarded forward migration for direct Retail POS
+`DIRECT_BANK`/`CLEARING` request capture and atomic Finance verification plus
+payment posting. Cash and Tempo Customer Receipt are explicitly preserved.
+
+Current status is **LOCAL UI/API PASS / DATABASE LIVE / POSTFLIGHT PASS /
+ROLLBACK BEHAVIOR PASS**. The Backoffice client is not yet deployed, and
+authenticated smoke plus UAT remain pending. Follow
+`docs/runbooks/POS_RETAIL_NON_CASH_ATOMIC_VERIFICATION.md` after deployment;
+do not infer UI smoke or UAT from the database behavior result.

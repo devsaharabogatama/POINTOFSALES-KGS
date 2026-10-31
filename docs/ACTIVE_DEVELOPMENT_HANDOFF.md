@@ -2,6 +2,124 @@
 
 ## 2026-10-30 - POS Retail direct checkout routing correction
 
+- CORRECTION: commit `2746746` is deployed but is not a complete Product fix.
+  Production Pickup `DRF-20261030-000455` now reaches the old direct finalizer
+  and fails `sales_headers_order_runtime_shape`. Revoke the prior local-ready/
+  fixed interpretation; mocked browser PASS did not exercise database checks.
+- Exact root cause: ODR adds `order_runtime_status='DRAFT_INPUT'`; direct post
+  updates `document_status='POSTED'`, while the active constraint requires the
+  atomic pair `POSTED + LEGACY_POSTED`.
+- Added local-only SELECT preflight, guarded migration `20261030120000`, exact
+  rollback behavior and SELECT postflight. The bridge is limited to POS Retail
+  Draft/Scheduled rows without Reservation. Backoffice tables/RPCs are not
+  referenced or changed.
+- Production returned the initial preflight with every check PASS and state
+  `NOT_INSTALLED`; exact Draft `DRF-20261030-000455` remains clean with zero
+  downstream effect. Before migration handoff, compatibility audit found that
+  the initial POS-only trigger would reject the approved `BACKOFFICE_CUTOVER`
+  Retail-session adoption path. No migration was run.
+- The local candidate now permits only direct POS or an already-adopted,
+  snapshot-preserved cutover Draft; detached cutover and active Backoffice
+  remain fail-closed. Dependency/preflight/postflight/static behavior coverage
+  now includes migration `20260911120000` and its exact adoption contract.
+- User returned the revised Production preflight with every contract PASS and
+  only the intended Backoffice boundary INFO. Evidence: six dependencies;
+  target state `NOT_INSTALLED`; exact failed Draft remains `DRAFT_INPUT` with
+  open session and zero Payment/Movement/Event/Invoice/Delivery/Reservation;
+  zero invalid cutover identity/snapshot rows; zero active Finance queue and
+  zero nonterminal Offline submission. This authorizes only the complete
+  migration as the next manual step; behavior/postflight/UI remain pending.
+- User then confirmed the complete guarded migration `20261030120000` executed
+  successfully. Do not rerun it. This establishes `DATABASE LIVE` by operator
+  confirmation only; rollback-only behavior, SELECT-only postflight and
+  authenticated POS smoke remain pending. Next safe action is only the complete
+  behavior file for exact Draft `DRF-20261030-000455`; it wraps all resulting
+  Sale/Stock/FIFO/Payment/Finance/document effects in `BEGIN ... ROLLBACK`.
+- First behavior attempt stopped before posting at
+  `set_active_company_context(...,'POS_RETAIL_DIRECT_POST_BRIDGE_TEST')` with
+  `INVALID_CONTEXT_SOURCE`. Root cause is the active G1 regex
+  `^[A-Z][A-Z0-9_]{1,31}$`; the harness source exceeded 32 characters.
+  Classification: `TEST HARNESS FIX`, not Product or migration failure. The
+  source is now `POS_RETAIL_TEST`, preserving the same actor/Company context
+  and every business assertion. That corrected behavior has since been run;
+  never rerun migration `20261030120000`.
+- The corrected behavior reached the real finalizer, proving that the bridge
+  permits the atomic post, but then failed its downstream assertion with exact
+  shape `Movement 1 / Event 1 / Payment 1 / Invoice 1 / Delivery 1 / FIFO 0`.
+  The transaction raised inside `BEGIN ... ROLLBACK`, so this is not a
+  persisted Sale and the migration must not be rerun. The earlier instruction
+  to rerun behavior is revoked.
+- Repo audit found two active contracts omitted by that assertion. Company
+  document policy `ALL_POSTED_SALES` intentionally creates a Delivery Document
+  even for Pickup, while unified negative-stock authority can allocate a
+  shortage through `negative_stock_sale_allocations` with zero positive FIFO
+  rows. The approved business outcome still requires Pickup receipt/Invoice
+  without Surat Jalan, so `Delivery 1` is not being accepted merely to make the
+  test green. At this checkpoint the exact KGS policy and Draft stock route were
+  `BELUM TERBUKTI`; the later Production diagnostic below has now proven both.
+- Added one SELECT-only, no-post diagnostic:
+  `supabase/diagnostics/pos_retail_direct_post_behavior_mismatch_diagnosis.sql`.
+  It verifies failed-test rollback, exact document policy, positive FIFO versus
+  negative allocation prerequisites, the current Warehouse negative authority,
+  and active runtime consumers. User has run it and its full output is now
+  classified below.
+- First diagnostic execution failed at parse time because the table alias
+  `authorization` was a PostgreSQL keyword. Classification: `TEST HARNESS FIX`;
+  no statement executed and no Production data changed. The alias is now
+  `authz`. The corrected complete file parses as exactly one PostgreSQL `WITH`
+  statement using `pgsql-ast-parser`, retains the single-semicolon/no-mutation
+  gate, and has SHA-256
+  `624647679D5DD9A24966485FC779EDFE3C40D4A483ED64B54DEA2499002C28C3`.
+- Compatibility-corrected candidate SHA-256 is
+  `f54de9666d46f07e355350a91a47ce9a64e163ebde66cd53ce026671f4ccae37`.
+  Focused runtime contract rerun is `1/1 PASS`; scoped `git diff --check` is
+  clean. Staging SQL execution remains unproven for the already documented CA
+  reason, so this is local source evidence rather than database behavior.
+- Production mismatch diagnostic is now classified. KGS policy
+  `ALL_POSTED_SALES` is the exact cause of the unwanted Pickup Delivery
+  Document. Exact Bawang Bombay Stock `-31`, positive FIFO `0`, requirement `1`
+  and active sale-source Warehouse negative authority prove that FIFO zero is
+  valid and must be reconciled through `negative_stock_sale_allocations`.
+- Added guarded forward package `20261030130000`: SELECT-only preflight,
+  process-aware `private.ensure_sales_documents` replacement, rollback-only
+  behavior, SELECT-only postflight and rollout runbook. It excludes only new
+  direct `POS + RETAIL_CONFIRM_INVOICE + PICKUP` Delivery Document creation;
+  Invoice, Retail Delivery, Backoffice, adopted cutover, existing documents,
+  Stock, FIFO, negative allocation, Payment, Finance and Session remain on the
+  active paths. The behavior verifies requirement = FIFO + negative allocation
+  and exact retry without requiring a fictitious positive FIFO row.
+- Local evidence: all four outer SQL files parse with PostgreSQL `libpg_query`;
+  scoped diff check passes. PL/pgSQL semantic execution remains unproven because
+  the staging project CA is not trusted locally and TLS verification was not
+  disabled. No Production write or deployment occurred.
+- Current status: `CLIENT DEPLOYED / 20261030120000 DATABASE LIVE / ROOT CAUSE
+  PROVEN / 20261030130000 DATABASE LIVE BY USER CONFIRMATION / NEW PRODUCTION
+  PREFLIGHT PASS / BEHAVIOR PASS / POSTFLIGHT PASS / AUTHENTICATED SMOKE USER
+  ACTION PENDING`. User returned all six expected rows: exact
+  KGS/POS/Pickup identity PASS; dependency chain 3/3; state `NOT_INSTALLED`;
+  active runtime anchor PASS; exact `ALL_POSTED_SALES` conflict `ROOT_CAUSE`
+  with zero violation; Finance queue and Offline boundary empty. Do not rerun
+  any preflight, `20261030120000`, or the old behavior. User then confirmed the
+  complete migration `20261030130000` succeeded. It must not be rerun. User then
+  returned PASS for the replacement rollback behavior on the exact failed KGS
+  Draft. Covered nonzero final effects: Posted + `LEGACY_POSTED`, Invoice with
+  zero Delivery Document, Payment/Movement/Finance Event, Warehouse negative-
+  stock authority, FIFO plus negative-allocation coverage, and idempotent retry.
+  All fixture effects rolled back. At that checkpoint the next action was only
+  the SELECT postflight; the following bullet records its completed result.
+- User returned the complete closing postflight: ledger one, runtime boundary
+  exact, global policy unchanged, and the exact Draft still clean after rollback;
+  all four contracts PASS plus the intended INFO boundary. The INFO `next`
+  string still said to run behavior, but behavior had already passed; this is a
+  diagnostic-message defect only. The local future postflight text now points
+  to authenticated Pickup smoke. Do not rerun migration, behavior, or
+  postflight. The exact Draft may now be completed from the authenticated POS;
+  that action is a real persisted Production transaction.
+- Earlier local evidence remains: focused Playwright source boundary `3/3 PASS`;
+  full QA still contains the pre-existing optional-label findings and is not
+  represented as green. Staging execution remains unavailable for the trusted-
+  CA reason documented above.
+
 - User reaffirmed the process boundary: Company mode
   `RETAIL_CONFIRM_INVOICE` means direct Retail checkout. Pickup finalizes
   Payment, Stock/FIFO/Movement, Finance event, receipt and Invoice atomically
@@ -21724,3 +21842,206 @@ or repeat baseline export is needed from user at this hold boundary.
   Finance smoke of filter/search/prefill/save against a non-Production fixture.
   Separately design the guarded opening subledger/GL package before entering
   AR/AP balances.
+# 2026-10-30 - Agent SOP fail-closed execution gate added
+
+- User required consistent enforcement of the repository SOP after the POS
+  Retail direct-checkout correction was proven to have bypassed the existing
+  non-cash Finance payment-verification lifecycle.
+- Root `AGENTS.md` now requires explicit task classification, a separate
+  read-only audit phase for behavior/schema changes, a visible `SOP GATE`
+  before the first implementation edit, full downstream/regression matrices,
+  and a mandatory return to audit after any unexpected failure.
+- The gate explicitly forbids error-to-patch loops, moving effects merely to
+  hide the original error, status-layer overclaiming, and treating `gas` or
+  `lanjut` as permission to skip evidence.
+- Classification: `DOCUMENTATION_ONLY`. No application code, database,
+  migration, Production data, deployment, Payment, Stock, Finance Event, or
+  Journal changed. No module/runtime status was advanced.
+- The POS non-cash payment regression remains unresolved. Next safe step is a
+  fresh read-only impact audit under the new gate; implementation is not yet
+  authorized or designed.
+- User further required impact tracing for every patch/edit, including
+  documentation and test-only changes. `AGENTS.md` now makes tracing universal
+  with risk-proportional depth, requires caller/callee/wrapper/RPC/trigger/
+  consumer/test/document/config searches, and explicitly states that tooling
+  output cannot replace semantic review of the active call chain.
+- Read-only tooling inventory found Git, ripgrep, Node/npm/npx, Playwright,
+  TypeScript, ESLint/Oxlint and a global Supabase CLI already present. Docker,
+  `psql`, and GitHub CLI are absent. Global `ast-grep` 0.51.0 was installed and
+  verified through `ast-grep.cmd`; PowerShell's `.ps1` shim remains blocked by
+  the machine execution policy, so agents must invoke the `.cmd` binary.
+- No repository dependency or lockfile was changed by the global tooling
+  installation. A Windows local Supabase runtime still requires Docker Desktop
+  or another Docker-compatible engine; this remains an optional system-level
+  setup for the user rather than an application change.
+- Added persistent runbook
+  `docs/runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md` and linked it from the
+  root/document routers. It records exact ready/pending tooling, owner,
+  commands, safety boundaries and completion checkboxes so user prerequisites
+  are not lost between sessions.
+- Documentation impact tracing corrected the earlier PATH-only inventory:
+  PostgreSQL 18.4 binaries and the isolated parser-only cluster already exist;
+  `psql.exe` is simply not on PATH. The only current user-owned prerequisite is
+  Docker Desktop plus a returned `docker version` result. Guarded Supabase
+  config, migration baseline, fixtures, dependency graph scope and SOP CI are
+  agent-owned follow-up work.
+# 2026-10-31 - POS non-cash verification / Tempo receipt audit complete
+
+- User decided that non-cash POS payment verification must post its final
+  journal in the same Finance action; Cash remains outside manual verification.
+  Later Tempo payment remains in Finance Penerimaan Customer.
+- Read-only call-chain audit proves the active PWA direct checkout calls
+  `post_pos_sale_with_pricelist` and bypasses
+  `capture_sales_order_payment_requests`. The retained Finance review RPC only
+  creates a `SALE_PAYMENT_VERIFIED` HOLD Event and the current UI explicitly
+  requires Antrian Jurnal.
+- SELECT-only Production evidence: 42 Posted direct POS Retail sales since
+  2026-10-30 contain 43 payment legs (five Cash, 21 QRIS/CLEARING, 17
+  Transfer/DIRECT_BANK, one split sale). All 38 non-cash sales have zero
+  verification request. Their 42 `SALE_POSTED` Events are HOLD and have zero
+  Journal. Existing verification inventory is 14 rows: nine VERIFIED, three
+  CANCELED, and two PENDING.
+- Penerimaan Customer remains operational for Tempo: 428 documents, 418 Posted;
+  all 418 Posted receipts have exact Posted `SALE_PAYMENT` Event and Journal.
+  All 234 Retail allocations point to Tempo sales and none to non-Tempo.
+- Status: `AUDIT COMPLETE / PRODUCT FIX NOT STARTED`. Point 1 is
+  `TIDAK BERJALAN`; point 2 is `SUDAH BERJALAN` at database/runtime level. No
+  new authenticated browser mutation or UAT was performed. No product/schema/
+  migration/database/deployment change occurred.
+- Full evidence and mandatory regression matrix:
+  `docs/audits/POS_NONCASH_VERIFICATION_AND_TEMPO_RECEIPT_E2E_AUDIT_2026-10-31.md`.
+- Next safe step: complete Phase A design for settlement ownership between
+  `SALE_POSTED` and `SALE_PAYMENT_VERIFIED` plus explicit handling for the 38
+  unverified payment legs / 42 HOLD Events. Do not patch or migrate before a
+  new SOP Gate.
+- Follow-up SELECT-only mapping audit confirms no new "unverified funds" COA
+  is needed. KGS and KGFF both have the active category, approved Posting Rule
+  Set, and current mappings for Bank/Bank Receipt (`1010100-1`), Payment
+  Clearing (`1080100`), Customer Advance (`2050100`), Customer Receivable
+  (`1020100`), and Cash Drawer (`1010100-3`).
+- The current two actions are proven in code: Finance verification creates a
+  VERIFIED request plus HOLD `SALE_PAYMENT_VERIFIED` Event; the controlled
+  queue later invokes the existing payment posting core. One historical Posted
+  Event/Journal proves this path has executed. The requested outcome is to call
+  that existing posting core atomically from successful verification, not to
+  create another journal or account.
+- Phase B is still blocked on exact settlement ownership because direct POS
+  currently stores Transfer as `BANK_RECEIPT` and QRIS as
+  `PAYMENT_CLEARING` in `sales_payments`, and its `SALE_POSTED` Event also
+  consumes those payment snapshots. Preventing duplicate settlement remains a
+  design requirement. Product/database/deployment state remains unchanged.
+# Checkpoint 2026-10-31 - POS Retail non-cash atomic verification
+
+## Unexpected postflight Cash boundary — work frozen
+
+- Production migration `20261031100000` is installed and immutable.
+- Postflight passed the migration ledger, runtime ownership, 38 captured
+  non-cash backlog requests, and Customer Receipt boundary, but failed the
+  Cash boundary because four global `CASH_DRAWER + MANUAL_REVIEW` rows exist.
+- The installed migration inserts only `DIRECT_BANK`/`CLEARING`; it cannot
+  create those Cash rows. The prior auto-Cash migration intentionally retained
+  immutable terminal historical rows under the compatibility default while
+  converting pending Cash.
+- Classification is still `BELUM TERBUKTI` until the SELECT-only diagnostic
+  `supabase/diagnostics/pos_retail_non_cash_atomic_cash_boundary_diagnosis.sql`
+  proves timestamps, statuses, runtime guard, Event/Journal state, and audit
+  actions for all four rows.
+- Do not run the rollback behavior, deploy the Backoffice client, edit the live
+  migration, or delete/update historical requests. If all four are pre-auto-
+  Cash terminal history, the next change is `TEST_HARNESS_FIX` via a new scoped
+  postflight; otherwise return to `PRODUCT FIX` impact audit and use a new
+  forward migration only.
+- Production diagnosis has now proven the compatible branch: four rows are all
+  pre-`20260923100000`, terminal, and not created by the atomic migration; the
+  current guard blocks new manual Cash and mode changes. The postflight was
+  corrected as `TEST_HARNESS_ONLY` to reject new or pending manual Cash while
+  reporting the four immutable historical rows. Product/database state was not
+  changed. Next safe step is rerun only the corrected postflight; behavior and
+  client deployment remain frozen until that output is classified.
+- The corrected postflight subsequently passed all checks. The first rollback
+  behavior attempt then stopped at its maker negative case with
+  `CUSTOM_PERMISSION_DENIED`, before any Finance mutation. The test selected
+  the POS request maker and expected maker-checker denial, but the active RPC
+  correctly requires `APPROVE` before evaluating maker-checker. Run only the
+  SELECT-only fixture inventory
+  `supabase/diagnostics/pos_retail_non_cash_atomic_behavior_permission_diagnosis.sql`;
+  do not weaken the assertion or rerun behavior until the maker/reviewer
+  capability partition is proven.
+- That inventory passed: 17/17 pending Bank requests have an independent
+  approver, zero makers have `APPROVE`, and Company Admin plus Super Admin are
+  valid reviewers. The behavior fixture now separately tests unauthorized POS
+  maker denial and authorized maker-checker denial using a synthetic request
+  created only inside the rollback transaction. Exactly one corrected behavior
+  rerun remains before repository push review; Product runtime is unchanged.
+- The corrected Production rollback behavior now passes all declared cases:
+  capture retry, unauthorized maker, authorized maker-checker, stale version,
+  atomic Verify plus Posted Journal, two-line Bank reclassification, unchanged
+  Sale Event ownership, exact retry, optional Clearing no-effect,
+  cross-Company denial, and full rollback. Repository push review is now open;
+  authenticated browser smoke and UAT still require the deployed client.
+
+## Requested outcome
+
+Finance verification for direct Retail POS non-cash payments must post its
+payment Journal in the same action. Cash remains automatic and later Tempo
+collections remain in Penerimaan Customer.
+
+## Evidence and implementation
+
+- Phase A audit/design:
+  `docs/audits/POS_NONCASH_VERIFICATION_AND_TEMPO_RECEIPT_E2E_AUDIT_2026-10-31.md`.
+- Refreshed Production SELECT-only partition: 40 KGS direct non-cash legs lack
+  requests; 38 are `SALE_POSTED HOLD/no-Journal` and safe for additive
+  backfill, while two already have immutable Posted Sale Journals and are
+  excluded.
+- Production currently has no KGS accounting period covering 2026-10-31
+  (Open periods stop at September). This is a mandatory manual rollout blocker;
+  create/open October before preflight/migration. KGFF October is already Open.
+- New forward migration:
+  `supabase/migrations/20261031100000_pos_retail_non_cash_atomic_verification.sql`.
+- It captures persisted direct Retail `DIRECT_BANK`/`CLEARING` legs, changes
+  their Sale settlement ownership to `PAYMENT_CLEARING`, and invokes
+  `private.post_financial_event_core` within Finance Verify.
+- UI no longer sends the user to Antrian Jurnal after verification and exposes
+  atomic-posting failures without falsely marking the request complete.
+- Preflight, postflight, rollback-only behavior, UI contract, and rollout
+  runbook were added.
+
+## Files changed for this task
+
+- `supabase/migrations/20261031100000_pos_retail_non_cash_atomic_verification.sql`
+- `supabase/diagnostics/pos_retail_non_cash_atomic_verification_preflight.sql`
+- `supabase/diagnostics/pos_retail_non_cash_atomic_verification_postflight.sql`
+- `supabase/tests/pos_retail_non_cash_atomic_verification_behavior.sql`
+- `backoffice/src/components/SalesPaymentVerificationPanel.tsx`
+- `backoffice/src/components/FinanceOperationsView.tsx`
+- `backoffice/src/app/api/finance/sales-payment-verifications/route.ts`
+- `backoffice/scripts/test-pos-non-cash-atomic-verification-ui-contract.mjs`
+- audit, runbook, root README, and this handoff.
+
+## Verification evidence
+
+- focused Backoffice ESLint: PASS;
+- `node scripts/test-pos-non-cash-atomic-verification-ui-contract.mjs`: PASS;
+- Backoffice production build: PASS;
+- `git diff --check` for task files: PASS (line-ending warnings only);
+- Supabase local database rehearsal: not run because Docker daemon is absent;
+  SQL execution therefore remains a mandatory manual gate.
+
+## Status
+
+- `AUDIT COMPLETE`
+- `LOCAL READY`: YES for the scoped UI/API package; Production SQL behavior
+  supersedes the unavailable local SQL rehearsal
+- `DATABASE LIVE`: YES; migration, corrected postflight, and rollback behavior PASS
+- `CLIENT DEPLOYED`: NO
+- `SMOKE PASS`: NO
+- `UAT PASS`: NO
+
+## Next safe step
+
+Commit/push only the scoped files listed above. After client deployment, run
+the authenticated smoke matrix in
+`docs/runbooks/POS_RETAIL_NON_CASH_ATOMIC_VERIFICATION.md`; do not claim smoke
+or UAT before the Transfer, QRIS, Cash, rejection, retry, Tempo, and regression
+cases are observed through the deployed UI.
