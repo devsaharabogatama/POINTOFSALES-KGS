@@ -697,9 +697,12 @@ export type DamagedWarehouseOption = {
 export type SalesReturnDraftResult = {
   documentId: string
   returnNo: string
-  status: 'DRAFT'
+  status: 'DRAFT' | 'POSTED'
   masterVersion: number
   refundTotal: number
+  approvalMode: 'REQUIRED' | 'OPTIONAL'
+  financialEventId?: string
+  idempotentReplay: boolean
 }
 
 export type BootstrapData = {
@@ -2948,9 +2951,11 @@ export async function loadSalesReturnWorkspace(
   return { sales, damagedWarehouses }
 }
 
-export async function saveSalesReturnDraft(input: {
+export async function submitSalesReturn(input: {
   sourceSalesId: string
   executingSessionId: string
+  operationId: string
+  clientRefundKey: string
   roundingDirection: 'NONE' | 'DOWN' | 'UP'
   notes: string
   refundDeliveryFee: boolean
@@ -2969,9 +2974,7 @@ export async function saveSalesReturnDraft(input: {
   }
 }): Promise<SalesReturnDraftResult> {
   const { data, error } = await supabase.rpc(
-    'save_sales_return_draft_with_delivery_fee', {
-    p_document_id: null,
-    p_master_version: null,
+    'submit_pos_sales_return_with_delivery_fee', {
     p_source_sales_id: input.sourceSalesId,
     p_executing_session_id: input.executingSessionId,
     p_rounding_direction: input.roundingDirection,
@@ -2985,7 +2988,7 @@ export async function saveSalesReturnDraft(input: {
     })),
     p_refunds: [
       {
-        clientRefundKey: crypto.randomUUID(),
+        clientRefundKey: input.clientRefundKey,
         paymentMethodId: input.refund.paymentMethodId,
         amount: input.refund.amount,
         transferDestination: input.refund.transferDestination || null,
@@ -2993,6 +2996,7 @@ export async function saveSalesReturnDraft(input: {
         proofUrl: input.refund.proofUrl || null,
       },
     ],
+    p_operation_id: input.operationId,
     },
   )
   throwIfError(error)
@@ -3000,8 +3004,13 @@ export async function saveSalesReturnDraft(input: {
   return {
     documentId: String(row.documentId),
     returnNo: String(row.returnNo),
-    status: 'DRAFT',
+    status: String(row.status) as 'DRAFT' | 'POSTED',
     masterVersion: numberValue(row.masterVersion),
     refundTotal: numberValue(row.refundTotal),
+    approvalMode: String(row.approvalMode) as 'REQUIRED' | 'OPTIONAL',
+    financialEventId: row.financialEventId
+      ? String(row.financialEventId)
+      : undefined,
+    idempotentReplay: Boolean(row.idempotentReplay),
   }
 }

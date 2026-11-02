@@ -358,6 +358,13 @@ async function installRetailServerMock(
           documentId: '81000000-0000-4000-8000-000000000003',
           returnNo: 'RTN-QA-0001', masterVersion: 1, refundTotal: 25000,
         },
+        submit_pos_sales_return_with_delivery_fee: {
+          documentId: '81000000-0000-4000-8000-000000000003',
+          returnNo: 'RTN-QA-0001', status: 'POSTED', masterVersion: 2,
+          refundTotal: 25000, approvalMode: 'OPTIONAL',
+          financialEventId: '82000000-0000-4000-8000-000000000001',
+          idempotentReplay: false,
+        },
         open_cashier_session: {
           cashierSessionId: IDS.session, sessionCode: 'SES-QA-KGFF', masterVersion: 1,
         },
@@ -458,6 +465,19 @@ async function installRetailServerMock(
   return rpcCalls
 }
 
+async function addCatalogProductToCart(
+  page: Page,
+  productName = 'Ayam Frozen QA',
+) {
+  await page.locator('.pos-product-grid').getByRole('button', {
+    name: new RegExp(productName),
+  }).click()
+  const editor = page.getByRole('dialog', { name: productName })
+  await expect(editor).toBeVisible()
+  await editor.getByRole('button', { name: 'Masukkan ke keranjang' }).click()
+  await expect(editor).toHaveCount(0)
+}
+
 test('posts KGFF Pickup directly as Retail with receipt and Invoice but without Order reservation or Surat Jalan', async ({ page }) => {
   const rpcCalls = await installRetailServerMock(page)
   await page.goto(pwaBaseUrl)
@@ -472,7 +492,7 @@ test('posts KGFF Pickup directly as Retail with receipt and Invoice but without 
   await expect(page.getByRole('button', { name: 'Customer baru' })).toBeVisible()
   await expect(page.getByLabel('Pricelist')).toContainText('Harga Retail KGFF')
 
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   const catalogCustomer = page.getByLabel('Customer katalog')
   await expect(catalogCustomer).toBeVisible()
   await expect(catalogCustomer).toHaveValue(IDS.customer)
@@ -514,6 +534,69 @@ test('posts KGFF Pickup directly as Retail with receipt and Invoice but without 
   expect(rpcCalls.map((call) => call.name), 'Pickup Retail must not create or load a Surat Jalan').not.toContain('get_pos_sales_delivery_document')
 })
 
+test('configures a Product before Cart commit and keeps the same editor available afterward', async ({ page }) => {
+  await installRetailServerMock(page)
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('not-a-real-password')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+
+  const productCard = page.locator('.pos-product-grid').getByRole('button', {
+    name: /Ayam Frozen QA/,
+  })
+  const cartItems = page.locator('.pos-cart-item')
+
+  await productCard.click()
+  let editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await expect(editor).toBeVisible()
+  await expect(editor.getByText('Tambah produk')).toBeVisible()
+  await expect(cartItems).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Batal', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+  await expect(cartItems).toHaveCount(0)
+
+  await productCard.click()
+  editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await expect(editor).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(editor).toHaveCount(0)
+  await expect(cartItems).toHaveCount(0)
+
+  await productCard.click()
+  editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await editor.locator('.pos-cart-editor-quantity input').fill('2')
+  await editor.locator('.pos-cart-editor-discount select').selectOption('PERCENT')
+  await editor.locator('.pos-cart-editor-discount input').fill('10')
+  await expect(cartItems).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Masukkan ke keranjang' }).click()
+
+  await expect(cartItems).toHaveCount(1)
+  await expect(cartItems.first()).toContainText('2 PACK')
+  await expect(cartItems.first()).toContainText('Diskon 10%')
+  await cartItems.first().getByRole('button', { name: /Edit Ayam Frozen QA/ }).click()
+  editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await expect(editor.getByText('Edit produk')).toBeVisible()
+  await editor.locator('.pos-cart-editor-quantity input').fill('3')
+  await editor.getByRole('button', { name: 'Selesai' }).click()
+  await expect(cartItems.first()).toContainText('3 PACK')
+
+  await productCard.click()
+  editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await expect(editor.getByText('Edit produk')).toBeVisible()
+  await expect(cartItems).toHaveCount(1)
+  await editor.getByRole('button', { name: 'Selesai' }).click()
+
+  await page.getByRole('button', { name: 'Compact' }).click()
+  await page.getByRole('button', { name: 'Tambah produk' }).click()
+  await page.locator('#pos-product-picker-menu').getByRole('button', {
+    name: /Ayam Frozen QA/,
+  }).click()
+  editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await expect(editor.getByText('Edit produk')).toBeVisible()
+  await expect(cartItems).toHaveCount(1)
+  await editor.getByRole('button', { name: 'Selesai' }).click()
+})
+
 test('uses the desktop Catalog height for Cart items and keeps Total Akhir at the panel bottom', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1920, height: 900 })
   await installRetailServerMock(page)
@@ -521,7 +604,35 @@ test('uses the desktop Catalog height for Cart items and keeps Total Akhir at th
   await page.getByLabel('Email').fill('qa.cashier@example.test')
   await page.getByLabel('Password').fill('not-a-real-password')
   await page.getByRole('button', { name: 'Masuk' }).click()
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+
+  const productSearch = page.getByPlaceholder('Cari nama, SKU, barcode, atau satuan...')
+  const categoryStrip = page.locator('.pos-catalog-category-tabs')
+  const productGrid = page.locator('.pos-product-grid')
+  await expect(categoryStrip).toBeVisible()
+  await expect(categoryStrip.getByRole('button', { name: 'Semua' })).toBeVisible()
+  const [searchBox, categoryBox, productGridBox] = await Promise.all([
+    productSearch.boundingBox(),
+    categoryStrip.boundingBox(),
+    productGrid.boundingBox(),
+  ])
+  expect(searchBox).not.toBeNull()
+  expect(categoryBox).not.toBeNull()
+  expect(productGridBox).not.toBeNull()
+  expect(categoryBox!.height, 'Category strip must not collapse behind Product cards').toBeGreaterThanOrEqual(30)
+  expect(categoryBox!.height, 'Category strip must remain compact').toBeLessThanOrEqual(36)
+  expect(
+    categoryBox!.y,
+    'Category strip must be placed below Product search',
+  ).toBeGreaterThanOrEqual(searchBox!.y + searchBox!.height)
+  expect(
+    productGridBox!.y,
+    'Product grid must start after the complete category strip',
+  ).toBeGreaterThanOrEqual(categoryBox!.y + categoryBox!.height - 1)
+  await categoryStrip.getByRole('button', { name: 'KETUL' }).click()
+  await expect(page.getByRole('button', { name: /Ketul QA/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Ayam Frozen QA/ })).toHaveCount(0)
+  await categoryStrip.getByRole('button', { name: 'Semua' }).click()
+  await addCatalogProductToCart(page)
 
   const cartPanel = page.locator('.pos-cart-panel')
   const cartList = page.locator('.pos-cart-list')
@@ -616,6 +727,10 @@ test('uses the desktop Catalog height for Cart items and keeps Total Akhir at th
 
   await page.getByRole('button', { name: 'Katalog' }).click()
   await page.setViewportSize({ width: 390, height: 844 })
+  await expect(categoryStrip).toBeVisible()
+  await expect
+    .poll(() => categoryStrip.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThanOrEqual(30)
   await expect
     .poll(() => page.locator('.pos-order-column').evaluate(
       (element) => window.getComputedStyle(element).display,
@@ -636,7 +751,7 @@ test('applies a ready Company Ketul intake as a hidden post-tax offset without e
   await page.getByLabel('Password').fill('not-a-real-password')
   await page.getByRole('button', { name: 'Masuk' }).click()
 
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   await page.getByRole('button', { name: 'Atur pembayaran' }).click()
   const ketulEntry = page.locator('.pos-ketul-entry')
   await expect(ketulEntry).toBeVisible()
@@ -697,7 +812,7 @@ test('keeps the Ketul action fail-closed when Company entitlement exists but ser
   await page.getByLabel('Password').fill('not-a-real-password')
   await page.getByRole('button', { name: 'Masuk' }).click()
 
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   await page.getByRole('button', { name: 'Atur pembayaran' }).click()
   await expect(page.getByRole('button', { name: 'Tambah Ketul' })).toHaveCount(0)
   expect(rpcCalls.map((call) => call.name)).toContain('get_pos_ketul_readiness')
@@ -877,7 +992,7 @@ test('saves a Delivery Draft with recipient and fee while retaining Retail Draft
   await page.getByLabel('Password').fill('secret')
   await page.getByRole('button', { name: 'Masuk' }).click()
 
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   await page.getByRole('button', { name: 'Atur pembayaran' }).click()
   const checkout = page.getByRole('dialog', { name: 'Pembayaran dan penyelesaian' })
   await checkout.getByLabel('Perlu dikirim').check()
@@ -901,7 +1016,7 @@ test('saves a Delivery Draft with recipient and fee while retaining Retail Draft
   expect(rpcCalls.some((call) => call.name === 'post_pos_sale_with_ketul')).toBe(false)
 })
 
-test('saves a Cash Sales Return as an approval Draft with exact source linkage', async ({ page }) => {
+test('finalizes a Retail Cash Sales Return and refund with exact source linkage', async ({ page }) => {
   const rpcCalls = await installRetailServerMock(page)
   await page.goto(pwaBaseUrl)
   await page.getByLabel('Email').fill('qa.cashier@example.test')
@@ -914,10 +1029,10 @@ test('saves a Cash Sales Return as an approval Draft with exact source linkage',
   await dialog.getByRole('checkbox').check()
   await dialog.getByLabel('Qty Return').fill('1')
   await dialog.getByLabel('Cara refund').selectOption(IDS.payment)
-  await dialog.getByRole('button', { name: 'Simpan Draft Return' }).click()
+  await dialog.getByRole('button', { name: 'Konfirmasi Return & Refund' }).click()
 
-  await expect(page.getByText(/RTN-QA-0001 tersimpan sebagai Draft/)).toBeVisible()
-  expect(rpcCalls.find((call) => call.name === 'save_sales_return_draft_with_delivery_fee')?.payload).toMatchObject({
+  await expect(page.getByText(/RTN-QA-0001 berhasil.*sudah final/)).toBeVisible()
+  expect(rpcCalls.find((call) => call.name === 'submit_pos_sales_return_with_delivery_fee')?.payload).toMatchObject({
     p_source_sales_id: IDS.sale,
     p_executing_session_id: IDS.session,
     p_lines: [{
@@ -927,6 +1042,7 @@ test('saves a Cash Sales Return as an approval Draft with exact source linkage',
       destinationWarehouseId: null,
     }],
     p_refunds: [{ paymentMethodId: IDS.payment, amount: 25000 }],
+    p_operation_id: expect.any(String),
   })
 })
 
@@ -937,7 +1053,7 @@ test('posts a balanced Cash and QRIS split while preserving each payment leg', a
   await page.getByLabel('Password').fill('secret')
   await page.getByRole('button', { name: 'Masuk' }).click()
 
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   await page.getByRole('button', { name: 'Atur pembayaran' }).click()
   const dialog = page.getByRole('dialog', { name: 'Pembayaran dan penyelesaian' })
   await dialog.getByRole('button', { name: 'Simpan Draft' }).click()
@@ -966,7 +1082,7 @@ test('saves Tempo as a dated Draft without creating a direct payment leg or fina
   await page.getByRole('button', { name: 'Masuk' }).click()
 
   await page.getByLabel('Customer katalog').selectOption(IDS.namedCustomer)
-  await page.getByRole('button', { name: /Ayam Frozen QA/ }).click()
+  await addCatalogProductToCart(page)
   await page.getByRole('button', { name: 'Atur pembayaran' }).click()
   const dialog = page.getByRole('dialog', { name: 'Pembayaran dan penyelesaian' })
   await dialog.getByLabel('Transaksi TEMPO').check()

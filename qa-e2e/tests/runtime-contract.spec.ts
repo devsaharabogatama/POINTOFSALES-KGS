@@ -94,7 +94,7 @@ test('Retail PWA keeps every approved operational workspace wired to canonical R
   for (const rpc of [
     'close_cashier_session',
     'get_pos_returnable_sales',
-    'save_sales_return_draft_with_delivery_fee',
+    'submit_pos_sales_return_with_delivery_fee',
     'save_expense_draft',
     'submit_expense_request',
     'post_pos_expense',
@@ -113,6 +113,24 @@ test('Retail PWA keeps every approved operational workspace wired to canonical R
     'save_cash_deposit_draft',
     'submit_cash_deposit',
   ]) expect(runtime, `Retail runtime must retain ${rpc}`).toContain(rpc)
+})
+
+test('direct Sales Return finalization is scoped to POS Retail and preserves Backoffice approval', async () => {
+  const [runtime, migration, approvalRoute] = await Promise.all([
+    read('pwa/src/lib/pos.ts'),
+    read('supabase/migrations/20261102100000_pos_retail_direct_sales_return_refund.sql'),
+    read('backoffice/src/app/api/sales/returns/[id]/post/route.ts'),
+  ])
+  expect(runtime).toContain('submit_pos_sales_return_with_delivery_fee')
+  expect(migration).toContain("setting.active_mode='RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("v_sale.sales_origin='POS'")
+  expect(migration).toContain("v_sale.sales_process_mode='RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("'approvalMode','REQUIRED'")
+  expect(migration).toContain('public.save_sales_return_draft_with_delivery_fee(')
+  expect(migration).toContain('private.acp5h_post_sales_return_core(')
+  expect(migration).toContain('POS_SALES_RETURN_CHANGED_RETRY')
+  expect(approvalRoute).toContain('post_sales_return')
+  expect(approvalRoute).not.toContain('submit_pos_sales_return_with_delivery_fee')
 })
 
 test('Opening Stock remains a guarded Backoffice workflow rather than a generic import', async () => {

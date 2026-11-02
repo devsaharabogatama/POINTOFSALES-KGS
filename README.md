@@ -1,5 +1,17 @@
 # MADS — Management Distribution System
 
+> **POS Retail direct Return/refund package (2026-11-02, database live):**
+> company dengan `RETAIL_CONFIRM_INVOICE` dan source Sale `POS + Retail` kini
+> memiliki guarded forward package untuk menyimpan dan mem-finalkan Return serta
+> refund secara atomik dari satu konfirmasi Kasir. Mode
+> `BACKOFFICE_DELIVERED_QTY_INVOICE`, retained-Retail setelah cutover,
+> historical Draft/Posted, canonical Stock/FIFO, dan Finance posting policy
+> tetap dipertahankan. PWA lint/build dan mocked POS gate `29/29 PASS`.
+> Production preflight, migration `20261102100000`, rollback-only behavior,
+> dan postflight sudah PASS. Client deployment, authenticated smoke, dan UAT
+> masih pending. Audit:
+> [POS direct Sales Return/refund finalization](docs/audits/POS_DIRECT_SALES_RETURN_REFUND_FINALIZATION_IMPACT_2026-11-02.md).
+
 > **POS Session Summary + Ketul UI compaction (2026-11-01):** the local PWA
 > keeps all five Session totals in one compact desktop row, confines narrow
 > layouts to a horizontal totals strip, and gives the remaining modal height to

@@ -1,5 +1,58 @@
 # Active Development Handoff — KGS POS
 
+## 2026-11-02 - POS configure Product before Cart commit
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE`. Impact audit:
+  `docs/audits/POS_PRODUCT_CONFIGURE_BEFORE_CART_IMPACT_2026-11-02.md`.
+- Catalog and Compact Product selection now open the shared Product editor
+  first. A new line enters Cart only through `Masukkan ke keranjang`; cancel,
+  close, overlay, Escape, reset, and workspace change discard the pending line.
+- Existing committed lines remain editable through the same editor. Selecting
+  the same Product-UOM again opens that existing line rather than duplicating
+  it.
+- Preserved: price authority, override permission, Product-UOM precision,
+  discounts, Draft/checkout payloads, Ketul, Tempo, Delivery, payment, cashier
+  session, Stock/Reservation/FIFO/HPP, Finance, audit, Backoffice, historical
+  data, Company boundaries, and existing delete/edit behavior.
+- Evidence: PWA lint PASS; PWA production build PASS (existing chunk warning
+  only); focused flow `1/1 PASS`; full mocked POS suite `28/28 PASS`.
+- Authenticated laptop check at `http://127.0.0.1:5190`: new Product opened the
+  `Tambah produk` editor while Cart stayed zero; cancel returned to Catalog with
+  Cart still zero. No transaction or operational state was changed.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` YES; `DATABASE LIVE` N/A;
+  `CLIENT DEPLOYED` NO; authenticated posting `SMOKE PASS` NO; `UAT PASS` NO.
+- Manual gate: user may inspect the complete confirmation/edit flow locally.
+  Deployment requires explicit authorization. Root README is unchanged because
+  module/runtime, migration, and roadmap status did not change.
+
+## 2026-11-02 - POS Catalog category strip layout
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE`, limited to Catalog-mode client
+  layout. Audit artifact:
+  `docs/audits/POS_CATALOG_CATEGORY_STRIP_LAYOUT_IMPACT_2026-11-02.md`.
+- `pwa/src/App.tsx` scopes the new layout contract to the Catalog category row.
+  `pwa/src/App.css` keeps it immediately below Product search, prevents it from
+  collapsing behind Product cards, and reduces its button height.
+- Category state/handlers, Product search, Product cards, Cart/checkout, Compact
+  picker, payment, session, Stock/FIFO, Finance, Backoffice/ODR, schema, RPCs,
+  historical data, and every Company remain unchanged.
+- Test coverage was extended in `qa-e2e/tests/retail-pwa.mocked.spec.ts` without
+  weakening any existing assertion.
+- PWA lint: PASS.
+- PWA production build: PASS; existing chunk-size warning only.
+- Focused Catalog category geometry/filter test: 1/1 PASS.
+- Full POS gate `npm.cmd --prefix qa-e2e run test:pos`: 27/27 PASS.
+- Authenticated local laptop check at `http://127.0.0.1:5190`: compact category
+  strip visible under search; `KETUL` displayed four matching Products and
+  `Semua` restored the 74-item catalog. No transaction or Company/session state
+  was changed.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` YES for this client checkpoint;
+  `DATABASE LIVE` N/A; `CLIENT DEPLOYED` NO; full `SMOKE PASS` NO; `UAT PASS`
+  NO.
+- Next safe step: user inspects the local placement. Deployment requires
+  explicit authorization. Root README is unchanged because module/runtime,
+  migration, and roadmap status did not change.
+
 ## 2026-11-01 - POS Session Summary + Ketul UI compaction LOCAL VERIFICATION PASS
 
 - Classification: `PRODUCT_BEHAVIOR_CHANGE` (presentation/layout only).
@@ -22634,3 +22687,59 @@ cases are observed through the deployed UI.
   explicit user instruction. After deployment, run authenticated smoke and UAT;
   do not translate the local 27/27 mocked result into database or Production
   coverage.
+
+# Checkpoint 2026-11-02 - POS Retail direct Return/refund database rollout
+
+## Approved boundary
+
+- Direct finalization applies only to Company mode `RETAIL_CONFIRM_INVOICE`
+  and source Sale identity `sales_origin='POS'` plus
+  `sales_process_mode='RETAIL_CONFIRM_INVOICE'`.
+- `BACKOFFICE_DELIVERED_QTY_INVOICE`, retained Retail returns after cutover,
+  historical REQUIRED Drafts, and Backoffice `post_sales_return` remain
+  unchanged.
+
+## Files changed
+
+- `supabase/migrations/20261102100000_pos_retail_direct_sales_return_refund.sql`
+- `supabase/diagnostics/pos_retail_direct_sales_return_refund_preflight.sql`
+- `supabase/diagnostics/pos_retail_direct_sales_return_refund_postflight.sql`
+- `supabase/tests/pos_retail_direct_sales_return_refund_behavior.sql`
+- `pwa/src/SalesReturnModal.tsx`
+- `pwa/src/lib/pos.ts`
+- `qa-e2e/tests/retail-pwa.mocked.spec.ts`
+- `qa-e2e/tests/runtime-contract.spec.ts`
+- `docs/audits/POS_DIRECT_SALES_RETURN_REFUND_FINALIZATION_IMPACT_2026-11-02.md`
+- root `README.md` and this handoff.
+
+## Evidence and honest status
+
+- Impact audit/call chain: complete.
+- PWA lint and production build: PASS; existing chunk-size warning only.
+- Full mocked POS E2E/runtime contracts: `29/29 PASS`.
+- First test run `28/29`: obsolete client-RPC assertion only. It was classified
+  and corrected as `TEST_HARNESS_FIX`; canonical Draft saver preservation is
+  still asserted in the migration contract.
+- `AUDIT COMPLETE`: YES.
+- Production preflight: PASS with state `NOT_INSTALLED` and proven Retail versus
+  Backoffice process inventory.
+- Migration ledger, rollback-only behavior, and SELECT-only postflight: PASS
+  based on user-provided database output.
+- `LOCAL READY`: YES.
+- `DATABASE LIVE`: YES.
+- `CLIENT DEPLOYED`: NO.
+- `SMOKE PASS`: NO.
+- `UAT PASS`: NO.
+
+## Manual gate / next safe step
+
+1. Commit and push the scoped client/database package; do not include unrelated
+   dirty-worktree files.
+2. Wait for the client deployment generated by the repository workflow.
+3. Run authenticated Cash and Transfer Retail Return smoke plus one Backoffice
+   Draft/approval regression.
+4. Record `CLIENT DEPLOYED`, `SMOKE PASS`, and `UAT PASS` independently.
+
+Migration is immutable after commit. Any database defect requires a new forward
+migration; do not edit/rerun `20261102100000` and do not weaken or remove the
+Backoffice approval RPC.

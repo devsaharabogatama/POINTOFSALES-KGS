@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, PackageCheck, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 import {
   loadSalesReturnWorkspace,
-  saveSalesReturnDraft,
+  submitSalesReturn,
   type CashierSession,
   type CatalogData,
   type DamagedWarehouseOption,
@@ -49,6 +49,8 @@ export function SalesReturnModal({
   close,
   completed,
 }: Props) {
+  const operationIdRef = useRef(crypto.randomUUID())
+  const clientRefundKeyRef = useRef(crypto.randomUUID())
   const [sales, setSales] = useState<ReturnableSale[]>([])
   const [damagedWarehouses, setDamagedWarehouses] = useState<
     DamagedWarehouseOption[]
@@ -261,9 +263,11 @@ export function SalesReturnModal({
     setBusy(true)
     setError('')
     try {
-      const result = await saveSalesReturnDraft({
+      const result = await submitSalesReturn({
         sourceSalesId: selectedSale.salesId,
         executingSessionId: cashierSession.id,
+        operationId: operationIdRef.current,
+        clientRefundKey: clientRefundKeyRef.current,
         roundingDirection: rounding,
         notes,
         refundDeliveryFee: refundDeliveryFee && calculation.fullRemaining,
@@ -276,9 +280,9 @@ export function SalesReturnModal({
           proofUrl: proofUrl.trim(),
         },
       })
-      completed(
-        `${result.returnNo} tersimpan sebagai Draft dengan refund ${selectedMethod?.name ?? 'terpilih'}. Menunggu persetujuan Store Manager/Admin sebelum refund menjadi final.`,
-      )
+      completed(result.status === 'POSTED'
+        ? `${result.returnNo} berhasil. Return dan refund ${selectedMethod?.name ?? 'terpilih'} sudah final.`
+        : `${result.returnNo} tersimpan sebagai Draft dengan refund ${selectedMethod?.name ?? 'terpilih'}. Menunggu persetujuan Store Manager/Admin sebelum refund menjadi final.`)
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -422,7 +426,7 @@ export function SalesReturnModal({
                 </label>
                 <p className="pos-return-method-note">
                   Metode refund boleh berbeda dari pembayaran awal dan akan
-                  tercatat pada Nota Return setelah approval.
+                  tercatat pada Nota Return setelah transaksi dikonfirmasi.
                 </p>
                 {selectedMethod?.methodType === 'TRANSFER' && <>
                   <label>Tujuan transfer<input required value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} placeholder="Bank / nomor rekening tujuan" /></label>
@@ -458,13 +462,16 @@ export function SalesReturnModal({
                   <span>Refund ongkir</span><strong>{money(calculation.deliveryFeeRefund)}</strong>
                   <span>Total refund</span><strong>{money(calculation.total)}</strong>
                 </div>
-                <p className="pos-return-approval-note">Draft belum mengubah stok atau kas. Store Manager/Admin harus memeriksa dan posting.</p>
+                <p className="pos-return-approval-note">
+                  Company Retail menyelesaikan Return dan refund langsung saat
+                  dikonfirmasi. Company Backoffice tetap membuat Draft untuk approval.
+                </p>
               </aside>
             </div>
             <footer className="pos-return-footer">
               <button type="button" onClick={close} disabled={busy} className="pos-dialog-secondary">Batal</button>
               <button disabled={busy || calculation.selectedCount === 0 || calculation.total <= 0} className="pos-dialog-primary">
-                {busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan…</> : 'Simpan Draft Return'}
+                {busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Memproses…</> : 'Konfirmasi Return & Refund'}
               </button>
             </footer>
           </form>
