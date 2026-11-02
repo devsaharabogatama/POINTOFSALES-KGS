@@ -12,6 +12,15 @@
 > masih pending. Audit:
 > [POS direct Sales Return/refund finalization](docs/audits/POS_DIRECT_SALES_RETURN_REFUND_FINALIZATION_IMPACT_2026-11-02.md).
 
+> **POS configure Product before Cart (2026-11-02, client local):** selecting
+> a Product from Catalog or Compact now opens the shared Product editor before
+> the line is committed. `Masukkan ke keranjang` is the commit boundary;
+> cancel/close/Escape leaves the Cart unchanged, while committed lines remain
+> editable. PWA lint/build, focused browser test, full mocked POS gate, and an
+> authenticated local laptop check passed. Client deployment and Production
+> UAT remain pending. Audit:
+> [POS Product configure-before-Cart](docs/audits/POS_PRODUCT_CONFIGURE_BEFORE_CART_IMPACT_2026-11-02.md).
+
 > **POS Session Summary + Ketul UI compaction (2026-11-01):** the local PWA
 > keeps all five Session totals in one compact desktop row, confines narrow
 > layouts to a horizontal totals strip, and gives the remaining modal height to

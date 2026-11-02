@@ -996,6 +996,35 @@ button {
   background: #008f86 !important;
 }
 
+.pos-catalog-category-tabs {
+  display: flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px !important;
+  margin-bottom: 10px !important;
+  padding: 0 0 2px !important;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.pos-catalog-category-tabs button {
+  min-height: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pos-workspace.is-catalog-layout .pos-search-row {
+  margin-bottom: 8px !important;
+  padding-bottom: 8px;
+}
+
 .pos-product-grid {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px !important;

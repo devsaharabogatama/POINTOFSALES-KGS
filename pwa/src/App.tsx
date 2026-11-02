@@ -531,6 +531,7 @@ export default function App() {
     Record<string, string>
   >({})
   const [editingCartProductUomId, setEditingCartProductUomId] = useState('')
+  const [pendingCartItem, setPendingCartItem] = useState<CartItem | null>(null)
   const [draft, setDraft] = useState<SaleDraft | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [draftNotes, setDraftNotes] = useState('')
@@ -633,6 +634,8 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('mads-pos-workspace-layout', workspaceLayout)
     setProductPickerOpen(false)
+    setPendingCartItem(null)
+    setEditingCartProductUomId('')
     setSearch('')
     setCheckoutOpen(false)
   }, [workspaceLayout])
@@ -1549,7 +1552,19 @@ export default function App() {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (closeSessionOpen && !busy) setCloseSessionOpen(false)
-      else if (editingCartProductUomId) setEditingCartProductUomId('')
+      else if (pendingCartItem || editingCartProductUomId) {
+        if (pendingCartItem) {
+          const productUomId = pendingCartItem.product.productUomId
+          setCartQuantityInputs((current) => {
+            if (!(productUomId in current)) return current
+            const next = { ...current }
+            delete next[productUomId]
+            return next
+          })
+        }
+        setPendingCartItem(null)
+        setEditingCartProductUomId('')
+      }
       else if (actionDialog) {
         setActionDialog(null)
         setActionDialogReason('')
@@ -1589,6 +1604,7 @@ export default function App() {
     draftPanelOpen,
     orderPanelOpen,
     editingCartProductUomId,
+    pendingCartItem,
     error,
     cashDepositOpen,
     goodsReceiptOpen,
@@ -1813,38 +1829,79 @@ export default function App() {
     }
   }
 
-  function addToCart(product: ProductOption) {
-    if (!cashierSession) return
+  function clearCartQuantityInput(productUomId: string) {
     setCartQuantityInputs((current) => {
-      if (!(product.productUomId in current)) return current
+      if (!(productUomId in current)) return current
       const next = { ...current }
-      delete next[product.productUomId]
+      delete next[productUomId]
       return next
     })
+  }
+
+  function closeCartEditor() {
+    if (pendingCartItem) {
+      clearCartQuantityInput(pendingCartItem.product.productUomId)
+    }
+    setPendingCartItem(null)
+    setEditingCartProductUomId('')
+  }
+
+  function openProductEditor(product: ProductOption) {
+    if (!cashierSession) return
+    clearCartQuantityInput(product.productUomId)
+    const existing = cart.find(
+      (item) => item.product.productUomId === product.productUomId,
+    )
+    setProductPickerOpen(false)
+    setSearch('')
+    if (existing) {
+      setPendingCartItem(null)
+      setEditingCartProductUomId(product.productUomId)
+      return
+    }
+    setEditingCartProductUomId('')
+    setPendingCartItem({
+      product,
+      quantity: 1,
+      discountType: '',
+      discountInput: 0,
+      overrideUnitPrice: null,
+    })
+  }
+
+  function confirmPendingCartItem() {
+    if (!cashierSession || !pendingCartItem) return
+    const nextItem = pendingCartItem
     setCart((current) => {
       const existing = current.find(
-        (item) => item.product.productUomId === product.productUomId,
+        (item) =>
+          item.product.productUomId === nextItem.product.productUomId,
       )
       if (existing) {
         return current.map((item) =>
           item === existing
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { ...item, ...nextItem }
             : item,
         )
       }
-      return [
-        ...current,
-        {
-          product,
-          quantity: 1,
-          discountType: '',
-          discountInput: 0,
-          overrideUnitPrice: null,
-        },
-      ]
+      return [...current, nextItem]
     })
+    clearCartQuantityInput(nextItem.product.productUomId)
+    setPendingCartItem(null)
     setResolvedLines([])
     setShortages([])
+  }
+
+  function updateCartEditorItem(patch: Partial<CartItem>) {
+    if (pendingCartItem) {
+      setPendingCartItem((current) =>
+        current ? { ...current, ...patch } : current,
+      )
+      return
+    }
+    if (editingCartProductUomId) {
+      updateCart(editingCartProductUomId, patch)
+    }
   }
 
   function updateCart(productUomId: string, patch: Partial<CartItem>) {
@@ -1912,6 +1969,32 @@ export default function App() {
     )
     commitCartQuantityInput(item)
     updateCart(item.product.productUomId, { quantity })
+  }
+
+  function changeCartEditorQuantityInput(item: CartItem, rawValue: string) {
+    const productUomId = item.product.productUomId
+    setCartQuantityInputs((current) => ({
+      ...current,
+      [productUomId]: rawValue,
+    }))
+    if (rawValue.trim() === '') return
+    const quantity = Number(rawValue)
+    if (Number.isFinite(quantity) && quantity > 0) {
+      updateCartEditorItem({ quantity })
+    }
+  }
+
+  function adjustCartEditorQuantity(item: CartItem, direction: -1 | 1) {
+    const precision = item.product.allowDecimal
+      ? item.product.decimalPrecision
+      : 0
+    const step = item.product.allowDecimal ? 10 ** -precision : 1
+    const quantity = Math.max(
+      step,
+      Number((item.quantity + direction * step).toFixed(precision)),
+    )
+    commitCartQuantityInput(item)
+    updateCartEditorItem({ quantity })
   }
 
   function draftLines() {
@@ -3138,6 +3221,7 @@ export default function App() {
     setCart([])
     setCartQuantityInputs({})
     setEditingCartProductUomId('')
+    setPendingCartItem(null)
     setDraft(null)
     cutoverDraftBaselineRef.current = null
     setDraftLabel('')
@@ -3602,9 +3686,10 @@ export default function App() {
     )
   }
 
-  const editingCartItem = cart.find(
+  const editingCartItem = pendingCartItem ?? cart.find(
     (item) => item.product.productUomId === editingCartProductUomId,
   )
+  const cartEditorIsAdding = pendingCartItem !== null
   const editingResolvedLine = editingCartItem
     ? resolvedLines.find(
         (line) => line.lineKey === editingCartItem.product.productUomId,
@@ -3951,11 +4036,7 @@ export default function App() {
                                   type="button"
                                   key={product.productUomId}
                                   className="pos-product-picker-option"
-                                  onClick={() => {
-                                    addToCart(product)
-                                    setProductPickerOpen(false)
-                                    setSearch('')
-                                  }}
+                                  onClick={() => openProductEditor(product)}
                                 >
                                   <span className="pos-product-picker-product">
                                     <strong>{product.name}</strong>
@@ -4063,7 +4144,7 @@ export default function App() {
                       Stok terbaru
                     </button>
                   </div>
-                  <div className="pos-category-tabs mb-4 flex gap-2 overflow-x-auto pb-1">
+                  <div className="pos-category-tabs pos-catalog-category-tabs mb-4 flex gap-2 overflow-x-auto pb-1">
                     {categories.map((item) => (
                       <button
                         type="button"
@@ -4094,7 +4175,7 @@ export default function App() {
                           <button
                             type="button"
                             key={product.productUomId}
-                            onClick={() => addToCart(product)}
+                            onClick={() => openProductEditor(product)}
                             className="pos-product-card rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-emerald-700"
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -5260,7 +5341,7 @@ export default function App() {
           className="pos-cart-editor-overlay fixed inset-0 z-[65] grid place-items-center bg-black/60 p-4"
           onMouseDown={(event) => {
             if (event.currentTarget === event.target) {
-              setEditingCartProductUomId('')
+              closeCartEditor()
             }
           }}
         >
@@ -5272,15 +5353,19 @@ export default function App() {
           >
             <header className="pos-cart-editor-header">
               <div className="min-w-0">
-                <p className="pos-eyebrow">Edit produk</p>
+                <p className="pos-eyebrow">
+                  {cartEditorIsAdding ? 'Tambah produk' : 'Edit produk'}
+                </p>
                 <h2 id="pos-cart-editor-title">{editingCartItem.product.name}</h2>
                 <p>{editingCartItem.product.uomName}</p>
               </div>
               <button
                 type="button"
                 className="pos-cart-editor-close"
-                onClick={() => setEditingCartProductUomId('')}
-                aria-label="Tutup edit produk"
+                onClick={closeCartEditor}
+                aria-label={
+                  cartEditorIsAdding ? 'Batalkan tambah produk' : 'Tutup edit produk'
+                }
               >
                 <X className="h-5 w-5" />
               </button>
@@ -5292,7 +5377,7 @@ export default function App() {
                 <div className="pos-cart-editor-quantity">
                   <button
                     type="button"
-                    onClick={() => adjustCartQuantity(editingCartItem, -1)}
+                    onClick={() => adjustCartEditorQuantity(editingCartItem, -1)}
                     className="pos-cart-icon-button"
                     aria-label={`Kurangi jumlah ${editingCartItem.product.name}`}
                   >
@@ -5311,7 +5396,7 @@ export default function App() {
                       String(editingCartItem.quantity)
                     }
                     onChange={(event) =>
-                      changeCartQuantityInput(
+                      changeCartEditorQuantityInput(
                         editingCartItem,
                         event.target.value,
                       )
@@ -5320,7 +5405,7 @@ export default function App() {
                   />
                   <button
                     type="button"
-                    onClick={() => adjustCartQuantity(editingCartItem, 1)}
+                    onClick={() => adjustCartEditorQuantity(editingCartItem, 1)}
                     className="pos-cart-icon-button"
                     aria-label={`Tambah jumlah ${editingCartItem.product.name}`}
                   >
@@ -5348,7 +5433,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() =>
-                          updateCart(editingCartItem.product.productUomId, {
+                          updateCartEditorItem({
                             overrideUnitPrice: null,
                           })
                         }
@@ -5363,7 +5448,7 @@ export default function App() {
                       editingCanonicalUnitPrice
                     }
                     onValueChange={(value) =>
-                      updateCart(editingCartItem.product.productUomId, {
+                      updateCartEditorItem({
                         overrideUnitPrice: Number(value || 0),
                       })
                     }
@@ -5390,7 +5475,7 @@ export default function App() {
                   <select
                     value={editingCartItem.discountType}
                     onChange={(event) =>
-                      updateCart(editingCartItem.product.productUomId, {
+                      updateCartEditorItem({
                         discountType: event.target.value as
                           | ''
                           | 'AMOUNT'
@@ -5406,7 +5491,7 @@ export default function App() {
                     <CurrencyInput
                       value={editingCartItem.discountInput}
                       onValueChange={(value) =>
-                        updateCart(editingCartItem.product.productUomId, {
+                        updateCartEditorItem({
                           discountInput: Number(value || 0),
                         })
                       }
@@ -5418,7 +5503,7 @@ export default function App() {
                       disabled={!editingCartItem.discountType}
                       value={editingCartItem.discountInput}
                       onChange={(event) =>
-                        updateCart(editingCartItem.product.productUomId, {
+                        updateCartEditorItem({
                           discountInput: Number(event.target.value),
                         })
                       }
@@ -5429,22 +5514,36 @@ export default function App() {
             </div>
 
             <footer className="pos-cart-editor-footer">
-              <button
-                type="button"
-                className="is-remove"
-                onClick={() =>
-                  removeCartItem(editingCartItem.product.productUomId)
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-                Hapus produk
-              </button>
+              {cartEditorIsAdding ? (
+                <button
+                  type="button"
+                  className="is-remove"
+                  onClick={closeCartEditor}
+                >
+                  Batal
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="is-remove"
+                  onClick={() =>
+                    removeCartItem(editingCartItem.product.productUomId)
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Hapus produk
+                </button>
+              )}
               <button
                 type="button"
                 className="is-done"
-                onClick={() => setEditingCartProductUomId('')}
+                onClick={
+                  cartEditorIsAdding
+                    ? confirmPendingCartItem
+                    : closeCartEditor
+                }
               >
-                Selesai
+                {cartEditorIsAdding ? 'Masukkan ke keranjang' : 'Selesai'}
               </button>
             </footer>
           </section>
