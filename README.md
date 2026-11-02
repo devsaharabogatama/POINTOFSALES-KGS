@@ -104,19 +104,22 @@
 > remains an explicit gap, so the overall workflow is not yet COMPLETE. See the
 > [impact audit](docs/audits/POS_KETUL_CUSTOMER_INTAKE_OFFSET_IMPACT_2026-10-31.md).
 
-> **POS Task 2, Return refund-method slice (2026-10-31):** points 5 and 9 are
-> locally ready. Cash Return no longer carries Transfer destination/reference;
-> Transfer retains the existing required destination/reference contract, and
-> switching back to Cash clears hidden Transfer state. A final Return note can
-> now be printed from Backoffice only after the Return is `POSTED`, showing the
-> actual refund method and conditional Transfer details. Pure contract test,
-> PWA lint/build, Backoffice focused lint/build, and combined mocked Retail plus
-> runtime-contract Playwright `11/11 PASS`. No schema, migration, database data,
-> Stock/FIFO, Finance, or Backoffice/ODR runtime changed. Status: `AUDIT
-> COMPLETE / LOCAL READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING /
-> UAT PENDING`. Point 10 is now tracked separately as the local-ready linked
-> Ketul intake package above; its database rollout and Posted correction remain
-> pending.
+> **POS Task 2, Return refund-method correction (2026-11-02):** point 5 remains
+> locally ready. Point 9 now has a guarded local correction package: Transfer
+> destination, reference, and proof are optional; blank values normalize to
+> `NULL`; Cash remains metadata-free; and Return-note output only prints detail
+> actually recorded. The user-provided preflight passed with corrective state
+> `NOT_INSTALLED` and exact active-runtime anchors. PWA lint/build, Backoffice
+> focused lint/contract, and full mocked POS/runtime Playwright `30/30 PASS`.
+> Migration `20261102110000` is now **DATABASE LIVE** and its user-confirmed
+> postflight is fully PASS: ledger, relaxed constraint, patched canonical core,
+> blank normalization, zero invalid rows, and Retail/Backoffice boundary. The
+> rollback-only database behavior is now user-confirmed PASS. The client is not
+> deployed, and authenticated smoke/UAT have not run. Do not rerun or edit the
+> installed migration. Stock/FIFO,
+> Finance settlement, Cashier Session, Retail direct finalization, and
+> Backoffice approval remain explicitly preserved. Point 10 is tracked
+> separately as the linked Ketul package.
 
 > **POS Session Summary Return shortcut (2026-11-01):** every transaction row
 > now has a right-aligned Return action that opens the existing Return workflow

@@ -1,5 +1,11 @@
 # POS Sales Return Refund Method UI Impact Audit (2026-10-31)
 
+> **CORRECTION 2026-11-02:** audit ini salah menerjemahkan point 9 sebagai
+> "Transfer wajib memiliki tujuan dan referensi". Requirement user sebenarnya
+> menyatakan tujuan Transfer tidak boleh wajib. Klaim point 9 selesai dicabut.
+> Audit pengganti:
+> `POS_SALES_RETURN_OPTIONAL_TRANSFER_METADATA_IMPACT_2026-11-02.md`.
+
 ## Classification and requested outcome
 
 - Task classification: `PRODUCT_BEHAVIOR_CHANGE` (presentation/operational

@@ -243,11 +243,6 @@ export function SalesReturnModal({
       setError('Pilih cara pengembalian dana yang tersedia.')
       return
     }
-    if (selectedMethod?.methodType === 'TRANSFER' &&
-        (!transferDestination.trim() || !transferReference.trim())) {
-      setError('Tujuan transfer dan nomor referensi wajib diisi.')
-      return
-    }
     if (proofUrl && !/^https:\/\//i.test(proofUrl)) {
       setError('Link bukti harus menggunakan HTTPS.')
       return
@@ -429,8 +424,12 @@ export function SalesReturnModal({
                   tercatat pada Nota Return setelah transaksi dikonfirmasi.
                 </p>
                 {selectedMethod?.methodType === 'TRANSFER' && <>
-                  <label>Tujuan transfer<input required value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} placeholder="Bank / nomor rekening tujuan" /></label>
-                  <label>Nomor referensi<input required value={transferReference} onChange={(event) => setTransferReference(event.target.value)} placeholder="Referensi transfer" /></label>
+                  <p className="pos-return-method-note">
+                    Detail Transfer berikut opsional. Isi jika informasinya
+                    tersedia agar mudah ditelusuri pada Nota Return.
+                  </p>
+                  <label>Tujuan transfer (opsional)<input value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} placeholder="Bank / nomor rekening tujuan" /></label>
+                  <label>Nomor referensi (opsional)<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} placeholder="Referensi transfer" /></label>
                   <label>Link bukti HTTPS (opsional)<input type="url" value={proofUrl} onChange={(event) => setProofUrl(event.target.value)} placeholder="https://…" /></label>
                 </>}
                 {selectedMethod?.methodType === 'CASH' && (

@@ -1,5 +1,47 @@
 # Active Development Handoff — KGS POS
 
+## 2026-11-02 - POS Return optional Transfer metadata point 9
+
+- Prior claim that point 9 was complete is withdrawn. The user requirement was
+  that Transfer destination must not be mandatory, not that Cash merely hides
+  Transfer fields.
+- Proven active enforcement still exists in three layers:
+  `pwa/src/SalesReturnModal.tsx` HTML/submit validation,
+  `private.save_sales_return_draft_sld_r4_core(...)` exception
+  `TRANSFER_REFUND_REFERENCE_REQUIRED`, and table constraint
+  `sales_return_refund_transfer_contract`.
+- Finance posting consumes settlement function and amount, not Transfer
+  destination/reference; Stock/FIFO and Cashier Session logic are independent.
+- Corrective impact audit:
+  `docs/audits/POS_SALES_RETURN_OPTIONAL_TRANSFER_METADATA_IMPACT_2026-11-02.md`.
+- User decision: Transfer destination, reference, and proof URL are all
+  optional; blank values must normalize to `NULL`.
+- The user-provided SELECT-only preflight passed all checks and proved state
+  `NOT_INSTALLED`, exact canonical-core MD5
+  `af21deff47f6947f9e5f7cfb994bb1cb`, compatible historical data, and idle
+  Finance/Offline boundaries.
+- Phase B local package:
+  - `supabase/migrations/20261102110000_pos_sales_return_optional_transfer_metadata.sql`;
+  - `supabase/tests/pos_sales_return_optional_transfer_metadata_behavior.sql`;
+  - `supabase/diagnostics/pos_sales_return_optional_transfer_metadata_postflight.sql`;
+  - optional-field UI, truthful Return-note rendering, and focused/full tests.
+- Evidence: PWA lint/build PASS, Backoffice focused lint and Return-note
+  contract PASS, full mocked POS/runtime Playwright `30/30 PASS`. The first
+  `29/30` run exposed only an escaped-SQL static assertion mismatch; it was
+  corrected as `TEST_HARNESS_FIX` without weakening the business invariant.
+- `psql` is not available locally, so target-database compilation/execution is
+  not claimed.
+- User-confirmed Production postflight is fully PASS after installing
+  `20261102110000`: ledger 1, relaxed constraint, canonical core MD5
+  `575484409620785f8fd0e114d4943f61`, blank normalization active, invalid rows
+  0, and direct-Retail/Backoffice approval boundary preserved.
+- User subsequently confirmed the installed-runtime rollback-only behavior
+  succeeded. The migration, behavior, and postflight database gates are closed.
+- Status: `AUDIT COMPLETE / LOCAL READY / DATABASE LIVE / POSTFLIGHT PASS /
+  ROLLBACK BEHAVIOR PASS / CLIENT DEPLOYED NO / SMOKE PASS NO / UAT PASS NO`.
+- Next safe step: scoped commit/push, then client deployment and authenticated
+  Return smoke. Never rerun or edit installed migration `20261102110000`.
+
 ## 2026-11-02 - POS configure Product before Cart commit
 
 - Classification: `PRODUCT_BEHAVIOR_CHANGE`. Impact audit:

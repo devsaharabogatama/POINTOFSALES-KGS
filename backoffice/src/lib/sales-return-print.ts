@@ -65,8 +65,14 @@ export function salesReturnNoteHtml(input: SalesReturnPrintInput) {
     <td class="number">${escapeHtml(rupiah(line.refundAmount))}</td>
   </tr>`).join('')
   const refundRows = refunds.map((refund) => {
+    const transferMetadata = [
+      refund.transferDestination
+        ? `Tujuan: ${escapeHtml(refund.transferDestination)}` : '',
+      refund.transferReference
+        ? `Referensi: ${escapeHtml(refund.transferReference)}` : '',
+    ].filter(Boolean).join(' · ')
     const transferDetails = refund.methodType === 'TRANSFER'
-      ? `<small>Tujuan: ${escapeHtml(refund.transferDestination || '-')} · Referensi: ${escapeHtml(refund.transferReference || '-')}</small>`
+      ? `<small>${transferMetadata || 'Detail transfer tidak dicatat'}</small>`
       : '<small>Tunai · tidak memerlukan tujuan transfer</small>'
     const proof = refund.methodType === 'TRANSFER' && refund.proofUrl
       ? `<small>Bukti: ${escapeHtml(refund.proofUrl)}</small>` : ''

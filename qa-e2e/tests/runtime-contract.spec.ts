@@ -133,6 +133,30 @@ test('direct Sales Return finalization is scoped to POS Retail and preserves Bac
   expect(approvalRoute).not.toContain('submit_pos_sales_return_with_delivery_fee')
 })
 
+test('Sales Return Transfer metadata is optional without weakening settlement boundaries', async () => {
+  const [ui, migration, postflight, behavior] = await Promise.all([
+    read('pwa/src/SalesReturnModal.tsx'),
+    read('supabase/migrations/20261102110000_pos_sales_return_optional_transfer_metadata.sql'),
+    read('supabase/diagnostics/pos_sales_return_optional_transfer_metadata_postflight.sql'),
+    read('supabase/tests/pos_sales_return_optional_transfer_metadata_behavior.sql'),
+  ])
+  expect(ui).toContain('Tujuan transfer (opsional)')
+  expect(ui).toContain('Nomor referensi (opsional)')
+  expect(ui).not.toContain('Tujuan transfer dan nomor referensi wajib diisi.')
+  expect(migration).toContain('DROP CONSTRAINT sales_return_refund_transfer_contract')
+  expect(migration).toContain(
+    "v_destination_new text:='NULLIF(btrim(v_refund->>''transferDestination''),'''') END,'",
+  )
+  expect(migration).toContain(
+    "v_reference_new text:='NULLIF(btrim(v_refund->>''transferReference''),'''') END,'",
+  )
+  expect(migration).toContain('odr6d_returnable_sales_detail_quantity')
+  expect(postflight).toContain('pos_return_optional_transfer_postflight_core_contract')
+  expect(behavior).toContain('blankMetadataNormalized')
+  expect(behavior).toContain('populatedMetadataPreserved')
+  expect(behavior).toContain('financeEvent')
+})
+
 test('Opening Stock remains a guarded Backoffice workflow rather than a generic import', async () => {
   const [catalog, component, collectionRoute, postRoute] = await Promise.all([
     read('backoffice/src/lib/navigation-catalog.ts'),

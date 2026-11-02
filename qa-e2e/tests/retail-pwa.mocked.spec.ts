@@ -818,8 +818,8 @@ test('keeps the Ketul action fail-closed when Company entitlement exists but ser
   expect(rpcCalls.map((call) => call.name)).toContain('get_pos_ketul_readiness')
 })
 
-test('keeps Cash refund free of transfer fields and requires them only for Transfer', async ({ page }) => {
-  await installRetailServerMock(page)
+test('keeps Cash metadata-free and accepts optional Transfer refund metadata', async ({ page }) => {
+  const rpcCalls = await installRetailServerMock(page)
   await page.goto(pwaBaseUrl)
   await page.getByLabel('Email').fill('qa.cashier@example.test')
   await page.getByLabel('Password').fill('not-a-real-password')
@@ -840,6 +840,9 @@ test('keeps Cash refund free of transfer fields and requires them only for Trans
   await refundMethod.selectOption(IDS.transferPayment)
   await expect(returnDialog.getByLabel('Tujuan transfer')).toBeVisible()
   await expect(returnDialog.getByLabel('Nomor referensi')).toBeVisible()
+  await expect(returnDialog.getByLabel('Tujuan transfer')).not.toHaveAttribute('required', '')
+  await expect(returnDialog.getByLabel('Nomor referensi')).not.toHaveAttribute('required', '')
+  await expect(returnDialog.getByText(/Detail Transfer berikut opsional/)).toBeVisible()
   await returnDialog.getByLabel('Tujuan transfer').fill('BCA 123')
   await returnDialog.getByLabel('Nomor referensi').fill('TRX-QA-001')
 
@@ -848,6 +851,18 @@ test('keeps Cash refund free of transfer fields and requires them only for Trans
   await refundMethod.selectOption(IDS.transferPayment)
   await expect(returnDialog.getByLabel('Tujuan transfer')).toHaveValue('')
   await expect(returnDialog.getByLabel('Nomor referensi')).toHaveValue('')
+  await returnDialog.getByRole('button', { name: 'Konfirmasi Return & Refund' }).click()
+  await expect(page.getByText(/RTN-QA-0001 berhasil.*sudah final/)).toBeVisible()
+  expect(rpcCalls.find((call) =>
+    call.name === 'submit_pos_sales_return_with_delivery_fee')?.payload
+  ).toMatchObject({
+    p_refunds: [{
+      paymentMethodId: IDS.transferPayment,
+      transferDestination: null,
+      transferReference: null,
+      proofUrl: null,
+    }],
+  })
 })
 
 test('records a POS Expense as paid once and keeps the legacy cash disbursement action hidden', async ({ page }) => {

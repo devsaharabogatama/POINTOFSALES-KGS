@@ -67,11 +67,25 @@ assert.match(transferHtml, /Tujuan: BCA 123/)
 assert.match(transferHtml, /Referensi: TRX-001/)
 assert.match(transferHtml, /https:\/\/example\.test\/proof/)
 
+const transferWithoutMetadataHtml = salesReturnNoteHtml({
+  ...base,
+  refunds: [{
+    methodName: 'Transfer Bank', methodType: 'TRANSFER', amount: 25000,
+    transferDestination: null, transferReference: null, proofUrl: null,
+  }],
+})
+assert.match(transferWithoutMetadataHtml, /Detail transfer tidak dicatat/)
+assert.doesNotMatch(transferWithoutMetadataHtml, /Tujuan: -/)
+assert.doesNotMatch(transferWithoutMetadataHtml, /Referensi: -/)
+
 assert.match(componentSource, /document\.status === 'POSTED'.*Cetak Nota Return/)
 assert.doesNotMatch(componentSource, /document\.status === 'DRAFT'.*Cetak Nota Return/)
 assert.match(pwaSource, /nextMethod\?\.methodType !== 'TRANSFER'/)
 assert.match(pwaSource, /setTransferDestination\(''\)/)
 assert.match(pwaSource, /setTransferReference\(''\)/)
 assert.match(pwaSource, /Tujuan transfer dan nomor referensi tidak diperlukan/)
+assert.match(pwaSource, /Tujuan transfer \(opsional\)/)
+assert.match(pwaSource, /Nomor referensi \(opsional\)/)
+assert.doesNotMatch(pwaSource, /Tujuan transfer dan nomor referensi wajib diisi/)
 
 console.log('retail-sales-return-refund-note-contract: PASS')
