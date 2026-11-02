@@ -1,5 +1,49 @@
 # Gate Implementasi dan Rollout POS v1
 
+## 2026-11-01 - POS direct session Expense Point 4
+
+Status: `20261101100000 SUPERSEDED; 20261101110000 DATABASE LIVE/BEHAVIOR +
+POSTFLIGHT PASS; CLIENT/SMOKE/UAT PENDING`.
+
+- Required order: SELECT-only preflight -> guarded migration
+  `20261101100000` once -> rollback-only behavior -> SELECT-only postflight ->
+  client deploy -> authenticated POS smoke -> UAT.
+- Authenticated smoke must cover Cash Drawer OUT, non-cash zero drawer effect,
+  direct paid status, exact retry, selected-session Penyelesaian/history, Total
+  Expense breakdown, and unchanged Backoffice approval/history.
+- Stop on SQL error, `BLOCKER`, `FAIL`, unexpected Event/Journal state, another
+  session leaking into POS, or any Sales/Stock/FIFO mutation.
+- Local lint/build and mocked Playwright are not evidence that database or
+  deployed client is live.
+- Local evidence is limited to PostgreSQL 18 disposable migration compile and
+  postflight `4/4 PASS`, PWA lint/build, and focused Playwright `13/13 PASS`.
+  The rollback-only SQL behavior test still requires a representative
+  authenticated Company/session/master fixture after the Production preflight.
+- Do not rerun or edit `20261101100000`. Exact forward order is now:
+  `pos_direct_session_expense_noncash_route_fix_preflight.sql` -> migration
+  `20261101110000` once -> complete rollback-only
+  `pos_direct_session_expense_behavior.sql` ->
+  `pos_direct_session_expense_noncash_route_fix_postflight.sql` -> client
+  deployment -> authenticated smoke -> UAT.
+- Production forward postflight and exact rollback behavior are complete and
+  PASS. Do not rerun either migration, behavior, or postflight. Database gate
+  is complete;
+  proceed to authenticated POS smoke without rerunning migration, behavior, or
+  postflight.
+
+## 2026-09-25 - Gross Sales Discount local rollout gate
+
+- `LOCAL READY`, belum `DATABASE LIVE`.
+- Scope: Retail/POS `SALE_POSTED`, Dispatch `SALE_DISPATCHED`, dan Regular
+  Backoffice Invoice memakai Revenue bruto + debit Diskon Penjualan; settlement
+  tetap net. Down Payment, Return/Refund, Stock/FIFO/COGS, dan rounding tidak
+  berubah.
+- Required order: final preflight rerun -> migration `20260925100000` -> nonzero
+  Retail rollback behavior -> self-created Dispatch/Regular Invoice rollback
+  behavior -> postflight -> authenticated smoke -> Finance UAT.
+- Stop pada error/`BLOCKER`/`FAIL`; postflight hijau tanpa behavior nonzero tidak
+  cukup untuk menaikkan status.
+
 ## Backoffice Sales authenticated read smoke — Step 6/6.1 (2026-09-12)
 
 Status: `LOCAL READY; AUTHENTICATED DEVELOPMENT EXECUTION PENDING`.
@@ -676,6 +720,11 @@ Status: `LOCAL READY; DATABASE LIVE; CLIENT AUTHENTICATED SMOKE PENDING`.
   `/api/sales/documents?operation=EXPORT` karena child route export terbukti
   404 pada runtime Next dev. Handler, permission, Company scope, RPC, dan
   workbook tetap sama; tidak ada database mutation tambahan.
+- Additive union 2026-09-19 berstatus `LOCAL READY`: export yang sama kini
+  mencakup seluruh status Invoice Backoffice, menandai sumber Retail/Backoffice,
+  nomor dokumen/Draft/SO, dan mempertahankan detail Product/UOM/Qty. Database,
+  client deploy, authenticated smoke, dan UAT masih manual sesuai
+  `docs/runbooks/SALES_INVOICE_EXPORT_BACKOFFICE_UNION_ROLLOUT.md`.
 
 ## Gate aktif — Revisi Sales Order pre-dispatch (2026-09-03)
 
@@ -3154,3 +3203,70 @@ Status: `LOCAL READY; MANUAL DATABASE/CLIENT/SMOKE/UAT PENDING`.
   FIFO, Customer Balance, atau histori pembayaran.
 - Status `LOCAL READY`; database rollout, client deploy, authenticated mixed-source
   smoke, dan UAT belum dijalankan.
+
+## 2026-09-19 - Manual Finance Journal
+
+- Approval per Company default ON; Finance adalah maker, sedangkan Admin/Owner/
+  Super Admin menjadi approver. Maker-checker ditegakkan server-side.
+- Draft/pending tetap memakai status canonical `DRAFT`, sehingga period lock dan
+  seluruh laporan lama tetap kompatibel. Hanya `POSTED` masuk General Ledger.
+- Balance, periode terbuka, akun `allow_manual_posting`, tenant, optimistic
+  version, exact retry, audit immutable, cancel, dan reversal dijaga server-side.
+- Jurnal otomatis, POS, Payment, Stock/FIFO, Return/Refund, dan transaksi lama
+  tidak dimutasi.
+- Status `LOCAL READY`; Production preflight/migration/behavior/postflight,
+  client deploy, authenticated smoke, dan UAT masih pending.
+
+## 2026-09-23 - LSM AUTO_RO stale-Draft roll-forward
+
+- Paket `20260923110000` default OFF mengaudit-cancel RO otomatis Draft tanggal
+  lama sebelum scheduler AUTO_RO membentuk satu snapshot baru.
+- Trial aktivasi hanya LSM; KMS/SMS dan AUTO_PO tetap unchanged. Konfirmasi
+  memakai freshness source snapshot tanpa melarang edit Qty manual.
+- Status `DATABASE LIVE / POSTFLIGHT PASS / BEHAVIOR PASS / LSM ACTIVATED`;
+  KMS/SMS tetap OFF dan scheduler/post-activation smoke masih pending.
+- Production migration, activation, scheduler postflight, authenticated smoke,
+  dan UAT masih pending.
+
+## 2026-09-24 - Finance mapping catalog completeness
+
+Status: `DATABASE VERIFIED; CLIENT/SMOKE/UAT PENDING`.
+
+- Scope koreksi metadata/read-management, bukan perubahan posting formula:
+  `PURCHASE_RETURN` kini ditargetkan mendeklarasikan `INVENTORY_ASSET` dan
+  `SUPPLIER_AP_PROVISIONAL` sebagai wajib serta AP final, Piutang Refund
+  Supplier, PPV, dan Pajak Masukan sebagai conditional sesuai runtime aktif.
+- Finance Master API/UI membawa `optional_account_functions`, editor tidak lagi
+  menyembunyikan fungsi optional, dan tab kelengkapan membedakan direct rule,
+  Company fallback, missing, ambiguous, inactive function, serta invalid account.
+- Migration tidak membuat atau mengubah COA/mapping Company dan tidak menyentuh
+  Stock, FIFO, Payment, Event, Journal, atau histori posted.
+- Gate wajib: read-only preflight -> migration `20260924120000` -> rollback-only
+  behavior nonzero -> postflight -> client deploy -> authenticated KMS/SMS/LSM
+  smoke -> Finance UAT. Stop pada SQL error, `BLOCKER`, atau `FAIL`.
+- Supplier Refund Receipt/Offset, Gross Sales Discount, dan bulk workbook apply
+  tetap di luar gate ini.
+## 2026-09-25 - Gross Sales Discount accounting
+
+Status: `DATABASE LIVE; RETAIL BEHAVIOR PASS;
+BACKOFFICE-DISPATCH BEHAVIOR/POSTFLIGHT/CLIENT/SMOKE/UAT PENDING`.
+
+- Scope pengakuan revenue: Retail/POS `SALE_POSTED`, ODR
+  `SALE_DISPATCHED`, dan Regular `BACKOFFICE_SALES_INVOICE`.
+- Target jurnal gross: debit `SALES_DISCOUNT` (diskon DPP), credit
+  `SALES_REVENUE` (gross DPP); settlement/AR dan pajak tetap net serta rounding
+  tidak dicampur dengan diskon.
+- Gate wajib: Production preflight -> guarded migration -> nonzero rollback-only
+  behavior lintas tiga path -> postflight -> authenticated smoke -> Finance UAT.
+- Existing posted Journal immutable. In-flight partial Dispatch berdiskon wajib
+  fail-closed sampai lineage-nya dapat dibuktikan aman.
+- Production preflight terbaru membuktikan nol discounted partial Dispatch,
+  nol active Finance/offline queue, nol collision, serta source mapping tersedia
+  pada seluruh lima active Company. Behavioral dan postflight belum dijalankan.
+- User kemudian menjalankan migration `20260925100000`; ledger exact version dan
+  migration name terverifikasi. Gate berikutnya adalah Retail rollback-only
+  behavior, bukan postflight atau klaim selesai.
+- Retail rollback-only behavior berikutnya PASS dengan fixture non-zero: gross
+  Revenue, debit Sales Discount, settlement net, balanced Journal, audit version,
+  retry, source immutability, dan rollback semuanya terbukti. Gate berikutnya
+  adalah behavior Backoffice Invoice/Dispatch.

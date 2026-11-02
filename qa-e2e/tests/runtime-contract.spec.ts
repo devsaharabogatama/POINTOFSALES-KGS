@@ -18,20 +18,30 @@ test('every declared Backoffice navigation view has an active rendering branch',
 })
 
 test('Retail checkout keeps canonical Draft, price, direct posting, payment and offline boundaries', async () => {
-  const [app, runtime] = await Promise.all([
+  const [app, runtime, ketulMigration, ketulReadinessMigration] = await Promise.all([
     read('pwa/src/App.tsx'),
     read('pwa/src/lib/pos.ts'),
+    read('supabase/migrations/20261031110000_pos_ketul_customer_intake_offset.sql'),
+    read('supabase/migrations/20261101120000_pos_ketul_kgs_readiness_forward_fix.sql'),
   ])
   for (const rpc of [
-    'save_pos_sale_draft_with_pricelist',
+    'save_pos_sale_draft_with_ketul',
     'preview_pos_sale_prices',
-    'post_pos_sale_with_pricelist',
+    'post_pos_sale_with_ketul',
     'get_pos_payment_method_references',
     'get_pos_stock_availability',
+    'get_pos_ketul_readiness',
   ]) expect(runtime).toContain(rpc)
+  expect(ketulMigration).toContain('public.save_pos_sale_draft_with_pricelist(v_payload)')
+  expect(ketulMigration).toContain('public.post_pos_sale_with_pricelist(')
+  expect(ketulReadinessMigration).toContain('public.private_active_company_id()')
+  expect(ketulReadinessMigration).toContain("'KETUL_PAYABLE_MAPPING_NOT_READY'")
+  expect(ketulReadinessMigration).toContain("method.method_type='KETUL_OFFSET'")
   const checkout = app.match(/async function postSaleWithNegativeReason[\s\S]*?\n  function resetSale/)?.[0]
   expect(checkout, 'active Retail checkout function must remain discoverable').toBeTruthy()
   expect(checkout).toContain('postSale(')
+  expect(app).toContain('catalog.ketulEnabled && !isBackofficeCutoverDraft')
+  expect(app).toContain('setKetulIntakeLines(isBackofficeCutover ? [] : nextKetulLines)')
   expect(checkout).not.toContain('confirmSalesOrder(')
   expect(checkout).toContain("fulfillmentMode === 'DELIVERY'")
   expect(checkout).toContain('loadSalesDeliveryDocument')
@@ -48,6 +58,22 @@ test('Backoffice Sales Order remains on its separate canonical runtime', async (
   expect(migration).toContain('private.transition_backoffice_sales_order')
   expect(migration).toContain('public.backoffice_sales_orders')
   expect(migration).not.toContain('post_pos_sale_with_pricelist')
+})
+
+test('direct Retail post bridge is scoped away from Backoffice and reserved Orders', async () => {
+  const migration = await read('supabase/migrations/20261030120000_pos_retail_direct_post_order_runtime_bridge.sql')
+  expect(migration).toContain("OLD.sales_origin NOT IN('POS','BACKOFFICE_CUTOVER')")
+  expect(migration).toContain('RETURN NEW;')
+  expect(migration).toContain('RETAIL_DIRECT_POST_CUTOVER_ADOPTION_REQUIRED')
+  expect(migration).toContain('private.sales_process_retail_identity_is_valid(')
+  expect(migration).toContain("OLD.sales_process_mode<>'RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("v_active_mode IS DISTINCT FROM 'RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("OLD.order_runtime_status IN('DRAFT_INPUT','SCHEDULED')")
+  expect(migration).toContain('OLD.reservation_version<>0')
+  expect(migration).toContain('public.sales_stock_reservations')
+  expect(migration).toContain("NEW.order_runtime_status:='LEGACY_POSTED'")
+  expect(migration).not.toContain('public.backoffice_sales_orders')
+  expect(migration).not.toContain('public.backoffice_sales_order_lines')
 })
 
 test('Retail PWA keeps every approved operational workspace wired to canonical RPCs', async () => {
@@ -71,6 +97,7 @@ test('Retail PWA keeps every approved operational workspace wired to canonical R
     'save_sales_return_draft_with_delivery_fee',
     'save_expense_draft',
     'submit_expense_request',
+    'post_pos_expense',
     'get_pos_stock_request_workspace',
     'save_stock_request',
     'submit_stock_request',

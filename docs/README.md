@@ -1,5 +1,45 @@
 # Router Dokumen KGS POS
 
+## 2026-11-01 - POS Ketul KGS readiness behavior rerun
+
+- Active impact audit:
+  [POS Ketul KGS readiness forward fix](audits/POS_KETUL_KGS_READINESS_FORWARD_FIX_IMPACT_2026-11-01.md).
+- Migration `20261101120000` is Production database-live and immutable. Do not
+  edit or rerun it.
+- The first KGS rollback behavior failed before business mutation because its
+  Product-UOM fixture did not reproduce the canonical price-resolver eligibility
+  contract. The correction is test-harness-only; the complete corrected KGS
+  behavior then reached the real Finance gate. Read-only Production evidence
+  proves KGS is manual-period and has no November 2026 period. Create that period
+  through Finance > Periode, then rerun behavior before postflight confirmation
+  or authenticated smoke.
+
+## 2026-11-01 - POS direct session Expense Point 4
+
+- Audit and invariant map:
+  [POS Direct Session Expense](audits/POS_DIRECT_SESSION_EXPENSE_IMPACT_2026-11-01.md).
+- Active specification: [POS Expense Cash Flow](POS_EXPENSE_CASH_FLOW_SPEC.md).
+- Local forward package compiled and its postflight passed on a disposable
+  PostgreSQL 18 database, but it is not Production database-live or deployed;
+  use the preflight,
+  migration, rollback-only behavior, and postflight files named
+  `pos_direct_session_expense` in exact gate order.
+- Production behavior found the installed non-cash route defect. Use the
+  dedicated forward-fix audit and the files named
+  `pos_direct_session_expense_noncash_route_fix`; never edit or rerun
+  `20261101100000`.
+
+## 2026-10-31 - Agent impact-audit tooling checklist
+
+- Persistent checklist for SOP tooling, user prerequisites, exact verification
+  commands, and pending local Supabase work:
+  [Agent Impact Audit Tooling Checklist](runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md).
+- Existing PostgreSQL 18.4 binaries were found and must not be reinstalled.
+  The only current user-owned prerequisite is a running Docker-compatible
+  engine. Full local Supabase bootstrap remains agent work after a guarded audit.
+- Documentation only: no application, database, migration, deployment,
+  Payment, Stock, or Finance state changed.
+
 ## 2026-10-30 - POS Retail direct checkout routing correction
 
 - Company mode is the process switch. `RETAIL_CONFIRM_INVOICE` now routes the
@@ -8,11 +48,49 @@
   Quotation/Sales Order runtime.
 - Pickup produces receipt/Invoice without Surat Jalan. Delivery may load Surat
   Jalan after the same Retail posting; it does not select the Backoffice flow.
-- No schema, database data, Backoffice runtime, or deployment changed.
-- Local evidence: PWA lint/build PASS, source contract `7/7 PASS`, and mocked
-  Pickup browser flow `1/1 PASS`.
-- Status: `LOCAL READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE AND UAT
-  PENDING`. See the [impact map](audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md).
+- Client commit `2746746` is deployed, but Production exposed the second ODR
+  constraint gap: the old direct finalizer posts `document_status` without an
+  atomic `order_runtime_status` transition. The earlier fix claim is revoked.
+- Guarded forward migration `20261030120000` is now confirmed installed by the
+  user. SELECT-only preflight passed before installation; rollback-only exact-
+  Draft behavior and closing postflight are still pending.
+- The first Production preflight passed with `NOT_INSTALLED`, but a subsequent
+  compatibility audit found the initial POS-only candidate would block the
+  approved adopted `BACKOFFICE_CUTOVER` Retail path. The local package now
+  distinguishes adopted/preserved cutover from detached cutover and active
+  Backoffice. A revised preflight was therefore required before migration.
+- The revised Production preflight has now passed all contracts: six exact
+  dependencies, clean `NOT_INSTALLED` state, exact failed Draft unchanged,
+  zero invalid cutover rows, and empty active Finance/Offline boundaries.
+  Next manual step is only the complete migration once.
+- User confirmed migration `20261030120000` executed successfully. It must not
+  be rerun. Status advances only to `DATABASE LIVE`; rollback-only behavior is
+  the next gate, followed by postflight and authenticated POS smoke.
+- Corrected rollback behavior reached the finalizer but failed downstream with
+  `Movement 1 / Event 1 / Payment 1 / Invoice 1 / Delivery 1 / FIFO 0`; its
+  transaction rolled back. The closing Production diagnostic now proves the
+  exact roots: KGS `ALL_POSTED_SALES` creates an unwanted Pickup Delivery
+  Document, while Bawang Bombay correctly routes its shortage through the
+  Warehouse-authorized negative allocation path because positive FIFO is zero.
+- Local forward package `20261030130000` excludes only new direct POS Retail
+  Pickup from automatic Delivery Document creation. Invoice, Delivery,
+  Backoffice, adopted cutover, existing documents and all stock/payment/Finance
+  effects remain on their active paths. Its replacement behavior reconciles
+  every requirement against FIFO plus negative allocation and tests retry.
+- User returned all six new Production preflight rows with the expected PASS/
+  `ROOT_CAUSE` result, state `NOT_INSTALLED`, exact dependency/runtime anchors,
+  and empty Finance/Offline boundaries. No additional diagnostic or preflight
+  is required before the complete migration.
+- Status: `CLIENT DEPLOYED / 20261030120000 DATABASE LIVE / ROOT CAUSE PROVEN /
+  20261030130000 DATABASE LIVE / BEHAVIOR PASS / POSTFLIGHT PASS /
+  AUTHENTICATED POS SMOKE USER ACTION PENDING`. The exact rollback behavior proved Invoice without Delivery,
+  downstream Stock/Payment/Finance, negative allocation and retry, then rolled
+  everything back. Migration and behavior must not be rerun.
+- Closing postflight returned all four contracts PASS plus the intended INFO
+  boundary. Its stale INFO instruction to rerun behavior was a message-only
+  defect and has been corrected locally; no SQL needs to be rerun.
+  See the [impact map](audits/POS_RETAIL_DIRECT_CHECKOUT_ROUTING_IMPACT_2026-10-30.md)
+  and the [new rollout runbook](runbooks/POS_RETAIL_PICKUP_DOCUMENT_BOUNDARY.md).
 
 ## 2026-10-29 - Opening Balance direct-entry local package
 
@@ -2132,3 +2210,15 @@ memisahkannya dari efek migration reclassification Warehouse tanggal 21.
   `2026-09-23` menghasilkan tepat satu Draft `RO-20260923-0000000015`, 21 baris
   dan 5.405 Base Qty; tidak ada Draft lama dan snapshot mismatch nol.
   Authenticated confirmation menjadi PO dan UAT pengguna masih pending.
+# 2026-10-31 - POS non-cash verification and Tempo receipt audit
+
+[Audit](audits/POS_NONCASH_VERIFICATION_AND_TEMPO_RECEIPT_E2E_AUDIT_2026-10-31.md)
+proves from active code and SELECT-only Production data that current direct POS
+checkout bypasses non-cash verification: 38 recent QRIS/Transfer sales have no
+verification request, while 42 `SALE_POSTED` Events remain `HOLD` without a
+Journal. The retained Finance verification action also creates only a HOLD
+Event and still requires the Journal queue. The requested one-action
+verify-and-post behavior is therefore not implemented. Tempo collection remains
+correctly separated in Penerimaan Customer: all 418 Posted receipts reconcile
+to Posted Events/Journals, and all 234 Retail allocations point to Tempo sales.
+No code, database, or deployment was changed.

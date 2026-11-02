@@ -118,6 +118,9 @@ function catalogFromSnapshot(snapshot: OfflineCatalogSnapshot): CatalogData {
     // from a retained offline catalog until the dedicated offline contract opens.
     expenseCategories: [],
     expenseEnabled: false,
+    // Ketul intake is an atomic online Sale + Stock + Finance operation.
+    // A retained catalog must never expose it while disconnected.
+    ketulEnabled: false,
     // Customer Balance credit is intentionally online-only. The retained
     // catalog must never make the offline checkout advertise this path.
     customerBalanceCreditEnabled: false,

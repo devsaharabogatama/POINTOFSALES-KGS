@@ -259,6 +259,16 @@ Super Admin memiliki seluruh wewenang pada semua company dan tidak dibatasi oleh
 
 ## 8. Keputusan yang Sudah Dikonfirmasi
 
+- Khusus Expense yang dimasukkan Cashier melalui POS, uang dianggap sudah
+  keluar: create + direct approval trace + initial disbursement wajib atomik dan
+  tidak memakai tombol approval/verifikasi/`Cairkan Tunai` kedua. Cash langsung
+  mengurangi drawer sesi; non-cash tetap tercatat pada sesi tanpa mengubah
+  drawer. Aturan approval lama tetap berlaku untuk jalur Backoffice/legacy.
+- POS Penyelesaian hanya menampilkan Expense dari Cashier Session yang dipilih.
+  Histori Company lintas sesi tetap tersedia di Backoffice, bukan dicampur ke
+  sesi aktif. Ringkasan Sesi menampilkan total Expense sesi beserta Cash dan
+  non-cash.
+
 - Cash Advance dihapus sebagai jenis/menu terpisah dan digabung ke Expense.
 - Expense adalah pengeluaran operasional toko dan dapat dibayar dari Cash maupun Transfer/Bank.
 - Cashier perlu dapat mencatat Expense operasional agar masuk laporan.
@@ -312,6 +322,8 @@ Super Admin memiliki seluruh wewenang pada semua company dan tidak dibatasi oleh
 
 | Tanggal | Keputusan | Status |
 |---|---|---|
+| 2026-11-01 | Initial Expense yang dicatat Cashier di POS langsung dibayar atomik; Cash mengurangi drawer, non-cash tidak, dan tidak ada approval/pencairan kedua | APPROVED |
+| 2026-11-01 | POS Penyelesaian dan total Expense dibatasi pada Cashier Session terpilih; histori global tetap di Backoffice | APPROVED |
 | 2026-07-17 | Cash Advance dihapus sebagai jenis terpisah dan diserap ke flow Expense | APPROVED |
 | 2026-07-17 | Expense mendukung Cash/Transfer serta requested/disbursed/actual/returned/outstanding | APPROVED |
 | 2026-07-17 | Approval Expense bersifat configurable aktif/nonaktif | APPROVED |

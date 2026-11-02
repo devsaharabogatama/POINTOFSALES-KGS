@@ -8,6 +8,7 @@ import {
   Loader2,
   Package,
   RefreshCw,
+  RotateCcw,
   Search,
   SquareArrowOutUpRight,
   X,
@@ -74,6 +75,8 @@ export function SessionSummaryModal({
   paymentMethods,
   close,
   openTransaction,
+  openReturn,
+  returnEnabled,
 }: {
   cashierSession: CashierSession
   paymentMethods: PaymentMethodOption[]
@@ -81,6 +84,10 @@ export function SessionSummaryModal({
   openTransaction: (
     transaction: CashierSessionSummaryTransaction,
   ) => Promise<void>
+  openReturn: (
+    transaction: CashierSessionSummaryTransaction,
+  ) => Promise<void>
+  returnEnabled: boolean
 }) {
   const [summary, setSummary] = useState<CashierSessionSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -91,6 +98,7 @@ export function SessionSummaryModal({
   )
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [openingId, setOpeningId] = useState<string | null>(null)
+  const [openingReturnId, setOpeningReturnId] = useState<string | null>(null)
 
   const methodById = useMemo(
     () => new Map(paymentMethods.map((method) => [method.id, method])),
@@ -125,6 +133,7 @@ export function SessionSummaryModal({
   const totals = useMemo(() => {
     let cash = 0
     let nonCash = 0
+    const byMethod = new Map<string, number>()
     for (const transaction of summary?.transactions ?? []) {
       if (!isCountedSessionTransaction(transaction)) continue
       for (const payment of transaction.payments) {
@@ -132,6 +141,8 @@ export function SessionSummaryModal({
           ? methodById.get(payment.paymentMethodId)
           : null
         const legacyName = (payment.paymentMethodName ?? '').toLocaleLowerCase('id-ID')
+        const methodName = payment.paymentMethodName ?? method?.name ?? 'Metode pembayaran'
+        byMethod.set(methodName, (byMethod.get(methodName) ?? 0) + payment.amount)
         const isCash = payment.paymentMethodType === 'CASH' ||
           payment.settlementRoute === 'CASH_DRAWER' ||
           method?.methodType === 'CASH' ||
@@ -143,7 +154,14 @@ export function SessionSummaryModal({
         }
       }
     }
-    return { cash, nonCash, total: cash + nonCash }
+    return {
+      cash,
+      nonCash,
+      total: cash + nonCash,
+      byMethod: [...byMethod.entries()]
+        .map(([name, amount]) => ({ name, amount }))
+        .sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name, 'id-ID')),
+    }
   }, [methodById, summary?.transactions])
 
   const transactions = useMemo(() => {
@@ -216,6 +234,24 @@ export function SessionSummaryModal({
     }
   }
 
+  const openSalesReturn = async (
+    transaction: CashierSessionSummaryTransaction,
+  ) => {
+    setOpeningReturnId(transaction.salesId)
+    setError('')
+    try {
+      await openReturn(transaction)
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Flow Return gagal dibuka.',
+      )
+    } finally {
+      setOpeningReturnId(null)
+    }
+  }
+
   return (
     <div
       className="pos-session-summary-overlay"
@@ -251,6 +287,12 @@ export function SessionSummaryModal({
         <div className="pos-session-summary-totals">
           <article>
             <Banknote />
+            <span>Uang awal sesi</span>
+            <strong>{money(cashierSession.openingCash)}</strong>
+            <small>Saldo kas saat sesi dibuka.</small>
+          </article>
+          <article>
+            <Banknote />
             <span>Cash diterima</span>
             <strong>{money(totals.cash)}</strong>
           </article>
@@ -260,11 +302,31 @@ export function SessionSummaryModal({
             <strong>{money(totals.nonCash)}</strong>
             <small>Termasuk yang masih menunggu verifikasi.</small>
           </article>
+          <article>
+            <Banknote />
+            <span>Total Expense</span>
+            <strong>{money(summary?.expense.totalAmount ?? 0)}</strong>
+            <small>
+              {summary?.expense.documentCount ?? 0} transaksi · Cash {money(summary?.expense.cashAmount ?? 0)} · Non-cash {money(summary?.expense.nonCashAmount ?? 0)}
+            </small>
+          </article>
           <article className="is-total">
             <FileText />
             <span>Total pembayaran tercatat</span>
             <strong>{money(totals.total)}</strong>
           </article>
+        </div>
+
+        <div className="pos-session-payment-breakdown" aria-label="Breakdown metode pembayaran">
+          <strong>Per metode pembayaran</strong>
+          {totals.byMethod.length === 0 ? (
+            <span>Belum ada pembayaran yang dihitung.</span>
+          ) : totals.byMethod.map((method) => (
+            <span key={method.name}>
+              {method.name}
+              <strong>{money(method.amount)}</strong>
+            </span>
+          ))}
         </div>
 
         <div className="pos-session-summary-tabs" role="tablist">
@@ -351,28 +413,46 @@ export function SessionSummaryModal({
               const expanded = expandedId === transaction.salesId
               return (
                 <article key={transaction.salesId} className="pos-session-transaction">
-                  <button
-                    type="button"
-                    className="pos-session-transaction-head"
-                    onClick={() => setExpandedId(expanded ? null : transaction.salesId)}
-                  >
+                  <div className="pos-session-transaction-head">
+                    <button
+                      type="button"
+                      className="pos-session-transaction-toggle"
+                      onClick={() => setExpandedId(expanded ? null : transaction.salesId)}
+                    >
                     <span>
-                      <strong>{transaction.orderNo}</strong>
+                      <strong>{transaction.customerName}</strong>
                       <small>
+                        {transaction.orderNo}
                         {transaction.documentNo !== transaction.orderNo
-                          ? `${transaction.documentNo} · `
+                          ? ` · ${transaction.documentNo}`
                           : ''}
-                        {transaction.customerName} · {dateTime(transaction.transactionAt)}
+                        {' · '}{dateTime(transaction.transactionAt)}
                       </small>
                     </span>
-                    <span className="pos-session-transaction-state">
+                      <span className="pos-session-transaction-state">
                       <em>{statusLabel(
                         transaction.orderRuntimeStatus || transaction.documentStatus,
                       )}</em>
                       <strong>{money(transaction.grandTotal)}</strong>
                       {expanded ? <ChevronUp /> : <ChevronDown />}
-                    </span>
-                  </button>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pos-session-return-action"
+                      aria-label={`Return transaksi ${transaction.customerName}`}
+                      disabled={!returnEnabled || openingReturnId !== null}
+                      title={returnEnabled
+                        ? `Return transaksi ${transaction.customerName}`
+                        : 'Return memerlukan koneksi online dan fitur Return aktif.'}
+                      onClick={() => void openSalesReturn(transaction)}
+                    >
+                      {openingReturnId === transaction.salesId
+                        ? <Loader2 className="animate-spin" />
+                        : <RotateCcw />}
+                      Return
+                    </button>
+                  </div>
                   {expanded && (
                     <div className="pos-session-transaction-detail">
                       <div className="pos-session-line-table">
@@ -389,7 +469,10 @@ export function SessionSummaryModal({
                         ))}
                       </div>
                       <div className="pos-session-payment-list">
-                        <strong>Pembayaran tercatat</strong>
+                        <strong>
+                          Pembayaran tercatat
+                          {transaction.payments.length > 1 ? ' · Split payment' : ''}
+                        </strong>
                         {transaction.isTempo && transaction.payments.length === 0 && (
                           <span>Tempo · belum ada pembayaran pada order.</span>
                         )}

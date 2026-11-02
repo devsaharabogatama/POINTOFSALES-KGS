@@ -1,5 +1,348 @@
 # Active Development Handoff — KGS POS
 
+## 2026-11-01 - POS Session Summary + Ketul UI compaction LOCAL VERIFICATION PASS
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE` (presentation/layout only).
+- Audit artifact:
+  `docs/audits/POS_SESSION_SUMMARY_KETUL_UI_COMPACTION_IMPACT_2026-11-01.md`.
+- Session Summary now keeps all five totals on one desktop row, uses compact
+  header/method/tab/search controls, gives remaining height to the transaction
+  or product list, and uses a horizontal total strip on narrow screens.
+- Ketul checkout entry now uses the light POS visual language with explicit
+  enabled/applied state. The editor now has a structured header, numbered line
+  cards, readable remove/add actions, explicit total versus maximum, responsive
+  fields, and fixed footer hierarchy.
+- Business behavior is unchanged: the same readiness/online/Tempo/Cart guards,
+  line validation, maximum offset, hidden payment method, draft/post payload,
+  Stock/FIFO, Finance, Session, Return, and Company boundaries remain active.
+- Verification: PWA lint PASS; TypeScript/Vite production build PASS; complete
+  mocked Retail PWA `7/7 PASS`; Session geometry proves five cards on one row;
+  Ketul desktop/mobile containment and exact payload assertions PASS.
+- Authenticated local visual smoke used the real KGS session with 21
+  transactions. It exposed and then verified the fix for narrow-width card
+  flex-shrink; the final view shows full-height cards and four-plus transaction
+  rows. Checkout/Ketul dialogs were only opened and canceled; no Sale was saved
+  or posted.
+- Status: `AUDIT COMPLETE / LOCAL VERIFICATION PASS / DATABASE NOT APPLICABLE /
+  CLIENT NOT DEPLOYED / AUTHENTICATED READ-ONLY VISUAL SMOKE PASS / UAT PENDING`.
+- Manual gate: user reviews `http://127.0.0.1:5190` at the normal cashier
+  viewport. Do not deploy or claim UAT until accepted.
+
+## 2026-11-01 - POS Point 7 Catalog Cart viewport LOCAL VERIFICATION PASS
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE` (layout only).
+- Audit artifact:
+  `docs/audits/POS_CATALOG_CART_VIEWPORT_IMPACT_2026-11-01.md`.
+- Corrected requirement: in desktop Catalog, the right Cart panel uses the
+  available lower viewport; `Total akhir` and `Atur pembayaran` stay at the
+  panel bottom, and the item list receives the remaining internally scrollable
+  height. This is not merely a smaller footer.
+- Proven root cause: Catalog list was capped at `224px`; the right column had a
+  maximum height but no definite height, so the flex Cart shrink-wrapped and
+  ended mid-screen.
+- Files changed for point 7: `pwa/src/App.css`,
+  `qa-e2e/tests/retail-pwa.mocked.spec.ts`, the focused audit, this handoff, and
+  root `README.md`. Existing unrelated dirty-worktree changes were preserved.
+- Numeric browser evidence at `1920x900`: panel `y=123/height=765`, item-list
+  height `619.390625`, footer `y=816.5/height=71.5`, footer-to-panel-bottom
+  delta `0`, viewport bottom gap `12`. After Catalog scroll `500px`, the footer
+  retained the exact same geometry and browser `window.scrollY` remained `0`.
+- Local checks: PWA lint PASS; PWA production build PASS; complete mocked Retail
+  file `7/7 PASS`; focused point-7 rerun `1/1 PASS`; Compact and `390x844`
+  narrow flow remain natural; checkout dialog still opens; `git diff --check`
+  PASS apart from line-ending warnings.
+- One intermediate full-suite run was `6 pass / 1 fail` because the test tried
+  to close checkout after the point-7 assertions and the pre-existing sticky
+  header intercepted that click. It was classified and documented as
+  `TEST_HARNESS_FIX`; preservation checks were moved before opening checkout,
+  with no product patch or weakened assertion. The subsequent full run passed.
+- Compatibility: no change to React total/payment handlers, Compact/mobile,
+  schema/RPC/data, Company/session scope, Stock/Reservation/FIFO, Payment,
+  Finance, Draft/Order, or historical transactions.
+- Status: `AUDIT COMPLETE / LOCAL VERIFICATION PASS / DATABASE NOT APPLICABLE /
+  CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+- Next safe step: user inspects the local Catalog at the real working viewport.
+  Do not deploy or claim UAT until the user accepts the visual result.
+
+## 2026-11-01 - POS Ketul KGS readiness DATABASE LIVE / BEHAVIOR RERUN PENDING
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE + PRODUCT_BEHAVIOR_CHANGE`.
+- Audit artifact:
+  `docs/audits/POS_KETUL_KGS_READINESS_FORWARD_FIX_IMPACT_2026-11-01.md`.
+- Read-only Production evidence proves the root cause: KGS and KGFF are the
+  only entitled Companies and both have exact Ketul catalog/inventory
+  authority, but only KGFF has `CUSTOMER_KETUL_PAYABLE`, `2010105-1`, its
+  fallback, and the system-only `KETUL_OFFSET` method. KGS is therefore
+  `PARTIAL/INCONSISTENT`; the installed generic runtime is not KGFF-bound.
+- New guarded forward package `20261101120000` provisions only the approved KGS
+  payable contract and adds `get_pos_ketul_readiness()`. PWA visibility now
+  requires `enabled && ready`; an RPC error hides only optional Ketul and does
+  not break the remaining Catalog. No installed migration was edited.
+- Local evidence: PostgreSQL 18 disposable exact preflight `PASS/ROOT_CAUSE`,
+  migration commit PASS, readiness true with four products, postflight six
+  PASS plus INFO; PWA build and lint PASS; focused mocked Retail/runtime
+  regression `4/4 PASS`. The first disposable migration attempt rolled back
+  only because the minimal fixture omitted Supabase roles; identical migration
+  passed after that `FIXTURE FIX`.
+- Production execution of the KGS rollback-only behavior passed its exact
+  `20261031110000` + `20261101120000` ledger and RPC preconditions, proving the
+  forward migration is `DATABASE LIVE`. The test then failed before context or
+  business mutation with `ACTIVE_SALES_PRODUCT_UOM_NOT_FOUND`.
+- Re-audit proves argument four is correctly `product_uoms.id`. The fixture was
+  incomplete: it invoked the fail-closed resolver before proving active UOM and
+  non-null/nonnegative Product-UOM `sale_price`. The older KGFF behavior had the
+  same defect. Classification: `TEST_HARNESS_FIX`; no migration, runtime, PWA,
+  assertion, or Production data was changed.
+- Both behavior fixtures now use a `MATERIALIZED` eligibility boundary matching
+  the canonical resolver before the single resolver call. PostgreSQL libpg_query
+  outer-file and corrected-query parsing PASS; each remains exactly one
+  `BEGIN`/`ROLLBACK`. This is syntax/contract evidence, not behavioral PASS.
+- The corrected Production rerun passed that fixture boundary and stopped on
+  the next real prerequisite: no current KGS accounting period. Read-only
+  Production evidence proves policy `MANUAL / CONTROLLED`, October 2026 OPEN,
+  and November 2026 absent. The Ketul core requires an OPEN/REOPENED posting
+  period and automatic creation is intentionally unavailable in MANUAL mode.
+  This is a Finance configuration blocker; do not weaken or remove the test.
+- Status: `AUDIT COMPLETE / DATABASE LIVE / CORRECTED TEST HARNESS PARSE PASS /
+  PRODUCTION BEHAVIOR RERUN PENDING / POSTFLIGHT CONFIRMATION PENDING / CLIENT
+  NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+- Next safe step: while KGS is the selected Company, an authorized user creates
+  November 2026 in Backoffice Finance > Periode. Then run only the corrected
+  complete `supabase/tests/pos_ketul_kgs_readiness_forward_fix_behavior.sql`.
+  Do not rerun either installed migration. If behavior PASSes, rerun the
+  SELECT-only KGS postflight and continue to authenticated POS smoke; stop and
+  re-audit on any new unexpected failure.
+
+## 2026-11-01 - POS Session Summary Return shortcut LOCAL READY
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE`.
+- Audit artifact:
+  `docs/audits/POS_SESSION_SUMMARY_RETURN_SHORTCUT_IMPACT_2026-11-01.md`.
+- Every transaction/customer row in the Session Summary transaction tab now
+  has a right-aligned Return action. It opens the existing POS Sales Return
+  modal already focused on that exact `salesId`, using the canonical invoice
+  filter and `get_pos_returnable_sales` eligibility authority.
+- The existing header Return browser, row expansion, `Buka dokumen`, Cash versus
+  Transfer fields, Backoffice approval/posting, printable Posted Return note,
+  Stock/FIFO, Cashier Session, Finance, audit, tenant, Store, and feature gates
+  are preserved. No schema, migration, RPC, or production data changed.
+- Evidence: focused PWA oxlint PASS; TypeScript/Vite production build and PWA
+  generation PASS; focused mocked Playwright `2/2 PASS` covering the existing
+  Cash/Transfer Return path and Session Summary exact-Sale shortcut.
+- Status: `AUDIT COMPLETE / LOCAL READY / EXISTING DATABASE RUNTIME UNCHANGED /
+  CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+- Manual gate: run authenticated local smoke from an OPEN Session. Open Session
+  Summary, click Return on one eligible transaction, verify the intended invoice
+  is selected, then cancel without saving. Deploy only on explicit instruction.
+
+## 2026-11-01 - POS direct session Expense Point 4 DATABASE LIVE / BEHAVIOR + POSTFLIGHT PASS
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE + PRODUCT_BEHAVIOR_CHANGE`.
+- Phase A audit: `docs/audits/POS_DIRECT_SESSION_EXPENSE_IMPACT_2026-11-01.md`.
+- Local forward package: `20261101100000_pos_direct_session_expense.sql` plus
+  SELECT-only preflight/postflight and rollback-only behavior test.
+- POS now calls one `post_pos_expense` RPC. Cash uses the retained canonical
+  disbursement core and creates one Drawer OUT; non-cash uses a POS-session-only
+  core with the same Expense Disbursement/Finance Event/audit lineage and no
+  drawer mutation.
+- `get_pos_expense_workspace` is session-scoped for initial settlement/history
+  and exposes immutable disbursement totals. Ringkasan Sesi shows Total Expense,
+  Cash, non-cash, and document count. The old POS `Cairkan Tunai` initial step is
+  no longer exposed.
+- Compatibility preserved: Backoffice/legacy approval and initial disbursement,
+  settlement, returns, additional funding, Finance queue/Journal, Sales,
+  Stock/FIFO, old rows, and other Companies.
+- Evidence: PWA oxlint PASS; PWA TypeScript/Vite build PASS; focused mocked
+  Retail + runtime contract Playwright `13/13 PASS`; exact forward migration
+  compiled and committed on PostgreSQL 18 disposable; disposable SELECT-only
+  postflight `4/4 PASS`. One initial Playwright
+  failure was classified `TEST HARNESS FIX` (combined text matcher only); no
+  product assertion was weakened, and the rerun passed. Disposable chain setup
+  also required repository baseline `003` and minimal Supabase Storage/Super
+  Admin fixtures; those were harness prerequisites only and did not change the
+  product package.
+- Production behavior disproved the non-cash write shape: canonical constraint
+  `expense_disbursement_route_check` requires non-cash disbursement session and
+  terminal snapshots to be null, while the new core supplied the POS origin
+  session. Previous `LOCAL READY` claim is withdrawn.
+- Root-cause/forward-fix audit:
+  `docs/audits/POS_DIRECT_SESSION_EXPENSE_NONCASH_FORWARD_FIX_IMPACT_2026-11-01.md`.
+- Status: `20261101100000 DATABASE LIVE BUT INCONSISTENT / FORWARD FIX AUDIT
+  COMPLETE / NEW FORWARD MIGRATION NOT STARTED / CLIENT NOT DEPLOYED /
+  AUTHENTICATED SMOKE NOT RUN / UAT NOT RUN`.
+- The failed rollback-only behavior statement persisted no test effect. Do not
+  rerun or edit `20261101100000`; continue only through a new guarded forward
+  migration after a new SOP Gate.
+- Forward package `20261101110000` is now `LOCAL READY`. PostgreSQL 18
+  disposable evidence: preflight `5/5` expected PASS/ROOT_CAUSE, migration
+  compile PASS, postflight `4/4 PASS`. The first postflight run reported FAIL
+  only because its source matcher expected whitespace after a comma; exact
+  `pg_get_functiondef` proved the product value was already JSON null. This was
+  classified `TEST_HARNESS_ONLY`, the assertion was not weakened, and the
+  corrected postflight rerun passed.
+- Remaining gate: run the new Production preflight, apply `20261101110000`
+  once, rerun the complete rollback-only behavior, run the new postflight, then
+  authenticated POS smoke and UAT. Stop on any unexpected result.
+- User-confirmed Production postflight after installing the forward migration:
+  ledger PASS, runtime contract PASS (`eventSessionNull`,
+  `documentOriginRetry`, `invalidInsertRemoved`), workspace contract PASS
+  (`documentOriginSummary`), and business boundary INFO. This proves
+  `20261101110000 DATABASE LIVE / POSTFLIGHT PASS`.
+- User supplied the exact rollback result:
+  `pos_direct_session_expense_behavior,PASS,0`. It proves Cash Drawer OUT,
+  non-cash zero drawer effect, canonical disbursement/Event lineage, direct
+  approval audit, exact retry and changed-retry denial, session-scoped
+  workspace/totals, zero Sales/Stock/FIFO effect, and rollback of all test
+  effects. Database gate is complete; authenticated POS smoke and UAT remain.
+
+## 2026-10-31 - POS Ketul linked-intake Phase B frozen on COA hierarchy
+
+- Task classification: `SCHEMA_OR_MIGRATION_CHANGE`; Product patching is
+  frozen after an unexpected semantic migration failure.
+- Candidate local files exist for the Ketul PWA flow and guarded migration
+  `20261031110000`, but they are **not** rollout-ready and must not be run in
+  Production.
+- PWA TypeScript/Vite build and lint pass after explicitly keeping Ketul OFF in
+  the Offline catalog. This proves client compilation only.
+- A disposable PostgreSQL 18 chain reached the repository's September
+  `pg_cron` dependency; Windows lacks that optional extension, so the complete
+  fresh chain after that point remains `BELUM TERBUKTI` rather than being
+  represented as PASS.
+- A targeted disposable semantic execution then reached the candidate Ketul
+  migration and failed at the canonical COA trigger with
+  `PARENT_ACCOUNT_MUST_BE_NONPOSTABLE`. The transaction rolled back; Production
+  was not changed.
+- Read-only Production evidence: KGFF account `2010105 / HUTANG LAIN-LAINNYA`
+  is active and postable, has three active direct rules (Sales Return Customer
+  Refund, Cash Deposit overage, Cash Variance overage), one active Customer
+  Refund fallback, and zero historical Finance Journal lines.
+- The previous audit claim `PHASE B AUTHORIZED` is withdrawn. Finance/user must
+  choose either (a) keep `2010105` postable and create `2010105-1` without a
+  structural parent, or (b) convert `2010105` to a nonpostable parent and
+  provide the exact replacement child account/code for the four existing
+  routing authorities. The agent may not invent this mapping.
+- Status: `AUDIT REOPENED / LOCAL CANDIDATE BLOCKED / DATABASE UNCHANGED /
+  CLIENT NOT DEPLOYED / SMOKE NOT STARTED / UAT NOT STARTED`.
+- Next safe step: obtain the exact Finance hierarchy decision, reopen Phase B
+  with a new SOP Gate, then correct and rerun the disposable migration before
+  authoring postflight/behavior files.
+- Decision received: use compatibility-preserving option (a). Account
+  `2010105-1 / HUTANG KETUL CUSTOMER` is independent and postable with
+  `parent_account_id=NULL`; `2010105` and all existing rules/fallbacks remain
+  unchanged. Phase B has been reopened under a new visible SOP Gate. Disposable
+  migration execution, postflight, behavior, and smoke remain pending.
+
+## 2026-10-31 - POS Ketul linked-intake Phase A audit (superseded checkpoint)
+
+- Task classification: `SCHEMA_OR_MIGRATION_CHANGE`; only Phase A read-only
+  analysis has started. No Product behavior, schema, migration, database data,
+  or deployment was changed.
+- Impact artifact:
+  `docs/audits/POS_KETUL_CUSTOMER_INTAKE_OFFSET_IMPACT_2026-10-31.md`.
+- Added the SELECT-only Production classifier
+  `supabase/diagnostics/pos_ketul_customer_intake_offset_preflight.sql`.
+- The first execution failed before producing rows because the harness used the
+  nonexistent `public.companies.code`. Classified `TEST_HARNESS FIX`; source
+  migration `001_multi_company_setup.sql` proves the correct identifier is
+  `company_code`. The complete identifier set was re-audited and the preflight
+  corrected without weakening an assertion. The failed SELECT made no mutation.
+- The corrected query then failed again because PostgreSQL has no `max(uuid)`
+  aggregate. The prior complete-query verification claim is withdrawn. This is
+  still a `TEST_HARNESS FIX`; the UUID aggregate was removed and a PostgreSQL 18
+  fixture execution was made mandatory before another manual handoff.
+- The exact corrected Production file has now executed through the persistent
+  fixture `supabase/tests/pos_ketul_customer_intake_offset_preflight_fixture.sql`
+  on PostgreSQL 18: 12 rows returned, `FIXTURE_EXIT=0`, fixture transaction
+  rolled back, and the temporary server stopped. This proves query execution,
+  not the still-unknown Production values.
+- The first valid Production output exposed a remaining harness-target defect:
+  it checked the Draft-save wrapper for the Ketul guard. Exact migration tracing
+  proves `20260805160000` installs the guard in
+  `private.post_pos_sale_online_core(uuid,bigint,uuid)`. Classified
+  `TEST_HARNESS FIX`; the assertion is retargeted, not removed.
+- Retargeted PostgreSQL 18 fixture rerun: 12 rows, runtime-absence PASS,
+  `checkoutBlocksKetul=true`, `FIXTURE_EXIT=0`, transaction rolled back, server
+  stopped. One corrected Production object-state run and the exact dedicated
+  liability COA authority remain the Phase B gates.
+- Corrected Production rerun now PASSes the runtime-absence contract with
+  `checkoutBlocksKetul=true`. Ledger 10/10, feature, four Ketul Products,
+  Inventory `1030100-4`, and runtime boundaries are consistent. Operational
+  Ketul remains `NOT_INSTALLED`. Only the exact dedicated Ketul Customer Payable
+  account/function decision remains before Phase B.
+- Repository evidence proves operational Ketul is still absent: the current
+  checkout blocks `KETUL_OFFSET`, while only feature/payment/Finance/catalog
+  foundations exist. The approved scope is linked Retail POS Customer intake,
+  atomic Stock/FIFO receipt, dedicated Ketul payable, and after-tax Sale offset;
+  Vendor and standalone Ketul workflows remain deferred.
+- The current Finance catalog is insufficient for the approved accounting:
+  `KETUL_CUSTOMER_INTAKE` requires only `INVENTORY_ASSET`; a dedicated Ketul
+  Customer Payable function/account and exact Finance authority are not yet
+  proven.
+- Status: `AUDIT IN PROGRESS / LOCAL PRODUCT NOT STARTED / DATABASE UNCHANGED /
+  CLIENT UNCHANGED / SMOKE NOT STARTED / UAT NOT STARTED`.
+- Manual gate: rerun the corrected SELECT-only preflight and return its complete
+  output. Do not create a Ketul payment method/account or run a migration yet.
+- Next safe step: classify live KGFF state and resolve every design-affecting
+  `BELUM TERBUKTI`; only then display the Phase B SOP Gate.
+
+## 2026-10-31 - POS Task 2 Return refund method and final note
+
+- Dedicated audit and call-chain evidence:
+  `docs/audits/POS_SALES_RETURN_REFUND_METHOD_UI_IMPACT_2026-10-31.md`.
+- Task 2 points 5 and 9 are locally implemented. POS Return now explains the
+  selected refund method and clears hidden Transfer-only state when Cash is
+  selected. Cash has no destination/reference fields; Transfer keeps those
+  fields required by the existing canonical server contract.
+- Backoffice exposes `Cetak Nota Return` only on `POSTED` Return documents. The
+  customer note uses existing immutable Return snapshots, shows the actual
+  refund method and total, conditionally shows Transfer destination/reference,
+  and escapes dynamic text. Draft/Canceled Return remains non-printable as a
+  final refund proof.
+- Evidence: pure Return-note contract PASS; PWA lint/build PASS; Backoffice
+  focused ESLint and production build PASS; combined mocked Retail plus
+  runtime-contract Playwright `11/11 PASS`.
+- Compatibility: no schema, migration, RPC, data, Stock/FIFO, Cashier Session,
+  Finance Event/Journal, original Sale payment, Backoffice/ODR routing, tenant,
+  role, or Company-context behavior changed.
+- Status: `AUDIT COMPLETE / LOCAL READY / EXISTING DATABASE RUNTIME UNCHANGED /
+  CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+- Manual gate: deploy only on explicit user instruction. After deployment,
+  create Cash and Transfer Return Drafts without changing Company, post them
+  through Backoffice, open the Posted details, and verify the printed notes and
+  conditional Transfer metadata.
+- Next safe Task 2 step: point 10, Ketul intake-for-discount, remains deferred
+  to its own Stock/valuation/discount/Finance impact audit.
+
+## 2026-10-31 - POS UI Task 2 UI-first slice
+
+- Durable backlog and impact map:
+  `docs/audits/POS_UI_TASK2_IMPACT_2026-10-31.md`.
+- UI-first implementation completed locally for: visible active Customer on
+  Catalog/Cart, Customer on the Posted receipt, customer-first Session Summary
+  rows with DRF/Invoice retained, canonical opening session cash, per-method
+  payment totals and split-payment labels, plus a compact sticky Total footer.
+- The existing successful-post reset path was audited rather than rewritten:
+  server post -> receipt -> `resetSale()` -> Catalog/Draft refresh. Playwright
+  now asserts the Cart is empty and Customer returns to Walk-In after closing
+  the receipt.
+- First test run timed out because the harness tried to select Customer while
+  the Catalog checkout overlay was closed. Classified `TEST HARNESS FIX`; the
+  test now opens `Atur pembayaran` first, without removing or weakening any
+  business assertion.
+- Evidence: PWA lint PASS; TypeScript/Vite build and service worker PASS;
+  focused Retail + runtime-contract Playwright `10/10 PASS`.
+- Compatibility: no schema/migration/data change; no change to posting RPC,
+  Payment, Tempo, Stock/Reservation/FIFO, cashier session, Finance,
+  Invoice/Delivery, Backoffice/ODR routing, or Company context.
+- Status: `AUDIT COMPLETE / LOCAL READY / DATABASE N/A / CLIENT NOT DEPLOYED /
+  AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+- Manual gate: deploy only on explicit user instruction, then hard refresh the
+  POS and validate named Customer, receipt/reset, Session Summary, and Cart
+  viewport without changing Company.
+- Points 5/9 were completed in the later Return refund-method slice recorded
+  above. The only remaining Task 2 item is Ketul intake-for-discount workflow
+  (10), which remains a separate impact-audited slice.
+
 ## 2026-10-30 - POS Retail direct checkout routing correction
 
 - CORRECTION: commit `2746746` is deployed but is not a complete Product fix.
@@ -22045,3 +22388,249 @@ the authenticated smoke matrix in
 `docs/runbooks/POS_RETAIL_NON_CASH_ATOMIC_VERIFICATION.md`; do not claim smoke
 or UAT before the Transfer, QRIS, Cash, rejection, retry, Tempo, and regression
 cases are observed through the deployed UI.
+
+# Checkpoint 2026-11-01 - POS linked Ketul intake/offset local-ready
+
+## Decision and scope
+
+- User approved `2010105-1 / HUTANG KETUL CUSTOMER` as an independent postable
+  liability (`parent_account_id=NULL`) to preserve the active postable
+  `2010105 / HUTANG LAIN-LAINNYA` and its existing mappings.
+- Scope is KGFF direct Retail POS only: linked Customer Ketul intake, hidden
+  after-tax/rounding offset, atomic Stock/FIFO and Finance Journal. Tempo,
+  Offline, Backoffice/ODR, Vendor/standalone intake, and other Companies remain
+  excluded.
+
+## Files changed
+
+- `supabase/migrations/20261031110000_pos_ketul_customer_intake_offset.sql`
+- `supabase/diagnostics/pos_ketul_customer_intake_offset_preflight.sql`
+- `supabase/diagnostics/pos_ketul_customer_intake_offset_postflight.sql`
+- `supabase/tests/pos_ketul_customer_intake_offset_preflight_fixture.sql`
+- `supabase/tests/pos_ketul_customer_intake_offset_behavior.sql`
+- `pwa/src/KetulIntakeModal.tsx`
+- `pwa/src/App.tsx`
+- `pwa/src/lib/pos.ts`
+- `pwa/src/lib/offlineBootstrap.ts`
+- `qa-e2e/tests/retail-pwa.mocked.spec.ts`
+- `qa-e2e/tests/runtime-contract.spec.ts`
+- impact audit, root README, migration manifest, and this handoff.
+
+## Evidence
+
+- Production preflight returned the exact NOT_INSTALLED operational state,
+  four valid KGFF Ketul Products, `1030100-4` Inventory authority, enabled
+  entitlement, and idle Finance/Offline queues.
+- PostgreSQL 18 disposable candidate migration: PASS.
+- Disposable SELECT-only postflight: 9/9 PASS.
+- Rollback-only behavior on a direct-post-runtime clone: PASS for server-side
+  duplicate merge, value cap, unchanged Sale total, stale version rejection,
+  atomic Sale/Ketul post, Stock/FIFO, two-line Journal, receipt, exact retry,
+  Tempo rejection, non-Ketul delegation, and complete rollback.
+- PWA build and lint: PASS.
+- focused Retail mocked Playwright: 4/4 PASS.
+- static runtime-contract Playwright: 8/8 PASS.
+- full QA: 15/19. All four POS tests PASS. Three unrelated Backoffice/public
+  boundary failures remain in the dirty worktree/server state and were not
+  changed or weakened.
+- Full fresh-chain PostgreSQL rehearsal is not claimed because the historical
+  scheduler migration requires unavailable `pg_cron`; this is an environment
+  limitation, not a Product PASS.
+
+## Status
+
+- `AUDIT COMPLETE`: YES
+- `LOCAL READY`: YES
+- `DATABASE LIVE`: YES; migration and Production postflight PASS
+- `CLIENT DEPLOYED`: NO
+- `SMOKE PASS`: NO
+- `UAT PASS`: NO
+
+## Manual gates and remaining gap
+
+- Do not deploy the PWA before the database migration and postflight pass.
+- After rollout, run the rollback-only behavior against the installed exact
+  Production state, then authenticated POS smoke for Cash, non-cash, split
+  payment, Walk-In, retry, and Return preservation.
+- Posted Ketul correction/reversal is not implemented. Posted intake rows are
+  immutable; design and test the authorized append-only correction before
+  calling the whole Ketul workflow complete.
+- Final semantic review found and closed one pre-rollout client boundary:
+  adopted `BACKOFFICE_CUTOVER` Drafts use their preserved-save RPC and are not
+  eligible for the direct-POS Ketul wrapper. The PWA now clears Ketul state and
+  hides the action on that branch; the existing server guard remains the final
+  authority. Focused runtime contracts are `8/8 PASS`, mocked POS flows are
+  `4/4 PASS`, and PWA lint/build both PASS after this correction; `LOCAL READY`
+  is restored for the scoped package.
+- Production postflight is now PASS for Company identity, ledger, independent
+  `2010105-1`, exact mapping/fallback, hidden system method, runtime patch,
+  table security, and zero installation business effect. The first behavior
+  attempt then stopped at the fixture's duplicate OPEN Cashier Session insert;
+  the transaction rolled back. This is classified `TEST_HARNESS FIX`, not a
+  Product runtime failure. The corrected test reuses an existing valid OPEN
+  KGFF session or creates one only for an actor with no OPEN session who meets
+  the canonical POS access contract (Super Admin, Company Owner/Admin, or Store
+  Cashier/Manager). Exactly one corrected rollback-only behavior rerun is
+  pending.
+- The corrected behavior fixture has now passed on the PostgreSQL 18 disposable
+  runtime with every original assertion and complete rollback. This validates
+  file syntax and fixture branching; it does not replace the one pending rerun
+  against the installed Production runtime.
+
+# Checkpoint 2026-11-01 - POS Catalog Customer placement correction
+
+## Scope and acceptance state
+
+- Point 1 was reopened after two rejected UI attempts. The first copied the
+  Customer selector into the Cart while leaving the payment selector; the
+  second put the only selector inside the Cart header. Both are explicitly
+  rejected and are not valid acceptance evidence.
+- Current local implementation has exactly one editable Customer selector and
+  one `Customer baru` action. They share the compact `Katalog / Pilih produk`
+  heading toolbar with the item count; there is no standalone Customer card.
+  The Cart contains no Customer control; the payment dialog contains only
+  `Harga transaksi` and Pricelist and reads the canonical selected Customer
+  state.
+
+## Files changed for this correction
+
+- `pwa/src/App.tsx`
+- `pwa/src/App.css`
+- `qa-e2e/tests/retail-pwa.mocked.spec.ts`
+- `docs/audits/POS_UI_TASK2_IMPACT_2026-10-31.md`
+- this handoff
+
+## Evidence and status
+
+- PWA lint: PASS.
+- PWA production build: PASS; only the existing Vite chunk-size warning remains.
+- Read-only visual inspection on `http://127.0.0.1:5190`: PASS for the compact
+  Catalog heading toolbar, restored product height, Cart absence, and
+  payment-dialog Customer-input absence.
+- The earlier focused Playwright run is invalid evidence because it reused a
+  stale preview process on port `5197`; the assertion was not weakened.
+- `AUDIT COMPLETE`: YES
+- `LOCAL READY`: NO; fresh isolated Playwright rerun and user acceptance remain.
+- `DATABASE LIVE`: not applicable; no database change.
+- `CLIENT DEPLOYED`: NO
+- `SMOKE PASS`: NO
+- `UAT PASS`: NO
+
+## Next safe step
+
+- Obtain user acceptance of the current Catalog placement. Then rerun the
+  focused mocked Playwright suite against a verified fresh preview server. Do
+  not resume the remaining ten-point POS backlog until this checkpoint is
+  accepted.
+
+# Checkpoint 2026-11-01 - POS comprehensive local E2E harness
+
+## Scope and files
+
+- Classification: `TEST_HARNESS_ONLY`; no product, schema, Production data, or
+  deployment mutation was authorized by this task.
+- Added POS runner/config and expanded the existing isolated browser fixture:
+  - `qa-e2e/playwright.pos.config.ts`
+  - `qa-e2e/scripts/run-pos-e2e.ps1`
+  - `qa-e2e/package.json`
+  - `qa-e2e/tests/retail-pwa.mocked.spec.ts`
+  - `docs/audits/POS_COMPREHENSIVE_E2E_TEST_HARNESS_IMPACT_2026-11-01.md`
+  - `docs/runbooks/POS_COMPREHENSIVE_E2E.md`
+
+## Evidence and honest status
+
+- Command: `npm.cmd --prefix qa-e2e run test:pos`.
+- PWA production build: PASS; old chunk-size warning only.
+- Result: `26 PASS / 1 FAIL / 27 total`.
+- Reproducible failure: Delivery Draft dialog accepts recipient/address/ongkir,
+  but normal click on `Simpan pengiriman` is intercepted by checkout's sticky
+  `.pos-action-bar`. No forced click or weakened assertion was used.
+- HTML report: `qa-e2e/playwright-report/pos/index.html`.
+- Failure trace: under
+  `qa-e2e/test-results/pos/retail-pwa.mocked-saves-a--ec925-ning-Retail-Draft-ownership/trace.zip`.
+- `AUDIT COMPLETE`: YES for harness/call-chain scope.
+- `LOCAL READY`: YES for the harness; NO for an all-green comprehensive gate.
+- `DATABASE LIVE`: not applicable/no database change.
+- `CLIENT DEPLOYED`: NO.
+- `SMOKE PASS`: NO authenticated smoke.
+- `UAT PASS`: NO.
+
+## Next safe step
+
+- Open a new `PRODUCT_BEHAVIOR_CHANGE` audit/gate for the Delivery modal
+  hit-testing/stacking defect. Preserve checkout sticky-footer behavior, other
+  modals, mobile layout, and normal Draft payload. After product verification,
+  rerun the same 27-test gate without changing the failing assertion.
+- Remaining untested database/concurrency branches are listed in
+  `docs/runbooks/POS_COMPREHENSIVE_E2E.md` and must not be claimed as covered.
+
+# Checkpoint 2026-11-01 - POS point 2 immediate post-success reset
+
+## Behavior and compatibility
+
+- After `postSale()` returns a final result and `loadReceipt()` succeeds, the
+  UI now captures the posted Customer, shows the receipt, and calls
+  `resetSale()` immediately. Cart, active Draft, Customer, Pricelist, payments,
+  Ketul, Tempo, delivery input, discounts, and client transaction identity are
+  reset before optional document reads complete.
+- Invoice/Delivery loading plus Catalog/Draft refresh run as non-authoritative
+  post-success reads. Their failure no longer enters the Sale-posting failure
+  path or encourages a duplicate retry; a refresh failure produces an explicit
+  successful-post warning.
+- Server `DRAFT`, shortage, validation, stale-version, permission, and network
+  failures remain before the success boundary and retain user input.
+- No schema, migration, RPC, Stock/FIFO, Finance, Backoffice/ODR, or payment
+  verification behavior changed.
+
+## Evidence and status
+
+- PWA lint: PASS.
+- PWA production build: PASS; existing chunk-size warning only.
+- Focused mocked Playwright against the verified active local server on port
+  `5190`: 1/1 PASS. It asserts receipt visibility, Cart empty before receipt
+  close, Customer reset to Walk-In, and empty Cart after returning to cashier.
+- `AUDIT COMPLETE`: YES
+- `LOCAL READY`: YES for point 2
+- `DATABASE LIVE`: not applicable
+- `CLIENT DEPLOYED`: NO
+- `SMOKE PASS`: NO authenticated Production smoke
+- `UAT PASS`: NO
+# Checkpoint 2026-11-02 - POS Delivery modal layering fix
+
+## Scope and impact
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE` with a separate
+  `TEST_HARNESS_FIX` after the rebuilt bundle proved the product flow opens the
+  Delivery dialog immediately when `Perlu dikirim` is selected.
+- Audit artifact:
+  `docs/audits/POS_DELIVERY_MODAL_LAYERING_FIX_IMPACT_2026-11-02.md`.
+- Product change is limited to the Delivery overlay in `pwa/src/App.tsx`, raised
+  above the Katalog checkout overlay. Shared modal styling, sticky checkout
+  footer, Pickup, payment, Ketul, Stock/FIFO, Finance, Backoffice/ODR, schema,
+  RPCs, and data are unchanged.
+- Harness change in `qa-e2e/tests/retail-pwa.mocked.spec.ts` removes only a
+  redundant background click after the Delivery dialog is already open. Normal
+  click, exact payload, and negative final-post assertions remain.
+
+## Evidence and status
+
+- Focused Delivery Draft browser test: 1/1 PASS.
+- Full `npm.cmd --prefix qa-e2e run test:pos`: 27/27 PASS in 41.3 seconds.
+- PWA lint: PASS.
+- PWA production build: PASS; existing chunk-size warning only.
+- Read-only laptop inspection at `http://127.0.0.1:5190`: Delivery dialog is
+  visibly above checkout and the save action is reachable. Dialogs were closed
+  without saving or posting a transaction.
+- `AUDIT COMPLETE`: YES.
+- `LOCAL READY`: YES for the client fix and mocked POS gate.
+- `DATABASE LIVE`: not applicable; no database change.
+- `CLIENT DEPLOYED`: NO.
+- `SMOKE PASS`: NO authenticated database/Production smoke.
+- `UAT PASS`: NO.
+
+## Next safe step
+
+- User may inspect the local Delivery Draft flow. Deployment requires an
+  explicit user instruction. After deployment, run authenticated smoke and UAT;
+  do not translate the local 27/27 mocked result into database or Production
+  coverage.

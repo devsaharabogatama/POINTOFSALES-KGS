@@ -7,12 +7,14 @@ import {
   CheckCircle2,
   Eye,
   Loader2,
+  Printer,
   RefreshCcw,
   RotateCcw,
   Search,
   X,
 } from 'lucide-react'
 import { useEscapeClose } from '@/lib/use-escape-close'
+import { printSalesReturnNote } from '@/lib/sales-return-print'
 import { userFacingError } from '@/lib/user-facing-error'
 
 type ReturnStatus = 'DRAFT' | 'POSTED' | 'CANCELED'
@@ -263,6 +265,40 @@ function ReturnDetail({ document, lines, refunds, customer, store, executingSess
 }) {
   useEscapeClose(close)
   const sessionOpen = executingSession?.status === 'OPEN'
+  function printNote() {
+    printSalesReturnNote({
+      document: {
+        returnNo: document.return_no,
+        sourceInvoiceNo: document.source_invoice_no_snapshot,
+        customerName: customer ?? 'Pelanggan',
+        storeName: store ?? 'Store',
+        postedAt: document.posted_at,
+        postedBy: document.posted_by
+          ? actorById.get(document.posted_by) ?? 'Approver'
+          : 'Approver',
+        notes: document.notes,
+        refundBeforeRounding: document.refund_before_rounding,
+        roundingAdjustment: document.rounding_adjustment,
+        refundTotal: document.refund_total,
+      },
+      lines: lines.map((line) => ({
+        productSku: line.product_sku_snapshot,
+        productName: line.product_name_snapshot,
+        uomName: line.sale_uom_name_snapshot,
+        quantity: line.quantity_uom,
+        condition: conditionLabel(line.return_condition),
+        refundAmount: line.refund_before_rounding,
+      })),
+      refunds: refunds.map((refund) => ({
+        methodName: refund.payment_method_name_snapshot,
+        methodType: refund.payment_method_type_snapshot,
+        amount: refund.amount,
+        transferDestination: refund.transfer_destination,
+        transferReference: refund.transfer_reference,
+        proofUrl: refund.proof_url,
+      })),
+    })
+  }
   return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
     <div className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
       <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-emerald-600">Detail Return Penjualan</p><h2 className="mt-2 text-2xl font-black text-slate-950">{document.return_no}</h2><p className="mt-2 text-sm text-slate-500">Invoice asal {document.source_invoice_no_snapshot} · {store ?? 'Store'}</p></div><button onClick={close} className="rounded-xl bg-slate-100 p-2 text-slate-500" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
@@ -273,7 +309,7 @@ function ReturnDetail({ document, lines, refunds, customer, store, executingSess
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]"><div className="rounded-2xl border border-slate-200 p-5"><h3 className="font-black text-slate-900">Metode refund</h3><div className="mt-4 space-y-3">{refunds.map((refund) => <div key={refund.id} className="rounded-xl bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-black text-slate-800">{refund.payment_method_name_snapshot}</p><p className="mt-1 text-xs text-slate-500">{refund.payment_method_type_snapshot}{refund.transfer_destination ? ` · Tujuan ${refund.transfer_destination}` : ''}{refund.transfer_reference ? ` · Ref ${refund.transfer_reference}` : ''}</p></div><p className="font-black text-slate-900">{rupiah(refund.amount)}</p></div>{refund.proof_url && <a href={refund.proof_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-black text-emerald-700 underline">Buka bukti transfer</a>}</div>)}</div></div><div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-black uppercase tracking-wider text-slate-400">Ringkasan refund</p><div className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><span>Sebelum pembulatan</span><strong>{rupiah(document.refund_before_rounding)}</strong></div><div className="flex justify-between"><span>Penyesuaian</span><strong>{rupiah(document.rounding_adjustment)}</strong></div><div className="border-t border-slate-700 pt-3 text-lg flex justify-between"><span>Total refund</span><strong>{rupiah(document.refund_total)}</strong></div></div></div></div>
       {document.notes && <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><strong>Catatan:</strong> {document.notes}</div>}
       {document.status === 'CANCELED' && <div className="mt-5 rounded-2xl border border-slate-200 p-4 text-sm text-slate-600"><strong>Alasan dibatalkan:</strong> {document.cancel_reason ?? '-'}</div>}
-      <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border border-slate-200 px-5 font-black text-slate-600">Tutup</button>{document.status === 'DRAFT' && canCancel && <button onClick={() => act('cancel')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-5 font-black text-rose-700"><Ban className="h-4 w-4" /> Batalkan Return</button>}{document.status === 'DRAFT' && canApprove && <button onClick={() => act('post')} disabled={!sessionOpen} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><CheckCircle2 className="h-4 w-4" /> Setujui & Posting</button>}</div>
+      <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={close} className="min-h-11 rounded-xl border border-slate-200 px-5 font-black text-slate-600">Tutup</button>{document.status === 'POSTED' && <button onClick={printNote} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-200 px-5 font-black text-emerald-700"><Printer className="h-4 w-4" /> Cetak Nota Return</button>}{document.status === 'DRAFT' && canCancel && <button onClick={() => act('cancel')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-5 font-black text-rose-700"><Ban className="h-4 w-4" /> Batalkan Return</button>}{document.status === 'DRAFT' && canApprove && <button onClick={() => act('post')} disabled={!sessionOpen} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"><CheckCircle2 className="h-4 w-4" /> Setujui & Posting</button>}</div>
     </div>
   </div>
 }

@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-e2e.ps1",
+    "test:pos": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-pos-e2e.ps1",
     "test:raw": "playwright test",
     "test:ui": "playwright test --ui",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "report:pos": "playwright show-report playwright-report/pos"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"

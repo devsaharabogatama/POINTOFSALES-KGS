@@ -1,5 +1,131 @@
 # MADS — Management Distribution System
 
+> **POS Session Summary + Ketul UI compaction (2026-11-01):** the local PWA
+> keeps all five Session totals in one compact desktop row, confines narrow
+> layouts to a horizontal totals strip, and gives the remaining modal height to
+> the transaction/product list. Ketul checkout and line-entry UI now use the
+> light POS hierarchy with responsive fields, explicit totals, and readable
+> actions. No calculation, RPC, schema, payment, Stock/FIFO, Finance, Session,
+> Return, or Company boundary changed. PWA lint/build and the complete mocked
+> Retail file `7/7 PASS`; authenticated local read-only visual inspection also
+> passed with the real 21-transaction session. Status: `LOCAL VERIFICATION PASS
+> / CLIENT NOT DEPLOYED / UAT PENDING`. Audit:
+> [POS Session Summary and Ketul UI compaction](docs/audits/POS_SESSION_SUMMARY_KETUL_UI_COMPACTION_IMPACT_2026-11-01.md).
+
+> **POS Ketul KGS readiness forward fix (2026-11-01):** Production evidence
+> proved the installed Ketul runtime is generic, but migration
+> `20261031110000` provisioned payable/method authority only for KGFF while KGS
+> also had `ketul_enabled`. Forward package `20261101120000` provisions
+> the same approved independent `2010105-1 / HUTANG KETUL CUSTOMER` authority
+> for KGS and adds a Company-scoped readiness RPC. The PWA now fails closed on
+> incomplete readiness instead of exposing an unusable action; a readiness RPC
+> failure hides only Ketul and does not block the remaining Catalog. PostgreSQL
+> 18 disposable preflight/migration/postflight PASS, readiness returns ready,
+> PWA build/lint PASS, and focused mocked regression is `4/4 PASS`. The migration
+> is now `DATABASE LIVE`, but the first Production rollback behavior exposed an
+> incomplete Sale Product-UOM fixture predicate and stopped before any mutation.
+> Classification is `TEST_HARNESS_FIX`, not Product PASS. The corrected KGS and
+> KGFF behavior files now materialize only resolver-eligible Product-UOM rows;
+> outer SQL and corrected fixture-query parsing PASS. Production behavior rerun,
+> closing postflight confirmation, client deploy, authenticated smoke, and UAT
+> remain pending. The corrected Production rerun has now passed the fixture and
+> exposed a real configuration gate: KGS uses manual period creation, October
+> 2026 is OPEN, and November 2026 is absent. Create November 2026 through
+> Backoffice Finance > Periode before rerunning behavior; do not bypass the
+> accounting-period assertion.
+> Audit: [POS Ketul KGS readiness forward fix](docs/audits/POS_KETUL_KGS_READINESS_FORWARD_FIX_IMPACT_2026-11-01.md).
+
+> **POS Expense per sesi (2026-11-01):** Status `LOCAL READY` dicabut setelah
+> Production rollback behavior membuktikan direct non-cash melanggar canonical
+> `expense_disbursement_route_check`. Migration `20261101100000` sudah live dan
+> immutable tetapi jalur non-cash belum dapat digunakan; forward fix baru wajib
+> menyimpan origin sesi pada Expense document sementara snapshot session/
+> terminal disbursement non-cash tetap null. Detail root cause:
+> [POS Direct Session Expense Non-cash Forward Fix](docs/audits/POS_DIRECT_SESSION_EXPENSE_NONCASH_FORWARD_FIX_IMPACT_2026-11-01.md).
+> Forward migration `20261101110000` is now Production-live and its postflight
+> passes ledger, runtime, workspace, and business-boundary checks. Production
+> rollback behavior also PASSes Cash/non-cash, Drawer, Event/disbursement,
+> audit, retry, session totals and zero Sales/Stock/FIFO effects. Database gate
+> is complete; authenticated smoke and UAT remain pending.
+>
+> Paket awalnya adalah
+> forward package `20261101100000`. Expense yang dicatat Cashier di POS langsung
+> berstatus dibayar dalam satu transaksi server: Cash membuat satu Drawer OUT,
+> non-cash tidak mengubah laci, dan keduanya tetap memakai canonical Expense
+> Disbursement/Finance Event/audit. Tombol pencairan awal terpisah dihapus dari
+> POS; tab Penyelesaian serta Ringkasan hanya membaca Expense sesi terpilih dan
+> Ringkasan menampilkan total Cash/non-cash. Backoffice approval lama,
+> settlement, return, additional funding, Sales, Stock/FIFO, dan histori lama
+> dipertahankan. Evidence lokal: PWA lint/build PASS, focused Playwright
+> `13/13 PASS`, serta PostgreSQL 18 disposable migration compile dan postflight
+> `4/4 PASS`. Rollback behavior berbasis fixture nyata, Production database,
+> client deploy, authenticated smoke, dan UAT belum dijalankan. Audit:
+> [POS Direct Session Expense](docs/audits/POS_DIRECT_SESSION_EXPENSE_IMPACT_2026-11-01.md).
+
+> **POS Ketul linked-intake (2026-11-01):** Phase A audit is complete and the
+> additive candidate is local-ready. Direct Retail POS can compose repeatable
+> KETUL rows into a derived after-tax/rounding offset, receive Stock/FIFO
+> atomically, and post Dr `1030100-4 / PERSEDIAAN KETUL` against independent
+> Cr `2010105-1 / HUTANG KETUL CUSTOMER`; existing `2010105` routing is
+> preserved. The hidden settlement method is excluded from the normal payment
+> picker; Tempo, Offline, Backoffice/ODR, existing Return, other Companies, and
+> historical Posted rows stay outside the change. The user-confirmed Production
+> migration and all nine postflight contracts PASS with zero installation
+> business effect. PostgreSQL 18 candidate and
+> Adopted `BACKOFFICE_CUTOVER` Drafts also keep their preserved-save path: the
+> Ketul action is hidden and any local Ketul state is cleared for that branch,
+> while the server direct-POS ownership guard remains authoritative.
+> local rollback behavior PASS, PWA build/lint PASS,
+> focused Retail Playwright 4/4 PASS, and runtime contracts 8/8 PASS. Status:
+> `AUDIT COMPLETE / LOCAL READY / DATABASE LIVE / PRODUCTION BEHAVIOR RERUN
+> PENDING / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+> Posted Ketul correction/reversal
+> remains an explicit gap, so the overall workflow is not yet COMPLETE. See the
+> [impact audit](docs/audits/POS_KETUL_CUSTOMER_INTAKE_OFFSET_IMPACT_2026-10-31.md).
+
+> **POS Task 2, Return refund-method slice (2026-10-31):** points 5 and 9 are
+> locally ready. Cash Return no longer carries Transfer destination/reference;
+> Transfer retains the existing required destination/reference contract, and
+> switching back to Cash clears hidden Transfer state. A final Return note can
+> now be printed from Backoffice only after the Return is `POSTED`, showing the
+> actual refund method and conditional Transfer details. Pure contract test,
+> PWA lint/build, Backoffice focused lint/build, and combined mocked Retail plus
+> runtime-contract Playwright `11/11 PASS`. No schema, migration, database data,
+> Stock/FIFO, Finance, or Backoffice/ODR runtime changed. Status: `AUDIT
+> COMPLETE / LOCAL READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING /
+> UAT PENDING`. Point 10 is now tracked separately as the local-ready linked
+> Ketul intake package above; its database rollout and Posted correction remain
+> pending.
+
+> **POS Session Summary Return shortcut (2026-11-01):** every transaction row
+> now has a right-aligned Return action that opens the existing Return workflow
+> focused on the exact Sale. Eligibility remains fail-closed in the canonical
+> `get_pos_returnable_sales` RPC; no Return Draft is created by navigation.
+> Focused PWA lint/build PASS and mocked browser regression `2/2 PASS`. No
+> schema/RPC/database/Stock/FIFO/Finance change. Status: `AUDIT COMPLETE / LOCAL
+> READY / CLIENT NOT DEPLOYED / AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+
+> **POS UI Task 2, UI-first slice (2026-10-31):** local PWA now shows the
+> active Customer on Catalog/Cart and Posted receipt, prioritizes Customer in
+> Session Summary while retaining DRF/Invoice identifiers, shows opening session
+> cash and per-method/split-payment detail. Point 7 now makes the desktop
+> Catalog Cart fill the available right-column height, places `Total akhir` at
+> the panel bottom, and gives the item list the remaining scrollable area; it
+> does not alter Compact or narrow/mobile flow. Browser geometry at `1920x900`
+> measured a `619.39px` item list, `0px` footer/panel-bottom delta, and `12px`
+> viewport bottom gap. After the Catalog was scrolled `500px`, the footer kept
+> the exact same `x/y/width/height` and browser `window.scrollY` stayed `0`.
+> The proven successful-post reset path remains
+> unchanged and is now asserted end-to-end. PWA lint/build PASS; focused Retail
+> mocked Playwright currently passes `7/7`; the point-7 focused rerun passes
+> `1/1` and stores screenshot/geometry evidence in the Playwright report.
+> Status: `AUDIT COMPLETE / LOCAL VERIFICATION PASS / CLIENT NOT DEPLOYED /
+> AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+> No schema, database, Company context, Payment, Stock/FIFO, Finance, or
+> Backoffice/ODR flow changed. Remaining Task 2 workflow items are recorded in
+> [the impact audit](docs/audits/POS_UI_TASK2_IMPACT_2026-10-31.md), with point
+> 7 evidence in the [focused audit](docs/audits/POS_CATALOG_CART_VIEWPORT_IMPACT_2026-11-01.md).
+
 > **Agent impact-audit tooling (2026-10-31):** persistent setup and completion
 > checklist is available at
 > [docs/runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md](docs/runbooks/AGENT_IMPACT_AUDIT_TOOLING_CHECKLIST.md).

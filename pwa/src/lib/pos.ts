@@ -73,6 +73,12 @@ export type CashierSessionSummaryTransaction = {
 export type CashierSessionSummary = {
   sessionId: string
   transactions: CashierSessionSummaryTransaction[]
+  expense: {
+    documentCount: number
+    totalAmount: number
+    cashAmount: number
+    nonCashAmount: number
+  }
 }
 
 export type ProductOption = {
@@ -379,6 +385,10 @@ export type ExpenseDisbursementResult = {
   idempotentReplay: boolean
 }
 
+export type DirectPosExpenseResult = ExpenseDisbursementResult & {
+  documentNo: string
+}
+
 export type OutstandingExpense = {
   documentId: string
   documentNo: string
@@ -443,6 +453,12 @@ export type DraftLine = {
   lineDiscountType?: 'AMOUNT' | 'PERCENT'
   lineDiscountInput?: number
   overrideUnitPrice?: number
+}
+
+export type KetulIntakeLineInput = {
+  productId: string
+  quantity: number
+  unitPrice: number
 }
 
 export type SaleDraft = {
@@ -590,6 +606,21 @@ export type SaleReceipt = {
   deliveryFeeInvoiceDisplayMode?: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
   customerSurcharge: number
   amountPaid: number
+  ketulOffsetTotal?: number
+  externalPaymentTotal?: number
+  ketulIntake?: {
+    intakeId: string
+    offsetTotal: number
+    lines: Array<{
+      productId: string
+      sku: string
+      productName: string
+      uomName: string
+      quantity: number
+      unitPrice: number
+      lineTotal: number
+    }>
+  }
   lines: Array<{
     productName: string
     sku: string
@@ -685,6 +716,7 @@ export type CatalogData = {
   paymentMethods: PaymentMethodOption[]
   expenseCategories: ExpenseCategoryOption[]
   expenseEnabled: boolean
+  ketulEnabled: boolean
   customerBalanceCreditEnabled: boolean
   customerBalanceTenderEnabled: boolean
 }
@@ -984,7 +1016,7 @@ export async function loadCashierSessionSummary(
   const rows = (headers ?? []) as DbRow[]
   const salesIds = rows.map((row) => String(row.id))
 
-  const [detailsResult, customersResult, legacyPaymentsResult] = await Promise.all([
+  const [detailsResult, customersResult, legacyPaymentsResult, expenseWorkspaceResult] = await Promise.all([
     salesIds.length
       ? supabase
           .from('sales_details')
@@ -1003,10 +1035,17 @@ export async function loadCashierSessionSummary(
           .in('sales_id', salesIds)
           .eq('is_reversal', false)
       : Promise.resolve({ data: [], error: null }),
+    supabase.rpc('get_pos_expense_workspace', {
+      p_cashier_session_id: cashierSessionId,
+    }),
   ])
   throwIfError(detailsResult.error)
   throwIfError(customersResult.error)
   throwIfError(legacyPaymentsResult.error)
+  throwIfError(expenseWorkspaceResult.error)
+
+  const expenseWorkspace = (expenseWorkspaceResult.data ?? {}) as DbRow
+  const expenseSummary = (expenseWorkspace.sessionExpenseSummary ?? {}) as DbRow
 
   const customerNameById = new Map(
     ((customersResult.data ?? []) as DbRow[]).map((row) => [
@@ -1057,6 +1096,12 @@ export async function loadCashierSessionSummary(
 
   return {
     sessionId: cashierSessionId,
+    expense: {
+      documentCount: numberValue(expenseSummary.documentCount),
+      totalAmount: numberValue(expenseSummary.totalAmount),
+      cashAmount: numberValue(expenseSummary.cashAmount),
+      nonCashAmount: numberValue(expenseSummary.nonCashAmount),
+    },
     transactions: rows.map((row) => {
       const salesId = String(row.id)
       const snapshot = row.payload_snapshot && typeof row.payload_snapshot === 'object'
@@ -1148,6 +1193,7 @@ export async function loadCatalog(
     methodsResult,
     expenseCategoriesResult,
     expenseFeatureResult,
+    ketulReadinessResult,
     customerBalanceFeatureResult,
   ] = await Promise.all([
     supabase
@@ -1186,6 +1232,7 @@ export async function loadCatalog(
       .eq('company_id', companyId)
       .eq('feature_code', 'expense_enabled')
       .maybeSingle(),
+    supabase.rpc('get_pos_ketul_readiness'),
     supabase
       .from('company_features')
       .select('is_enabled')
@@ -1363,6 +1410,11 @@ export async function loadCatalog(
         : null,
     })),
     expenseEnabled: Boolean(expenseFeatureResult.data?.is_enabled),
+    ketulEnabled: Boolean(
+      !ketulReadinessResult.error &&
+      ((ketulReadinessResult.data ?? {}) as DbRow).enabled &&
+      ((ketulReadinessResult.data ?? {}) as DbRow).ready,
+    ),
     customerBalanceCreditEnabled:
       Boolean(customerBalanceFeatureResult.data?.is_enabled) &&
       customerBalanceTenderEnabled,
@@ -1898,6 +1950,55 @@ export async function saveExpenseDraft(input: {
   }
 }
 
+export async function postPosExpense(input: {
+  storeId: string
+  cashierSessionId: string
+  categoryId: string
+  responsiblePartyType: 'CASHIER' | 'EXTERNAL'
+  responsiblePartyId: string | null
+  responsiblePartyName: string
+  requestedAmount: number
+  paymentMethodId: string
+  recipient: string
+  description: string
+  evidenceUrl: string
+  expectedSettlementDate: string
+  clientExpenseId: string
+  idempotencyKey: string
+}): Promise<DirectPosExpenseResult> {
+  const { data, error } = await supabase.rpc('post_pos_expense', {
+    p_store_id: input.storeId,
+    p_cashier_session_id: input.cashierSessionId,
+    p_category_id: input.categoryId,
+    p_responsible_party_type: input.responsiblePartyType,
+    p_responsible_party_id: input.responsiblePartyId,
+    p_responsible_party_name: input.responsiblePartyName.trim(),
+    p_requested_amount: input.requestedAmount,
+    p_payment_method_id: input.paymentMethodId,
+    p_recipient: input.recipient.trim() || null,
+    p_description: input.description.trim(),
+    p_evidence_url: input.evidenceUrl.trim() || null,
+    p_expected_settlement_date: input.expectedSettlementDate || null,
+    p_client_expense_id: input.clientExpenseId,
+    p_idempotency_key: input.idempotencyKey,
+  })
+  throwIfError(error)
+  const row = data as DbRow
+  return {
+    documentId: String(row.documentId),
+    documentNo: String(row.documentNo),
+    disbursementId: String(row.disbursementId),
+    status: String(row.status) as 'DISBURSED',
+    masterVersion: numberValue(row.masterVersion),
+    amount: numberValue(row.amount),
+    paymentMethodType: String(row.paymentMethodType),
+    expectedCashAfter: row.expectedCashAfter === null
+      ? null
+      : numberValue(row.expectedCashAfter),
+    idempotentReplay: Boolean(row.idempotentReplay),
+  }
+}
+
 export async function submitExpenseRequest(
   documentId: string,
   masterVersion: number,
@@ -2275,6 +2376,7 @@ export async function saveSaleDraft(input: {
   deliveryFeeAmount: number
   deliveryFeeInvoiceDisplayMode: 'SHOW_SEPARATE' | 'HIDE_BREAKDOWN'
   negativeStockReason?: string
+  ketulIntakeLines: KetulIntakeLineInput[]
   payments: Array<{
     clientPaymentKey: string
     paymentMethodId: string
@@ -2321,6 +2423,7 @@ export async function saveSaleDraft(input: {
       ? { negativeStockReason: input.negativeStockReason.trim() }
       : {}),
     payments: input.payments,
+    ketulIntakeLines: input.ketulIntakeLines,
     ...(input.draft
       ? {
           saleId: input.draft.salesId,
@@ -2329,7 +2432,7 @@ export async function saveSaleDraft(input: {
       : {}),
   }
   const { data, error } = await supabase.rpc(
-    'save_pos_sale_draft_with_pricelist',
+    'save_pos_sale_draft_with_ketul',
     {
     p_payload: payload,
     },
@@ -2731,7 +2834,7 @@ export async function postSale(
   idempotencyKey: string,
 ) {
   const { data, error } = await supabase.rpc(
-    'post_pos_sale_with_pricelist',
+    'post_pos_sale_with_ketul',
     {
     p_sales_id: salesId,
     p_master_version: masterVersion,

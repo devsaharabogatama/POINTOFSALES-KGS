@@ -2,20 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Banknote,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   FileText,
   RefreshCw,
   ShieldCheck,
-  WalletCards,
   X,
 } from 'lucide-react'
 import {
-  disburseCashExpense,
-  listApprovedCashExpenses,
-  saveExpenseDraft,
-  submitExpenseRequest,
-  type ApprovedCashExpense,
+  postPosExpense,
   type CashierSession,
   type CatalogData,
 } from './lib/pos'
@@ -52,6 +46,10 @@ function errorMessage(error: unknown) {
     EXPENSE_DISBURSEMENT_EVIDENCE_REQUIRED: 'Metode pembayaran ini mewajibkan link bukti pencairan.',
     EXPENSE_DISBURSEMENT_EVIDENCE_HTTPS_REQUIRED: 'Link bukti pencairan harus menggunakan HTTPS.',
     EXPENSE_DISBURSEMENT_IDEMPOTENCY_CONFLICT: 'Permintaan pencairan bertentangan dengan percobaan sebelumnya.',
+    CLIENT_EXPENSE_ID_CONFLICT: 'Percobaan ulang Expense membawa data yang berbeda. Buat transaksi baru.',
+    POS_DIRECT_EXPENSE_OWNERSHIP_REQUIRED: 'Expense harus berasal dari sesi kasir aktif milik user ini.',
+    POS_DIRECT_EXPENSE_STATE_INVALID: 'Status Expense sudah berubah dan tidak dapat diproses ulang.',
+    ACTIVE_EXPENSE_NONCASH_METHOD_NOT_FOUND: 'Metode non-tunai tidak aktif atau belum memiliki rute pembayaran yang valid.',
   }
   return labels[code] ?? code.replaceAll('_', ' ')
 }
@@ -72,9 +70,7 @@ export function ExpenseRequestModal({
   close,
   completed,
 }: Props) {
-  const [mode, setMode] = useState<
-    'REQUEST' | 'CASH_DISBURSEMENT' | 'SETTLEMENT'
-  >('REQUEST')
+  const [mode, setMode] = useState<'REQUEST' | 'SETTLEMENT'>('REQUEST')
   const [categoryId, setCategoryId] = useState(
     catalog.expenseCategories[0]?.id ?? '',
   )
@@ -89,15 +85,9 @@ export function ExpenseRequestModal({
   const [evidenceUrl, setEvidenceUrl] = useState('')
   const [expectedSettlementDate, setExpectedSettlementDate] = useState('')
   const [clientExpenseId] = useState(() => crypto.randomUUID())
+  const [disbursementKey] = useState(() => crypto.randomUUID())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [cashExpenses, setCashExpenses] = useState<ApprovedCashExpense[]>([])
-  const [cashLoading, setCashLoading] = useState(false)
-  const [selectedCashExpense, setSelectedCashExpense] =
-    useState<ApprovedCashExpense | null>(null)
-  const [disbursementEvidenceUrl, setDisbursementEvidenceUrl] = useState('')
-  const [disbursementConfirmed, setDisbursementConfirmed] = useState(false)
-  const [disbursementKey, setDisbursementKey] = useState(() => crypto.randomUUID())
 
   const selectedCategory = catalog.expenseCategories.find(
     (category) => category.id === categoryId,
@@ -129,80 +119,11 @@ export function ExpenseRequestModal({
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || busy) return
-      if (selectedCashExpense) {
-        setSelectedCashExpense(null)
-        setDisbursementConfirmed(false)
-      } else {
-        close()
-      }
+      close()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [busy, close, selectedCashExpense])
-
-  async function loadCashExpenses() {
-    setCashLoading(true)
-    setError('')
-    try {
-      setCashExpenses(await listApprovedCashExpenses(cashierSession))
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setCashLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (mode === 'CASH_DISBURSEMENT') void loadCashExpenses()
-    // The active Cashier Session is fixed while this modal is mounted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode])
-
-  function selectCashExpense(expense: ApprovedCashExpense) {
-    setSelectedCashExpense(expense)
-    setDisbursementEvidenceUrl(expense.evidenceUrl ?? '')
-    setDisbursementConfirmed(false)
-    setDisbursementKey(crypto.randomUUID())
-    setError('')
-  }
-
-  async function disburseCash() {
-    if (!selectedCashExpense) return
-    const method = catalog.paymentMethods.find(
-      (item) => item.id === selectedCashExpense.paymentMethodId,
-    )
-    if (disbursementEvidenceUrl && !/^https:\/\//i.test(disbursementEvidenceUrl)) {
-      setError('Link bukti pencairan harus menggunakan HTTPS.')
-      return
-    }
-    if (method?.proofRequired && !disbursementEvidenceUrl.trim()) {
-      setError('Metode pembayaran ini mewajibkan link bukti pencairan.')
-      return
-    }
-    if (!disbursementConfirmed) {
-      setError('Centang konfirmasi setelah uang benar-benar siap diserahkan.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const result = await disburseCashExpense({
-        documentId: selectedCashExpense.documentId,
-        masterVersion: selectedCashExpense.masterVersion,
-        cashierSessionId: cashierSession.id,
-        evidenceUrl: disbursementEvidenceUrl,
-        idempotencyKey: disbursementKey,
-      })
-      completed(
-        `${selectedCashExpense.documentNo} dicairkan tunai sebesar ${rupiah(result.amount)}.`,
-        result.expectedCashAfter ?? undefined,
-      )
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
+  }, [busy, close])
 
   function changeCategory(nextCategoryId: string) {
     setCategoryId(nextCategoryId)
@@ -254,7 +175,7 @@ export function ExpenseRequestModal({
     setBusy(true)
     setError('')
     try {
-      const draft = await saveExpenseDraft({
+      const result = await postPosExpense({
         storeId: cashierSession.storeId,
         cashierSessionId: cashierSession.id,
         categoryId,
@@ -268,14 +189,11 @@ export function ExpenseRequestModal({
         evidenceUrl,
         expectedSettlementDate,
         clientExpenseId,
+        idempotencyKey: disbursementKey,
       })
-      const result = draft.status === 'DRAFT'
-        ? await submitExpenseRequest(draft.documentId, draft.masterVersion)
-        : draft
       completed(
-        result.status === 'APPROVED'
-          ? `${draft.documentNo} disetujui otomatis. Dana belum dicairkan.`
-          : `${draft.documentNo} diajukan. Menunggu persetujuan Manager/Admin.`,
+        `${result.documentNo} tercatat sebesar ${rupiah(result.amount)} dan sudah dibayar melalui ${selectedMethod?.name ?? 'metode terpilih'}.`,
+        result.expectedCashAfter ?? undefined,
       )
     } catch (reason) {
       setError(errorMessage(reason))
@@ -301,7 +219,7 @@ export function ExpenseRequestModal({
           <div>
             <p className="pos-eyebrow">Pengeluaran operasional</p>
             <h2 id="pos-expense-title">Expense Operasional</h2>
-            <p>Ajukan kebutuhan atau cairkan Expense tunai yang sudah disetujui.</p>
+            <p>Catat pengeluaran yang sudah dibayar dari sesi kasir ini.</p>
           </div>
           <button
             type="button"
@@ -320,14 +238,7 @@ export function ExpenseRequestModal({
             className={mode === 'REQUEST' ? 'is-active' : ''}
             onClick={() => { setMode('REQUEST'); setError('') }}
           >
-            <FileText className="h-4 w-4" /> Ajukan
-          </button>
-          <button
-            type="button"
-            className={mode === 'CASH_DISBURSEMENT' ? 'is-active' : ''}
-            onClick={() => { setMode('CASH_DISBURSEMENT'); setError('') }}
-          >
-            <WalletCards className="h-4 w-4" /> Cairkan Tunai
+            <FileText className="h-4 w-4" /> Catat Expense
           </button>
           <button
             type="button"
@@ -366,7 +277,7 @@ export function ExpenseRequestModal({
               </label>
 
               <label>
-                Nominal yang diajukan
+                Nominal Expense
                 <span className="pos-expense-money-input">
                   <span>Rp</span>
                   <CurrencyInput
@@ -379,7 +290,7 @@ export function ExpenseRequestModal({
               </label>
 
               <label>
-                Rencana pembayaran
+                Metode pembayaran
                 <select
                   required
                   value={paymentMethodId}
@@ -394,8 +305,8 @@ export function ExpenseRequestModal({
                 </select>
                 <small>
                   {selectedMethod?.methodType === 'CASH'
-                    ? 'Jika disetujui, pencairan tunai tetap dilakukan pada langkah berikutnya.'
-                    : 'Transfer/non-tunai tetap menunggu konfirmasi pembayaran.'}
+                    ? 'Kas sesi langsung berkurang saat Expense disimpan.'
+                    : 'Expense langsung tercatat tanpa mengubah kas laci.'}
                 </small>
               </label>
 
@@ -476,9 +387,9 @@ export function ExpenseRequestModal({
           <div className="pos-expense-boundary">
             <ShieldCheck className="h-5 w-5" />
             <div>
-              <strong>Pengajuan saja</strong>
+              <strong>Langsung tercatat sebagai pengeluaran</strong>
               <span>
-                Submit tidak mengubah kas, stok, atau jurnal. Status pencairan akan ditangani pada tahap terpisah.
+                Tidak ada approval atau pencairan kedua. Cash langsung mengurangi kas sesi; non-tunai tidak mengubah kas laci.
               </span>
             </div>
           </div>
@@ -492,67 +403,13 @@ export function ExpenseRequestModal({
               className="pos-dialog-primary"
             >
               {busy ? (
-                <><RefreshCw className="h-4 w-4 animate-spin" /> Mengajukan…</>
+                <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan…</>
               ) : (
-                <><Banknote className="h-4 w-4" /> Ajukan Expense</>
+                <><Banknote className="h-4 w-4" /> Simpan Expense</>
               )}
             </button>
           </footer>
         </form>
-        ) : mode === 'CASH_DISBURSEMENT' ? (
-          <div className="pos-expense-cash-body">
-            <div className="pos-expense-cash-intro">
-              <div>
-                <strong>Expense tunai siap dicairkan</strong>
-                <span>
-                  Hanya dokumen approved untuk Store ini. Nominal dan metode tidak dapat diubah oleh kasir.
-                </span>
-              </div>
-              <button type="button" onClick={loadCashExpenses} disabled={cashLoading || busy}>
-                <RefreshCw className={`h-4 w-4 ${cashLoading ? 'animate-spin' : ''}`} /> Muat ulang
-              </button>
-            </div>
-
-            <div className="pos-expense-cash-list">
-              {cashExpenses.map((expense) => (
-                <button
-                  key={expense.documentId}
-                  type="button"
-                  onClick={() => selectCashExpense(expense)}
-                  className="pos-expense-cash-card"
-                >
-                  <span>
-                    <strong>{expense.documentNo}</strong>
-                    <small>{expense.categoryName} · {expense.responsiblePartyName}</small>
-                    <small>{expense.description}</small>
-                  </span>
-                  <span className="pos-expense-cash-amount">
-                    <strong>{rupiah(expense.requestedAmount)}</strong>
-                    <small>{expense.paymentMethodName}</small>
-                  </span>
-                </button>
-              ))}
-              {!cashLoading && cashExpenses.length === 0 && (
-                <div className="pos-expense-empty">
-                  <CheckCircle2 className="h-10 w-10" />
-                  <strong>Tidak ada Expense tunai menunggu pencairan</strong>
-                  <span>Dokumen akan muncul setelah approval selesai.</span>
-                </div>
-              )}
-              {cashLoading && (
-                <div className="pos-expense-empty">
-                  <RefreshCw className="h-8 w-8 animate-spin" />
-                  <strong>Memuat Expense approved…</strong>
-                </div>
-              )}
-            </div>
-
-            <footer className="pos-expense-footer">
-              <button type="button" onClick={close} disabled={busy} className="pos-dialog-secondary">
-                Tutup
-              </button>
-            </footer>
-          </div>
         ) : (
           <ExpenseSettlementPanel
             cashierSession={cashierSession}
@@ -563,57 +420,6 @@ export function ExpenseRequestModal({
           />
         )}
 
-        {selectedCashExpense && (
-          <div
-            className="pos-expense-confirm-overlay"
-            onMouseDown={(event) => {
-              if (event.currentTarget === event.target && !busy) {
-                setSelectedCashExpense(null)
-              }
-            }}
-          >
-            <section role="dialog" aria-modal="true" aria-labelledby="cash-expense-confirm-title" className="pos-expense-confirm-card">
-              <header>
-                <div>
-                  <p className="pos-eyebrow">Konfirmasi uang keluar</p>
-                  <h3 id="cash-expense-confirm-title">Cairkan {selectedCashExpense.documentNo}?</h3>
-                </div>
-                <button type="button" onClick={() => setSelectedCashExpense(null)} disabled={busy} className="pos-modal-close" aria-label="Tutup konfirmasi">
-                  <X className="h-5 w-5" />
-                </button>
-              </header>
-
-              <div className="pos-expense-confirm-summary">
-                <span>Nominal yang diserahkan</span>
-                <strong>{rupiah(selectedCashExpense.requestedAmount)}</strong>
-                <small>{selectedCashExpense.paymentMethodName} · {selectedCashExpense.responsiblePartyName}</small>
-              </div>
-              <p className="pos-expense-confirm-description">{selectedCashExpense.description}</p>
-
-              <label className="pos-expense-confirm-field">
-                Link bukti pencairan {catalog.paymentMethods.find((item) => item.id === selectedCashExpense.paymentMethodId)?.proofRequired ? '(wajib)' : '(opsional)'}
-                <input
-                  type="url"
-                  value={disbursementEvidenceUrl}
-                  onChange={(event) => setDisbursementEvidenceUrl(event.target.value)}
-                  placeholder="https://drive.google.com/…"
-                />
-              </label>
-
-              <label className="pos-expense-confirm-check">
-                <input type="checkbox" checked={disbursementConfirmed} onChange={(event) => setDisbursementConfirmed(event.target.checked)} />
-                <span>Saya sudah menyerahkan uang sesuai nominal di atas. Sistem akan mencatat Kas Keluar pada sesi ini.</span>
-              </label>
-
-              <div className="pos-expense-confirm-actions">
-                <button type="button" onClick={() => setSelectedCashExpense(null)} disabled={busy} className="pos-dialog-secondary">Kembali</button>
-                <button type="button" onClick={disburseCash} disabled={busy || !disbursementConfirmed} className="pos-dialog-primary">
-                  {busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Memproses…</> : <><Banknote className="h-4 w-4" /> Cairkan Tunai</>}
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
       </section>
     </div>
   )

@@ -20,6 +20,10 @@ type Props = {
   companyId: string
   cashierSession: CashierSession
   catalog: CatalogData
+  initialSale?: {
+    salesId: string
+    invoiceNo: string
+  } | null
   close: () => void
   completed: (message: string) => void
 }
@@ -41,6 +45,7 @@ export function SalesReturnModal({
   companyId,
   cashierSession,
   catalog,
+  initialSale = null,
   close,
   completed,
 }: Props) {
@@ -69,13 +74,26 @@ export function SalesReturnModal({
     (method) => method.id === paymentMethodId,
   )
 
-  async function refresh(query = search) {
+  async function refresh(query = search, initialSalesId = '') {
     setBusy(true)
     setError('')
     try {
       const workspace = await loadSalesReturnWorkspace(companyId, query)
-      setSales(workspace.sales.filter((sale) => sale.storeId === cashierSession.storeId))
+      const storeSales = workspace.sales.filter(
+        (sale) => sale.storeId === cashierSession.storeId,
+      )
+      setSales(storeSales)
       setDamagedWarehouses(workspace.damagedWarehouses)
+      if (initialSalesId) {
+        const exactSale = storeSales.find((sale) => sale.salesId === initialSalesId)
+        if (exactSale) {
+          selectSale(exactSale)
+        } else {
+          setError(
+            'Transaksi ini sudah tidak memiliki barang yang dapat diretur pada sesi dan toko aktif.',
+          )
+        }
+      }
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -84,7 +102,9 @@ export function SalesReturnModal({
   }
 
   useEffect(() => {
-    void refresh('')
+    const initialQuery = initialSale?.invoiceNo ?? ''
+    setSearch(initialQuery)
+    void refresh(initialQuery, initialSale?.salesId ?? '')
     setPaymentMethodId(
       refundMethods.find((method) => method.isDefault)?.id ??
         refundMethods[0]?.id ??
@@ -183,6 +203,18 @@ export function SalesReturnModal({
     }))
   }
 
+  function selectRefundMethod(nextPaymentMethodId: string) {
+    setPaymentMethodId(nextPaymentMethodId)
+    const nextMethod = refundMethods.find(
+      (method) => method.id === nextPaymentMethodId,
+    )
+    if (nextMethod?.methodType !== 'TRANSFER') {
+      setTransferDestination('')
+      setTransferReference('')
+      setProofUrl('')
+    }
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!selectedSale) return
@@ -245,7 +277,7 @@ export function SalesReturnModal({
         },
       })
       completed(
-        `${result.returnNo} tersimpan sebagai Draft. Menunggu persetujuan Store Manager/Admin.`,
+        `${result.returnNo} tersimpan sebagai Draft dengan refund ${selectedMethod?.name ?? 'terpilih'}. Menunggu persetujuan Store Manager/Admin sebelum refund menjadi final.`,
       )
     } catch (reason) {
       setError(errorMessage(reason))
@@ -383,16 +415,26 @@ export function SalesReturnModal({
                   </select>
                 </label>
                 <label>Cara refund
-                  <select required value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}>
+                  <select required value={paymentMethodId} onChange={(event) => selectRefundMethod(event.target.value)}>
                     <option value="">Pilih cara refund</option>
                     {refundMethods.map((method) => <option key={method.id} value={method.id}>{method.name}</option>)}
                   </select>
                 </label>
+                <p className="pos-return-method-note">
+                  Metode refund boleh berbeda dari pembayaran awal dan akan
+                  tercatat pada Nota Return setelah approval.
+                </p>
                 {selectedMethod?.methodType === 'TRANSFER' && <>
                   <label>Tujuan transfer<input required value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} placeholder="Bank / nomor rekening tujuan" /></label>
                   <label>Nomor referensi<input required value={transferReference} onChange={(event) => setTransferReference(event.target.value)} placeholder="Referensi transfer" /></label>
                   <label>Link bukti HTTPS (opsional)<input type="url" value={proofUrl} onChange={(event) => setProofUrl(event.target.value)} placeholder="https://…" /></label>
                 </>}
+                {selectedMethod?.methodType === 'CASH' && (
+                  <p className="pos-return-method-note is-cash">
+                    Refund tunai mengurangi kas sesi saat Return diposting.
+                    Tujuan transfer dan nomor referensi tidak diperlukan.
+                  </p>
+                )}
                 <label>Catatan (opsional)<textarea rows={3} maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
                 {calculation.fullRemaining &&
                   selectedSale.deliveryFeeAmount - selectedSale.deliveryFeeRefunded > 0 && (

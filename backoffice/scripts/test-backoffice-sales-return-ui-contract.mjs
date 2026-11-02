@@ -6,7 +6,6 @@ const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const navigation = read("src/lib/navigation-catalog.ts");
-const navigationApi = read("src/app/api/me/navigation-catalog/route.ts");
 const page = read("src/app/page.tsx");
 const salesOrder = read("src/components/BackofficeSalesOrderView.tsx");
 const returnView = read("src/components/BackofficeSalesReturnView.tsx");
@@ -16,12 +15,13 @@ const receiptRoute = read("src/app/api/inventory/customer-return-receipts/route.
 
 assert.match(navigation, /id:\s*["']backoffice-sales-returns["']/);
 assert.match(navigation, /id:\s*["']customer-return-receipts["']/);
-assert.match(navigationApi, /sales\.backoffice_returns/);
-assert.match(navigationApi, /inventory\.customer_return_receipts/);
+assert.match(navigation, /['"]backoffice-sales-returns['"]:\s*['"]sales\.backoffice_returns['"]/);
+assert.match(navigation, /['"]customer-return-receipts['"]:\s*['"]inventory\.customer_return_receipts['"]/);
 assert.match(page, /initialReturnId=\{salesReturnLaunch\?\.returnId\}/);
 assert.match(salesOrder, /get_backoffice_sales_return_links|returns\?: ReturnLink\[\]/);
 assert.match(salesOrder, /Buat Retur/);
-assert.match(returnView, /Finance memilih tujuan setiap qty/);
+assert.match(returnView, /Finance menentukan tujuan koreksi untuk setiap barang yang diterima/);
+assert.match(returnView, /label="Tujuan koreksi"/);
 assert.match(returnView, /Post Credit Note/);
 assert.match(returnView, /Post Refund/);
 assert.match(receiptView, /RESTOCK|Masuk stok/);

@@ -89,6 +89,7 @@ import {
   type CashierSessionSummaryTransaction,
   type CatalogData,
   type CompanyOption,
+  type KetulIntakeLineInput,
   type ProductOption,
   type PosPricePreviewLine,
   type ResolvedSaleLine,
@@ -101,6 +102,7 @@ import {
 } from './lib/pos'
 import { SalesOrderPanel } from './SalesOrderPanel'
 import { SessionSummaryModal } from './SessionSummaryModal'
+import { KetulIntakeModal } from './KetulIntakeModal'
 import {
   openSalesDeliveryPrint,
   openSalesInvoicePrint,
@@ -188,6 +190,7 @@ const EMPTY_CATALOG: CatalogData = {
   paymentMethods: [],
   expenseCategories: [],
   expenseEnabled: false,
+  ketulEnabled: false,
   customerBalanceCreditEnabled: false,
   customerBalanceTenderEnabled: false,
 }
@@ -511,6 +514,9 @@ export default function App() {
   const [customerId, setCustomerId] = useState('')
   const [selectedPricelistId, setSelectedPricelistId] = useState('')
   const [paymentLegs, setPaymentLegs] = useState<PaymentLeg[]>([])
+  const [ketulIntakeLines, setKetulIntakeLines] = useState<KetulIntakeLineInput[]>([])
+  const [ketulIntakeOpen, setKetulIntakeOpen] = useState(false)
+  const [isBackofficeCutoverDraft, setIsBackofficeCutoverDraft] = useState(false)
   const [isTempo, setIsTempo] = useState(false)
   const [transactionAt, setTransactionAt] = useState(() => new Date().toISOString())
   const [transactionDateIsManual, setTransactionDateIsManual] = useState(false)
@@ -556,6 +562,7 @@ export default function App() {
   const [pricePreviewLoading, setPricePreviewLoading] = useState(false)
   const [pricePreviewError, setPricePreviewError] = useState('')
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null)
+  const [receiptCustomerName, setReceiptCustomerName] = useState('')
   const [salesDocuments, setSalesDocuments] = useState<{
     invoice: SalesInvoiceDocument
     delivery: SalesDeliveryDocument | null
@@ -598,6 +605,10 @@ export default function App() {
   const [coldStartRestored, setColdStartRestored] = useState(false)
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [salesReturnOpen, setSalesReturnOpen] = useState(false)
+  const [selectedReturnSource, setSelectedReturnSource] = useState<{
+    salesId: string
+    invoiceNo: string
+  } | null>(null)
   const [expenseRequestOpen, setExpenseRequestOpen] = useState(false)
   const [cashDepositOpen, setCashDepositOpen] = useState(false)
   const [stockRequestOpen, setStockRequestOpen] = useState(false)
@@ -747,6 +758,11 @@ export default function App() {
     ],
     [catalog.products],
   )
+  const ketulProducts = useMemo(
+    () => catalog.products.filter((product) =>
+      product.categoryName.trim().toUpperCase() === 'KETUL' && !product.isBundle),
+    [catalog.products],
+  )
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -837,12 +853,18 @@ export default function App() {
     fulfillmentMode === 'DELIVERY' && deliveryFeeInputValid
       ? parsedDeliveryFee
       : 0
-  const paymentDue =
+  const ketulOffsetTotal = ketulIntakeLines.reduce(
+    (total, line) => total + line.quantity * line.unitPrice,
+    0,
+  )
+  const grossSaleTotal =
     draft
       ? draft.grandTotalAfterRounding - draft.deliveryFeeAmount + effectiveDeliveryFee
       : offlinePreview
         ? offlinePreview.grandTotal + effectiveDeliveryFee
         : 0
+  const paymentDue =
+    Math.max(grossSaleTotal - ketulOffsetTotal, 0)
   const paymentBaseTotal = paymentLegs.reduce(
     (total, leg) => total + Number(leg.amount || 0),
     0,
@@ -1536,6 +1558,7 @@ export default function App() {
       else if (offlineSlip) setOfflineSlip(null)
       else if (receipt) {
         setReceipt(null)
+        setReceiptCustomerName('')
         setSalesDocuments(null)
       }
       else if (confirmedOrder) {
@@ -1590,6 +1613,7 @@ export default function App() {
 
   function closeReceipt() {
     setReceipt(null)
+    setReceiptCustomerName('')
     setSalesDocuments(null)
   }
 
@@ -1614,6 +1638,10 @@ export default function App() {
   }
 
   function toggleTempo(enabled: boolean) {
+    if (enabled && ketulIntakeLines.length > 0) {
+      setError('Potongan Ketul hanya tersedia untuk transaksi Retail non-TEMPO.')
+      return
+    }
     setIsTempo(enabled)
     setResolvedLines([])
     if (!enabled) {
@@ -1993,6 +2021,7 @@ export default function App() {
       deliveryFeeAmount: effectiveDeliveryFee,
       deliveryFeeInvoiceDisplayMode,
       negativeStockReason,
+      ketulIntakeLines,
       payments,
     }
     const saved = preservesCutoverSnapshot && currentDraft
@@ -2103,6 +2132,13 @@ export default function App() {
           )
 
       const payload = item.payloadSnapshot
+      const nextKetulLines = Array.isArray(payload.ketulIntakeLines)
+        ? (payload.ketulIntakeLines as Array<Record<string, unknown>>).map((line) => ({
+            productId: String(line.productId ?? ''),
+            quantity: Number(line.quantity ?? 0),
+            unitPrice: Number(line.unitPrice ?? 0),
+          })).filter((line) => line.productId && line.quantity > 0 && line.unitPrice > 0)
+        : []
       const rawLines = Array.isArray(payload.lines)
         ? (payload.lines as Array<Record<string, unknown>>)
         : []
@@ -2235,6 +2271,7 @@ export default function App() {
         deliveryNotes: String(payload.deliveryNotes ?? ''),
         deliveryFeeAmount: Number(nextDeliveryFeeAmount),
         deliveryFeeInvoiceDisplayMode: nextDeliveryFeeInvoiceDisplayMode,
+        ketulIntakeLines: nextKetulLines,
         payments: [],
           })
 
@@ -2267,6 +2304,8 @@ export default function App() {
         catalog.paymentMethods.find((method) => method.isDefault) ??
         catalog.paymentMethods[0]
       setPaymentLegs([createPaymentLeg(defaultPayment?.id ?? '')])
+      setKetulIntakeLines(isBackofficeCutover ? [] : nextKetulLines)
+      setIsBackofficeCutoverDraft(isBackofficeCutover)
       setShortages([])
       setResolvedLines(
         await loadResolvedSaleLines(companyId, item.salesId),
@@ -2489,7 +2528,7 @@ export default function App() {
         const method = catalog.paymentMethods.find(
           (item) => item.id === current[0].paymentMethodId,
         )
-        const amount = String(saved.grandTotalAfterRounding)
+        const amount = String(saved.grandTotalAfterRounding - ketulOffsetTotal)
         return [
           {
             ...current[0],
@@ -2814,6 +2853,11 @@ export default function App() {
       if (!salesId) throw new Error('OFFLINE_FINAL_RECEIPT_NOT_AVAILABLE')
       const finalReceipt = await loadReceipt(companyId, salesId)
       setReceipt(finalReceipt)
+      const payload = JSON.parse(record.salePayload) as { customerId?: string }
+      setReceiptCustomerName(
+        catalog.customers.find((customer) => customer.id === payload.customerId)?.name ??
+          'Customer',
+      )
       try {
         const [invoice, delivery] = await Promise.all([
           loadSalesInvoiceDocument(salesId),
@@ -2837,11 +2881,13 @@ export default function App() {
 
     try {
       setReceipt(null)
+      setReceiptCustomerName('')
       setConfirmedOrder(null)
       setSalesDocuments(null)
       try {
         const finalReceipt = await loadReceipt(companyId, transaction.salesId)
         setReceipt(finalReceipt)
+        setReceiptCustomerName(transaction.customerName)
         try {
           const [invoice, delivery] = await Promise.all([
             loadSalesInvoiceDocument(transaction.salesId),
@@ -2869,12 +2915,33 @@ export default function App() {
     }
   }
 
+  async function handleOpenSessionReturn(
+    transaction: CashierSessionSummaryTransaction,
+  ) {
+    if (!isOnline) {
+      throw new Error('Sambungkan POS ke internet untuk membuat Return.')
+    }
+    if (!terminalFeatureVisible('SALES_RETURN')) {
+      throw new Error('Fitur Return tidak aktif pada terminal ini.')
+    }
+    setSelectedReturnSource({
+      salesId: transaction.salesId,
+      invoiceNo: transaction.documentNo,
+    })
+    setSessionSummaryOpen(false)
+    setSalesReturnOpen(true)
+  }
+
   async function handlePostSale() {
     await postSaleWithNegativeReason()
   }
 
   async function postSaleWithNegativeReason(negativeStockReason = '') {
     if (!isOnline) {
+      if (ketulIntakeLines.length > 0) {
+        setError('Pengembalian Ketul hanya dapat diproses saat POS online.')
+        return
+      }
       handleQueueOfflineSale()
       return
     }
@@ -2893,8 +2960,14 @@ export default function App() {
       const pricedDraft = await persistDraft(draft, [], negativeStockReason)
       let finalDraft = pricedDraft
       if (!isTempo) {
-        if (paymentLegs.length === 0) throw new Error('PAYMENT_LEGS_REQUIRED')
-        const normalizedPayments = paymentLegs.map((leg) => {
+        const externalPaymentDue = pricedDraft.grandTotalAfterRounding - ketulOffsetTotal
+        if (externalPaymentDue < -0.0001) {
+          throw new Error('KETUL_OFFSET_EXCEEDS_SALE_TOTAL')
+        }
+        if (externalPaymentDue > 0.0001 && paymentLegs.length === 0) {
+          throw new Error('PAYMENT_LEGS_REQUIRED')
+        }
+        const normalizedPayments = externalPaymentDue <= 0.0001 ? [] : paymentLegs.map((leg) => {
           const method = catalog.paymentMethods.find(
             (item) => item.id === leg.paymentMethodId,
           )
@@ -2903,7 +2976,7 @@ export default function App() {
           const automaticSinglePayment =
             paymentLegs.length === 1 && !(rawAmount > 0)
           const amount = automaticSinglePayment
-            ? pricedDraft.grandTotalAfterRounding
+            ? externalPaymentDue
             : rawAmount
           if (!(amount > 0)) throw new Error('PAYMENT_LEG_AMOUNT_REQUIRED')
           const supportsOverpayment = ['CASH', 'TRANSFER'].includes(
@@ -2953,7 +3026,7 @@ export default function App() {
           0,
         )
         if (
-          Math.abs(normalizedTotal - pricedDraft.grandTotalAfterRounding) > 0.0001
+          Math.abs(normalizedTotal - externalPaymentDue) > 0.0001
         ) {
           throw new Error('PAYMENT_LEG_TOTAL_MISMATCH')
         }
@@ -2998,20 +3071,35 @@ export default function App() {
       }
 
       const finalReceipt = await loadReceipt(companyId, finalDraft.salesId)
+      const postedCustomerName = activeCustomer?.name ?? 'Customer'
       setReceipt(finalReceipt)
-      try {
-        const invoice = await loadSalesInvoiceDocument(finalDraft.salesId)
-        const delivery = fulfillmentMode === 'DELIVERY'
-          ? await loadSalesDeliveryDocument(finalDraft.salesId)
-          : null
-        setSalesDocuments({ invoice, delivery })
-      } catch {
-        setSalesDocuments(null)
-      }
+      setReceiptCustomerName(postedCustomerName)
       setNotice('Penjualan Retail berhasil diposting oleh server.')
       resetSale()
-      await refreshCatalog(cashierSession)
-      await refreshSaleDrafts(cashierSession)
+
+      const [documentsResult, catalogResult, draftsResult] = await Promise.allSettled([
+        Promise.all([
+          loadSalesInvoiceDocument(finalDraft.salesId),
+          fulfillmentMode === 'DELIVERY'
+            ? loadSalesDeliveryDocument(finalDraft.salesId)
+            : Promise.resolve(null),
+        ]),
+        refreshCatalog(cashierSession),
+        refreshSaleDrafts(cashierSession),
+      ])
+
+      if (documentsResult.status === 'fulfilled') {
+        const [invoice, delivery] = documentsResult.value
+        setSalesDocuments({ invoice, delivery })
+      } else {
+        setSalesDocuments(null)
+      }
+
+      if (catalogResult.status === 'rejected' || draftsResult.status === 'rejected') {
+        setNotice(
+          'Penjualan Retail berhasil diposting. Katalog atau daftar Draft belum dapat diperbarui; gunakan Stok terbaru sebelum transaksi berikutnya.',
+        )
+      }
     } catch (reason) {
       const code = errorMessage(reason)
       if (
@@ -3059,6 +3147,9 @@ export default function App() {
     setCustomerId(walkIn?.id ?? '')
     setSelectedPricelistId('')
     setPaymentLegs([createPaymentLeg(defaultPayment?.id ?? '')])
+    setKetulIntakeLines([])
+    setKetulIntakeOpen(false)
+    setIsBackofficeCutoverDraft(false)
     setGlobalDiscount('')
     setIsTempo(false)
     setTransactionAt(new Date().toISOString())
@@ -3693,7 +3784,10 @@ export default function App() {
           {cashierSession && terminalFeatureVisible('SALES_RETURN') && (
             <button
               type="button"
-              onClick={() => setSalesReturnOpen(true)}
+              onClick={() => {
+                setSelectedReturnSource(null)
+                setSalesReturnOpen(true)
+              }}
               disabled={!isOnline}
               className="pos-top-action rounded-xl border border-slate-700 bg-slate-900 p-2"
               title={isOnline ? 'Buat Return Penjualan' : 'Return memerlukan koneksi online'}
@@ -3913,7 +4007,41 @@ export default function App() {
                       <p className="pos-eyebrow">Katalog</p>
                       <h2>Pilih produk</h2>
                     </div>
-                    <span>{filteredProducts.length} item</span>
+                    <div className="pos-catalog-heading-actions">
+                      <div className="pos-catalog-customer-control">
+                        <span className="pos-catalog-customer-label">Customer aktif</span>
+                        <div className="pos-catalog-customer-row">
+                          <select
+                            aria-label="Customer katalog"
+                            data-testid="active-customer-name"
+                            value={customerId}
+                            disabled={busy || loading || catalog.customers.length === 0}
+                            onChange={(event) => selectCustomer(event.target.value)}
+                          >
+                            {catalog.customers.map((customer) => (
+                              <option key={customer.id} value={customer.id}>
+                                {customer.name}
+                                {customer.isWalkIn ? ' · Umum' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setQuickCustomerOpen(true)}
+                            className="pos-catalog-customer-add"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            Customer baru
+                          </button>
+                        </div>
+                        {activeCustomer && !activeCustomer.isWalkIn && (
+                          <div className="pos-catalog-customer-balance">
+                            Saldo <strong>{money(activeCustomer.currentBalance)}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <span className="pos-catalog-item-count">{filteredProducts.length} item</span>
+                    </div>
                   </div>
                   <div className="pos-search-row mb-4 flex flex-wrap items-center gap-3">
                     <div className="relative min-w-[260px] flex-1">
@@ -4428,44 +4556,39 @@ export default function App() {
                     />
                   </label>
                 </div>
+                {catalog.ketulEnabled && !isBackofficeCutoverDraft && (
+                  <section className={`pos-ketul-entry${ketulIntakeLines.length > 0 ? ' has-value' : ''}`}>
+                    <div className="pos-ketul-entry-copy">
+                      <span className="pos-ketul-entry-icon" aria-hidden="true">
+                        <Package />
+                      </span>
+                      <div>
+                        <strong>Pengembalian Ketul</strong>
+                        <small>Ketul masuk stok dan mengurangi total pembayaran setelah pajak.</small>
+                      </div>
+                    </div>
+                    <div className="pos-ketul-entry-action">
+                      {ketulIntakeLines.length > 0 && (
+                        <span>
+                          {ketulIntakeLines.length} jenis Ketul
+                          <strong>-{money(ketulOffsetTotal)}</strong>
+                        </span>
+                      )}
+                      <button type="button"
+                        disabled={isTempo || !isOnline || cart.length === 0 || ketulProducts.length === 0}
+                        onClick={() => setKetulIntakeOpen(true)}
+                      >
+                        {ketulIntakeLines.length > 0 ? 'Ubah Ketul' : 'Tambah Ketul'}
+                      </button>
+                    </div>
+                  </section>
+                )}
                 <div className="pos-section-heading">
                   <span>1</span>
                   <div>
-                    <strong>Pelanggan & harga</strong>
-                    <small>Pricelist mengikuti pelanggan dan dapat diganti.</small>
+                    <strong>Harga transaksi</strong>
+                    <small>Pricelist mengikuti Customer di katalog dan dapat diganti.</small>
                   </div>
-                </div>
-                <div className="block text-xs font-semibold text-slate-400">
-                  <span className="pos-customer-field-heading">
-                    <span>Customer</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuickCustomerOpen(true)}
-                      className="pos-customer-add-button"
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Customer baru
-                    </button>
-                  </span>
-                  <select
-                    aria-label="Customer"
-                    value={customerId}
-                    onChange={(event) => selectCustomer(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-                  >
-                    {catalog.customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                        {customer.isWalkIn ? ' · Umum' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {activeCustomer && !activeCustomer.isWalkIn && (
-                    <div className="pos-customer-balance-line">
-                      <span>Saldo Customer</span>
-                      <strong>{money(activeCustomer.currentBalance)}</strong>
-                    </div>
-                  )}
                 </div>
                 <label className="block text-xs font-semibold text-slate-400">
                   Pricelist
@@ -4943,6 +5066,12 @@ export default function App() {
                             : 'Belum dihitung'}
                         </strong>
                       </div>
+                      {ketulOffsetTotal > 0 && (
+                        <div className="is-credit">
+                          <span>Potongan Ketul</span>
+                          <strong>-{money(ketulOffsetTotal)}</strong>
+                        </div>
+                      )}
                       <div>
                         <span>Total bagian tagihan</span>
                         <strong>{money(paymentBaseTotal)}</strong>
@@ -4994,7 +5123,7 @@ export default function App() {
                     <span>{money(fallbackSubtotal)}</span>
                   </div>
                   <div className="mt-2 flex justify-between text-lg font-black">
-                    <span>Total akhir</span>
+                    <span>Total dibayar Customer</span>
                     <span className="text-emerald-400">
                       {draft
                         ? money(paymentDue)
@@ -5120,6 +5249,8 @@ export default function App() {
             paymentMethods={catalog.paymentMethods}
             close={() => setSessionSummaryOpen(false)}
             openTransaction={handleOpenSessionTransaction}
+            openReturn={handleOpenSessionReturn}
+            returnEnabled={isOnline && terminalFeatureVisible('SALES_RETURN')}
           />
         )}
       </main>
@@ -5411,9 +5542,14 @@ export default function App() {
             companyId={activeCompany.id}
             cashierSession={cashierSession}
             catalog={catalog}
-            close={() => setSalesReturnOpen(false)}
+            initialSale={selectedReturnSource}
+            close={() => {
+              setSalesReturnOpen(false)
+              setSelectedReturnSource(null)
+            }}
             completed={(message) => {
               setSalesReturnOpen(false)
+              setSelectedReturnSource(null)
               setNotice(message)
               setError('')
             }}
@@ -5659,7 +5795,7 @@ export default function App() {
       )}
 
       {deliveryDetailsOpen && fulfillmentMode === 'DELIVERY' && (
-        <div className="pos-action-dialog-overlay fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4">
+        <div className="pos-action-dialog-overlay fixed inset-0 z-[75] grid place-items-center bg-black/65 p-4">
           <section
             role="dialog"
             aria-modal="true"
@@ -5997,6 +6133,22 @@ export default function App() {
         </div>
       )}
 
+      {ketulIntakeOpen && (
+        <KetulIntakeModal
+          products={ketulProducts}
+          initialLines={ketulIntakeLines}
+          saleTotal={grossSaleTotal > 0
+            ? grossSaleTotal
+            : Math.max(fallbackSubtotal + effectiveDeliveryFee, 0)}
+          onClose={() => setKetulIntakeOpen(false)}
+          onSave={(lines) => {
+            setKetulIntakeLines(lines)
+            setKetulIntakeOpen(false)
+            setResolvedLines([])
+          }}
+        />
+      )}
+
       {receipt && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 text-slate-950 shadow-2xl">
@@ -6008,6 +6160,9 @@ export default function App() {
                 <h2 className="mt-1 text-2xl font-black">{receipt.invoiceNo}</h2>
                 <p className="text-sm text-slate-500">
                   {new Date(receipt.postedAt).toLocaleString('id-ID')}
+                </p>
+                <p className="pos-posted-customer" data-testid="posted-customer-name">
+                  Customer: <strong>{receiptCustomerName || 'Customer'}</strong>
                 </p>
               </div>
               <button
@@ -6029,6 +6184,18 @@ export default function App() {
                     </p>
                   </div>
                   <p className="font-bold">{money(line.lineTotal)}</p>
+                </div>
+              ))}
+              {receipt.ketulIntake?.lines.map((line, index) => (
+                <div key={`ketul-${line.productId}-${index}`}
+                  className="flex justify-between gap-3 rounded-xl bg-emerald-50 p-3 text-emerald-900">
+                  <div>
+                    <p className="font-bold">Ketul diterima · {line.productName}</p>
+                    <p className="text-xs">
+                      {line.quantity} {line.uomName} × {money(line.unitPrice)}
+                    </p>
+                  </div>
+                  <p className="font-bold">-{money(line.lineTotal)}</p>
                 </div>
               ))}
             </div>
@@ -6053,6 +6220,12 @@ export default function App() {
                 <span>Total akhir</span>
                 <span>{money(receipt.grandTotal)}</span>
               </div>
+              {Number(receipt.ketulOffsetTotal ?? 0) > 0 && (
+                <div className="flex justify-between font-bold text-emerald-700">
+                  <span>Potongan Ketul</span>
+                  <span>-{money(Number(receipt.ketulOffsetTotal))}</span>
+                </div>
+              )}
               {receipt.payments.map((payment, index) => (
                 <div
                   key={`${payment.paymentMethodName}-${index}`}
