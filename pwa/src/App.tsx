@@ -768,11 +768,18 @@ export default function App() {
     setDeliveryRecipientPhone(activeCustomer.phone)
     setDeliveryAddress(activeCustomer.address)
   }, [activeCustomer, bootstrap?.deliveryDocumentCreationPolicy, companyId, fulfillmentMode])
-  const automaticPricelist = catalog.pricelists.find(
-    (item) =>
-      item.id === activeCustomer?.defaultPricelistId ||
-      (item.scope === 'GLOBAL' && item.isDefault),
-  )
+  const automaticPricelist =
+    catalog.pricelists.find(
+      (item) => item.id === activeCustomer?.defaultPricelistId,
+    ) ??
+    catalog.pricelists.find(
+      (item) => item.scope === 'GLOBAL' && item.isDefault,
+    )
+  const isKgffSalesKgsSample =
+    companyId === 'a59c534b-909f-4b3f-aba0-ae9db6d90b76' &&
+    activeCustomer?.id === 'c24ac084-5692-4722-9413-3ed46c734af9' &&
+    (selectedPricelistId || automaticPricelist?.id) ===
+      '211d847c-8109-425d-a33b-e9150e833d66'
   const eligiblePricelists = useMemo(
     () =>
       catalog.pricelists.filter(
@@ -3172,6 +3179,10 @@ export default function App() {
 
   async function postSaleWithNegativeReason(negativeStockReason = '') {
     if (!isOnline) {
+      if (isKgffSalesKgsSample) {
+        setError('Transaksi Sample SALES KGS wajib diproses saat POS online.')
+        return
+      }
       if (ketulIntakeLines.length > 0) {
         setError('Pengembalian Ketul hanya dapat diproses saat POS online.')
         return
@@ -3448,6 +3459,7 @@ export default function App() {
     try {
       await printer.print({
         invoiceNo: receipt.invoiceNo,
+        customerName: receiptCustomerName || 'Customer',
         items: receipt.lines.map((line) => ({
           product: {
             name: `${line.productName} (${line.uomName})`,
@@ -3474,7 +3486,9 @@ export default function App() {
           0,
         ),
         paymentMethod:
-          receipt.payments
+          receipt.salePurpose === 'SAMPLE'
+            ? 'SAMPLE'
+            : receipt.payments
             .map((payment) => payment.paymentMethodName)
             .join(' + ') || 'TEMPO',
         date: new Date(receipt.postedAt).toLocaleString('id-ID'),
@@ -3495,6 +3509,7 @@ export default function App() {
         invoiceNo: `OFF-${offlineSlip.clientTransactionId
           .slice(0, 8)
           .toUpperCase()}`,
+        customerName: offlineSlip.preview.customerName,
         documentLabel: 'Slip transaksi Offline',
         warning: 'BELUM TERSINKRON — BUKAN INVOICE FINAL',
         items: offlineSlip.preview.lines.map((line) => ({
@@ -4946,7 +4961,17 @@ export default function App() {
                     <small>Pilih cara pelanggan membayar.</small>
                   </div>
                 </div>
-                {isTempo ? (
+                {isKgffSalesKgsSample && paymentDue <= 0.0001 ? (
+                  <div className="pos-payment-area">
+                    <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950">
+                      <strong>Sample SALES KGS · Rp0</strong>
+                      <p className="mt-1 text-sm">
+                        Tidak ada pembayaran. Stok dan FIFO tetap dipotong, lalu biaya
+                        barang dicatat sebagai Beban Sample / Promosi oleh Finance.
+                      </p>
+                    </div>
+                  </div>
+                ) : isTempo ? (
                   <div className="grid gap-2 rounded-xl border border-slate-800 p-3 sm:grid-cols-2">
                     <label className="block text-xs font-semibold text-slate-400">
                       Tanggal transaksi / order

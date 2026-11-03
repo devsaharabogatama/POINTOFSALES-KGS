@@ -52,6 +52,47 @@ test('Retail checkout keeps canonical Draft, price, direct posting, payment and 
   expect(app).toContain('Selesaikan Transaksi')
 })
 
+test('POS thermal and browser receipts print the captured Customer name', async () => {
+  const [app, printer] = await Promise.all([
+    read('pwa/src/App.tsx'),
+    read('pwa/src/lib/printer.ts'),
+  ])
+  expect(printer).toContain('customerName: string')
+  expect(printer).toContain('Customer: ${singleLine(data.customerName)}')
+  expect(printer).toContain('escapeHtml(singleLine(data.customerName))')
+  expect(printer).toContain("replace(/[\\r\\n]+/g, ' ')")
+  expect(app).toContain("customerName: receiptCustomerName || 'Customer'")
+  expect(app).toContain('customerName: offlineSlip.preview.customerName')
+})
+
+test('exact KGFF SALES KGS Sample keeps zero-payment Sale and zero-refund Return server-authoritative', async () => {
+  const [app, returnUi, runtime, migration, behavior] = await Promise.all([
+    read('pwa/src/App.tsx'),
+    read('pwa/src/SalesReturnModal.tsx'),
+    read('pwa/src/lib/pos.ts'),
+    read('supabase/migrations/20261103110000_kgff_retail_zero_total_sample_posting.sql'),
+    read('supabase/tests/kgff_retail_zero_total_sample_posting_behavior.sql'),
+  ])
+  expect(app).toContain("activeCustomer?.id === 'c24ac084-5692-4722-9413-3ed46c734af9'")
+  expect(app).toContain("'211d847c-8109-425d-a33b-e9150e833d66'")
+  expect(app).toContain('Transaksi Sample SALES KGS wajib diproses saat POS online.')
+  expect(app).toContain('Sample SALES KGS · Rp0')
+  expect(app).toContain("receipt.salePurpose === 'SAMPLE'")
+  expect(returnUi).toContain('Return Sample · refund Rp0')
+  expect(returnUi).toContain('refund: isSampleReturn ? undefined')
+  expect(runtime).toContain("salePurpose?: 'SALE' | 'SAMPLE'")
+  expect(runtime).toContain('p_refunds: input.refund')
+  expect(migration).toContain('private.is_kgff_zero_total_sample_sale')
+  expect(migration).toContain("THEN ''SAMPLE_EXPENSE'' ELSE ''COGS''")
+  expect(migration).toContain('SAMPLE_RETURN_ZERO_REFUND_REQUIRED')
+  expect(migration).toContain("setting.active_mode='RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("sale.sales_origin='POS'")
+  expect(migration).toContain("pricelist.code='SAMPLE-SALES-KGS'")
+  expect(behavior).toContain("ROLLBACK;")
+  expect(behavior).toContain("account.account_code='630118'")
+  expect(behavior).toContain('Sample Return exact retry duplicated effects')
+})
+
 test('Retail Delivery accepts the canonical Walk-In Customer without weakening recipient identity', async () => {
   const [app, runtime, recipientMigration, documentMigration] = await Promise.all([
     read('pwa/src/App.tsx'),

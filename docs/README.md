@@ -1,5 +1,38 @@
 # Router Dokumen KGS POS
 
+## 2026-11-03 - POS printed receipt Customer name
+
+- Impact audit:
+  [POS Receipt Customer Name](audits/POS_RECEIPT_CUSTOMER_NAME_IMPACT_2026-11-03.md).
+- Both Bluetooth ESC/POS and browser-fallback receipts now print the Customer
+  name. Online uses the captured posted Customer; Offline uses the immutable
+  preview Customer. Input is normalized to one line before thermal rendering.
+- Evidence: PWA lint PASS, production build PASS, focused receipt contract
+  `1/1 PASS`. Status `LOCAL READY`; client deployment, physical/browser print
+  smoke, and UAT remain pending.
+
+## 2026-11-03 - KGFF Retail zero-total Sample posting
+
+- Impact audit:
+  [KGFF Retail Zero-Total Sample Posting](audits/KGFF_RETAIL_ZERO_TOTAL_SAMPLE_POSTING_IMPACT_2026-11-03.md).
+- Manual rollout and smoke:
+  [KGFF Retail Zero-Total Sample Posting Rollout](runbooks/KGFF_RETAIL_ZERO_TOTAL_SAMPLE_POSTING_ROLLOUT.md).
+- Requested acceptance scope is exact online Retail POS `KGS003 / SALES KGS`:
+  Rp0 Sale without a fabricated Payment, canonical Stock/FIFO/HPP, Invoice,
+  retry, and controlled Sample Expense Finance posting. Return is outside this
+  acceptance gate.
+- Migration `20261103110000` is now ledger-live and immutable. The first
+  rollback-only behavior attempt stopped before tested mutation because its
+  manually saved Sample Draft belonged to a Session that had since closed.
+  Production read-only evidence proves that Draft still has the correct Rp0
+  rule and positive-cost FIFO; only its Session predicate failed.
+- The last combined rollback run reached Return only after every retained Sale
+  assertion passed. The harness is now Sale-only and contains no Return
+  workspace/submit/table reference; it retains Sale/Stock/FIFO/HPP/Invoice/
+  Finance/retry assertions and rollback. PostgreSQL parser evidence is `3`
+  statements. Exact Sale-only terminal PASS, postflight, client deployment,
+  authenticated smoke, and UAT remain pending.
+
 ## 2026-11-03 - KGFF Sample zero-price Draft compatibility
 
 - Impact audit:

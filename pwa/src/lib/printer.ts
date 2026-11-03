@@ -9,6 +9,7 @@ interface ReceiptItem {
 
 interface ReceiptData {
   invoiceNo: string;
+  customerName: string;
   items: ReceiptItem[];
   subtotal: number;
   grandTotal: number;
@@ -34,6 +35,10 @@ function escapeHtml(value: string) {
         "'": '&#039;',
       })[character] ?? character,
   );
+}
+
+function singleLine(value: string) {
+  return value.replace(/[\r\n]+/g, ' ').trim() || 'Customer';
 }
 
 function rupiah(value: number) {
@@ -130,6 +135,7 @@ export class ESCPOSPrinter {
     receipt += LEFT;
     receipt += `Inv No: ${data.invoiceNo}\n`;
     receipt += `Tgl   : ${data.date}\n`;
+    receipt += `Customer: ${singleLine(data.customerName)}\n`;
     receipt += `Kasir : Kasir KGS\n`;
     receipt += '--------------------------------\n';
     
@@ -253,6 +259,7 @@ export class ESCPOSPrinter {
       }
       <div class="row"><span>Invoice</span><strong>${escapeHtml(data.invoiceNo)}</strong></div>
       <div class="row"><span>Tanggal</span><span>${escapeHtml(data.date)}</span></div>
+      <div class="row"><span>Customer</span><strong>${escapeHtml(singleLine(data.customerName))}</strong></div>
       <div class="rule"></div>
       ${rows}
       <div class="rule"></div>

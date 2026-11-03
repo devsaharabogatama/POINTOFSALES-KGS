@@ -1,5 +1,37 @@
 # MADS — Management Distribution System
 
+> **Checkpoint 2026-11-03 - POS printed receipt Customer name (LOCAL READY):**
+> online thermal/browser receipts now print the captured posted Customer name;
+> Offline slips print the immutable preview Customer name. Formal Invoice and
+> all transaction/database behavior are unchanged. PWA lint/build and focused
+> receipt contract test pass. Client deployment, printer-device smoke, and UAT
+> remain pending.
+
+> **Checkpoint 2026-11-03 - KGFF zero-total Sample Sale (DATABASE LIVE; SALE
+> ROLLBACK EVIDENCE PASS; OPERATIONAL SMOKE PENDING):**
+> exact online Retail POS `KGS003 / SALES KGS` supports an Rp0 Sample Sale
+> while preserving canonical Stock/FIFO/HPP, Invoice, audit, retry, and
+> controlled Finance posting to Sample Expense versus Inventory. The first migration attempt
+> rolled back on a faulty anchor guard and installed nothing. User-supplied
+> runtime evidence then proved five exact function digests and exposed an
+> additional incorrect Return Event anchor. The corrected candidate parses as
+> 19 PostgreSQL statements and its focused Sample regression is `3/3 PASS`;
+> earlier PWA lint/build and full mocked POS/runtime regression remain `PASS`.
+> Forward migration `20261103110000` has committed and must never be edited or
+> rerun. Its first rollback behavior stopped before tested mutation because the
+> manually saved Sample Draft belonged to a Session that had since closed.
+> Read-only Production evidence proves the Draft, zero-price rule, Stock, and
+> positive-cost FIFO remained valid; this is a `TEST_HARNESS_FIX`, not Product
+> behavior proof. The corrected harness creates its own Draft through the
+> canonical POS writer on an authenticated OPEN Session. The last combined
+> rollback run passed every Sale assertion before failing in an out-of-scope
+> Return workspace check; Return is no longer an acceptance gate. The Sale-only
+> file parses as three PostgreSQL statements. Its terminal PASS, postflight,
+> client deployment, authenticated operational smoke, and UAT remain pending.
+> Follow
+> `docs/runbooks/KGFF_RETAIL_ZERO_TOTAL_SAMPLE_POSTING_ROLLOUT.md`; these status
+> layers must not be collapsed into an end-to-end success claim.
+
 > **Checkpoint 2026-11-03 - zero-price Draft compatibility (LOCAL READY):**
 > Draft `DRF-20261102-000558` terbukti membawa diskon Produk lama ketika
 > Pricelist SALES KGS menghasilkan harga Rp0. Client lokal kini melakukan
