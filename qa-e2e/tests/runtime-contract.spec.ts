@@ -52,12 +52,63 @@ test('Retail checkout keeps canonical Draft, price, direct posting, payment and 
   expect(app).toContain('Selesaikan Transaksi')
 })
 
+test('Retail Delivery accepts the canonical Walk-In Customer without weakening recipient identity', async () => {
+  const [app, runtime, recipientMigration, documentMigration] = await Promise.all([
+    read('pwa/src/App.tsx'),
+    read('pwa/src/lib/pos.ts'),
+    read('supabase/migrations/20260827152000_sales_delivery_optional_contact.sql'),
+    read('supabase/migrations/20261030130000_pos_retail_pickup_document_boundary.sql'),
+  ])
+  expect(app).toContain('setDeliveryRecipientName(activeCustomer.name)')
+  expect(app).toContain('setDeliveryRecipientName(customer.name)')
+  expect(app).toContain("setDeliveryRecipientName(activeCustomer?.name ?? '')")
+  expect(app).not.toContain("isWalkIn ? '' : activeCustomer.name")
+  expect(app).not.toContain("customer.isWalkIn ? '' : customer.name")
+  expect(runtime).toContain('customerId: input.customerId')
+  expect(runtime).toContain('deliveryRecipientName: input.deliveryRecipientName.trim()')
+  expect(recipientMigration).toContain('private.require_delivery_recipient_name')
+  expect(recipientMigration).toContain("RAISE EXCEPTION 'DELIVERY_RECIPIENT_REQUIRED'")
+  expect(documentMigration).toContain(
+    'private.require_delivery_recipient_name(v_sale.delivery_recipient_name)',
+  )
+})
+
 test('Backoffice Sales Order remains on its separate canonical runtime', async () => {
   const migration = await read('supabase/migrations/20260908120000_backoffice_sales_order_runtime.sql')
   expect(migration).toContain('CREATE FUNCTION public.confirm_backoffice_sales_order')
   expect(migration).toContain('private.transition_backoffice_sales_order')
   expect(migration).toContain('public.backoffice_sales_orders')
   expect(migration).not.toContain('post_pos_sale_with_pricelist')
+})
+
+test('Retail nominal Product discount is server-authoritative and preserves Backoffice whole-line semantics', async () => {
+  const [app, offline, migration, backoffice, preflight] = await Promise.all([
+    read('pwa/src/App.tsx'),
+    read('pwa/src/lib/offlineCheckout.ts'),
+    read('supabase/migrations/20261102160000_pos_retail_per_unit_product_discount.sql'),
+    read('supabase/migrations/20260909140000_backoffice_sales_commercial_parity.sql'),
+    read('supabase/diagnostics/pos_retail_per_unit_product_discount_preflight.sql'),
+  ])
+  expect(app).toContain("item.discountAmountBasis === 'PER_UNIT'")
+  expect(app).toContain('cartItemLineTotal(')
+  expect(app).toContain('lineDiscountAmountBasis: item.discountAmountBasis')
+  expect(offline).toContain("line.discountAmountBasis === 'PER_UNIT' ? quantity : 1")
+  expect(migration).toContain("product.sku='L' AND product.name='Lettuce'")
+  expect(migration).toContain("product.sku='BB' AND product.name='Bawang Bombay'")
+  expect(migration).toContain('master_version=product.master_version+1')
+  expect(migration).not.toContain('master_version=master_version+1')
+  expect(migration).toContain("v_sale.sales_origin<>'POS'")
+  expect(migration).toContain("v_sale.sales_process_mode<>'RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("v_effective_basis:='LINE_TOTAL'")
+  expect(migration).toContain("RAISE EXCEPTION 'LINE_DISCOUNT_AMOUNT_BASIS_MISMATCH'")
+  expect(backoffice).toContain("WHEN 'AMOUNT' THEN round(v_input,4)")
+  expect(backoffice).not.toContain('lineDiscountAmountBasis')
+  const executablePreflight = preflight
+    .replace(/--.*$/gm, '')
+    .replace(/'(?:''|[^'])*'/g, "''")
+  expect(preflight.match(/pos_retail_per_unit_discount_[a-z_]+/g)).toHaveLength(7)
+  expect(executablePreflight.match(/;/g)).toHaveLength(1)
+  expect(preflight).toContain('UNION ALL')
 })
 
 test('direct Retail post bridge is scoped away from Backoffice and reserved Orders', async () => {
@@ -155,6 +206,25 @@ test('Sales Return Transfer metadata is optional without weakening settlement bo
   expect(behavior).toContain('blankMetadataNormalized')
   expect(behavior).toContain('populatedMetadataPreserved')
   expect(behavior).toContain('financeEvent')
+})
+
+test('Retail Session Summary nets Posted refunds and physical Returns without entering Backoffice', async () => {
+  const [runtime, summaryUi, migration, behavior] = await Promise.all([
+    read('pwa/src/lib/pos.ts'),
+    read('pwa/src/SessionSummaryModal.tsx'),
+    read('supabase/migrations/20261102150000_pos_retail_session_net_return_summary.sql'),
+    read('supabase/tests/pos_retail_session_net_return_summary_behavior.sql'),
+  ])
+  expect(runtime).toContain('get_pos_cashier_session_return_adjustments')
+  expect(summaryUi).toContain('Cash net sesi')
+  expect(summaryUi).toContain("line.returnCondition === 'NO_PHYSICAL_RETURN'")
+  expect(migration).toContain("v_mode IS DISTINCT FROM 'RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("source_sale.sales_origin='POS'")
+  expect(migration).toContain("source_sale.sales_process_mode='RETAIL_CONFIRM_INVOICE'")
+  expect(migration).toContain("document.status='POSTED'")
+  expect(migration).toContain('document.executing_session_id=v_session.id')
+  expect(behavior).toContain('Backoffice process denial')
+  expect(behavior).toContain('zero Finance/Stock/Journal effect')
 })
 
 test('Opening Stock remains a guarded Backoffice workflow rather than a generic import', async () => {

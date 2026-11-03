@@ -65,6 +65,7 @@ function catalogFromSnapshot(snapshot: OfflineCatalogSnapshot): CatalogData {
         decimalPrecision: item.decimalPrecision,
         barcode: item.barcode ?? null,
         isBundle: item.isBundle,
+        lineDiscountAmountBasis: item.lineDiscountAmountBasis,
       }))
       .sort(
         (left, right) =>

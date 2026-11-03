@@ -90,6 +90,7 @@ import {
   type CatalogData,
   type CompanyOption,
   type KetulIntakeLineInput,
+  type LineDiscountAmountBasis,
   type ProductOption,
   type PosPricePreviewLine,
   type ResolvedSaleLine,
@@ -149,7 +150,48 @@ type CartItem = {
   quantity: number
   discountType: '' | 'AMOUNT' | 'PERCENT'
   discountInput: number
+  discountAmountBasis: LineDiscountAmountBasis
   overrideUnitPrice: number | null
+}
+
+function cartItemLineTotal(item: CartItem, unitPrice: number) {
+  const gross = unitPrice * item.quantity
+  const discount = item.discountType === 'AMOUNT'
+    ? item.discountInput *
+      (item.discountAmountBasis === 'PER_UNIT' ? item.quantity : 1)
+    : item.discountType === 'PERCENT'
+      ? gross * item.discountInput / 100
+      : 0
+  return Math.max(gross - discount, 0)
+}
+
+function normalizeZeroPricedCartDiscounts(
+  items: CartItem[],
+  previews: PosPricePreviewLine[],
+) {
+  const previewByProductUom = new Map(
+    previews.map((line) => [line.productUomId, line]),
+  )
+  let removedCount = 0
+  const cart = items.map((item) => {
+    const preview = previewByProductUom.get(item.product.productUomId)
+    if (!preview) return item
+    const effectiveUnitPrice = item.overrideUnitPrice ?? preview.unitPrice
+    if (
+      effectiveUnitPrice > 0.0001 ||
+      !item.discountType ||
+      item.discountInput <= 0
+    ) {
+      return item
+    }
+    removedCount += 1
+    return {
+      ...item,
+      discountType: '' as const,
+      discountInput: 0,
+    }
+  })
+  return { cart, removedCount, previewByProductUom }
 }
 
 type PaymentLeg = {
@@ -722,7 +764,7 @@ export default function App() {
     const customerKey = `${companyId}:${activeCustomer.id}`
     if (automaticDeliveryCustomerRef.current === customerKey) return
     automaticDeliveryCustomerRef.current = customerKey
-    setDeliveryRecipientName(activeCustomer.isWalkIn ? '' : activeCustomer.name)
+    setDeliveryRecipientName(activeCustomer.name)
     setDeliveryRecipientPhone(activeCustomer.phone)
     setDeliveryAddress(activeCustomer.address)
   }, [activeCustomer, bootstrap?.deliveryDocumentCreationPolicy, companyId, fulfillmentMode])
@@ -789,6 +831,36 @@ export default function App() {
     [pricePreviewLines],
   )
 
+  useEffect(() => {
+    if (!isOnline || cart.length === 0 || pricePreviewLines.length === 0) return
+    const normalized = normalizeZeroPricedCartDiscounts(cart, pricePreviewLines)
+    const previewComplete = normalized.cart.every((item) =>
+      normalized.previewByProductUom.has(item.product.productUomId),
+    )
+    const subtotal = previewComplete
+      ? normalized.cart.reduce((total, item) => {
+          const preview = normalized.previewByProductUom.get(
+            item.product.productUomId,
+          )!
+          return total + cartItemLineTotal(
+            item,
+            item.overrideUnitPrice ?? preview.unitPrice,
+          )
+        }, 0)
+      : null
+    const globalDiscountRemoved =
+      subtotal !== null && subtotal <= 0.0001 && Number(globalDiscount || 0) > 0
+    if (normalized.removedCount === 0 && !globalDiscountRemoved) return
+    setCart(normalized.cart)
+    if (globalDiscountRemoved) setGlobalDiscount('')
+    setResolvedLines([])
+    setNotice(
+      normalized.removedCount > 0
+        ? 'Diskon produk lama dihapus karena harga Pricelist produk tersebut Rp0.'
+        : 'Diskon transaksi dihapus karena subtotal Pricelist Rp0.',
+    )
+  }, [cart, globalDiscount, isOnline, pricePreviewLines])
+
   const fallbackSubtotal = useMemo(
     () =>
       cart.reduce(
@@ -796,13 +868,7 @@ export default function App() {
           const unitPrice = item.overrideUnitPrice ??
             pricePreviewByProductUom.get(item.product.productUomId)?.unitPrice ??
             item.product.fallbackPrice
-          const gross = unitPrice * item.quantity
-          const discount = item.discountType === 'AMOUNT'
-            ? item.discountInput
-            : item.discountType === 'PERCENT'
-              ? gross * item.discountInput / 100
-              : 0
-          return total + Math.max(gross - discount, 0)
+          return total + cartItemLineTotal(item, unitPrice)
         },
         0,
       ),
@@ -825,6 +891,7 @@ export default function App() {
             quantity: item.quantity,
             discountType: item.discountType,
             discountInput: item.discountInput,
+            discountAmountBasis: item.discountAmountBasis,
           })),
           globalDiscount: Number(globalDiscount || 0),
           roundingDirection,
@@ -1647,7 +1714,7 @@ export default function App() {
       setDueDate(suggestedTempoDueDate(transactionAt, customer?.creditTermDays ?? null))
     }
     if (fulfillmentMode === 'DELIVERY' && customer) {
-      setDeliveryRecipientName(customer.isWalkIn ? '' : customer.name)
+      setDeliveryRecipientName(customer.name)
       setDeliveryRecipientPhone(customer.phone)
       setDeliveryAddress(customer.address)
     }
@@ -1691,7 +1758,7 @@ export default function App() {
       setDeliveryDetailsOpen(false)
       return
     }
-    setDeliveryRecipientName(activeCustomer?.isWalkIn ? '' : activeCustomer?.name ?? '')
+    setDeliveryRecipientName(activeCustomer?.name ?? '')
     setDeliveryRecipientPhone(activeCustomer?.phone ?? '')
     setDeliveryAddress(activeCustomer?.address ?? '')
     setDeliveryDetailsOpen(true)
@@ -1865,6 +1932,7 @@ export default function App() {
       quantity: 1,
       discountType: '',
       discountInput: 0,
+      discountAmountBasis: product.lineDiscountAmountBasis,
       overrideUnitPrice: null,
     })
   }
@@ -1997,8 +2065,8 @@ export default function App() {
     updateCartEditorItem({ quantity })
   }
 
-  function draftLines() {
-    return cart.map((item) => ({
+  function draftLines(sourceCart: CartItem[] = cart) {
+    return sourceCart.map((item) => ({
       lineKey: item.product.productUomId,
       productUomId: item.product.productUomId,
       quantity: item.quantity,
@@ -2006,12 +2074,71 @@ export default function App() {
         ? {
             lineDiscountType: item.discountType,
             lineDiscountInput: item.discountInput,
+            lineDiscountAmountBasis: item.discountAmountBasis,
           }
         : {}),
       ...(item.overrideUnitPrice !== null
         ? { overrideUnitPrice: item.overrideUnitPrice }
         : {}),
     }))
+  }
+
+  async function resolveOnlineCommercialInput(input: {
+    sourceCart: CartItem[]
+    sourceCustomerId: string
+    sourcePricelistId: string
+    sourceGlobalDiscount: number
+    reflectInEditor: boolean
+  }) {
+    if (!cashierSession) throw new Error('CASHIER_SESSION_REQUIRED')
+    const previews = await previewPosSalePrices({
+      cashierSessionId: cashierSession.id,
+      customerId: input.sourceCustomerId,
+      selectedPricelistId: input.sourcePricelistId || null,
+      lines: input.sourceCart.map((item) => ({
+        lineKey: item.product.productUomId,
+        productUomId: item.product.productUomId,
+        quantity: item.quantity,
+      })),
+    })
+    const normalized = normalizeZeroPricedCartDiscounts(
+      input.sourceCart,
+      previews,
+    )
+    const subtotal = normalized.cart.reduce((total, item) => {
+      const preview = normalized.previewByProductUom.get(
+        item.product.productUomId,
+      )
+      if (!preview) throw new Error('POS_PRICE_PREVIEW_LINE_MISSING')
+      return total + cartItemLineTotal(
+        item,
+        item.overrideUnitPrice ?? preview.unitPrice,
+      )
+    }, 0)
+    const globalDiscountRemoved =
+      subtotal <= 0.0001 && input.sourceGlobalDiscount > 0
+    const normalizedGlobalDiscount = globalDiscountRemoved
+      ? 0
+      : input.sourceGlobalDiscount
+
+    if (input.reflectInEditor && (normalized.removedCount > 0 || globalDiscountRemoved)) {
+      setCart(normalized.cart)
+      if (globalDiscountRemoved) setGlobalDiscount('')
+      setResolvedLines([])
+      setNotice(
+        normalized.removedCount > 0
+          ? 'Diskon produk lama dihapus karena harga Pricelist produk tersebut Rp0.'
+          : 'Diskon transaksi dihapus karena subtotal Pricelist Rp0.',
+      )
+    }
+
+    return {
+      cart: normalized.cart,
+      lines: draftLines(normalized.cart),
+      globalDiscount: normalizedGlobalDiscount,
+      removedDiscountCount: normalized.removedCount,
+      globalDiscountRemoved,
+    }
   }
 
   function currentDraftEditFingerprint() {
@@ -2077,6 +2204,19 @@ export default function App() {
         false,
       )
     }
+    const commercialInput = preservesCutoverSnapshot
+      ? {
+          cart,
+          lines: draftLines(),
+          globalDiscount: Number(globalDiscount || 0),
+        }
+      : await resolveOnlineCommercialInput({
+          sourceCart: cart,
+          sourceCustomerId: customerId,
+          sourcePricelistId: selectedPricelistId,
+          sourceGlobalDiscount: Number(globalDiscount || 0),
+          reflectInEditor: true,
+        })
     const commonInput: Parameters<typeof saveSaleDraft>[0] = {
       draft: currentDraft,
       clientTransactionId,
@@ -2085,8 +2225,8 @@ export default function App() {
       draftLabel,
       draftNotes,
       selectedPricelistId: selectedPricelistId || null,
-      lines: draftLines(),
-      globalDiscount: Number(globalDiscount || 0),
+      lines: commercialInput.lines,
+      globalDiscount: commercialInput.globalDiscount,
       roundingDirection,
       isTempo,
       transactionAt: isTempo ? transactionAt : null,
@@ -2241,6 +2381,11 @@ export default function App() {
           quantity: Number(line.quantity ?? 0),
           discountType,
           discountInput: Number(line.lineDiscountInput ?? 0),
+          discountAmountBasis:
+            line.lineDiscountAmountBasis === 'PER_UNIT' ||
+            line.lineDiscountAmountBasis === 'LINE_TOTAL'
+              ? line.lineDiscountAmountBasis
+              : 'LINE_TOTAL',
           overrideUnitPrice:
             line.overrideUnitPrice === null || line.overrideUnitPrice === undefined
               ? null
@@ -2285,6 +2430,21 @@ export default function App() {
         payload.deliveryFeeInvoiceDisplayMode === 'HIDE_BREAKDOWN'
           ? 'HIDE_BREAKDOWN'
           : 'SHOW_SEPARATE'
+      const resumedCommercial = isBackofficeCutover
+        ? {
+            cart: nextCart,
+            lines: draftLines(nextCart),
+            globalDiscount: Number(payload.globalDiscount ?? 0),
+            removedDiscountCount: 0,
+            globalDiscountRemoved: false,
+          }
+        : await resolveOnlineCommercialInput({
+            sourceCart: nextCart,
+            sourceCustomerId: nextCustomerId,
+            sourcePricelistId: nextPricelistId,
+            sourceGlobalDiscount: Number(payload.globalDiscount ?? 0),
+            reflectInEditor: false,
+          })
       const nextDraft: SaleDraft = {
         salesId: item.salesId,
         draftNo: item.draftNo,
@@ -2319,24 +2479,8 @@ export default function App() {
         draftLabel: item.draftLabel ?? '',
         draftNotes: item.draftNotes ?? '',
         selectedPricelistId: nextPricelistId || null,
-        lines: rawLines.map((line) => ({
-          lineKey: String(line.lineKey ?? line.productUomId),
-          productUomId: String(line.productUomId),
-          quantity: Number(line.quantity ?? 0),
-          ...(line.lineDiscountType
-            ? {
-                lineDiscountType: line.lineDiscountType as
-                  | 'AMOUNT'
-                  | 'PERCENT',
-                lineDiscountInput: Number(line.lineDiscountInput ?? 0),
-              }
-            : {}),
-          ...(line.overrideUnitPrice !== null &&
-          line.overrideUnitPrice !== undefined
-            ? { overrideUnitPrice: Number(line.overrideUnitPrice) }
-            : {}),
-        })),
-        globalDiscount: Number(payload.globalDiscount ?? 0),
+        lines: resumedCommercial.lines,
+        globalDiscount: resumedCommercial.globalDiscount,
         roundingDirection: nextRoundingDirection,
         isTempo: nextIsTempo,
         transactionAt: nextIsTempo ? item.transactionAt : null,
@@ -2359,7 +2503,7 @@ export default function App() {
           })
 
       setCartQuantityInputs({})
-      setCart(nextCart)
+      setCart(resumedCommercial.cart)
       setDraft(openedDraft)
       setTransactionAt(openedDraft.transactionAt)
       setTransactionDateIsManual(
@@ -2370,7 +2514,9 @@ export default function App() {
       setSelectedPricelistId(nextPricelistId)
       setDraftLabel(item.draftLabel ?? '')
       setDraftNotes(item.draftNotes ?? '')
-      setGlobalDiscount(nextGlobalDiscount)
+      setGlobalDiscount(
+        resumedCommercial.globalDiscountRemoved ? '' : nextGlobalDiscount,
+      )
       setRoundingDirection(nextRoundingDirection)
       setIsTempo(nextIsTempo)
       setDueDate(nextDueDate)
@@ -2437,7 +2583,11 @@ export default function App() {
         : null
       setDraftPanelOpen(false)
       setNotice(
-        isBackofficeCutover
+        resumedCommercial.removedDiscountCount > 0
+          ? `${item.draftNo} dibuka; diskon produk lama dihapus karena harga Pricelist Rp0.`
+          : resumedCommercial.globalDiscountRemoved
+            ? `${item.draftNo} dibuka; diskon transaksi dihapus karena subtotal Pricelist Rp0.`
+            : isBackofficeCutover
           ? `${item.draftNo} dibuka tanpa menghitung ulang harga. Konfirmasi pembayaran kembali; perubahan isi transaksi akan memakai harga Retail terbaru.`
           : `${item.draftNo} dibuka dan harga dihitung ulang. Konfirmasi pembayaran kembali sebelum Post.`,
       )
@@ -2772,6 +2922,7 @@ export default function App() {
         quantity: item.quantity,
         discountType: item.discountType,
         discountInput: item.discountInput,
+        discountAmountBasis: item.discountAmountBasis,
       }))
       const preview = priceOfflineCheckout({
         snapshot: scope,
@@ -3244,9 +3395,7 @@ export default function App() {
     const automaticDelivery =
       bootstrap?.deliveryDocumentCreationPolicy === 'ALL_POSTED_SALES'
     setFulfillmentMode(automaticDelivery ? 'DELIVERY' : 'PICKUP')
-    setDeliveryRecipientName(
-      automaticDelivery && walkIn && !walkIn.isWalkIn ? walkIn.name : '',
-    )
+    setDeliveryRecipientName(automaticDelivery ? walkIn?.name ?? '' : '')
     setDeliveryRecipientPhone(automaticDelivery ? walkIn?.phone ?? '' : '')
     setDeliveryAddress(automaticDelivery ? walkIn?.address ?? '' : '')
     setDeliveryScheduledAt('')
@@ -3712,6 +3861,9 @@ export default function App() {
     editingCartItem &&
       (editingCartItem.overrideUnitPrice !== null ||
         editingResolvedLine?.priceOverrideApplied),
+  )
+  const editingZeroPriced = Boolean(
+    editingCartItem && editingEffectiveUnitPrice <= 0.0001,
   )
 
   return (
@@ -4314,7 +4466,9 @@ export default function App() {
                                         Diskon{' '}
                                         {item.discountType === 'PERCENT'
                                           ? `${item.discountInput}%`
-                                          : money(item.discountInput)}
+                                          : item.discountAmountBasis === 'PER_UNIT'
+                                            ? `${money(item.discountInput)} / ${item.product.uomName}`
+                                            : money(item.discountInput)}
                                       </span>
                                     )}
                                 </div>
@@ -4531,7 +4685,9 @@ export default function App() {
                               Diskon{' '}
                               {item.discountType === 'PERCENT'
                                 ? `${item.discountInput}%`
-                                : money(item.discountInput)}
+                                : item.discountAmountBasis === 'PER_UNIT'
+                                  ? `${money(item.discountInput)} / ${item.product.uomName}`
+                                  : money(item.discountInput)}
                             </span>
                           )}
                           {overrideApplied && <span>Harga diubah</span>}
@@ -5413,8 +5569,10 @@ export default function App() {
                   </button>
                   <strong>
                     {money(
-                      editingResolvedLine?.lineTotal ??
-                        editingEffectiveUnitPrice * editingCartItem.quantity,
+                      cartItemLineTotal(
+                        editingCartItem,
+                        editingEffectiveUnitPrice,
+                      ),
                     )}
                   </strong>
                 </div>
@@ -5471,9 +5629,23 @@ export default function App() {
 
               <div className="pos-cart-editor-section">
                 <label>Diskon produk</label>
+                {editingZeroPriced && (
+                  <p className="is-warning">
+                    Harga efektif dari Pricelist Rp0, jadi diskon produk tidak
+                    berlaku.
+                  </p>
+                )}
+                {editingCartItem.discountType === 'AMOUNT' && (
+                  <p>
+                    {editingCartItem.discountAmountBasis === 'PER_UNIT'
+                      ? `Nominal berlaku per ${editingCartItem.product.uomName}.`
+                      : 'Nominal berlaku untuk total baris produk ini.'}
+                  </p>
+                )}
                 <div className="pos-cart-editor-discount">
                   <select
                     value={editingCartItem.discountType}
+                    disabled={editingZeroPriced}
                     onChange={(event) =>
                       updateCartEditorItem({
                         discountType: event.target.value as
@@ -5490,6 +5662,7 @@ export default function App() {
                   {editingCartItem.discountType === 'AMOUNT' ? (
                     <CurrencyInput
                       value={editingCartItem.discountInput}
+                      disabled={editingZeroPriced}
                       onValueChange={(value) =>
                         updateCartEditorItem({
                           discountInput: Number(value || 0),
@@ -5500,7 +5673,9 @@ export default function App() {
                     <input
                       type="number"
                       min="0"
-                      disabled={!editingCartItem.discountType}
+                      disabled={
+                        editingZeroPriced || !editingCartItem.discountType
+                      }
                       value={editingCartItem.discountInput}
                       onChange={(event) =>
                         updateCartEditorItem({
@@ -5910,7 +6085,7 @@ export default function App() {
                   Tujuan kirim dan ongkir
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Data Customer dipakai sebagai awal dan tetap dapat disesuaikan untuk pengiriman ini.
+                  Customer apa pun, termasuk Pelanggan Umum, dapat dikirim. Nama penerima tetap dapat disesuaikan untuk transaksi ini.
                 </p>
               </div>
               <button

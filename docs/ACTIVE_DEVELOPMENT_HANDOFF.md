@@ -1,5 +1,422 @@
 # Active Development Handoff — KGS POS
 
+## 2026-11-03 - KGFF Sample zero-price Draft discount compatibility
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE / PRODUCT FIX`; no schema,
+  production write, deployment, or historical Draft rewrite was performed.
+- Audit:
+  `docs/audits/KGFF_SAMPLE_ZERO_PRICE_DISCOUNT_COMPATIBILITY_IMPACT_2026-11-03.md`.
+- Exact user evidence: resuming `DRF-20261102-000558` for `SALES KGS` (one
+  item, Rp0) raised `LINE_DISCOUNT_EXCEEDS_LINE_TOTAL` because the Draft retained
+  an old positive Product discount after the zero-price Pricelist applied.
+- Local fix: online authoritative preview removes only impossible Product
+  discounts from effective Rp0 lines before new/resumed Retail Draft save;
+  positive manual price overrides and all positive-price discount semantics are
+  preserved. The Product editor now disables discount input at effective Rp0.
+- Preserved: Backoffice/cutover Drafts, server discount guard, positive-price
+  Retail discounts, Lettuce/Bawang Bombay exceptions, Stock/FIFO/HPP, Payment,
+  cashier session, Finance, audit, tenant/idempotency/stale-version guards.
+- Evidence: PWA lint PASS; PWA build PASS; mocked POS and runtime-contract
+  Playwright regression `38/38 PASS`. Two pre-PASS failures were harness-only
+  locator/visibility corrections; exact payload assertions remain.
+- Status: `AUDIT COMPLETE`, `LOCAL READY`; `CLIENT DEPLOYED: NO`,
+  `SMOKE PASS: NO`, `UAT PASS: NO`.
+- Next safe step: only after explicit user authorization, deploy the client and
+  run authenticated KGFF smoke against the exact Draft plus a new SALES KGS
+  Cart. Zero-total Sample Finance/Expense posting remains a separate gate.
+
+## 2026-11-03 - KGFF SALES KGS Sample zero-price Pricelist Phase B
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE` (configuration-only forward
+  migration); agent tidak menjalankan production write.
+- Audit:
+  `docs/audits/KGFF_SALES_KGS_ZERO_PRICE_PRICELIST_IMPACT_2026-11-03.md`.
+- User-provided production preflight: seluruh row wajib PASS, state
+  `NOT_INSTALLED`; exact KGFF dan `KGS003 / SALES KGS`; 78 active sale
+  Product-UOM; empat base-zero; canonical writer/resolver ada; queue idle.
+- Files:
+  - `supabase/migrations/20261103100000_kgff_sales_kgs_sample_zero_pricelist.sql`;
+  - `supabase/diagnostics/kgff_sales_kgs_zero_price_pricelist_postflight.sql`;
+  - `supabase/tests/kgff_sales_kgs_zero_price_pricelist_behavior.sql`;
+  - `docs/runbooks/KGFF_SALES_KGS_SAMPLE_ZERO_PRICELIST_ROLLOUT.md`.
+- Behavior: satu reusable KGFF Customer Pricelist dengan exact dynamic coverage
+  seluruh active sale Product-UOM pada fixed zero, assigned hanya ke KGS003,
+  serta Pricelist/Customer master audit.
+- Compatibility: Product base price, Pricelist/Customer/Company lain,
+  Draft/Posted lama, Stock/FIFO, Payment, session, dan Finance tidak berubah.
+- Local evidence: scoped `git diff --check` PASS; migration SHA256
+  `81bd965317378c9fe52d908ec2ab3fb2acf3f185218b23f147677f6fbbff4512`
+  cocok manifest; mutation inventory hanya Pricelist/rules, exact Customer,
+  kedua master audit, dan ledger; tidak ditemukan business-transaction write.
+- Production evidence user 2026-11-03: migration ledger tepat satu; header dan
+  assignment PASS; exact rule coverage 78/78 PASS; Pricelist CREATE audit dan
+  Customer assignment audit masing-masing tepat satu; rollback-only resolver
+  behavior dilaporkan sukses.
+- Status: `AUDIT COMPLETE`; `LOCAL READY`; `DATABASE LIVE`;
+  `POSTFLIGHT PASS`; `BEHAVIOR PASS`; authenticated `SMOKE PASS` dan `UAT PASS`
+  masih pending.
+- Manual gate berikutnya: authenticated POS resolver smoke. Zero-total Sample checkout tetap
+  perubahan terpisah.
+- Setelah ledger-live jangan edit/rerun migration. Koreksi memakai audited
+  forward migration: unassign lalu deactivate, tanpa rewrite history.
+
+## 2026-11-02 - Customer code allocator collision local package
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE`; Phase A impact audit and the
+  visible SOP Gate were completed before implementation.
+- Audit:
+  `docs/audits/CUSTOMER_CODE_ALLOCATOR_COLLISION_FORWARD_FIX_IMPACT_2026-11-02.md`.
+- Proven root cause: KGFF owns inactive Customer `KBU BANGKA` with code
+  `CUST-000001`, while clone/import paths did not reconcile
+  `private.customer_code_sequences`. Both automatic writers could therefore
+  generate an occupied code repeatedly.
+- Added local package:
+  - `supabase/diagnostics/customer_code_allocator_collision_preflight.sql`;
+  - `supabase/migrations/20261102170000_customer_code_allocator_collision_forward_fix.sql`;
+  - `supabase/tests/customer_code_allocator_collision_behavior.sql`;
+  - `supabase/diagnostics/customer_code_allocator_collision_postflight.sql`.
+- The forward migration adds a private per-Company advisory-locked allocator,
+  monotonically reconciles counters, advances the floor when canonical explicit
+  codes enter through import/clone/manual paths, and replaces only the two
+  automatic allocation blocks. Public signatures and grants remain intact.
+- Evidence: exact legacy replacement anchors each occur once; all four SQL
+  files pass the PostgreSQL 18 `libpg_query` parser; dollar-tag balance and
+  `git diff --check` pass. No database or browser mutation was performed.
+- Status: `AUDIT COMPLETE=YES`; `LOCAL READY=YES` for the reviewed SQL package;
+  `DATABASE LIVE=NO`; `CLIENT DEPLOYED=not applicable`; `SMOKE PASS=NO`;
+  `UAT PASS=NO`.
+- Manual gate: run preflight first. Only if every mandatory row is PASS and
+  state is `NOT_INSTALLED`, run migration once, rollback-only behavior, then
+  postflight. After those pass, run one authenticated POS create and one
+  Backoffice create in the target Company.
+- Rollback/forward-fix: before migration commit, PostgreSQL rolls back the
+  transaction atomically. After ledger installation, do not edit/rerun the
+  version; any defect requires a new forward migration. Dropping the allocator
+  is not a safe rollback after new codes have been issued.
+- Update after rollout attempt: migration `20261102170000` is ledger-live, but
+  the first behavior test failed before Customer assertions because its
+  synthetic active Company invoked the canonical G6 Finance provisioning
+  trigger and lacked one required account mapping. This is classified
+  `TEST HARNESS FIX`; no Finance guard will be bypassed. The next test revision
+  must use existing Companies and keep all Customer assertions rollback-only.
+- Revised status: `DATABASE LIVE=YES (ledger/runtime installation only)`;
+  `BEHAVIOR PASS=NO`; `POSTFLIGHT PASS=NO`; `SMOKE PASS=NO`; `UAT PASS=NO`.
+- The behavioral fixture has now been corrected locally without changing any
+  product/migration function: it uses existing configured Companies, contains
+  no Company insert, preserves the original assertions, and passes PostgreSQL
+  18 parser validation. The user has now confirmed the corrected rollback
+  behavior PASS. Do not rerun migration `20261102170000` or the behavior.
+- Current status: `DATABASE LIVE=YES`; `BEHAVIOR PASS=YES` within its asserted
+  scope; `POSTFLIGHT PASS=NO`; `SMOKE PASS=NO`; `UAT PASS=NO`.
+- First postflight attempt produced no evidence because one aggregate retained
+  stale alias `trigger.tgenabled` after the relation alias became `pg_trg`.
+  Classified `TEST HARNESS FIX`; migration and behavior are not rerun.
+- The one alias is corrected to `pg_trg.tgenabled`; parser and full alias
+  inventory pass locally. User-supplied postflight rerun is now complete PASS:
+  ledger 1, runtime/trigger PASS, counter floor PASS for seven Companies, and
+  privilege contract PASS.
+- Current status: `DATABASE LIVE=YES`; `BEHAVIOR PASS=YES`; `POSTFLIGHT
+  PASS=YES`; `SMOKE PASS=NO`; `UAT PASS=NO`. Do not rerun migration, behavior,
+  or postflight. Next safe step is one authenticated Backoffice Customer create
+  and one authenticated POS Customer create.
+
+## 2026-11-02 - KGFF Terminal price override diagnosis
+
+- Classification: `READ_ONLY_AUDIT`; no Product, schema, configuration, or data
+  mutation was made.
+- Audit: `docs/audits/KGFF_POS_TERMINAL_PRICE_OVERRIDE_DIAGNOSIS_2026-11-02.md`.
+- Root cause proven from source plus live UI comparison: editable POS price is
+  an opt-in Terminal policy. KGS exposes the field; KGFF does not. KGFF `POS-1`
+  was created without `allow_price_override`, so the schema default is `FALSE`.
+- Migration `20261102160000` has no Terminal/price-override reference and did
+  not cause the Company difference.
+- Supported correction is the existing versioned Backoffice Terminal settings
+  writer, not a Product or discount migration. Before mutation, capture the
+  exact KGFF Terminal ID/version/flag; after authorized enablement, run an
+  authenticated online override smoke. Offline and other Companies stay
+  unchanged.
+
+## 2026-11-02 - Retail POS per-unit Product nominal discount local package
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE` plus
+  `PRODUCT_BEHAVIOR_CHANGE`; Phase A audit and visible SOP Gate completed before
+  implementation.
+- Audit:
+  `docs/audits/POS_RETAIL_PER_UNIT_PRODUCT_DISCOUNT_IMPACT_2026-11-02.md`.
+- Proven behavior change: ordinary Retail POS Products interpret nominal line
+  discount per sold UOM (`qty 10 x Rp100 = Rp1.000`). Exact `L / Lettuce` and
+  `BB / Bawang Bombay` retain whole-line nominal discount. Percentage remains
+  percent-of-gross. Backoffice Sales Order remains whole-line.
+- PWA Product editor now recomputes subtotal immediately from current quantity,
+  effective unit price, and discount before the cashier confirms the line.
+- Compatibility: Posted history is untouched; all existing open Retail POS
+  nominal-discount Drafts are frozen as `LINE_TOTAL`; old clients that omit the
+  new basis retain that legacy meaning; a new client basis is server-validated
+  and becomes immutable per Draft.
+- Local package: guarded migration `20261102160000`, SELECT-only preflight and
+  postflight, authenticated rollback-only behavior, online/offline PWA changes,
+  mocked browser regression, and static Backoffice boundary contract.
+- Evidence: PWA lint PASS; PWA build PASS; complete mocked POS/runtime suite
+  `35/35 PASS`; scoped `git diff --check` PASS. No local PostgreSQL/Docker is
+  available, so SQL execution and behavior remain `BELUM TERBUKTI`.
+- Manual gate: preflight -> migration once -> postflight -> rollback behavior ->
+  database-first client deploy -> authenticated POS/Offline smoke. Stop on any
+  error/FAIL; do not patch forward without reopening Phase A.
+- Preserved: Backoffice/ODR, percentage discount, Stock/Reservation/FIFO/HPP,
+  payment verification, Cashier Session mutation, Finance Event/Journal,
+  historical Posted rows, tenant/role/version/retry guards.
+- Status: `AUDIT COMPLETE / CLIENT LOCAL VERIFICATION PASS / DATABASE PACKAGE
+  UNREHEARSED / DATABASE LIVE NO / CLIENT DEPLOYED NO / SMOKE PASS NO / UAT
+  PASS NO`.
+- First Production migration attempt failed and rolled back with PostgreSQL
+  `42702` at the Product exception update: both the target Product and joined
+  process-setting row expose `master_version`, while the expression was
+  unqualified. Previous database-package readiness is revoked. Re-audit
+  classifies this as `PRODUCT FIX`; the intended target is explicitly
+  `product.master_version`. Rerun preflight after the corrected file and require
+  `NOT_INSTALLED` before retrying the migration.
+- Corrected source now uses `master_version=product.master_version+1`; focused
+  runtime contracts pass `13/13` and scoped `git diff --check` passes. This is
+  source evidence only, not database-live proof.
+- The next preflight run displayed only the final INFO row because the preflight
+  used seven separate SQL result sets. This invalidates the preflight evidence;
+  migration state returns to `UNKNOWN`. Classified `TEST_HARNESS_FIX`: combine
+  the same seven assertions into one result set, without weakening or changing
+  any expected value, then rerun before migration.
+- Static proof initially reported two semicolons because its regex counted one
+  punctuation mark inside a SQL line comment. Product/preflight expectations
+  are not changed: the harness must remove `--` comments and still require one
+  executable terminator plus exactly seven check identifiers.
+- Removing comments alone still counted a semicolon inside a single-quoted SQL
+  rule description. The next harness correction must strip comments and SQL
+  string literals before counting, while preserving expected count one and all
+  seven mandatory rows.
+- Unified preflight rerun now returned all seven rows. Six mandatory rows PASS
+  and the business boundary is INFO. Installation is `NOT_INSTALLED`; exact
+  exception Products are four active KGS/KGFF rows; 239 open Retail POS Drafts
+  include two legacy AMOUNT lines without basis; Offline nonterminal count is
+  zero; active runtime digests match. One guarded migration execution is now
+  authorized, but no later status is inferred.
+- User reports guarded migration `20261102160000` executed successfully. This
+  advances only the rollout action; ledger/runtime installation remains
+  unverified until the SELECT-only postflight passes. Next strict order:
+  postflight, rollback-only behavior, client deployment, authenticated smoke,
+  then UAT. Do not rerun or edit the migration after successful installation.
+- Complete Production postflight supplied by the user now has seven mandatory
+  rows PASS plus one INFO boundary: ledger `1`, both schema columns present,
+  four exact exception Products, zero invalid Product rows, both legacy nominal
+  Draft lines explicitly snapshotted, one guarded server runtime, Backoffice
+  whole-line behavior preserved, and zero Stock/Finance installation effects.
+  The user also reports the rollback-only behavioral test succeeded. Status is
+  now `DATABASE LIVE`; the behavior output itself was reported rather than
+  pasted. Client deployment, authenticated POS smoke, and UAT remain pending.
+
+## 2026-11-02 - Retail Delivery Walk-In Customer local-ready
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE`; Phase A impact audit and visible
+  SOP Gate completed before source edits.
+- Audit:
+  `docs/audits/POS_RETAIL_DELIVERY_WALK_IN_CUSTOMER_IMPACT_2026-11-02.md`.
+- Root cause proven: Customer Walk-In adalah Customer canonical yang sah untuk
+  Sale, tetapi empat jalur PWA sengaja mengosongkan recipient Walk-In; guard
+  `DELIVERY_RECIPIENT_REQUIRED` kemudian membuat Kasir seolah wajib memilih
+  Customer reguler.
+- Local patch: policy automatic Delivery, customer switch, manual Delivery
+  selection, dan reset Sale kini memakai nama Customer aktif termasuk Walk-In
+  sebagai default recipient. Recipient tetap editable dan tetap wajib
+  server-side.
+- Explicitly preserved: Pickup, canonical `customerId`, Draft lock/version,
+  exact retry, Offline payload, Tempo/payment/split, Invoice/Surat Jalan,
+  Backoffice/ODR, Stock/Reservation/FIFO/HPP, Finance/Journal, tenant, audit,
+  dan historical rows.
+- Evidence: PWA build PASS; lint PASS; focused mocked Delivery `2/2 PASS`;
+  complete POS mocked/runtime suite setelah static contract final `33/33 PASS`.
+- Status: `AUDIT COMPLETE` dan `LOCAL READY`; database tidak
+  berubah; `CLIENT DEPLOYED`, authenticated `SMOKE PASS`, dan `UAT PASS` belum
+  terbukti.
+- Next safe step: user memeriksa local UI; setelah itu commit/deploy hanya dengan
+  instruksi eksplisit.
+
+## 2026-11-02 - Retail POS Session net Return summary local-ready
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE` plus scoped
+  `PRODUCT_BEHAVIOR_CHANGE`; Phase A audit and visible SOP Gate completed before
+  implementation.
+- Audit:
+  `docs/audits/POS_RETAIL_SESSION_NET_RETURN_SUMMARY_IMPACT_2026-11-02.md`.
+- User-provided Production preflight passed every mandatory row and proved
+  dependency chain complete, existing close-session Cash already net of Return,
+  authenticated direct Return-table SELECT denied, Retail/Backoffice inventory
+  valid, Finance/Offline idle, and proposed RPC state `NOT_INSTALLED`. That
+  output predates the database-live `20261102140000` Transfer/QRIS fix, so it is
+  retained as evidence but no longer authorizes rollout.
+- Local Phase B package:
+  - `supabase/migrations/20261102150000_pos_retail_session_net_return_summary.sql`;
+  - `supabase/tests/pos_retail_session_net_return_summary_behavior.sql`;
+  - `supabase/diagnostics/pos_retail_session_net_return_summary_postflight.sql`;
+  - `pwa/src/lib/pos.ts` loads the Retail-only own-session adjustment RPC;
+  - `pwa/src/SessionSummaryModal.tsx` subtracts Posted refunds from payment
+    totals and `SALEABLE`/`DAMAGED` quantities from Product Out;
+  - mocked browser and static runtime coverage in `qa-e2e/tests/`.
+- `NO_PHYSICAL_RETURN` reduces the refund/payment view but never Product Out.
+  A Return executed today for an older Sale is attributed to the executing
+  session and may therefore produce a negative net Product Out quantity.
+- Explicitly preserved: Backoffice process and approval, Return mutation,
+  Stock/FIFO/HPP, Finance Event/Journal, payment verification, Expense,
+  close-session expected-Cash calculation, historical rows, and other Company
+  data.
+- Evidence: PWA build PASS; PWA lint PASS; focused Session Summary browser test
+  PASS with Cash `20,000-5,000=15,000`, QRIS `5,000-1,000=4,000`, total net
+  `19,000`, and Product Out `1-0.25=0.75 PACK`; complete POS mocked/runtime
+  suite PASS `30/30`; added static Retail net-Return contract PASS separately.
+- The first focused run failed because a test selector matched both `Cash net`
+  and `Non-cash net`; classified `TEST_HARNESS_FIX`. Expected values and Product
+  behavior were not changed, and the corrected selector rerun passed.
+- Precondition correction: the unapplied `130000` candidate was renumbered to
+  `150000` so it does not roll out behind the already-live `140000` migration.
+  The updated preflight now requires `140000`.
+- User reran the corrected preflight: dependency ledger including `140000`,
+  identifier contract, close-Cash contract, Return-table privilege boundary,
+  and runtime boundary all PASS; installation state is `NOT_INSTALLED`.
+  Inventory evidence contains four Posted Retail POS Returns, four refund rows
+  totaling `714000`, six physical lines totaling `16.05`, across two executing
+  sessions. These nonzero rows support the later rollback behavior but are not
+  themselves behavioral proof.
+- Manual gate: apply migration `20261102150000` once, run rollback-only behavior, then
+  SELECT-only postflight. Stop on any error/FAIL. Only after all pass,
+  deploy the PWA and smoke a real Retail session containing Cash and non-cash
+  refunds plus physical and no-physical Return lines.
+- User confirmed migration installation and rollback-only behavior succeeded.
+  Complete postflight then passed ledger, stable SECURITY DEFINER runtime,
+  Retail/POS guards, authenticated RPC execute, continued direct Return-table
+  denial, and nonzero Posted Retail Return inventory across two sessions.
+- Local current-source Vite server is running at `http://127.0.0.1:5193/` and
+  responds HTTP 200. This enables authenticated local UI smoke but is not a
+  Production client deployment.
+- Status: `AUDIT COMPLETE / LOCAL READY / DATABASE LIVE / BEHAVIOR PASS /
+  POSTFLIGHT PASS / CLIENT DEPLOYED NO / SMOKE PASS NO / UAT PASS NO`.
+
+## 2026-11-02 - POS non-cash deferred guard privilege forward-fix package
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE`; Phase A impact audit and the
+  visible SOP Gate completed before the runtime edit.
+- User-provided Production diagnosis proves migrations `20261031100000` and
+  `20261031110000` are installed consistently; the verification table correctly
+  denies browser table access; all principal capture/post/review routines have
+  the intended owner/security boundary.
+- Root cause is the remaining
+  `private.trg_enforce_no_pending_pos_cash()` routine. Migration
+  `20260923100000` attaches it as `DEFERRABLE INITIALLY DEFERRED`, but the
+  routine is `SECURITY INVOKER`. At deferred execution the authenticated
+  cashier context has resumed, so its protected-table `SELECT` fails and rolls
+  back Transfer/QRIS checkout.
+- Audit:
+  `docs/audits/POS_RETAIL_NON_CASH_PERMISSION_REGRESSION_2026-11-02.md`.
+- New guarded forward package:
+  - preflight
+    `supabase/diagnostics/pos_retail_non_cash_deferred_guard_preflight.sql`;
+  - migration
+    `supabase/migrations/20261102140000_pos_retail_non_cash_deferred_guard_privilege_fix.sql`;
+  - postflight
+    `supabase/diagnostics/pos_retail_non_cash_deferred_guard_postflight.sql`;
+  - rollback-only authenticated regression
+    `supabase/tests/pos_retail_non_cash_deferred_guard_privilege_behavior.sql`.
+- The migration changes only that existing guard to `SECURITY DEFINER` owned by
+  `postgres`. It does not grant `authenticated` any table privilege and does
+  not alter trigger timing/body, payment status, settlement, Finance mapping,
+  Cash, Tempo, Backoffice, Stock/FIFO, journal, audit, or historical data.
+- Local evidence: identifier sources and full statement boundaries reviewed;
+  targeted `git diff --check` passes. Product-schema SQL execution is not
+  claimed locally because the local PostgreSQL service requires credentials and
+  is not the project schema.
+- Manual database gate: run preflight, install the migration once only if every
+  mandatory row passes, run postflight, then run the rollback-only behavior.
+  Stop on the first unexpected result. After all three pass, perform one real
+  authenticated Transfer/QRIS POS checkout and confirm one `PENDING` Finance
+  request plus successful receipt/reset.
+- User returned
+  `pos_retail_non_cash_deferred_guard_privilege_behavior,PASS,0`. Its installed
+  migration precondition proves `20261102140000` is database-live; the test
+  proves deferred execution as authenticated without a direct table grant and
+  rolls all fixture effects back.
+- User subsequently supplied the complete postflight: migration ledger,
+  owner/`SECURITY DEFINER`, enabled initially-deferred trigger, exact function,
+  and continued denial of authenticated table `SELECT`/`INSERT`/`UPDATE` all
+  pass. Real POS Transfer/QRIS checkout has not been rerun, so authenticated
+  browser smoke is not inferred from database evidence.
+- Status: `AUDIT COMPLETE / LOCAL PACKAGE READY / DATABASE LIVE /
+  ROLLBACK BEHAVIOR PASS / POSTFLIGHT PASS / CLIENT CHANGE N/A /
+  AUTHENTICATED POS SMOKE PENDING / UAT PENDING`.
+
+## 2026-11-02 - Negative-stock Sales Return database-live forward fix
+
+- Classification: `SCHEMA_OR_MIGRATION_CHANGE`; Phase A complete and Phase B
+  candidate created after the visible SOP Gate.
+- Exact invoice 0951 root cause is proven: five unreplenished negative units,
+  zero positive FIFO. Current Return core cannot restore that lineage.
+- Impact audit:
+  `docs/audits/POS_SALES_RETURN_NEGATIVE_STOCK_RESTORATION_IMPACT_2026-11-02.md`.
+- Exact Production preflight:
+  `supabase/diagnostics/pos_sales_return_negative_stock_restoration_preflight.sql`.
+- Production preflight PASS: state `NOT_INSTALLED`; Return core MD5
+  `9a4ec8f10eacec926435e99deb1fca26`; replenishment trigger MD5
+  `ef37126de5f098b97223d9877e460cd1`; exact invoice shortage 5/replenished 0;
+  759 candidates, 601 fully replenished, 149 collision rows; Finance/Offline
+  idle.
+- Candidate migration:
+  `supabase/migrations/20261102120000_pos_sales_return_negative_stock_restoration.sql`.
+  It adds explicit negative-source batch lineage and immutable restoration
+  audit, targets only the source shortage when it remains open, and restores
+  already-replenished sources at their exact historical actual cost. Tagged
+  Return batches bypass unrelated oldest-shortage allocation.
+- Postflight:
+  `supabase/diagnostics/pos_sales_return_negative_stock_restoration_postflight.sql`.
+  Authenticated rollback-only behavior:
+  `supabase/tests/pos_sales_return_negative_stock_restoration_behavior.sql`.
+- Exact target behavior covers invoice 0951, shortage closure, batch quantity,
+  Product Stock, movement, combined HPP/Finance input, and exact retry. Positive
+  FIFO and generic Goods Receipt/Backoffice/Purchase Return consumers remain
+  unchanged.
+- `DAMAGED` cross-Warehouse negative-only Return is explicitly fail-closed and
+  remains a separate accounting design; the reported `SALEABLE` Return is the
+  bounded correction.
+- Local evidence so far: identifier/source audit and `git diff --check` PASS.
+  PostgreSQL 18.4 accepted the complete top-level statement/delimiter grammar
+  for migration, postflight, and behavior; execution then stopped at expected
+  missing-schema preconditions in the empty parser-only database. This is not a
+  full Product-schema compile or behavior proof. Do not call this `LOCAL READY`.
+- User confirmed migration `20261102120000`, SELECT-only postflight, and the
+  authenticated rollback-only behavior all succeeded. This proves the installed
+  runtime can process the exact negative-stock restoration scenario while the
+  behavior transaction leaves no persisted Return.
+- Installed migration is now immutable: do not rerun, edit, or remove its
+  ledger. Any later defect requires a newly versioned forward fix.
+- Remaining manual gate: authenticated real POS smoke on invoice 0951, followed
+  by user acceptance of Stock, refund, and receipt output. No client deployment
+  is required for this server-only correction.
+- Status: `AUDIT COMPLETE / LOCAL READY YES / DATABASE LIVE YES / POSTFLIGHT
+  PASS / ROLLBACK BEHAVIOR PASS / CLIENT DEPLOYED N/A / SMOKE PASS NO / UAT
+  PASS NO`.
+
+## 2026-11-02 - Invoice 0951 Return FIFO exhaustion diagnosis
+
+- Classification: `READ_ONLY_AUDIT`; no Product/database/deployment mutation.
+- Authenticated Retail Return for `INV-20261101-0000000951` failed with
+  `SOURCE_SALE_FIFO_RESTORATION_EXHAUSTED` after the optional Transfer metadata
+  rollout passed.
+- Code tracing proves the Return list uses sold/dispatched minus Posted Return
+  quantity, while physical posting restores only remaining positive
+  `sale_fifo_allocations`. Negative-stock lineage is not handled by that core.
+- User-provided SELECT-only output proves
+  `NEGATIVE_STOCK_SOURCE_NOT_RESTORED_BY_CURRENT_RETURN_CORE`: sold/required
+  base 5, positive FIFO 0, negative shortage 5, replenished 0.
+- Audit:
+  `docs/audits/POS_RETURN_INVOICE_0951_FIFO_EXHAUSTION_AUDIT_2026-11-02.md`.
+- Diagnosis is complete and rules out prior restoration exhaustion. A Product
+  fix requires a new Phase A/SOP Gate for negative-allocation Return reversal,
+  Stock/FIFO/HPP, Finance, later replenishment, retry, mixed-source Sales, and
+  Retail/Backoffice compatibility. Do not hide the legitimate Return in UI.
+
 ## 2026-11-02 - POS Return optional Transfer metadata point 9
 
 - Prior claim that point 9 was complete is withdrawn. The user requirement was
@@ -22370,6 +22787,28 @@ or repeat baseline export is needed from user at this hold boundary.
   design requirement. Product/database/deployment state remains unchanged.
 # Checkpoint 2026-10-31 - POS Retail non-cash atomic verification
 
+## 2026-11-02 authenticated POS permission regression — superseded checkpoint
+
+- An authenticated KGS cashier observed `permission denied for table
+  sales_payment_verification_requests` during POS checkout. The transaction is
+  not approved for operational use until a public-RPC authenticated smoke
+  passes.
+- The prior rollback behavior directly called the private capture helper from
+  the privileged SQL runner before setting an authenticated JWT. It proved
+  Finance review behavior, not the POS-to-trigger privilege boundary. Its
+  broader end-to-end interpretation is withdrawn.
+- Classification: `READ_ONLY_AUDIT`. No Product source, schema, applied
+  migration, Production data, privilege, deployment, Stock, Payment, Event or
+  Journal was changed.
+- New evidence:
+  `docs/audits/POS_RETAIL_NON_CASH_PERMISSION_REGRESSION_2026-11-02.md` and
+  `supabase/diagnostics/pos_retail_non_cash_permission_regression_diagnosis.sql`.
+- This frozen state was superseded by the complete Production diagnosis and
+  forward migration `20261102140000` recorded at the top of this handoff.
+  The user-run rollback behavior now passes. Postflight output and a real
+  authenticated POS Transfer/QRIS smoke remain pending; no broader PASS is
+  inferred.
+
 ## Unexpected postflight Cash boundary — work frozen
 
 - Production migration `20261031100000` is installed and immutable.
@@ -22785,3 +23224,92 @@ cases are observed through the deployed UI.
 Migration is immutable after commit. Any database defect requires a new forward
 migration; do not edit/rerun `20261102100000` and do not weaken or remove the
 Backoffice approval RPC.
+# Checkpoint 2026-11-02 - Retail POS Session net Return summary Phase A
+
+## Requested outcome and boundary
+
+- Session Summary and the figures used by the cashier before close must show
+  Retail POS payments and Product Out net of Return/refund executed in that
+  session.
+- User explicitly restricted the task to Retail business process. Backoffice
+  Sales Order, Return approval, read models, and runtime must not change.
+
+## Proven diagnosis
+
+- `pwa/src/lib/pos.ts::loadCashierSessionSummary()` currently loads Sale
+  headers/details/payments and selected-session Expense only.
+- `pwa/src/SessionSummaryModal.tsx` adds gross Sale payments and Sale quantity;
+  it never reads `sales_return_refunds` or `sales_return_lines`.
+- `private.calculate_cashier_session_expected_cash(uuid,uuid)` already
+  subtracts Posted Cash refunds by `executing_session_id`. Canonical Return
+  posting already updates Stock/FIFO. The close mutation and Return Post core
+  are therefore preserved; the defect is the Retail summary read model.
+- Authenticated direct SELECT on Return tables is revoked, so a narrowly scoped
+  SECURITY DEFINER read RPC is required. Client-side direct table access is not
+  allowed.
+
+## Files added/updated in Phase A
+
+- `docs/audits/POS_RETAIL_SESSION_NET_RETURN_SUMMARY_IMPACT_2026-11-02.md`
+- `supabase/diagnostics/pos_retail_session_net_return_summary_preflight.sql`
+- `docs/README.md`
+- this handoff.
+
+## Status and next safe step
+
+- `AUDIT COMPLETE`: YES for repository call-chain scope.
+- `LOCAL READY`: NO.
+- `DATABASE LIVE`: proposed read model is not installed; Production state is
+  still `UNKNOWN` until preflight output is classified.
+- `CLIENT DEPLOYED`: NO.
+- `SMOKE PASS`: NO.
+- `UAT PASS`: NO.
+- Next: user runs only the SELECT-only preflight and returns its complete
+  output. Do not create migration/client edits until dependency ledger, object
+  absence, active close calculator, privileges, and Retail/Backoffice boundary
+  all pass.
+# Checkpoint 2026-11-03 - KGFF SALES KGS zero-price Pricelist Phase A
+
+The first user run displayed only the final `INFO` row because the original
+preflight used multiple SELECT statements. No database failure or mutation was
+reported, but the mandatory gates were not visible and therefore are not
+accepted as evidence. The preflight now uses one SELECT/one result set returning
+all eight rows; no business assertion was removed or weakened.
+
+## Outcome and scope
+
+- Classification: `DEPLOYMENT_OR_PRODUCTION_ACTION`, audit/read-only phase.
+- Requested configuration: one Customer Pricelist for KGFF Customer
+  `KGS003 / SALES KGS`, with every active sale Product-UOM set to fixed price
+  zero, avoiding manual rule entry.
+- No Production write, Product price update, Pricelist mutation, Customer
+  assignment, Sale, Stock/FIFO, Payment, Finance, or deployment occurred.
+
+## Evidence
+
+- Read-only Production REST inventory proves exactly one active KGFF Company,
+  exactly one active regular `KGS003 / SALES KGS` Customer with
+  `default_pricelist_id=NULL`, 77 active non-bundle Products, 77 active sale
+  Product-UOM rows, and no existing zero-price Sample Pricelist.
+- Repository definitions prove `FIXED_PRICE=0` is valid and Customer Pricelist
+  assignment is canonical through `customers.default_pricelist_id`.
+- Current zero-total non-Tempo posting remains blocked by the positive Payment
+  contract; the Pricelist alone is not an operational Sample workflow.
+
+## Files
+
+- `docs/audits/KGFF_SALES_KGS_ZERO_PRICE_PRICELIST_IMPACT_2026-11-03.md`
+- `supabase/diagnostics/kgff_sales_kgs_zero_price_pricelist_preflight.sql`
+- `docs/README.md`
+- this handoff
+
+## Status and next safe step
+
+- `AUDIT COMPLETE`: repository and read-only target inventory complete.
+- Database state: `UNKNOWN` until the private ledger/object preflight runs.
+- `DATABASE LIVE`: NO configuration write.
+- `CLIENT DEPLOYED`, `SMOKE PASS`, `UAT PASS`: NO / not applicable yet.
+- Run the complete SELECT-only preflight. If every mandatory row is `PASS` and
+  installation state is `NOT_INSTALLED`, prepare the single transactional
+  mass configuration and postflight. Do not claim Sample checkout operational
+  until its separate Stock/FIFO/Expense posting behavior is implemented.

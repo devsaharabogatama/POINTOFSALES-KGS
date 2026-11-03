@@ -10,6 +10,7 @@ type OfflineCartLine = {
   quantity: number
   discountType: '' | 'AMOUNT' | 'PERCENT'
   discountInput: number
+  discountAmountBasis: 'PER_UNIT' | 'LINE_TOTAL'
 }
 
 type OfflinePaymentInput = {
@@ -227,7 +228,10 @@ export function priceOfflineCheckout(input: {
     )
     const lineDiscount =
       line.discountType === 'AMOUNT'
-        ? round4(discountInput)
+        ? round4(
+            discountInput *
+              (line.discountAmountBasis === 'PER_UNIT' ? quantity : 1),
+          )
         : line.discountType === 'PERCENT'
           ? round4(gross * discountInput / 100)
           : 0
@@ -414,6 +418,7 @@ export function buildOfflineSalePayload(input: {
         ? {
             lineDiscountType: line.discountType,
             lineDiscountInput: line.discountInput,
+            lineDiscountAmountBasis: line.discountAmountBasis,
           }
         : {}),
     })),

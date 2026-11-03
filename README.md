@@ -1,5 +1,103 @@
 # MADS — Management Distribution System
 
+> **Checkpoint 2026-11-03 - zero-price Draft compatibility (LOCAL READY):**
+> Draft `DRF-20261102-000558` terbukti membawa diskon Produk lama ketika
+> Pricelist SALES KGS menghasilkan harga Rp0. Client lokal kini melakukan
+> authoritative preview dan hanya membersihkan diskon yang mustahil pada line
+> Rp0 sebelum save/resume. Lint, build, dan regression Playwright `38/38 PASS`.
+> Client belum di-deploy; authenticated smoke dan UAT belum dilakukan. Posting
+> Finance/Expense untuk Sample total nol tetap gate terpisah.
+
+> **Checkpoint 2026-11-03 - KGFF SALES KGS Sample Pricelist:** Phase A dan
+> preflight production read-only membuktikan state `NOT_INSTALLED`, exact
+> Customer `KGS003 / SALES KGS`, serta 78 active sale Product-UOM. Forward
+> configuration migration `20261103100000` kini database-live. User mengonfirmasi
+> postflight `4/4 PASS` dan rollback-only resolver behavior sukses: 78/78 active
+> sale Product-UOM memiliki rule nol dan exact SALES KGS assignment/audit valid.
+> Authenticated POS smoke dan UAT belum dijalankan. Zero-total Sample checkout dan jurnal
+> Sample/Promosi tetap gate terpisah dan belum aktif.
+
+> **Customer code allocator collision forward-fix (2026-11-02, local package):**
+> migration candidate `20261102170000` adds one collision-safe, Company-scoped
+> allocator for POS quick-create and Backoffice codeless Customer creation.
+> It reconciles stale counters monotonically and keeps future explicit
+> canonical codes/imports from leaving the counter behind. Existing Customer
+> IDs/codes, inactive identities, explicit Backoffice codes, name uniqueness,
+> parent/Pricelist, permissions/RLS, and all Sales/Stock/FIFO/Payment/Finance
+> flows are preserved. PostgreSQL 18 parser validation and repository diff
+> checks pass. Migration `20261102170000` is now ledger-live, but its first
+> rollback behavior was blocked before Customer assertions by the synthetic
+> Company fixture invoking mandatory G6 Finance provisioning. The correction is
+> test-harness-only and now uses existing Companies. The corrected rollback
+> behavior and complete postflight are user-confirmed PASS. Database runtime is
+> live within those assertions; authenticated POS/Backoffice smoke and UAT are
+> still pending. Audit:
+> [Customer allocator collision forward-fix](docs/audits/CUSTOMER_CODE_ALLOCATOR_COLLISION_FORWARD_FIX_IMPACT_2026-11-02.md).
+
+> **Retail POS per-unit nominal Product discount (2026-11-02, local package):**
+> ordinary Retail POS Products now use nominal discount per sold UOM, so qty 10
+> with Rp100 input resolves to Rp1.000 discount. Exact `L / Lettuce` and
+> `BB / Bawang Bombay` retain whole-line nominal discount; percentage and
+> Backoffice Sales Order behavior are unchanged. The Product editor subtotal is
+> live before confirmation, and online/offline payloads carry the same
+> server-validated immutable basis. Existing open Drafts and old clients retain
+> legacy whole-line semantics. PWA lint/build and complete mocked POS/runtime
+> regression `35/35 PASS`. The user reports migration `20261102160000`
+> executed successfully. Complete postflight is now PASS and the user reports
+> the rollback-only behavior succeeded, so the database layer is live and
+> verified within those assertions. Client deploy, authenticated POS smoke,
+> and UAT remain pending.
+> The first migration attempt rolled back on PostgreSQL `42702` because the
+> Product `master_version` source was unqualified in `UPDATE ... FROM`; the
+> candidate now explicitly uses `product.master_version`. Database readiness
+> remains revoked until the corrected preflight reconfirms `NOT_INSTALLED`.
+> Audit: [Retail per-unit Product discount](docs/audits/POS_RETAIL_PER_UNIT_PRODUCT_DISCOUNT_IMPACT_2026-11-02.md).
+
+> **Retail Delivery dengan Pelanggan Umum (2026-11-02, local-ready only):**
+> PWA tidak lagi mengosongkan nama penerima saat Customer aktif adalah Customer
+> sistem Walk-In. Pelanggan Umum tetap menjadi `customerId` canonical dan nama
+> masternya menjadi default penerima yang dapat diedit, sehingga Kasir tidak
+> perlu memilih Customer reguler hanya untuk Delivery. Server-side nama
+> penerima/Surat Jalan, Pickup, Backoffice/ODR, payment/Tempo, Stock/FIFO,
+> Finance, tenant, retry, dan histori tidak berubah. Tidak ada migration atau
+> production write. PWA build/lint, focused browser `2/2 PASS`, dan full POS
+> mocked/runtime regression `33/33 PASS`. Client deployment, authenticated smoke,
+> dan UAT masih pending. Audit:
+> [Retail Delivery Walk-In](docs/audits/POS_RETAIL_DELIVERY_WALK_IN_CUSTOMER_IMPACT_2026-11-02.md).
+
+> **Retail Session net Return summary (2026-11-02, local-ready only):** the
+> close-session Cash calculator already subtracts Posted Cash refunds, but the
+> PWA summary previously showed gross Sale payments and gross Product Out.
+> Guarded migration `20261102150000` adds an authenticated own-session,
+> Retail-only read RPC. The PWA now shows Cash/non-cash/method totals net of
+> Posted refunds and Product Out net of `SALEABLE`/`DAMAGED` physical Returns;
+> `NO_PHYSICAL_RETURN` affects money only. Backoffice, Return posting,
+> Stock/FIFO/HPP, Finance/Journal, Expense, and close-session mutation are
+> preserved. An earlier preflight passed for the superseded `130000` candidate,
+> but migration `140000` became database-live afterward; the candidate was
+> renumbered forward to `150000` and its current preflight must be rerun. PWA build/lint,
+> focused browser coverage, and the mocked POS/runtime suite pass. Migration,
+> behavior/postflight, deployment, authenticated smoke, and UAT are still
+> pending at package creation. The user has now confirmed migration, rollback
+> behavior, and complete postflight PASS, so the database runtime is live.
+> Client deployment, authenticated UI smoke, and UAT remain pending. Audit:
+> [Retail Session net Return summary](docs/audits/POS_RETAIL_SESSION_NET_RETURN_SUMMARY_IMPACT_2026-11-02.md).
+
+> **Negative-stock Sales Return correction (2026-11-02, database live):** invoice
+> `INV-20261101-0000000951` proved a legitimate Retail Return could be listed
+> but could not post because its source Sale used five authorized negative-stock
+> units and zero positive FIFO. A guarded forward candidate
+> `20261102120000` adds exact negative-source Return lineage and restoration
+> audit while preserving positive FIFO, Backoffice approval, refund methods,
+> Finance posting, Goods Receipt, Purchase Return, historical rows, and tenant
+> boundaries. Production preflight passed as `NOT_INSTALLED`; migration
+> `20261102120000`, SELECT-only postflight, and authenticated rollback-only
+> behavior are now user-confirmed PASS. The behavior covered invoice 0951,
+> exact source-shortage closure, Product Stock/batch/movement, HPP/Finance input,
+> retry, and rollback. Real authenticated POS smoke and UAT remain pending.
+> Do not rerun or edit the installed migration. Audit:
+> [negative-stock Sales Return restoration](docs/audits/POS_SALES_RETURN_NEGATIVE_STOCK_RESTORATION_IMPACT_2026-11-02.md).
+
 > **POS Retail direct Return/refund package (2026-11-02, database live):**
 > company dengan `RETAIL_CONFIRM_INVOICE` dan source Sale `POS + Retail` kini
 > memiliki guarded forward package untuk menyimpan dan mem-finalkan Return serta
@@ -4589,3 +4687,31 @@ ROLLBACK BEHAVIOR PASS**. The Backoffice client is not yet deployed, and
 authenticated smoke plus UAT remain pending. Follow
 `docs/runbooks/POS_RETAIL_NON_CASH_ATOMIC_VERIFICATION.md` after deployment;
 do not infer UI smoke or UAT from the database behavior result.
+
+> **2026-11-02 status correction:** authenticated KGS POS checkout now exposes
+> `permission denied for table sales_payment_verification_requests`. The prior
+> rollback behavior did not execute the public checkout RPC as an authenticated
+> cashier; it therefore did not prove the POS-to-trigger privilege boundary.
+> Current status for the affected checkout is `SMOKE FAIL / UAT FAIL` and all
+> unrelated feature work is frozen. No applied migration or Production data is
+> changed by the new SELECT-only diagnosis. See
+> `docs/audits/POS_RETAIL_NON_CASH_PERMISSION_REGRESSION_2026-11-02.md`.
+
+> **2026-11-02 proven root cause and forward package:** the complete Production
+> routine inventory proves the principal checkout/capture/review functions are
+> correctly owned and scoped. The remaining deferred Cash invariant trigger
+> runs `private.trg_enforce_no_pending_pos_cash()` as `SECURITY INVOKER`; after
+> the posting RPC returns to the cashier context, that deferred function cannot
+> read its protected verification table. Forward migration `20261102140000`
+> changes only this guard to owner-executed `SECURITY DEFINER`; it does not grant
+> table access or change Cash, non-cash Finance verification, Tempo, Backoffice,
+> Stock/FIFO, accounting, or historical rows. Preflight, migration, postflight,
+> and an authenticated rollback-only deferred-trigger regression are authored.
+> The user subsequently returned the exact rollback behavior as `PASS`. Its
+> precondition proves migration `20261102140000` is database-live, and it proves
+> the deferred guard can execute under an authenticated actor without granting
+> table access. The complete postflight then passed ledger, owner/security,
+> enabled deferred-trigger, exact-function, and authenticated table-denial
+> checks. A real Transfer/QRIS POS checkout has not yet been supplied, so current
+> status is `DATABASE LIVE / ROLLBACK BEHAVIOR PASS / POSTFLIGHT PASS /
+> AUTHENTICATED SMOKE PENDING / UAT PENDING`.

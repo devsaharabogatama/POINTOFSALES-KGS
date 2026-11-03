@@ -32,6 +32,7 @@ export type OfflineSalePayload = {
     snapshotUnitPrice: number
     lineDiscountType?: 'AMOUNT' | 'PERCENT'
     lineDiscountInput?: number
+    lineDiscountAmountBasis?: 'PER_UNIT' | 'LINE_TOTAL'
   }>
   payments: Array<{
     clientPaymentKey: string

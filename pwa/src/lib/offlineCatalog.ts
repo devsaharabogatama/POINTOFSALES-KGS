@@ -62,6 +62,7 @@ export type OfflineCatalogProductUom = {
   uomMasterVersion: number
   productUomMasterVersion: number
   tax: Record<string, unknown>
+  lineDiscountAmountBasis: 'PER_UNIT' | 'LINE_TOTAL'
 }
 
 export type OfflineCatalogPaymentMethod = {
@@ -219,6 +220,9 @@ function validateSnapshot(
       !requiredString(row, 'productUomId') ||
       requiredNumber(row, 'factorToBase') <= 0 ||
       requiredNumber(row, 'baseUnitPrice') < 0 ||
+      !['PER_UNIT', 'LINE_TOTAL'].includes(
+        requiredString(row, 'lineDiscountAmountBasis'),
+      ) ||
       !isObject(row.tax)
     ) {
       throw new Error('OFFLINE_CATALOG_PRODUCT_UOM_INVALID')

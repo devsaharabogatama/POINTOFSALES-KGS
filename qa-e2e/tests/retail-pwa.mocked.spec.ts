@@ -15,6 +15,10 @@ const IDS = {
   ketulProduct: '30000000-0000-4000-8000-000000000005',
   ketulProductUom: '30000000-0000-4000-8000-000000000006',
   ketulCategory: '30000000-0000-4000-8000-000000000007',
+  lettuceProduct: '30000000-0000-4000-8000-000000000010',
+  lettuceProductUom: '30000000-0000-4000-8000-000000000011',
+  bombayProduct: '30000000-0000-4000-8000-000000000012',
+  bombayProductUom: '30000000-0000-4000-8000-000000000013',
   customer: '40000000-0000-4000-8000-000000000001',
   namedCustomer: '40000000-0000-4000-8000-000000000002',
   pricelist: '50000000-0000-4000-8000-000000000001',
@@ -49,7 +53,13 @@ async function reply(route: Route, body: unknown, status = 200) {
 
 async function installRetailServerMock(
   page: Page,
-  options: { ketulReady?: boolean; sessionOpen?: boolean } = {},
+  options: {
+    ketulReady?: boolean
+    sessionOpen?: boolean
+    zeroPriceForNamedCustomer?: boolean
+    zeroPriceDiscountDraft?: boolean
+    allowPriceOverride?: boolean
+  } = {},
 ) {
   const rpcCalls: Array<{ name: string; payload: unknown }> = []
   await page.route('https://*.supabase.co/**', async (route) => {
@@ -103,6 +113,8 @@ async function installRetailServerMock(
           availability: [
             { stock_product_id: IDS.product, available_to_sell_base_qty: 120 },
             { stock_product_id: IDS.ketulProduct, available_to_sell_base_qty: 0 },
+            { stock_product_id: IDS.lettuceProduct, available_to_sell_base_qty: 120 },
+            { stock_product_id: IDS.bombayProduct, available_to_sell_base_qty: 120 },
           ],
         },
         get_pos_customer_references: [
@@ -168,6 +180,48 @@ async function installRetailServerMock(
             documentCount: 2, totalAmount: 40000,
             cashAmount: 30000, nonCashAmount: 10000,
           },
+        },
+        get_pos_cashier_session_return_adjustments: {
+          companyId: IDS.company,
+          cashierSessionId: IDS.session,
+          processMode: 'RETAIL_CONFIRM_INVOICE',
+          applicable: true,
+          refunds: [
+            {
+              key: '73000000-0000-4000-8000-000000000001',
+              documentId: '74000000-0000-4000-8000-000000000001',
+              returnNo: 'RTN-QA-CASH', sourceSalesId: IDS.sale,
+              paymentMethodId: IDS.payment, paymentMethodName: 'Cash',
+              paymentMethodType: 'CASH', settlementRoute: 'CASH_DRAWER',
+              amount: 5000,
+            },
+            {
+              key: '73000000-0000-4000-8000-000000000002',
+              documentId: '74000000-0000-4000-8000-000000000002',
+              returnNo: 'RTN-QA-QRIS', sourceSalesId: IDS.sale,
+              paymentMethodId: IDS.qrisPayment, paymentMethodName: 'QRIS',
+              paymentMethodType: 'QRIS', settlementRoute: 'PAYMENT_CLEARING',
+              amount: 1000,
+            },
+          ],
+          lines: [
+            {
+              key: '75000000-0000-4000-8000-000000000001',
+              documentId: '74000000-0000-4000-8000-000000000001',
+              returnNo: 'RTN-QA-CASH', sourceSalesId: IDS.sale,
+              productId: IDS.product, productName: 'Ayam Frozen QA',
+              productSku: 'QA-AYAM', uomName: 'PACK', quantity: 0.25,
+              returnCondition: 'SALEABLE',
+            },
+            {
+              key: '75000000-0000-4000-8000-000000000002',
+              documentId: '74000000-0000-4000-8000-000000000002',
+              returnNo: 'RTN-QA-QRIS', sourceSalesId: IDS.sale,
+              productId: IDS.product, productName: 'Ayam Frozen QA',
+              productSku: 'QA-AYAM', uomName: 'PACK', quantity: 0.5,
+              returnCondition: 'NO_PHYSICAL_RETURN',
+            },
+          ],
         },
         get_pos_stock_request_workspace: {
           options: [{
@@ -305,7 +359,56 @@ async function installRetailServerMock(
           financialEventId: '90000000-0000-4000-8000-000000000003',
           idempotentReplay: false,
         },
-        list_pos_sale_drafts: [],
+        list_pos_sale_drafts: options.zeroPriceDiscountDraft ? [{
+          salesId: IDS.sale,
+          draftNo: 'DRF-QA-ZERO-PRICE',
+          draftLabel: null,
+          draftNotes: null,
+          draftReason: null,
+          customerId: IDS.namedCustomer,
+          customerName: 'Customer QA Named',
+          storeId: IDS.store,
+          storeName: 'Toko Utama',
+          salesWarehouseId: IDS.warehouse,
+          salesOrigin: 'POS',
+          commercialSnapshotPreserved: false,
+          createdBy: IDS.user,
+          createdByName: 'Kasir QA',
+          createdAt: '2026-11-02T01:00:00.000Z',
+          transactionAt: '2026-11-02T01:00:00.000Z',
+          transactionDateSource: 'SERVER_CREATED',
+          orderTimingMode: 'IMMEDIATE',
+          plannedOrderDate: null,
+          operationalStatus: 'ACTIVE',
+          canPost: true,
+          updatedAt: '2026-11-03T01:00:00.000Z',
+          masterVersion: 1,
+          grandTotal: 0,
+          lineCount: 1,
+          isStale: false,
+          lockOwnerId: null,
+          lockOwnerName: null,
+          lockSessionId: null,
+          lockHeartbeatAt: null,
+          lockExpired: false,
+          payloadSnapshot: {
+            clientTransactionId: '70000000-0000-4000-8000-000000000099',
+            customerId: IDS.namedCustomer,
+            selectedPricelistId: null,
+            globalDiscount: 0,
+            roundingDirection: 'NONE',
+            isTempo: false,
+            fulfillmentMode: 'PICKUP',
+            lines: [{
+              lineKey: IDS.productUom,
+              productUomId: IDS.productUom,
+              quantity: 1,
+              lineDiscountType: 'AMOUNT',
+              lineDiscountInput: 100,
+              lineDiscountAmountBasis: 'PER_UNIT',
+            }],
+          },
+        }] : [],
         get_pos_sales_orders: { orders: [], reservationLines: [] },
         get_pos_sales_order_revision_eligibility: [],
         preview_pos_sale_prices: {
@@ -369,6 +472,32 @@ async function installRetailServerMock(
           cashierSessionId: IDS.session, sessionCode: 'SES-QA-KGFF', masterVersion: 1,
         },
       }
+      if (rpc === 'preview_pos_sale_prices') {
+        const isZeroPrice =
+          (options.zeroPriceForNamedCustomer || options.zeroPriceDiscountDraft) &&
+          (payload as Record<string, unknown>).p_customer_id === IDS.namedCustomer
+        return reply(route, {
+          lines: [{
+            lineKey: IDS.productUom, productUomId: IDS.productUom,
+            productName: 'Ayam Frozen QA', productSku: 'QA-AYAM', uomName: 'PACK',
+            quantity: 1, baseUnitPrice: 25000, unitPrice: isZeroPrice ? 0 : 25000,
+            pricelistId: IDS.pricelist, pricelistRuleId: null,
+            pricelistName: isZeroPrice ? 'Sample SALES KGS' : 'Harga Retail KGFF',
+            pricingSelectionSource: 'AUTO',
+          }],
+        })
+      }
+      if (rpc === 'save_pos_sale_draft_with_ketul') {
+        const isZeroPrice =
+          (options.zeroPriceForNamedCustomer || options.zeroPriceDiscountDraft) &&
+          ((payload as Record<string, unknown>).p_payload as Record<string, unknown>)
+            ?.customerId === IDS.namedCustomer
+        return reply(route, {
+          ...(responses[rpc] as Record<string, unknown>),
+          grandTotalBeforeRounding: isZeroPrice ? 0 : 25000,
+          grandTotalAfterRounding: isZeroPrice ? 0 : 25000,
+        })
+      }
       return reply(route, responses[rpc] ?? {})
     }
 
@@ -382,7 +511,8 @@ async function installRetailServerMock(
       stores: [{ id: IDS.store, store_name: 'Toko Utama' }],
       pos_terminals: [{
         id: IDS.terminal, store_id: IDS.store, pos_code: 'POS-1',
-        pos_name: 'Kasir Utama POS-1', hidden_feature_keys: [], allow_price_override: false,
+        pos_name: 'Kasir Utama POS-1', hidden_feature_keys: [],
+        allow_price_override: options.allowPriceOverride ?? false,
       }],
       warehouses: [{ id: IDS.warehouse, store_id: IDS.store, name: 'Gudang Toko' }],
       cashier_sessions: options.sessionOpen === false ? null : {
@@ -391,13 +521,25 @@ async function installRetailServerMock(
         opening_cash_actual: 100000, expected_cash: 100000, master_version: 1,
       },
       products: [
-        { id: IDS.product, sku: 'QA-AYAM', name: 'Ayam Frozen QA', category_id: IDS.category, is_bundle: false },
-        { id: IDS.ketulProduct, sku: 'KTL-QA', name: 'Ketul QA', category_id: IDS.ketulCategory, is_bundle: false },
+        { id: IDS.product, sku: 'QA-AYAM', name: 'Ayam Frozen QA', category_id: IDS.category, is_bundle: false, pos_line_discount_amount_basis: 'PER_UNIT' },
+        { id: IDS.ketulProduct, sku: 'KTL-QA', name: 'Ketul QA', category_id: IDS.ketulCategory, is_bundle: false, pos_line_discount_amount_basis: 'PER_UNIT' },
+        { id: IDS.lettuceProduct, sku: 'L', name: 'Lettuce', category_id: IDS.category, is_bundle: false, pos_line_discount_amount_basis: 'LINE_TOTAL' },
+        { id: IDS.bombayProduct, sku: 'BB', name: 'Bawang Bombay', category_id: IDS.category, is_bundle: false, pos_line_discount_amount_basis: 'LINE_TOTAL' },
       ],
       product_uoms: [
         {
           id: IDS.productUom, product_id: IDS.product, uom_id: IDS.uom,
           factor_to_base: 1, sale_price: 25000, barcode: 'QA001',
+          is_active: true, sales_allowed: true,
+        },
+        {
+          id: IDS.lettuceProductUom, product_id: IDS.lettuceProduct, uom_id: IDS.uom,
+          factor_to_base: 1, sale_price: 10000, barcode: 'L-QA',
+          is_active: true, sales_allowed: true,
+        },
+        {
+          id: IDS.bombayProductUom, product_id: IDS.bombayProduct, uom_id: IDS.uom,
+          factor_to_base: 1, sale_price: 12000, barcode: 'BB-QA',
           is_active: true, sales_allowed: true,
         },
         {
@@ -595,6 +737,167 @@ test('configures a Product before Cart commit and keeps the same editor availabl
   await expect(editor.getByText('Edit produk')).toBeVisible()
   await expect(cartItems).toHaveCount(1)
   await editor.getByRole('button', { name: 'Selesai' }).click()
+})
+
+test('removes a stale Product discount when Customer Pricelist resolves the line to zero', async ({ page }) => {
+  const rpcCalls = await installRetailServerMock(page, {
+    zeroPriceForNamedCustomer: true,
+  })
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('not-a-real-password')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+
+  await page.locator('.pos-product-grid').getByRole('button', {
+    name: /Ayam Frozen QA/,
+  }).click()
+  const editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  await editor.locator('.pos-cart-editor-discount select').selectOption('AMOUNT')
+  await editor.locator('.pos-cart-editor-discount input').fill('100')
+  await editor.getByRole('button', { name: 'Masukkan ke keranjang' }).click()
+
+  await page.getByLabel('Customer katalog').selectOption(IDS.namedCustomer)
+  await expect(page.getByText(
+    'Diskon produk lama dihapus karena harga Pricelist produk tersebut Rp0.',
+  )).toBeVisible()
+  await expect(
+    page.locator('.pos-cart-item').first().locator('.pos-catalog-cart-notes'),
+  ).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Atur pembayaran' }).click()
+  await page.getByRole('button', { name: 'Simpan Draft' }).click()
+  await expect(page.getByText(/Draft tersimpan/)).toBeVisible()
+
+  const saveCall = [...rpcCalls]
+    .reverse()
+    .find((call) => call.name === 'save_pos_sale_draft_with_ketul')
+  const savePayload = saveCall?.payload as {
+    p_payload?: { lines?: Array<Record<string, unknown>>; globalDiscount?: number }
+  }
+  expect(savePayload.p_payload?.lines).toEqual([{
+    lineKey: IDS.productUom,
+    productUomId: IDS.productUom,
+    quantity: 1,
+  }])
+  expect(savePayload.p_payload?.globalDiscount).toBe(0)
+})
+
+test('continues an existing zero-price Draft after removing its stale Product discount', async ({ page }) => {
+  const rpcCalls = await installRetailServerMock(page, {
+    zeroPriceDiscountDraft: true,
+  })
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('not-a-real-password')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+
+  await page.getByRole('button', { name: /^Draft/ }).click()
+  const draftPanel = page.getByRole('heading', { name: 'Draft transaksi' })
+    .locator('xpath=ancestor::section[1]')
+  await expect(draftPanel.getByText('DRF-QA-ZERO-PRICE')).toBeVisible()
+  await draftPanel.getByRole('button', { name: 'Lanjutkan' }).click()
+
+  await expect(page.getByText(
+    'DRF-QA-ZERO-PRICE dibuka; diskon produk lama dihapus karena harga Pricelist Rp0.',
+  )).toBeVisible()
+  await expect(page.getByText('LINE_DISCOUNT_EXCEEDS_LINE_TOTAL')).toHaveCount(0)
+  const saveCall = [...rpcCalls]
+    .reverse()
+    .find((call) => call.name === 'save_pos_sale_draft_with_ketul')
+  const savePayload = saveCall?.payload as {
+    p_payload?: { lines?: Array<Record<string, unknown>> }
+  }
+  expect(savePayload.p_payload?.lines).toEqual([{
+    lineKey: IDS.productUom,
+    productUomId: IDS.productUom,
+    quantity: 1,
+  }])
+})
+
+test('keeps a Product discount when an allowed positive price override replaces the zero Pricelist price', async ({ page }) => {
+  const rpcCalls = await installRetailServerMock(page, {
+    zeroPriceForNamedCustomer: true,
+    allowPriceOverride: true,
+  })
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('not-a-real-password')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+  await page.getByLabel('Customer katalog').selectOption(IDS.namedCustomer)
+
+  await page.locator('.pos-product-grid').getByRole('button', {
+    name: /Ayam Frozen QA/,
+  }).click()
+  const editor = page.getByRole('dialog', { name: 'Ayam Frozen QA' })
+  const priceSection = editor.locator('.pos-cart-editor-section').filter({
+    hasText: 'Harga jual / PACK',
+  })
+  await priceSection.locator('input').fill('5000')
+  await editor.locator('.pos-cart-editor-discount select').selectOption('AMOUNT')
+  await editor.locator('.pos-cart-editor-discount input').fill('100')
+  await editor.getByRole('button', { name: 'Masukkan ke keranjang' }).click()
+  await page.getByRole('button', { name: 'Atur pembayaran' }).click()
+  await page.getByRole('button', { name: 'Simpan Draft' }).click()
+
+  const saveCall = [...rpcCalls]
+    .reverse()
+    .find((call) => call.name === 'save_pos_sale_draft_with_ketul')
+  const savePayload = saveCall?.payload as {
+    p_payload?: { lines?: Array<Record<string, unknown>> }
+  }
+  expect(savePayload.p_payload?.lines).toEqual([{
+    lineKey: IDS.productUom,
+    productUomId: IDS.productUom,
+    quantity: 1,
+    lineDiscountType: 'AMOUNT',
+    lineDiscountInput: 100,
+    lineDiscountAmountBasis: 'PER_UNIT',
+    overrideUnitPrice: 5000,
+  }])
+})
+
+test('previews nominal Product discounts per unit while Lettuce and Bawang Bombay stay whole-line', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await installRetailServerMock(page)
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('not-a-real-password')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+
+  async function expectAmountPreview(
+    productName: string,
+    expectedTotal: string,
+    expectedBasisCopy: string,
+  ) {
+    await page.locator('.pos-product-grid').getByRole('button', {
+      name: new RegExp(productName),
+    }).click()
+    const editor = page.getByRole('dialog', { name: productName })
+    await editor.locator('.pos-cart-editor-quantity input').fill('10')
+    await editor.locator('.pos-cart-editor-discount select').selectOption('AMOUNT')
+    await editor.locator('.pos-cart-editor-discount input').fill('100')
+    await expect(editor.getByText(expectedBasisCopy)).toBeVisible()
+    await expect(editor.locator('.pos-cart-editor-quantity strong')).toHaveText(
+      expectedTotal,
+    )
+    await editor.getByRole('button', { name: 'Batal', exact: true }).click()
+  }
+
+  await expectAmountPreview(
+    'Ayam Frozen QA',
+    'Rp 249.000',
+    'Nominal berlaku per PACK.',
+  )
+  await expectAmountPreview(
+    'Lettuce',
+    'Rp 99.900',
+    'Nominal berlaku untuk total baris produk ini.',
+  )
+  await expectAmountPreview(
+    'Bawang Bombay',
+    'Rp 119.900',
+    'Nominal berlaku untuk total baris produk ini.',
+  )
 })
 
 test('uses the desktop Catalog height for Cart items and keeps Total Akhir at the panel bottom', async ({ page }, testInfo) => {
@@ -930,15 +1233,24 @@ test('shows a compact Session Summary while retaining customer, DRF and Invoice 
   await expect(summary.getByText('Rp 100.000')).toBeVisible()
   await expect(summary.getByText('Total Expense')).toBeVisible()
   await expect(summary.getByText('Rp 40.000')).toBeVisible()
+  const cashNet = summary.locator('article').filter({ hasText: /^Cash net sesi/ })
+  await expect(cashNet).toContainText('Rp 15.000')
+  const nonCashNet = summary.locator('article').filter({ hasText: /^Non-cash net sesi/ })
+  await expect(nonCashNet).toContainText('Rp 4.000')
+  const paymentNet = summary.locator('article').filter({ hasText: /^Total pembayaran net/ })
+  await expect(paymentNet).toContainText('Rp 19.000')
   const expenseSummary = summary.locator('article').filter({ hasText: 'Total Expense' })
   await expect(expenseSummary).toContainText('2 transaksi')
   await expect(expenseSummary).toContainText('Cash Rp 30.000')
   await expect(expenseSummary).toContainText('Non-cash Rp 10.000')
   const breakdown = summary.getByLabel('Breakdown metode pembayaran')
   await expect(breakdown).toContainText('Cash')
-  await expect(breakdown).toContainText('Rp 20.000')
+  await expect(breakdown).toContainText('Rp 15.000')
   await expect(breakdown).toContainText('QRIS')
-  await expect(breakdown).toContainText('Rp 5.000')
+  await expect(breakdown).toContainText('Rp 4.000')
+  await summary.getByRole('tab', { name: /Produk keluar net/ }).click()
+  await expect(summary.getByText('0,75 PACK')).toBeVisible()
+  await summary.getByRole('tab', { name: /Transaksi/ }).click()
   const transaction = summary.locator('.pos-session-transaction-head').first()
   await expect(transaction.locator('strong').first()).toHaveText('Customer QA Named')
   await expect(transaction.locator('small')).toContainText('DRF-QA-0001')
@@ -1000,7 +1312,7 @@ test('opens a new Cashier Session with the selected terminal, warehouse and phys
   })
 })
 
-test('saves a Delivery Draft with recipient and fee while retaining Retail Draft ownership', async ({ page }) => {
+test('saves a Walk-In Delivery Draft without requiring a regular Customer', async ({ page }) => {
   const rpcCalls = await installRetailServerMock(page)
   await page.goto(pwaBaseUrl)
   await page.getByLabel('Email').fill('qa.cashier@example.test')
@@ -1012,7 +1324,7 @@ test('saves a Delivery Draft with recipient and fee while retaining Retail Draft
   const checkout = page.getByRole('dialog', { name: 'Pembayaran dan penyelesaian' })
   await checkout.getByLabel('Perlu dikirim').check()
   const delivery = page.getByRole('dialog', { name: 'Tujuan kirim dan ongkir' })
-  await delivery.getByLabel('Nama penerima').fill('Penerima QA')
+  await expect(delivery.getByLabel('Nama penerima')).toHaveValue('Customer Umum KGFF')
   await delivery.getByLabel('Alamat pengiriman (opsional)').fill('Alamat QA')
   await delivery.getByRole('textbox', { name: 'Ongkir', exact: true }).fill('5000')
   await delivery.getByRole('button', { name: 'Simpan pengiriman' }).click()
@@ -1023,12 +1335,32 @@ test('saves a Delivery Draft with recipient and fee while retaining Retail Draft
   expect(save?.payload).toMatchObject({
     p_payload: {
       fulfillmentMode: 'DELIVERY',
-      deliveryRecipientName: 'Penerima QA',
+      customerId: IDS.customer,
+      deliveryRecipientName: 'Customer Umum KGFF',
       deliveryAddress: 'Alamat QA',
       deliveryFeeAmount: 5000,
     },
   })
   expect(rpcCalls.some((call) => call.name === 'post_pos_sale_with_ketul')).toBe(false)
+})
+
+test('keeps a named Customer as the editable Delivery recipient default', async ({ page }) => {
+  await installRetailServerMock(page)
+  await page.goto(pwaBaseUrl)
+  await page.getByLabel('Email').fill('qa.cashier@example.test')
+  await page.getByLabel('Password').fill('secret')
+  await page.getByRole('button', { name: 'Masuk' }).click()
+
+  await page.getByLabel('Customer katalog').selectOption(IDS.namedCustomer)
+  await addCatalogProductToCart(page)
+  await page.getByRole('button', { name: 'Atur pembayaran' }).click()
+  const checkout = page.getByRole('dialog', { name: 'Pembayaran dan penyelesaian' })
+  await checkout.getByLabel('Perlu dikirim').check()
+  const delivery = page.getByRole('dialog', { name: 'Tujuan kirim dan ongkir' })
+  const recipient = delivery.getByLabel('Nama penerima')
+  await expect(recipient).toHaveValue('Customer QA Named')
+  await recipient.fill('Penerima QA yang berbeda')
+  await expect(recipient).toHaveValue('Penerima QA yang berbeda')
 })
 
 test('finalizes a Retail Cash Sales Return and refund with exact source linkage', async ({ page }) => {

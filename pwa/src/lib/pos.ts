@@ -55,6 +55,25 @@ export type CashierSessionSummaryPayment = {
   amount: number
 }
 
+export type CashierSessionSummaryRefund = CashierSessionSummaryPayment & {
+  documentId: string
+  returnNo: string
+  sourceSalesId: string
+}
+
+export type CashierSessionSummaryReturnLine = {
+  key: string
+  documentId: string
+  returnNo: string
+  sourceSalesId: string
+  productId: string
+  productName: string
+  productSku: string
+  uomName: string
+  quantity: number
+  returnCondition: 'SALEABLE' | 'DAMAGED' | 'NO_PHYSICAL_RETURN'
+}
+
 export type CashierSessionSummaryTransaction = {
   salesId: string
   documentNo: string
@@ -73,6 +92,11 @@ export type CashierSessionSummaryTransaction = {
 export type CashierSessionSummary = {
   sessionId: string
   transactions: CashierSessionSummaryTransaction[]
+  returnAdjustments: {
+    applicable: boolean
+    refunds: CashierSessionSummaryRefund[]
+    lines: CashierSessionSummaryReturnLine[]
+  }
   expense: {
     documentCount: number
     totalAmount: number
@@ -80,6 +104,8 @@ export type CashierSessionSummary = {
     nonCashAmount: number
   }
 }
+
+export type LineDiscountAmountBasis = 'PER_UNIT' | 'LINE_TOTAL'
 
 export type ProductOption = {
   productId: string
@@ -95,6 +121,7 @@ export type ProductOption = {
   decimalPrecision: number
   barcode: string | null
   isBundle: boolean
+  lineDiscountAmountBasis: LineDiscountAmountBasis
 }
 
 export type PurchaseProductUomOption = {
@@ -452,6 +479,7 @@ export type DraftLine = {
   quantity: number
   lineDiscountType?: 'AMOUNT' | 'PERCENT'
   lineDiscountInput?: number
+  lineDiscountAmountBasis?: LineDiscountAmountBasis
   overrideUnitPrice?: number
 }
 
@@ -1019,7 +1047,13 @@ export async function loadCashierSessionSummary(
   const rows = (headers ?? []) as DbRow[]
   const salesIds = rows.map((row) => String(row.id))
 
-  const [detailsResult, customersResult, legacyPaymentsResult, expenseWorkspaceResult] = await Promise.all([
+  const [
+    detailsResult,
+    customersResult,
+    legacyPaymentsResult,
+    expenseWorkspaceResult,
+    returnAdjustmentsResult,
+  ] = await Promise.all([
     salesIds.length
       ? supabase
           .from('sales_details')
@@ -1041,14 +1075,25 @@ export async function loadCashierSessionSummary(
     supabase.rpc('get_pos_expense_workspace', {
       p_cashier_session_id: cashierSessionId,
     }),
+    supabase.rpc('get_pos_cashier_session_return_adjustments', {
+      p_cashier_session_id: cashierSessionId,
+    }),
   ])
   throwIfError(detailsResult.error)
   throwIfError(customersResult.error)
   throwIfError(legacyPaymentsResult.error)
   throwIfError(expenseWorkspaceResult.error)
+  throwIfError(returnAdjustmentsResult.error)
 
   const expenseWorkspace = (expenseWorkspaceResult.data ?? {}) as DbRow
   const expenseSummary = (expenseWorkspace.sessionExpenseSummary ?? {}) as DbRow
+  const returnAdjustmentPayload = (returnAdjustmentsResult.data ?? {}) as DbRow
+  const returnRefundRows = Array.isArray(returnAdjustmentPayload.refunds)
+    ? returnAdjustmentPayload.refunds as DbRow[]
+    : []
+  const returnLineRows = Array.isArray(returnAdjustmentPayload.lines)
+    ? returnAdjustmentPayload.lines as DbRow[]
+    : []
 
   const customerNameById = new Map(
     ((customersResult.data ?? []) as DbRow[]).map((row) => [
@@ -1099,6 +1144,44 @@ export async function loadCashierSessionSummary(
 
   return {
     sessionId: cashierSessionId,
+    returnAdjustments: {
+      applicable: returnAdjustmentPayload.applicable === true,
+      refunds: returnRefundRows.map((row) => ({
+        key: String(row.key),
+        documentId: String(row.documentId),
+        returnNo: String(row.returnNo ?? ''),
+        sourceSalesId: String(row.sourceSalesId),
+        paymentMethodId: row.paymentMethodId
+          ? String(row.paymentMethodId)
+          : null,
+        paymentMethodName: row.paymentMethodName
+          ? String(row.paymentMethodName)
+          : null,
+        paymentMethodType: row.paymentMethodType
+          ? String(row.paymentMethodType)
+          : null,
+        settlementRoute: row.settlementRoute
+          ? String(row.settlementRoute)
+          : null,
+        amount: numberValue(row.amount),
+      })),
+      lines: returnLineRows.map((row) => ({
+        key: String(row.key),
+        documentId: String(row.documentId),
+        returnNo: String(row.returnNo ?? ''),
+        sourceSalesId: String(row.sourceSalesId),
+        productId: String(row.productId),
+        productName: String(row.productName ?? 'Produk'),
+        productSku: String(row.productSku ?? ''),
+        uomName: String(row.uomName ?? ''),
+        quantity: numberValue(row.quantity),
+        returnCondition: row.returnCondition === 'DAMAGED'
+          ? 'DAMAGED'
+          : row.returnCondition === 'NO_PHYSICAL_RETURN'
+            ? 'NO_PHYSICAL_RETURN'
+            : 'SALEABLE',
+      })),
+    },
     expense: {
       documentCount: numberValue(expenseSummary.documentCount),
       totalAmount: numberValue(expenseSummary.totalAmount),
@@ -1201,7 +1284,7 @@ export async function loadCatalog(
   ] = await Promise.all([
     supabase
       .from('products')
-      .select('id,sku,name,category_id,is_bundle')
+      .select('id,sku,name,category_id,is_bundle,pos_line_discount_amount_basis')
       .eq('company_id', companyId)
       .eq('is_active', true),
     supabase
@@ -1304,6 +1387,10 @@ export async function loadCatalog(
       decimalPrecision: numberValue(uom.decimal_precision),
       barcode: row.barcode,
       isBundle: Boolean(product.is_bundle),
+      lineDiscountAmountBasis:
+        product.pos_line_discount_amount_basis === 'LINE_TOTAL'
+          ? 'LINE_TOTAL'
+          : 'PER_UNIT',
     })
   }
 

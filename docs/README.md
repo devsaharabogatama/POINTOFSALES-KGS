@@ -1,5 +1,116 @@
 # Router Dokumen KGS POS
 
+## 2026-11-03 - KGFF Sample zero-price Draft compatibility
+
+- Impact audit:
+  [KGFF Sample Zero-Price Discount Compatibility](audits/KGFF_SAMPLE_ZERO_PRICE_DISCOUNT_COMPATIBILITY_IMPACT_2026-11-03.md).
+- Exact Draft `DRF-20261102-000558` retained a positive Product discount after
+  SALES KGS resolved the line to Rp0, so canonical Draft save correctly rejected
+  it. Local client normalization now handles new and resumed online Retail
+  Drafts without weakening the server guard.
+- Evidence: lint PASS, build PASS, mocked POS/runtime regression `38/38 PASS`.
+  Status is `LOCAL READY`; client deployment, authenticated smoke, UAT, and
+  zero-total Sample Finance/Expense posting remain pending.
+
+## 2026-11-03 - KGFF SALES KGS zero-price Pricelist Phase B
+
+- Impact audit:
+  [KGFF SALES KGS Zero-Price Pricelist](audits/KGFF_SALES_KGS_ZERO_PRICE_PRICELIST_IMPACT_2026-11-03.md).
+- Rollout:
+  [KGFF SALES KGS Sample Zero Pricelist](runbooks/KGFF_SALES_KGS_SAMPLE_ZERO_PRICELIST_ROLLOUT.md).
+- SQL-editor preflight user membuktikan `NOT_INSTALLED`, exact Company/Customer,
+  78 active sale Product-UOM, runtime objects tersedia, dan queue idle.
+- Migration kini database-live; postflight 4/4 dan rollback-only behavior
+  user-confirmed PASS dengan exact coverage 78/78. Authenticated smoke, UAT,
+  zero-total checkout, dan Sample/Promotion Finance posting masih pending.
+
+## 2026-11-03 - KGFF SALES KGS zero-price Pricelist Phase A
+
+- Read-only impact audit:
+  [KGFF SALES KGS Zero-Price Pricelist](audits/KGFF_SALES_KGS_ZERO_PRICE_PRICELIST_IMPACT_2026-11-03.md).
+- Earlier REST inventory found one active regular Customer `KGS003 / SALES KGS`
+  and no assigned Sample Pricelist. Its 77-row catalog count is superseded by
+  the authoritative SQL-editor preflight count of 78 active sale Product-UOM.
+- The mass Pricelist configuration is prepared locally but has not been run in
+  the database. The SELECT-only preflight proved the ledger/runtime gate.
+- This configuration is separate from zero-total Sample checkout: current
+  non-Tempo POS posting still requires a positive Payment leg, so operational
+  Sample posting and `Debit Sample Expense / Credit Inventory` remain a later
+  behavior gate.
+
+## 2026-11-02 - Customer code allocator collision forward-fix
+
+- Audit and rollout contract:
+  [Customer code allocator collision forward-fix](audits/CUSTOMER_CODE_ALLOCATOR_COLLISION_FORWARD_FIX_IMPACT_2026-11-02.md).
+- Proven KGFF defect: cloned Customer code `CUST-000001` exists while the
+  legacy automatic counter can still point at that occupied code; retry repeats
+  the same unique-code collision and the POS error text misclassifies it.
+- Local candidate `20261102170000` shares one per-Company advisory-locked
+  allocator across POS and Backoffice automatic creation, reconciles all
+  counters forward, and tracks later explicit canonical codes through a
+  trigger. Explicit codes and normalized-name uniqueness remain unchanged.
+- SQL files pass PostgreSQL 18 parser validation and diff checks. Migration
+  `20261102170000` is ledger-live. Its first behavior fixture failed before
+  Customer assertions because synthetic Company creation invoked mandatory G6
+  Finance provisioning. That is a test-harness defect. The corrected behavior
+  is now user-confirmed PASS without creating a Company. Complete postflight is
+  also user-confirmed PASS for all seven Companies; authenticated smoke and UAT
+  remain pending.
+
+## 2026-11-02 - Retail POS per-unit Product nominal discount
+
+- Audit and rollout gate:
+  [Retail POS per-unit Product discount](audits/POS_RETAIL_PER_UNIT_PRODUCT_DISCOUNT_IMPACT_2026-11-02.md).
+- Ordinary Retail POS Products use nominal discount per sold UOM; exact
+  `L / Lettuce` and `BB / Bawang Bombay` keep whole-line semantics. Percentage
+  and Backoffice Sales Order behavior are preserved.
+- The Product editor subtotal reacts before confirmation; online/offline carry
+  one server-validated basis. Existing open Drafts and old clients stay
+  whole-line through an immutable snapshot.
+- Local PWA lint/build and complete mocked POS/runtime suite `35/35 PASS`.
+  The user reports database migration `20261102160000` executed successfully.
+  Complete postflight is now user-supplied PASS and the user reports the
+  rollback-only behavior succeeded. Database runtime is live within that test
+  scope; client deploy, authenticated POS smoke, and UAT remain pending.
+
+## 2026-11-02 - Retail Delivery dengan Pelanggan Umum
+
+- Phase A impact audit:
+  [POS Retail Delivery Walk-In Customer](audits/POS_RETAIL_DELIVERY_WALK_IN_CUSTOMER_IMPACT_2026-11-02.md).
+- Proven cause: database tidak melarang Walk-In Delivery; PWA mengosongkan nama
+  penerima Walk-In lalu guard nama penerima menahan save/post.
+- Local patch memakai nama master Customer aktif sebagai default recipient,
+  termasuk Pelanggan Umum, tanpa menghapus `customerId` canonical atau validasi
+  nama penerima Surat Jalan.
+- Tidak ada migration/database write. PWA build/lint, focused mocked browser
+  `2/2 PASS`, dan full POS mocked/runtime regression `33/33 PASS`. Client deployment,
+  authenticated smoke, dan UAT pending.
+
+## 2026-11-02 - Retail POS Session net Return summary
+
+- Phase A impact audit:
+  [POS Retail Session Net Return Summary](audits/POS_RETAIL_SESSION_NET_RETURN_SUMMARY_IMPACT_2026-11-02.md).
+- Proven defect: the server close-session Cash calculator already subtracts
+  Posted Cash refunds, but the PWA Session Summary displays gross Sale payments
+  and gross Product Out without Return adjustments.
+- Scope is strictly `RETAIL_CONFIRM_INVOICE` plus POS-origin source Sales.
+  Backoffice Sales Order/Return approval and read models are explicitly
+  preserved.
+- Production preflight supplied by the user passed for the earlier candidate,
+  but `20261102140000` became database-live afterward. The unapplied candidate
+  is therefore renumbered forward to `20261102150000`; its updated preflight
+  has now been rerun and passes with state `NOT_INSTALLED`. Phase B remains local-ready: migration `20261102150000`,
+  rollback-only behavior, SELECT-only postflight, PWA net aggregation, and
+  mocked browser/runtime tests are present.
+- Local evidence: PWA build and lint PASS; focused Session Summary browser test
+  PASS; complete POS mocked/runtime suite PASS (`30/30`) before the added static
+  contract, and the added Retail net-Return contract passes separately.
+- Database migration, rollback behavior, postflight, client deployment,
+  authenticated smoke, and UAT were pending at local package creation. The user
+  has now confirmed migration, rollback behavior, and complete postflight PASS;
+  database runtime is live. Client deployment, authenticated UI smoke, and UAT
+  remain pending.
+
 ## 2026-11-01 - POS Ketul KGS readiness behavior rerun
 
 - Active impact audit:

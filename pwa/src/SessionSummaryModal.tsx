@@ -154,6 +154,23 @@ export function SessionSummaryModal({
         }
       }
     }
+    for (const refund of summary?.returnAdjustments.refunds ?? []) {
+      const method = refund.paymentMethodId
+        ? methodById.get(refund.paymentMethodId)
+        : null
+      const legacyName = (refund.paymentMethodName ?? '').toLocaleLowerCase('id-ID')
+      const methodName = refund.paymentMethodName ?? method?.name ?? 'Metode pembayaran'
+      byMethod.set(methodName, (byMethod.get(methodName) ?? 0) - refund.amount)
+      const isCash = refund.paymentMethodType === 'CASH' ||
+        refund.settlementRoute === 'CASH_DRAWER' ||
+        method?.methodType === 'CASH' ||
+        legacyName === 'cash' || legacyName === 'tunai'
+      if (isCash) {
+        cash -= refund.amount
+      } else {
+        nonCash -= refund.amount
+      }
+    }
     return {
       cash,
       nonCash,
@@ -162,7 +179,7 @@ export function SessionSummaryModal({
         .map(([name, amount]) => ({ name, amount }))
         .sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name, 'id-ID')),
     }
-  }, [methodById, summary?.transactions])
+  }, [methodById, summary?.returnAdjustments.refunds, summary?.transactions])
 
   const transactions = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('id-ID')
@@ -201,12 +218,27 @@ export function SessionSummaryModal({
         products.set(line.productId, product)
       }
     }
+    for (const line of summary?.returnAdjustments.lines ?? []) {
+      if (line.returnCondition === 'NO_PHYSICAL_RETURN') continue
+      const product = products.get(line.productId) ?? {
+        productId: line.productId,
+        productName: line.productName,
+        productSku: line.productSku,
+        quantities: new Map<string, number>(),
+      }
+      const uomName = line.uomName || 'UNIT'
+      product.quantities.set(
+        uomName,
+        (product.quantities.get(uomName) ?? 0) - line.quantity,
+      )
+      products.set(line.productId, product)
+    }
     return [...products.values()]
       .sort((a, b) =>
         a.productName.localeCompare(b.productName, 'id-ID') ||
         a.productSku.localeCompare(b.productSku, 'id-ID'),
       )
-  }, [summary?.transactions])
+  }, [summary?.returnAdjustments.lines, summary?.transactions])
 
   const sessionProducts = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('id-ID')
@@ -293,14 +325,15 @@ export function SessionSummaryModal({
           </article>
           <article>
             <Banknote />
-            <span>Cash diterima</span>
+            <span>Cash net sesi</span>
             <strong>{money(totals.cash)}</strong>
+            <small>Setelah refund tunai pada sesi ini.</small>
           </article>
           <article>
             <CreditCard />
-            <span>Non-cash tercatat</span>
+            <span>Non-cash net sesi</span>
             <strong>{money(totals.nonCash)}</strong>
-            <small>Termasuk yang masih menunggu verifikasi.</small>
+            <small>Setelah refund; termasuk yang masih menunggu verifikasi.</small>
           </article>
           <article>
             <Banknote />
@@ -312,13 +345,13 @@ export function SessionSummaryModal({
           </article>
           <article className="is-total">
             <FileText />
-            <span>Total pembayaran tercatat</span>
+            <span>Total pembayaran net</span>
             <strong>{money(totals.total)}</strong>
           </article>
         </div>
 
         <div className="pos-session-payment-breakdown" aria-label="Breakdown metode pembayaran">
-          <strong>Per metode pembayaran</strong>
+          <strong>Net per metode pembayaran</strong>
           {totals.byMethod.length === 0 ? (
             <span>Belum ada pembayaran yang dihitung.</span>
           ) : totals.byMethod.map((method) => (
@@ -353,7 +386,7 @@ export function SessionSummaryModal({
               setQuery('')
             }}
           >
-            Produk keluar
+            Produk keluar net
             <span>{allSessionProducts.length}</span>
           </button>
         </div>
@@ -386,7 +419,7 @@ export function SessionSummaryModal({
               <div className="pos-session-product-list">
                 <div className="is-heading">
                   <span>Produk</span>
-                  <span>Total qty sesi</span>
+                  <span>Qty keluar net sesi</span>
                 </div>
                 {sessionProducts.map((product) => (
                   <div key={product.productId}>
