@@ -23650,3 +23650,475 @@ matrix. After the ledger exists, never edit or rerun migration
 - Deploy only with explicit user authorization, then print one named-Customer
   receipt through browser fallback and one physical ESC/POS printer. Confirm
   the name matches the posted Customer and does not wrap from embedded newline.
+
+# Checkpoint 2026-11-03 - Backoffice AR open-item task plan
+
+## Scope
+
+- Classification: `DOCUMENTATION_ONLY / Fase A READ_ONLY_AUDIT`.
+- Added
+  `docs/audits/BACKOFFICE_AR_OPEN_ITEM_CREDIT_RECONCILIATION_IMPACT_2026-11-03.md`.
+- The audit proves the active Backoffice chain currently splits Credit Note
+  between AR reduction and Refund Liability, while Customer Balance only accepts
+  unallocated receipt advance and existing Finance reconciliation documents are
+  not open-item settlement.
+- The proposed delivery is divided into nine gated tasks: production inventory,
+  AR foundation, Receipt allocation, Credit Note AR credit, apply/refund/balance,
+  replacement Draft, UI/reporting, legacy correction, and deployment/UAT.
+
+## Status and next safe step
+
+- `AUDIT COMPLETE`: PARTIAL; repository call chain and impact map are documented.
+- `LOCAL READY`, `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, `UAT PASS`:
+  NO / not applicable for this documentation checkpoint.
+- No Product, database, migration, test, or client behavior changed.
+- Before Task 2, user decisions are required for default AR credit, optional
+  replacement Draft, account presentation, DESTROY treatment, Tax/e-Faktur,
+  and legacy Refund Liability conversion scope. Task 1 must then produce a
+  fresh SELECT-only production inventory and state classification.
+
+## Task 1 decision closure and production inventory harness
+
+- User approved AR open credit as the default, explicit Customer Balance
+  conversion, existing `SALES_RETURN_DISCOUNT`, separation of DESTROY mapping,
+  and a Tax/e-Faktur rollout hold where Tax is active.
+- The replacement action copies the full source Invoice into a new Draft for
+  user editing; it never auto-posts or creates Finance effect while Draft.
+- Added SELECT-only inventory:
+  `supabase/diagnostics/backoffice_ar_open_item_credit_inventory.sql`.
+- The query reads only KMS/LSM/SMS ledger/object/runtime, Backoffice
+  Return/receipt, Invoice, Credit Note, Customer Receipt allocation, Refund,
+  Finance Event/Journal, mapping, period, and Customer Balance evidence.
+- No active-company context, DDL, DML, temp object, production write, Product
+  behavior, fixture, or assertion mutation is present.
+- State remains `UNKNOWN` until the complete production output is returned.
+  Task 2 is not authorized before that output is classified and any
+  evidence-backed hole is resolved with the user.
+
+## Task 1 production inventory classified
+
+- Classification: `READ_ONLY_AUDIT` with a documentation-only evidence update.
+- User returned the complete output of
+  `supabase/diagnostics/backoffice_ar_open_item_credit_inventory.sql` on
+  2026-11-05. Every mandatory identity/dependency/runtime/journal/queue check
+  passed; no Production mutation was performed by the diagnostic.
+- Existing legacy Backoffice runtime is `INSTALLED_CONSISTENT` within the exact
+  checks executed. The proposed AR open-item capability is `NOT_INSTALLED`:
+  candidate object inventory is empty. This does not authorize Task 2 Fase B.
+- Exact data evidence: 366 Posted Invoices (KMS 121, LSM 190, SMS 55). LSM
+  `INV-20261008-0000000636` has Rp3.200.000 gross, Rp1.440.000 Posted Receipt,
+  and Rp1.760.000 Posted Credit Note AR reduction. Native Backoffice residual
+  Refund Liability rows are zero in this inventory.
+- The Rp2.720.000 Refund Liability shown by Credit Note inventory belongs to
+  `RETAINED_RETAIL`, not native Backoffice; preserve it outside Task 8 unless a
+  separate Retail audit and authorization are supplied.
+- LSM `RTN-20261021-0000000033` is `RECEIVED` with one physical receipt and no
+  Credit Note. Repository tracing proves physical receipt and Finance invoice
+  allocation are separate; this is a pending Finance allocation, not evidence
+  authorizing automatic Credit Note posting.
+- User decision 2026-11-05: preserve that separation. Finance must manually
+  select the target Invoice allocation; no automatic Invoice selection or
+  automatic Credit Note creation is allowed for a physically received Return.
+- Remaining design evidence before any Credit Note posting change: exact
+  transaction-category resolver authority, Tax/e-Faktur treatment, and DESTROY
+  loss-account treatment. Task 2 foundation may only proceed after its own Fase
+  A specifies exact identifiers, backfill invariants, privileges, concurrency,
+  retry, rollback/forward-fix, and regression matrix.
+- Status: `AUDIT COMPLETE` YES for Task 1. `LOCAL READY`, `DATABASE LIVE`,
+  `CLIENT DEPLOYED`, `SMOKE PASS`, `UAT PASS`: NO for the new open-item work.
+
+## Task 2 AR open-item foundation - Fase A journal-line design
+
+- Classification remains `SCHEMA_OR_MIGRATION_CHANGE`, Fase A read-only only.
+  No schema, runtime, source data, client, fixture, or assertion changed.
+- Added audit artifact
+  `docs/audits/BACKOFFICE_AR_OPEN_ITEM_FOUNDATION_IMPACT_2026-11-05.md`.
+- Repository tracing proves the canonical nominal candidates are posted
+  `finance_journal_lines` with function snapshot `CUSTOMER_RECEIVABLE`, rather
+  than a second Invoice/Credit nominal table. Existing Customer Receipt
+  allocations and native Credit Note AR reduction can become append-only
+  reconciliation snapshots against those debit/credit lines.
+- Price corrections, unified posted Invoice revisions, and mixed
+  Retail/Backoffice Receipt are mandatory consumers. Their Production shape can
+  alter the schema/backfill design and is still `BELUM TERBUKTI`.
+- Added SELECT-only evidence query
+  `supabase/diagnostics/backoffice_ar_open_item_journal_line_inventory.sql`.
+  It reads KMS/LSM/SMS posted AR journal-line coverage, existing allocation
+  account/customer pairs, mixed Receipt shape, price corrections, and Invoice
+  revisions. It performs no context mutation, DDL, DML, temp object, or write.
+- Next safe step: user runs the complete SELECT-only query and returns all rows.
+  Do not create a migration or display a Fase B SOP Gate before the output is
+  classified.
+- Status: `AUDIT COMPLETE` NO for Task 2; `LOCAL READY`, `DATABASE LIVE`,
+  `CLIENT DEPLOYED`, `SMOKE PASS`, `UAT PASS`: NO.
+
+### Task 2 production journal-line inventory rejected direct-source candidate
+
+- User returned the complete output of
+  `supabase/diagnostics/backoffice_ar_open_item_journal_line_inventory.sql`.
+  Company scope passed for KMS/LSM/SMS, but direct
+  `finance_journals.source_type/source_id` coverage failed for 122 of 535
+  posted Backoffice Invoices and 103 of 313 posted Receipts carrying
+  Backoffice allocation.
+- There are 14 mixed Retail/Backoffice Receipts. Their single full Receipt AR
+  credit cannot be treated as an exclusively Backoffice open credit. Existing
+  direct-source pair evaluation reported 117 unresolved/mismatch rows,
+  including 37 account/customer mismatches.
+- These FAIL rows are preserved as evidence. They do not yet prove missing
+  Finance Journals because Invoice, Receipt, Credit Note, and Journal also
+  expose `financial_event_id` lineage. Classification:
+  `PRECONDITION CHANGE / DESIGN ROOT-CAUSE AUDIT`, not Product fix.
+- The direct-source candidate is withdrawn. No schema, migration, Product,
+  fixture, assertion, or Production data changed.
+- Added SELECT-only diagnosis
+  `supabase/diagnostics/backoffice_ar_open_item_lineage_diagnosis.sql`. It
+  separates direct-source match, event-linked match, missing Event/Journal/AR
+  line, account vs Customer mismatch, mixed Receipt partition, and Credit Note
+  `source_kind` lineage.
+- Static evidence: PostgreSQL 18 parser accepts exactly one `SelectStmt`;
+  SHA-256
+  `9DFD9A5CA618EE082529ABE706E34EA97D8FA29F886DD57E98E42206C264E00F`.
+- Next safe step: user runs only this complete SELECT-only diagnosis and returns
+  all six output rows. Do not create Task 2 migration or show a Fase B gate
+  until the output resolves the lineage and mixed-Receipt design.
+- Status remains `AUDIT COMPLETE` NO; `LOCAL READY`, `DATABASE LIVE`,
+  `CLIENT DEPLOYED`, `SMOKE PASS`, and `UAT PASS`: NO.
+
+### Task 2 KMS workbook-account lineage diagnosis
+
+- User returned all six outputs from
+  `backoffice_ar_open_item_lineage_diagnosis.sql`. Event/source/Posted Journal
+  lineage exists for the previously unresolved documents; the unresolved set
+  is isolated to KMS after 2026-09-29.
+- Exact affected population: 122 Invoice Rp460.119.440, 103 Receipt
+  Rp447.623.468, and one retained Credit Note AR reduction Rp78.400. LSM/SMS
+  allocation pairs match. Fourteen mixed Receipt remain fully allocated and
+  require explicit partition compatibility.
+- Root-cause hypothesis is repository-proven but production line shape is not
+  yet proven: KMS routes `CUSTOMER_RECEIVABLE` to workbook account `1020100`,
+  while the journal-line trigger snapshots the COA `system_function_key` rather
+  than the transaction route function. Therefore NULL function snapshot is not
+  proof of a missing AR Journal.
+- Classification is `TEST HARNESS / PRECONDITION CHANGE`; no Product runtime,
+  schema, migration, fixture, assertion, or Production data was changed.
+- Added SELECT-only
+  `supabase/diagnostics/backoffice_ar_open_item_kms_account_lineage_diagnosis.sql`.
+  It inventories exact KMS account/route history and proves Invoice, Receipt,
+  and Credit Note line uniqueness using document/event account lineage.
+- Parser verification: exactly one PostgreSQL `SelectStmt`; no write statement.
+  Next safe step: run the complete diagnosis and return all six rows. Do not
+  create Task 2 migration until its output proves a stable canonical anchor.
+- Status: `AUDIT COMPLETE` NO; `LOCAL READY`, `DATABASE LIVE`,
+  `CLIENT DEPLOYED`, `SMOKE PASS`, and `UAT PASS`: NO.
+
+### Task 2 AR open-item foundation Fase A complete
+
+- User returned all six KMS account-lineage outputs. Exact cause of the former
+  false-missing rows is proven: transaction routing uses
+  `CUSTOMER_RECEIVABLE`, while KMS workbook account `1020100` snapshots
+  `ACCOUNTS_RECEIVABLE`. No Invoice or Receipt Journal is missing.
+- All 174 KMS Posted Invoice lines and 118 relevant Receipt lines are unique;
+  `ambiguous_route=0`, `invalid_line_shape=0`. Cutover is exact from legacy
+  `1210` to workbook `1020100`.
+- Existing correction inventory is classified: two KMS price corrections
+  reduce AR Rp540.000 with complete AR/Customer lineage; all 30 current Invoice
+  revisions have zero payable delta and zero Customer changes.
+- Fourteen mixed Retail/Backoffice Receipt are fully allocated and require
+  child-allocation slices during backfill; the full Receipt credit must not be
+  opened again.
+- Exact KMS retained Credit Note Rp78.400 is excluded from native Backoffice
+  backfill. Its AR effect lives in immutable
+  `RETAINED_CREDIT_SPLIT_RECLASSIFICATION` from migration `20260919131000`; do
+  not recreate or rewrite it.
+- Canonical Fase B identity is now proven per source type: event-date resolved
+  account for Invoice, immutable receivable account snapshot for Receipt, exact
+  source/event AR line for native Credit Note and price correction. Function
+  snapshot alone is explicitly invalid as a universal identity.
+- Audit artifact updated. No schema, runtime, Product code, fixture, assertion,
+  or Production data changed.
+- Status: `AUDIT COMPLETE` YES for Task 2 Fase A. `LOCAL READY`,
+  `DATABASE LIVE`, `CLIENT DEPLOYED`, `SMOKE PASS`, and `UAT PASS`: NO.
+- Next safe step: display a new Fase B SOP Gate, then prepare the additive
+  open-item/allocation migration, preflight, postflight, rollback-only behavior,
+  and rollout note. Do not mutate historical Journal/Event/source rows.
+
+### 2026-11-05 - Task 2 AR open-item foundation Fase B local package
+
+- Mandatory SOP Gate was displayed before edits. Classification:
+  `SCHEMA_OR_MIGRATION_CHANGE`; call chain `PROVEN`; database state
+  `NOT_INSTALLED`; no design-changing unknown remained.
+- Added guarded forward migration `20261105100000_backoffice_ar_open_item_foundation`.
+  It creates append-only registry, operation, allocation and audit tables plus
+  permission-checked Finance read RPC. It backfills canonical Backoffice
+  Invoice, Backoffice Receipt slices, native Credit Note AR, and price
+  correction AR without rewriting source documents, Events, or Journals.
+- Mixed Retail/Backoffice Receipt uses child allocation sum only. Retained
+  Retail Credit Note, POS Retail, Customer Balance, Return/Refund settlement,
+  Stock/FIFO and existing posting runtimes are explicitly outside the package.
+- Added SELECT-only preflight/postflight, rollback-only behavior and rollout
+  guide. Migration assertions require exact source/registry/allocation counts,
+  no over-allocation and complete audit coverage; allocation inserts lock both
+  items and enforce same Customer, debit/credit direction, operation ownership,
+  and residual limits.
+- PostgreSQL parser 18.0.4 PASS: migration 44 statements, preflight 1,
+  postflight 1, behavior 4. Production/local database was not mutated.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` NO (parser/static checks only,
+  no database execution); `DATABASE LIVE` NO; `CLIENT DEPLOYED` N/A; `SMOKE PASS` NO;
+  `UAT PASS` NO.
+- Final static repository checks PASS: PostgreSQL parser, scoped
+  `git diff --check`, and SELECT-only mutation-token scan. Next safe step is
+  user runs preflight only and returns every output row; migration remains
+  gated until all mandatory rows PASS.
+
+### 2026-11-05 - Task 2 migration runtime failure; rollout frozen
+
+- User execution stopped with PostgreSQL `42703` in
+  `private.trg_ar_open_item_audit_insert()`: registry rows have `created_by`,
+  operations have `actor_id`, and allocations have `created_by`, but the shared
+  trigger referenced both `NEW.actor_id` and `NEW.created_by` through a CASE.
+- This is classified `PRODUCT FIX / SCHEMA_OR_MIGRATION_CHANGE`. It is not a
+  Production-data defect and no assertion may be removed to hide it.
+- Prior package-ready implication is revoked. Parser/static PASS did not execute
+  the heterogeneous trigger and is not behavioral evidence.
+- Database state is `UNKNOWN` until the complete SELECT-only foundation
+  preflight proves ledger plus registry/operations/allocations/audit/RPC state.
+- Do not edit or rerun migration `20261105100000` yet. If state is
+  `NOT_INSTALLED`, correct the uncommitted candidate after a new SOP Gate. If
+  state is partial or installed, preserve it and author a new forward fix.
+- Required correction evidence: actor lineage and exactly-one audit row for all
+  three entity types, unchanged source counts/residuals, immutable and
+  cross-Company boundaries, rollback behavior, then authenticated smoke.
+- Status: `AUDIT COMPLETE` NO for the Fase B re-audit; `LOCAL READY` NO;
+  `DATABASE LIVE` UNKNOWN; `CLIENT DEPLOYED` N/A; `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: user runs only
+  `supabase/diagnostics/backoffice_ar_open_item_foundation_preflight.sql` and
+  returns every output row. No migration or behavior SQL before classification.
+
+### 2026-11-05 - Task 2 audit-trigger correction prepared
+
+- User returned the complete repeated preflight: state is exactly
+  `NOT_INSTALLED`; ledger and all five target objects are absent. Dependencies,
+  535 Invoice / 313 Receipt / 14 mixed Receipt / 2 correction / 1 native Credit
+  Note canonical line contracts, revisions, slices and runtime boundary pass.
+- The uncommitted candidate was corrected in place. The shared audit trigger now
+  uses `to_jsonb(NEW)` and exact table-name actor selection; it cannot resolve a
+  field absent from another trigger row type and rejects unknown/missing shape.
+- Migration assertion, postflight and rollback behavior now verify exact
+  registry/operation/allocation actor plus immutable snapshot lineage. Behavior
+  also executes a new operation insert and checks its exact audit row.
+- PostgreSQL 18 parser passes migration 44 statements, preflight 1, postflight
+  1, behavior 4. PostgreSQL 18.4 single-user local rollback executed all three
+  heterogeneous shapes and returned the expected actor/snapshot identities.
+  `git diff --check` passes. This is focused runtime evidence, not a full
+  Supabase migration/backfill rehearsal.
+- Manifest checksum for corrected candidate:
+  `c87e0fd3c976b29c1918397b189d6ad426900571d84c1d197a9cc063a75a15ec`.
+- Status: `AUDIT COMPLETE` YES for correction; `LOCAL READY` NO;
+  `DATABASE LIVE` NO; `CLIENT DEPLOYED` N/A; `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: run the corrected migration once. On success run postflight,
+  rollback behavior, then postflight again. Any unexpected error freezes rollout
+  and requires a new state proof; do not patch forward blindly.
+
+### 2026-11-05 - Task 2 migration database-live; first postflight pass
+
+- User confirmed corrected migration execution succeeded and returned complete
+  Production postflight PASS.
+- Exact installed inventory: ledger 1; registry 535 Invoice, 313 Receipt, 2
+  price correction, 1 native Backoffice Credit Note; allocations 383 total / 380
+  Receipt source allocations; overallocated items 0.
+- Audit count is 1,617/1,617 with zero actor or immutable snapshot lineage
+  mismatch across Registry, Operation and Allocation.
+- Authenticated retains RPC EXECUTE and has no direct SELECT on registry,
+  operations, allocations, or audit.
+- This proves installation/backfill/postflight only. Production rollback
+  behavior, authenticated read smoke and UAT are still pending.
+- Status: `AUDIT COMPLETE` YES; `DATABASE LIVE` YES; `POSTFLIGHT PASS` YES;
+  `CLIENT DEPLOYED` N/A; `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: run only
+  `supabase/tests/backoffice_ar_open_item_foundation_behavior.sql`. It must
+  return one PASS row and ends with `ROLLBACK`. If it errors, freeze work and
+  re-audit; do not modify the now-immutable live migration.
+
+### 2026-11-05 - Task 2 Production rollback behavior pass
+
+- User returned the exact single behavior row `PASS`.
+- Proven: installed migration, authenticated Finance VIEW read, active Company
+  isolation, Customer filter, append-only registry, Registry/Operation/
+  Allocation actor and snapshot lineage, shared operation trigger execution,
+  residual guard, operation idempotency, direct-table denial, zero canonical
+  source mutation, and full rollback.
+- This is database behavior evidence, not authenticated client/API smoke or UAT.
+- Status: `DATABASE LIVE` YES; `FIRST POSTFLIGHT PASS` YES;
+  `ROLLBACK BEHAVIOR PASS` YES; `CLOSING POSTFLIGHT PASS` NO;
+  `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: rerun the unchanged SELECT-only postflight. If all mandatory
+  rows still PASS, proceed to authenticated Finance RPC smoke per KMS, LSM and
+  SMS. Do not rerun or edit migration `20261105100000`.
+
+### 2026-11-05 - Task 2 closing postflight pass; database rollout closed
+
+- User returned the complete closing postflight after rollback behavior; every
+  mandatory row remains PASS and matches the first postflight.
+- Persistent state remains exact: ledger 1; registry 535 Invoice / 313 Receipt /
+  2 correction / 1 native Backoffice Credit Note; 383 allocations with zero
+  over-allocation; 1,617/1,617 audit rows with zero actor/snapshot mismatch;
+  authenticated RPC execute remains open while all four direct table reads
+  remain denied.
+- Database/schema/backfill rollout is closed for Task 2 foundation. No source
+  document, Posted Journal, Backoffice posting runtime, Return/Refund, POS,
+  Customer Balance or Stock/FIFO behavior was changed by this foundation.
+- Status: `DATABASE LIVE` YES; `FIRST POSTFLIGHT PASS` YES;
+  `ROLLBACK BEHAVIOR PASS` YES; `CLOSING POSTFLIGHT PASS` YES;
+  `AUTHENTICATED CLIENT SMOKE` NO; `UAT PASS` NO.
+- Next safe step: authenticated client/API read smoke for KMS, LSM and SMS using
+  a real Finance user with `finance.customer_receipts / VIEW`. SQL claim
+  impersonation is already covered by behavior and must not be mislabeled as
+  client smoke. Task 3 manual allocation/apply/refund remains separate.
+
+### 2026-11-05 - Task 3 Invoice/Receipt allocation Fase A dimulai
+
+- Task diklasifikasikan `PRODUCT_BEHAVIOR_CHANGE` +
+  `SCHEMA_OR_MIGRATION_CHANGE`; belum ada runtime/schema/data yang diubah.
+- Audit artifact baru:
+  `docs/audits/BACKOFFICE_AR_INVOICE_RECEIPT_ALLOCATION_RUNTIME_IMPACT_2026-11-05.md`.
+- Call chain client -> Customer Receipt API -> save/post RPC -> Finance
+  Event/Journal dan Task 2 open-item foundation telah ditelusuri.
+- Hole utama terbukti: runtime Receipt sekarang hanya mendukung fully allocated
+  atau full Customer Balance; belum mendukung partial allocation plus residual
+  AR open credit dalam satu Receipt. Foundation juga hanya menerima operation
+  backfill dan belum mempunyai caller client untuk read RPC open-item.
+- Task 3 harus mendaftarkan Invoice dan Receipt baru sekaligus; menulis allocation
+  saja akan membuat registry Task 2 basi setelah cutover.
+- Status: `AUDIT COMPLETE` NO; `LOCAL READY` NO; `DATABASE LIVE` NO untuk Task 3;
+  Task 2 foundation tetap `DATABASE LIVE` dengan behavior/closing postflight
+  PASS; authenticated client smoke dan UAT tetap pending.
+- Next safe step: user mengonfirmasi semantics residual/manual allocation dan
+  batas UI Task 3; lalu jalankan SELECT-only production state inventory sebelum
+  SOP Gate Fase B. Migration live `20261105100000` tidak boleh diubah.
+
+### 2026-11-05 - Task 3 read-only client boundary approved
+
+- User menyetujui endpoint dan panel read-only minimal di workspace Penerimaan
+  Customer agar authenticated client smoke dapat dilakukan melalui aplikasi.
+- Finance tetap memilih allocation manual. Target residual tetap customer-scoped
+  AR open credit; Customer Balance tidak otomatis digunakan.
+- Added SELECT-only inventory:
+  `supabase/diagnostics/backoffice_ar_invoice_receipt_allocation_preflight.sql`.
+  It proves exact live function digests/guards, Task 2 versus Task 3 state,
+  cutover delta, canonical AR-line eligibility, Draft compatibility, RPC-only
+  privilege and idle Finance/Offline boundary. It performs no mutation.
+- Status remains `AUDIT COMPLETE` NO and `LOCAL READY` NO. No runtime, schema,
+  API, UI or Production data has changed. Next safe step is user execution of
+  only this preflight and return of every output row; any blocker freezes Phase B.
+
+### 2026-11-05 - Task 3 AR allocation runtime local package
+
+- User returned the complete production preflight. State is exactly
+  `FOUNDATION_INSTALLED_TASK3_NOT_INSTALLED`; dependencies, exact active
+  function digests, zero cutover delta, zero Draft compatibility population,
+  RPC-only privilege, and idle Finance/Offline boundary all pass.
+- Mandatory Fase B SOP Gate was shown before edits. Classification:
+  `PRODUCT_BEHAVIOR_CHANGE` + `SCHEMA_OR_MIGRATION_CHANGE`; call chain
+  `PROVEN`; design-changing unknown `NONE`.
+- Added guarded migration
+  `20261105110000_backoffice_ar_invoice_receipt_allocation_runtime.sql`,
+  SELECT-only postflight, rollback behavior, rollout guide, read-only API/UI
+  consumer, and focused contract test. Task 2 live migration is unchanged.
+- Runtime outcome: Finance manually allocates Receipt to Backoffice Invoice;
+  received amount may exceed allocation; residual remains a Customer-scoped AR
+  credit. Journal remains one full Debit Cash/Bank and Credit AR. No automatic
+  oldest-Invoice allocation and no automatic Customer Balance conversion.
+- PostgreSQL OID dependency risk was found before rollout: existing Invoice
+  payment RPC could retain the renamed private core. Migration therefore
+  recreates `register_backoffice_sales_invoice_payment(...)` after installing
+  the public Receipt wrapper. Behavior explicitly tests that entry point.
+- Client changes:
+  `backoffice/src/app/api/finance/customer-receipts/route.ts` and
+  `backoffice/src/components/CustomerReceiptView.tsx`. The UI now separates
+  received, allocated and residual amounts and shows a read-only open-item panel.
+- Evidence: PostgreSQL parser PASS (migration 31 statements, preflight 1,
+  postflight 1, behavior 4); scoped ESLint PASS; TypeScript `--noEmit` PASS;
+  Next.js production build PASS; focused Playwright contract 3/3 PASS.
+- Full `backoffice-form-contract.spec.ts` was also invoked and exposed existing
+  unrelated Purchase form label failures. It is not counted as Task 3 PASS and
+  was not modified or hidden.
+- Migration candidate SHA-256:
+  `66682ed73dc6d58696baac215ffae92654321d197320ac3949ae73bfeba42b36`.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` NO (static/build evidence only,
+  no full database execution); `DATABASE LIVE` NO; `CLIENT DEPLOYED` NO;
+  `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: run migration `20261105110000` once, then postflight,
+  rollback-only behavior, and closing postflight. Any unexpected error freezes
+  rollout and requires a new state audit. Deploy/test the client only after the
+  database gates pass.
+
+### 2026-11-05 - Task 3 first migration execution failed; rollout frozen
+
+- User execution failed with PostgreSQL `42601`: `record variable cannot be
+  part of multiple-item INTO list` at
+  `SELECT journal,line INTO STRICT v_journal,v_line` inside the candidate
+  migration.
+- This is a real PL/pgSQL validation defect that the statement parser, lint,
+  TypeScript, build and static contract did not execute. The previous
+  package-ready implication is revoked; those checks remain only static evidence.
+- Classification: `PRODUCT FIX / SCHEMA_OR_MIGRATION_CHANGE`. Patching is
+  frozen. The failed file must not be rerun or edited until database state is
+  classified from the unchanged SELECT-only preflight.
+- Expected transaction behavior is rollback because the file starts with
+  `BEGIN` and ledger insertion is later, but this is not accepted as evidence.
+- Current status: `AUDIT COMPLETE` NO for correction; `LOCAL READY` NO;
+  `DATABASE STATE` UNKNOWN; `CLIENT DEPLOYED` NO; `SMOKE PASS` NO;
+  `UAT PASS` NO.
+- Next safe step: rerun
+  `supabase/diagnostics/backoffice_ar_invoice_receipt_allocation_preflight.sql`
+  as a complete SELECT-only file and return every output row. If it proves
+  `FOUNDATION_INSTALLED_TASK3_NOT_INSTALLED`, a new SOP Gate may authorize
+  correction of the uncommitted candidate plus executable PL/pgSQL validation.
+
+### 2026-11-05 - Task 3 PL/pgSQL 42601 candidate correction
+
+- User returned the complete repeated production preflight. It proves
+  `FOUNDATION_INSTALLED_TASK3_NOT_INSTALLED`, Task 3 ledger absent, Task 2
+  foundation present, all active digests unchanged, zero cutover/Draft delta,
+  RPC-only privilege intact, and idle Finance/Offline boundary. The first
+  migration attempt therefore rolled back fully.
+- Correction audit classified the error as `PRODUCT FIX / SCHEMA_OR_MIGRATION_CHANGE`.
+  Exactly two invalid statements used composite rows in a multiple-item `INTO`;
+  both consumers only require Journal and Journal Line IDs. No third occurrence
+  exists in the candidate.
+- After a new SOP Gate, the never-live candidate was corrected in-place to
+  scalar UUID targets while preserving `INTO STRICT`, all canonical Journal
+  predicates, manual allocation, residual open credit, locks, retry and audit.
+- Executable isolated PostgreSQL 18 evidence reproduces `42601` for the old
+  construct and successfully executes the corrected construct. The temporary
+  PostgreSQL cluster was stopped and removed afterward.
+- Closing local evidence: full SQL parser PASS (migration 31, preflight 1,
+  postflight 1, behavior 4 statements); scoped ESLint PASS; TypeScript PASS;
+  Next.js production build PASS; focused Playwright contract 3/3 PASS;
+  `git diff --check` PASS.
+- Corrected candidate SHA-256:
+  `9f72544a0b7356a32212e903cce1d9512462fc7b23fcd5d6c2f6d4003dc3c690`.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` NO (candidate has not executed
+  against the full production schema); `DATABASE LIVE` NO; `CLIENT DEPLOYED`
+  NO; `SMOKE PASS` NO; `UAT PASS` NO.
+- Next safe step: user runs the corrected migration once, then first postflight,
+  rollback-only behavior, and closing postflight. Any unexpected error freezes
+  rollout again. Client deploy/authenticated smoke remain later gates.
+
+### 2026-11-05 - Task 3 production database closure
+
+- Corrected migration `20261105110000` installed successfully.
+- First postflight PASS: ledger 1, complete wrapper/registration contract,
+  exact 535 Invoice / 313 Receipt registry, exact 380 allocation, zero mismatch
+  and zero over-allocation, RPC privilege boundary intact.
+- Rollback-only behavior PASS: authenticated Backoffice Finance actor, manual
+  partial Invoice allocation, customer-scoped residual open credit, one full
+  Cash/Bank-to-AR Journal, append-only registration, residual read visibility,
+  exact retry, changed retry denial, Invoice-detail payment wrapper binding,
+  zero Retail/Stock/FIFO effect, and all test writes rolled back.
+- Closing postflight repeats all mandatory PASS and proves no behavior residue.
+- Status: `AUDIT COMPLETE` YES; `LOCAL READY` YES for checked-in client package;
+  `DATABASE LIVE` YES; `CLIENT DEPLOYED` NO; `SMOKE PASS` NO; `UAT PASS` NO.
+- Migration is now immutable: do not rerun or edit it. Next safe step requires
+  explicit user authorization to commit/push/deploy the client, followed by
+  authenticated smoke in a Backoffice Company and UAT.

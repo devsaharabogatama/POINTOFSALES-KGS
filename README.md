@@ -1,5 +1,53 @@
 # MADS — Management Distribution System
 
+> **Database checkpoint 2026-11-05 - Backoffice AR Task 3:** corrected migration
+> `20261105110000` is `DATABASE LIVE`. Production first postflight, rollback-only
+> behavior, and closing postflight all pass. Behavior proves manual partial
+> Invoice allocation, customer-scoped residual open credit, one full
+> Cash/Bank-to-AR Journal, exact retry idempotency, changed-retry denial,
+> Invoice-detail payment wrapper binding, and zero Retail/Stock/FIFO effect.
+> Registry remains exact at 535 Invoice, 313 Receipt and 380 allocations with
+> zero mismatch/over-allocation. `CLIENT DEPLOYED` NO, authenticated `SMOKE PASS`
+> NO, and `UAT PASS` NO.
+
+> **Checkpoint 2026-11-05 - Backoffice AR manual allocation + residual open
+> credit (AUDIT COMPLETE; LOCAL STATIC GATES PASS; DATABASE NOT INSTALLED;
+> CLIENT NOT DEPLOYED):** guarded candidate migration `20261105110000` registers
+> future Backoffice Invoice/Receipt open-items, supports manual partial/full
+> allocation, and keeps Receipt overpayment as customer-scoped AR credit. One
+> Receipt still creates one full Cash/Bank-to-AR Journal; no auto-allocation and
+> no automatic Customer Balance conversion. The Finance workspace now has a
+> minimal read-only open-item panel and separates nominal received, allocated,
+> and residual credit. SQL parser, scoped lint/typecheck, Next.js build, and
+> focused Playwright contract 3/3 pass. Production migration, rollback behavior,
+> closing postflight, client deployment, authenticated smoke, and UAT remain
+> pending; POS Retail, mixed legacy Receipt, Return/Credit Note, and Stock/FIFO
+> are explicitly preserved.
+
+> **Checkpoint 2026-11-05 - Backoffice AR open-item foundation (DATABASE LIVE;
+> FIRST+CLOSING POSTFLIGHT + ROLLBACK BEHAVIOR PASS; CLIENT SMOKE PENDING):**
+> Task 2 Fase B migration
+> `20261105100000`, SELECT-only pre/postflight, rollback-only behavior
+> test, and rollout guide. It snapshots canonical Backoffice Invoice debit,
+> Backoffice slices of mixed Receipt credits, native Backoffice Credit Note AR,
+> and price-correction AR lineage into append-only registry/allocation/audit
+> tables. Existing Posted Journals, Return/Refund, POS Retail, Customer Balance,
+> Stock/FIFO, and posting runtimes were intended to remain unchanged. Its first
+> target execution failed before commit with PostgreSQL `42703` because a shared
+> audit trigger referenced an actor field absent from the registry row shape.
+> Repeated SELECT-only preflight proved full rollback before the corrected
+> migration was installed. Production postflight now proves exact source and
+> registry parity, 383 valid allocations with zero over-allocation, 1,617 exact
+> actor/snapshot audit rows, and RPC-only authenticated access. Production
+> rollback behavior also proves authenticated Finance read,
+> Company/Customer isolation, append-only history, three actor lineages,
+> residual guard, retry identity, direct-table denial and zero source mutation.
+> Closing postflight remains identical after rollback, proving no persistent test
+> residue. Database/schema/backfill rollout is closed. A real authenticated
+> client/API read has not run, so current status is `DATABASE LIVE` YES,
+> `ROLLBACK BEHAVIOR PASS` YES, `CLOSING POSTFLIGHT PASS` YES,
+> `SMOKE PASS` NO, `UAT PASS` NO.
+
 > **Checkpoint 2026-11-03 - POS printed receipt Customer name (LOCAL READY):**
 > online thermal/browser receipts now print the captured posted Customer name;
 > Offline slips print the immutable preview Customer name. Formal Invoice and

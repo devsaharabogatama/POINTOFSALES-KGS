@@ -27,13 +27,19 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     await requireActiveCompany(caller)
-    const [workspace, advancePolicy] = await Promise.all([
+    const [workspace, advancePolicy, openItems] = await Promise.all([
       caller.client.rpc('get_finance_customer_receipts'),
       caller.client.rpc('get_customer_receipt_advance_policy'),
+      caller.client.rpc('get_finance_ar_open_items', { p_customer_id: null, p_include_settled: false }),
     ])
     if (workspace.error) throwDatabaseError(workspace.error)
     if (advancePolicy.error) throwDatabaseError(advancePolicy.error)
-    return Response.json({ ...(workspace.data as Record<string, unknown>), advancePolicy: advancePolicy.data })
+    if (openItems.error) throwDatabaseError(openItems.error)
+    return Response.json({
+      ...(workspace.data as Record<string, unknown>),
+      advancePolicy: advancePolicy.data,
+      openItems: openItems.data,
+    })
   } catch (error) { return apiError(error) }
 }
 
@@ -66,9 +72,17 @@ export async function POST(request: Request) {
       })
       const receivedAmount = Number(body.receivedAmount)
       if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) throw new Error('CUSTOMER_RECEIPT_AMOUNT_INVALID')
-      const rpc = disposition === 'NONE'
-        ? 'save_customer_receipt_allocated_draft'
-        : 'save_customer_receipt_draft_with_disposition'
+      const allocatedAmount = allocations.reduce((sum, row) => sum + row.allocatedAmount, 0)
+      if (disposition === 'NONE' && receivedAmount < allocatedAmount) throw new Error('CUSTOMER_RECEIPT_AMOUNT_BELOW_ALLOCATION')
+      const hasResidualOpenCredit = disposition === 'NONE' && receivedAmount > allocatedAmount
+      if (hasResidualOpenCredit && allocations.some((row) => row.sourceType !== 'BACKOFFICE_SALES_INVOICE')) {
+        throw new Error('CUSTOMER_RECEIPT_OPEN_CREDIT_BACKOFFICE_ONLY')
+      }
+      const rpc = disposition === 'CUSTOMER_BALANCE'
+        ? 'save_customer_receipt_draft_with_disposition'
+        : hasResidualOpenCredit
+          ? 'save_customer_receipt_open_credit_draft'
+          : 'save_customer_receipt_allocated_draft'
       const args = disposition === 'NONE' ? {
         p_document_id: documentId,
         p_master_version: documentId ? version(body.masterVersion) : null,
