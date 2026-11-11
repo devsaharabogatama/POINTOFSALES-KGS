@@ -632,6 +632,9 @@ export default function Home() {
   const customerReceiptNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "customer-receipts");
+  const arOpenCreditNavigation = navigationModules
+    .flatMap((module) => module.items)
+    .find((item) => item.id === "ar-open-credits");
   const paymentMethodNavigation = navigationModules
     .flatMap((module) => module.items)
     .find((item) => item.id === "payment-methods");
@@ -1378,6 +1381,18 @@ export default function Home() {
               canEdit={customerReceiptNavigation?.capabilities.includes("EDIT_DRAFT") ?? false}
               canPost={customerReceiptNavigation?.capabilities.includes("POST") ?? false}
               canExport={customerReceiptNavigation?.capabilities.includes("EXPORT") ?? false}
+            />
+          )}
+
+          {activeView === "ar-open-credits" && (
+            <CustomerReceiptView
+              key={activeCompanyId}
+              session={session}
+              mode="OPEN_CREDIT"
+              canCreate={false}
+              canEdit={false}
+              canPost={arOpenCreditNavigation?.capabilities.includes("POST") ?? false}
+              canExport={false}
             />
           )}
 

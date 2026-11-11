@@ -1,5 +1,30 @@
 # Active Development Handoff — KGS POS
 
+## 2026-11-11 — Backoffice AR workspace split
+
+- Classification: `PRODUCT_BEHAVIOR_CHANGE` terbatas pada UI/navigation.
+- Audit: `docs/audits/BACKOFFICE_AR_WORKSPACE_SPLIT_IMPACT_2026-11-11.md`.
+- Manual: `docs/runbooks/BACKOFFICE_AR_FINANCE_USER_GUIDE_2026-11-11.md`.
+- Changed:
+  - navigation view `ar-open-credits` memakai permission existing
+    `finance.customer_receipts`;
+  - page renderer menyerahkan capability POST server-derived ke view baru;
+  - `CustomerReceiptView` memiliki mode `RECEIPTS` dan `OPEN_CREDIT` sehingga
+    aging/receipt dan open-item tidak lagi satu halaman panjang;
+  - focused Backoffice/QA contracts diperbarui tanpa melemahkan assertion AR.
+- Evidence: focused UI `6/6 PASS`, AR contract `3/3 PASS`, navigation contract
+  `1/1 PASS`, targeted ESLint PASS, TypeScript PASS, production build PASS.
+- Unrelated known regression: full static suite menemukan assertion lama KGFF
+  Sample yang mengharapkan teks Return pada fixture Sale-only. Tidak diubah pada
+  task Finance ini.
+- Preserved: server permission, Receipt/Credit Note/open-credit mutation,
+  Journal, Customer Balance policy, audit/idempotency, POS Retail,
+  Stock/Reservation/FIFO/HPP, dan historical rows.
+- Status: `AUDIT COMPLETE`, `LOCAL READY`; `CLIENT DEPLOYED`, authenticated
+  `SMOKE PASS`, dan `UAT PASS` menunggu.
+- Next safe step: review, commit/push, tunggu deployment, lalu smoke read-only dua
+  menu. Jangan membuat transaksi Finance nyata tanpa otorisasi bisnis.
+
 ## 2026-11-10 - Backoffice local auth bootstrap recovery
 
 - Classification: local `PRODUCT_BEHAVIOR_CHANGE` plus

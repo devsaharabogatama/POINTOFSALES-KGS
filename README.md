@@ -1,5 +1,18 @@
 # MADS — Management Distribution System
 
+## 2026-11-11 — Finance Customer Receipt / Open Credit workspace split
+
+- `Penerimaan Customer` dan `Open Credit Customer` kini menjadi dua view
+  terpisah agar tindakan AR tidak berada setelah seluruh tabel aging.
+- Keduanya tetap memakai permission `finance.customer_receipts` serta API/RPC
+  yang sama; tidak ada schema, migration, atau perubahan jurnal.
+- Audit: `docs/audits/BACKOFFICE_AR_WORKSPACE_SPLIT_IMPACT_2026-11-11.md`.
+- Manual: `docs/runbooks/BACKOFFICE_AR_FINANCE_USER_GUIDE_2026-11-11.md`.
+- Evidence lokal: focused UI `6/6 PASS`, AR contract `3/3 PASS`, navigation
+  contract `1/1 PASS`, targeted lint/TypeScript PASS, production build PASS.
+- Status: `LOCAL READY`; deployment, authenticated Production smoke, dan UAT
+  belum dibuktikan.
+
 > **Local browser host correction 2026-11-10:** Production-shaped Docker and
 > database guards remain bound to `http://127.0.0.1:54321`. Open Backoffice at
 > `http://127.0.0.1:3000`; Next dev narrowly allows that loopback origin. Do not

@@ -15,7 +15,11 @@ test('Backoffice Receipt API keeps residual credit customer-scoped and explicit'
 })
 
 test('Finance UI shows received, allocated, and residual amounts without auto allocation', async () => {
-  const view = await read('backoffice/src/components/CustomerReceiptView.tsx')
+  const [view, catalog, page] = await Promise.all([
+    read('backoffice/src/components/CustomerReceiptView.tsx'),
+    read('backoffice/src/lib/navigation-catalog.ts'),
+    read('backoffice/src/app/page.tsx'),
+  ])
 
   expect(view).toContain('Nominal diterima')
   expect(view).toContain('Dialokasikan ke invoice')
@@ -23,6 +27,12 @@ test('Finance UI shows received, allocated, and residual amounts without auto al
   expect(view).toContain('Finance memilih tindakan secara eksplisit; tidak ada alokasi otomatis.')
   expect(view).toContain('Kredit dan tagihan terbuka')
   expect(view).toContain("item.direction === 'DEBIT' ? 'Tagihan' : 'Kredit'")
+  expect(view).toContain("mode === 'RECEIPTS'")
+  expect(view).toContain("mode === 'OPEN_CREDIT'")
+  expect(catalog).toContain("'ar-open-credits': 'finance.customer_receipts'")
+  expect(catalog).toContain("label: 'Open Credit Customer'")
+  expect(page).toContain('activeView === "ar-open-credits"')
+  expect(page).toContain('mode="OPEN_CREDIT"')
 })
 
 test('Task 3 migration covers Finance workspace and Invoice detail payment entry points', async () => {

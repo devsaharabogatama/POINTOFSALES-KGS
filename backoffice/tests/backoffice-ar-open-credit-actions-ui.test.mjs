@@ -14,6 +14,24 @@ const workspace = readFileSync(
   new URL('../src/app/api/finance/customer-receipts/route.ts', import.meta.url),
   'utf8',
 );
+const catalog = readFileSync(
+  new URL('../src/lib/navigation-catalog.ts', import.meta.url),
+  'utf8',
+);
+const page = readFileSync(
+  new URL('../src/app/page.tsx', import.meta.url),
+  'utf8',
+);
+
+test('receipt and open-credit workspaces are separate permission-compatible pages', () => {
+  assert.ok(catalog.includes("'ar-open-credits': 'finance.customer_receipts'"));
+  assert.ok(catalog.includes("label: 'Open Credit Customer'"));
+  assert.ok(page.includes('activeView === "customer-receipts"'));
+  assert.ok(page.includes('activeView === "ar-open-credits"'));
+  assert.ok(page.includes('mode="OPEN_CREDIT"'));
+  assert.ok(view.includes("mode === 'RECEIPTS'"));
+  assert.ok(view.includes("mode === 'OPEN_CREDIT'"));
+});
 
 test('Finance UI exposes every approved explicit AR action', () => {
   for (const action of [

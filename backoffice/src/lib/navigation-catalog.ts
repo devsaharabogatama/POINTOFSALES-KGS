@@ -15,6 +15,7 @@ export type NavigationViewId =
   | 'deposit-variances'
   | 'customer-balances'
   | 'customer-receipts'
+  | 'ar-open-credits'
   | 'supplier-invoices'
   | 'supplier-payments'
   | 'stock-real'
@@ -123,6 +124,7 @@ export const NAVIGATION_PERMISSION_KEYS: Record<PermissionBackedNavigationViewId
   'deposit-variances': 'finance.deposit_variances',
   'customer-balances': 'finance.customer_balances',
   'customer-receipts': 'finance.customer_receipts',
+  'ar-open-credits': 'finance.customer_receipts',
   'supplier-invoices': 'finance.supplier_invoices',
   'supplier-payments': 'finance.supplier_payments',
   'stock-real': 'inventory.stock_real',
@@ -195,6 +197,7 @@ const itemDefinitions: ItemDefinition[] = [
   { id: 'deposit-variances', label: 'Selisih Setoran', description: 'Investigasi dan resolusi selisih.', iconKey: 'circle-alert', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'customer-balances', label: 'Saldo Customer', description: 'Ledger saldo dan koreksi terkontrol.', iconKey: 'wallet', roles: FINANCE_ROLES, requiredAnyFeature: ['customer_balance_enabled'], capabilities: ['VIEW'] },
   { id: 'customer-receipts', label: 'Penerimaan Customer', description: 'Pelunasan dan alokasi pembayaran piutang Customer.', iconKey: 'banknote-arrow-up', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
+  { id: 'ar-open-credits', label: 'Open Credit Customer', description: 'Alokasi, refund, saldo, dan reversal kredit terbuka Customer.', iconKey: 'wallet', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'supplier-invoices', label: 'Faktur Supplier', description: 'Matching penerimaan dan tagihan supplier.', iconKey: 'receipt', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'supplier-payments', label: 'Pembayaran Supplier', description: 'Validasi dan pencatatan pembayaran supplier.', iconKey: 'banknote', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
   { id: 'payment-methods', label: 'Metode Pembayaran', description: 'Metode bayar, assignment toko, dan fee.', iconKey: 'credit-card', roles: FINANCE_ROLES, capabilities: ['VIEW'] },
@@ -212,7 +215,7 @@ const moduleDefinitions: ModuleDefinition[] = [
   { id: 'contacts', name: 'Kontak', description: 'Pelanggan, supplier, dan user Company.', iconKey: 'contact', color: 'bg-cyan-600', views: ['customers', 'suppliers', 'staff'] },
   { id: 'purchase', name: 'Purchase', description: 'Pesanan, penerimaan barang, dan retur pembelian.', iconKey: 'shopping-cart', color: 'bg-amber-600', views: ['supplier-orders', 'goods-receipts', 'purchase-returns'] },
   { id: 'sales', name: 'Sales', description: 'Quotation, Sales Order, Invoice, pricelist, bundle, dan retur penjualan.', iconKey: 'tags', color: 'bg-emerald-600', views: ['backoffice-sales-orders', 'sales-documents', 'backoffice-sales-returns', 'pricelists', 'bundles', 'sales-returns'] },
-  { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
+  { id: 'finance', name: 'Finance', description: 'Kas, expense, piutang Customer, supplier AP, pajak, COA, jurnal, dan laporan.', iconKey: 'landmark', color: 'bg-violet-600', views: ['expense-approvals', 'cash-deposits', 'deposit-variances', 'customer-balances', 'customer-receipts', 'ar-open-credits', 'supplier-invoices', 'supplier-payments', 'payment-methods', 'tax-rules', 'finance-masters', 'finance'] },
   { id: 'platform', name: 'Platform', description: 'Health operasional, Company, POS, branding, dan pengaturan entitlement modul.', iconKey: 'settings', color: 'bg-slate-800', views: ['platform-health', 'companies', 'platform-pos', 'company-branding', 'module-settings'] },
   { id: 'data', name: 'Data Exchange', description: 'Export dan import global sesuai akses aktif.', iconKey: 'file-spreadsheet', color: 'bg-teal-700', views: ['data-exchange'] },
 ]
