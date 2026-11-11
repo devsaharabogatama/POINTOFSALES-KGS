@@ -75,7 +75,9 @@ BEGIN
         ON allocation.company_id=audit.company_id AND allocation.id=audit.entity_id
       WHERE audit.company_id=v_company AND audit.entity_kind='ALLOCATION'
         AND (allocation.id IS NULL OR audit.actor_id<>allocation.created_by
-          OR audit.state_snapshot IS DISTINCT FROM to_jsonb(allocation))) THEN
+          OR audit.state_snapshot IS DISTINCT FROM CASE
+            WHEN audit.state_snapshot ? 'effective_date' THEN to_jsonb(allocation)
+            ELSE to_jsonb(allocation)-'effective_date' END)) THEN
     RAISE EXCEPTION 'TEST_FAILED: audit actor/snapshot lineage invalid';
   END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_payload->'items') item

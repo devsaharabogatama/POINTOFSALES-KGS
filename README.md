@@ -1,5 +1,61 @@
 # MADS — Management Distribution System
 
+> **Local browser host correction 2026-11-10:** Production-shaped Docker and
+> database guards remain bound to `http://127.0.0.1:54321`. Open Backoffice at
+> `http://127.0.0.1:3000`; Next dev narrowly allows that loopback origin. Do not
+> mix `localhost` and `127.0.0.1`, because Chromium applies loopback cross-host
+> preflight and this Docker binding is only proven on IPv4. Auth bootstrap also
+> exits rejected or overlong
+> session checks instead of leaving an infinite loader. Production, database,
+> Finance, and tenant authorization are unchanged. Fresh-profile local browser
+> smoke reaches the Company workspace; user UAT and Production remain separate
+> evidence gates.
+
+> **Local development checkpoint 2026-11-10 - Backoffice AR Finance Tasks
+> 2-9 (LOCAL READY; PRODUCTION UNCHANGED):** production-shaped Docker now has
+> local-only open-item Invoice/Receipt registration, partial/full allocation,
+> residual Receipt credit, native Credit Note open credit, explicit
+> allocate/refund/Customer-Balance/reversal actions, and atomic Credit Note plus
+> editable replacement Invoice Draft. A Company-timezone Receipt date defect
+> found by the cumulative behavior fixture was corrected through forward
+> migration `20261110110000`. Task 3/5/6 rollback behaviors and Task 2-6
+> postflights pass; Backoffice client tests are 55/55, lint has zero errors,
+> TypeScript and production build pass. Browser smoke/UAT, retained-Retail
+> compatibility behavior, Production legacy inventory, database rollout and
+> client deployment remain pending. Production was not accessed or changed.
+
+> **Local development checkpoint 2026-11-09 (LOCAL DOCKER READY):** the
+> Production-shaped local Supabase stack now has deterministic Retail `LOCAL`
+> and Backoffice `LOCALBO` fixtures with Store, Warehouse, Product-UOM,
+> opening Stock/FIFO, period, and Retail Terminal/Session state. Exact seed
+> retry, authenticated Company isolation/catalog/reference smoke, and closing
+> verifier pass; Production was not written. Backoffice and PWA roots start
+> locally. Visual browser UI and posted transaction/Finance smoke remain
+> explicitly unproven, so this is a development foundation rather than UAT.
+
+> **Client checkpoint 2026-11-06 - LSM Draft Credit Note value presentation
+> (AUDIT COMPLETE; LOCAL READY; NOT DEPLOYED):** the Return workspace previously
+> displayed only Draft AR-reduction/refund fields, which are intentionally zero
+> until Finance Post, while omitting the already available commercial
+> `grandTotal`. The list and modal now show `Nilai Credit Note`; Draft posting
+> outcomes say `Belum diposting`. No schema, RPC, posting, open-credit,
+> Stock/FIFO, Invoice, or Finance behavior changed. Focused UI contract 3/3,
+> ESLint, TypeScript and Next.js build pass. Authenticated local read-only LSM
+> smoke also passes on `CN-20261106-0000000025`: list and modal show Rp510.000
+> and `Belum diposting`; the modal was closed without Save/Post and remained
+> Draft. The exact Production SELECT-only diagnostic, client deployment,
+> deployed-client smoke and UAT remain pending.
+
+> **Database checkpoint 2026-11-06 - Backoffice AR Task 4 Credit Note open
+> credit:** migration `20261105120000` is `DATABASE LIVE`. First postflight,
+> three rollback-only behaviors, and closing postflight all pass. New native
+> Backoffice Credit Notes use full Customer-scoped AR open credit with zero
+> automatic Invoice allocation and zero new Refund Liability; explicit
+> allocation consumers and retained Retail/POS boundaries are proven. All test
+> fixture writes rolled back and closing postflight is identical to the first.
+> Authenticated client smoke and UAT remain pending; Task 5 manual
+> apply/refund/convert actions have not started.
+
 > **Database checkpoint 2026-11-05 - Backoffice AR Task 3:** corrected migration
 > `20261105110000` is `DATABASE LIVE`. Production first postflight, rollback-only
 > behavior, and closing postflight all pass. Behavior proves manual partial
@@ -4795,3 +4851,172 @@ do not infer UI smoke or UAT from the database behavior result.
 > checks. A real Transfer/QRIS POS checkout has not yet been supplied, so current
 > status is `DATABASE LIVE / ROLLBACK BEHAVIOR PASS / POSTFLIGHT PASS /
 > AUTHENTICATED SMOKE PENDING / UAT PENDING`.
+
+## 2026-11-06/09 - Backoffice AR Task 5 local verification
+
+- Added a guarded local candidate for explicit native Backoffice Credit Note
+  actions: allocate to Posted Invoice, AR-native Cash/Bank refund, optional
+  conversion to Customer Balance, use Customer Balance on a Posted Invoice,
+  and append-only reversal.
+- POS Retail, SO/dispatch/initial Invoice posting, legacy Refund Liability,
+  Stock/Reservation/FIFO/HPP, and historical Posted documents are preserved.
+- Local Docker evidence now includes migration/postflight PASS and a rollback-
+  only behavior PASS covering allocation, reversal, Customer Balance, refund,
+  Journal, retry/isolation, and zero Retail/Stock/FIFO effect. Client evidence
+  includes focused UI contract 5/5, scoped ESLint, clean TypeScript, fresh Next
+  build, and authenticated non-mutating Route Handler smoke PASS.
+- Status is `AUDIT COMPLETE / LOCAL READY / DATABASE LIVE LOCAL DOCKER ONLY /
+  PRODUCTION NOT CHANGED / CLIENT NOT DEPLOYED / FULL BROWSER SMOKE NOT PROVEN /
+  UAT NOT RUN`. Follow
+  `docs/runbooks/BACKOFFICE_AR_OPEN_CREDIT_ACTIONS_ROLLOUT_2026-11-06.md` only
+  after explicit user instruction.
+
+# Local Supabase status (2026-11-09)
+
+- Production-shaped Supabase Docker local is running from a schema-only hosted
+  snapshot; see
+  `docs/audits/SUPABASE_LOCAL_DOCKER_BOOTSTRAP_IMPACT_2026-11-09.md`.
+- Local Auth and deterministic base Company provisioning are verified. The
+  launcher is `scripts/run-production-shaped-local.ps1`.
+- Deterministic Retail and Backoffice operational fixtures, local Auth/company
+  isolation, catalog references, and Task 5 database/API smoke are verified.
+  Full browser mutation smoke remains pending. Production was not changed.
+
+## 2026-11-11 - Production-derived exact local clone
+
+- The schema-only environment above is superseded as Production-readiness
+  evidence. The active Finance development arena is the isolated project
+  `kgs-pos-production-exact-clone`, restored from one consistent full-database
+  custom archive plus verified Storage bytes.
+- The refresh runner is
+  `scripts/refresh-production-exact-clone.ps1`; the operating procedure is
+  `docs/runbooks/PRODUCTION_EXACT_LOCAL_CLONE_2026-11-11.md`.
+- Final repeatable restore evidence: logical data/sequence matrix 467 rows with
+  zero snapshot-local diff, normalized schema hash exact, effective privilege
+  matrix 67,710 rows, Storage 3/3 SHA-256 verified, Auth/REST/Storage health,
+  authenticated local read smoke, five Finance rollback behaviors, and 32
+  closing postflight PASS rows.
+- Deliberate/known non-identity remains explicit: local cron execution is
+  disabled; hosted Supabase control-plane settings are not cloned; 56 physical
+  catalog identities differ only in the already-audited extension owner/grantor
+  and explicit/implicit owner ACL representation. These are not hidden as
+  `100% identical`.
+- Status: `DATABASE CLONE VERIFIED / LOCAL READY FOR RECORDED BACKOFFICE AR
+  FINANCE CHAIN / AUTHENTICATED LOCAL READ SMOKE PASS / PRODUCTION MUTATION
+  NONE`. Destructive browser UAT, client deployment, Production smoke, and UAT
+  remain separate gates.
+
+## 2026-11-10 - Backoffice AR reversal parity local closure
+
+- Local end-to-end UAT exposed a real mismatch after reversing a Credit Note
+  allocation: the open-item ledger restored the Invoice, but shared Task 4
+  consumers still added the reversal as a second positive allocation.
+- Forward migration `20261110130000` corrects the shared helper centrally.
+  AR Aging, Receipt workspace, payment context, schedule reconciliation, and
+  Invoice revision planning now use the same reversal-aware value. Posted
+  Journal/Event rows and all Stock/Reservation/FIFO/HPP data remain unchanged.
+- Local preflight, migration postflight, Task 3/4/5/6 rollback regression, and
+  authenticated Chrome/API smoke pass. Visible evidence is two open Invoices
+  totaling Rp50.000, including replacement Invoice `...0023` at Rp30.000,
+  matching the open-item workspace.
+- Status: `AUDIT COMPLETE / LOCAL READY / DATABASE LIVE LOCAL DOCKER ONLY /
+  AUTHENTICATED SMOKE PASS / PRODUCTION NOT CHANGED`. Full retained-Retail
+  refund-bridge behavior remains `FIXTURE BLOCKED` locally because no eligible
+  delivered tempo Retail source exists; this gap is not reported as PASS.
+## 2026-11-10 - Backoffice AR Task 6 source-normalization bridge
+
+- Production Task 6 failed closed because the Task 5 Apply function body was
+  stored with CRLF while the immutable guard expected LF. Full definition
+  export proves identical normalized source, owner, ACL, runtime config and
+  security attributes; this is `PRECONDITION CHANGE`, not a Product defect.
+- Added behavior-neutral migration `20261110140000`, preflight/postflight,
+  rollback-only transport test and a corrected five-anchor Task 6 preflight.
+- Local Docker evidence: bridge migration/postflight PASS, focused normalization
+  behavior PASS, Task 5 and Task 6 rollback regressions PASS, parity closing
+  postflight PASS. All behavior fixtures rolled back.
+- Status update: bridge `20261110140000`, Task 5 and Task 6 are now database-
+  live in Production with their recorded postflight/rollback behaviors PASS.
+  Client deployment, authenticated Production smoke and UAT remain pending.
+  Follow
+  `docs/runbooks/BACKOFFICE_AR_FUNCTION_SOURCE_NORMALIZATION_ROLLOUT_2026-11-10.md`.
+
+## 2026-11-10 - Backoffice AR reversal-helper normalization bridge
+
+- Production parity preflight found the Task 5 effective-allocation helper
+  stored with mixed LF/CRLF. Full definition evidence proves its normalized
+  source and every routine attribute exactly match the repository contract.
+- Added forward-only compatibility migration `20261110150000`, guarded
+  preflight/postflight and an exact rollback behavior that reproduces the
+  Production raw digest and 10 CRLF boundaries.
+- Local rollback rehearsal and Production preflight, first/closing postflight,
+  exact mixed-source behavior, plus Task 5/6 regressions PASS. Migration
+  `20261110150000` is database-live and immutable. Parity migration
+  `20261110130000` remains pending its repeated preflight.
+- Manual order:
+  `docs/runbooks/BACKOFFICE_AR_REVERSAL_HELPER_SOURCE_NORMALIZATION_ROLLOUT_2026-11-10.md`.
+
+## 2026-11-10 - Production parity regression frozen on Company-date dependency
+
+- Reversal-parity migration `20261110130000` is database-live and its first
+  Production postflight PASS.
+- The first cumulative Task 3 behavior rolled back because it asserted the
+  Company-timezone Receipt rule while its defining migration `20261110110000`
+  was not installed. Parity does not change the Receipt saver.
+- The test harness now requires both Task 3 and Company-date migration ledgers
+  before fixture writes; the future-date business assertion remains intact.
+- Status is `DATABASE LIVE / FIRST POSTFLIGHT PASS / CUMULATIVE REGRESSION NOT
+  PASS / CLIENT SMOKE PENDING / UAT PENDING`. Next safe step is only the
+  SELECT-only Company-date preflight; no parity rerun or later regression is
+  authorized yet.
+
+Update: the Company-date preflight returned every mandatory row PASS and the
+user reports migration `20261110110000` succeeded in Production. Its postflight
+and cumulative regressions remain pending; this is not yet smoke or UAT proof.
+Future local Finance work must use the exact-clone contract in
+`docs/audits/PRODUCTION_LOCAL_EXACT_CLONE_REQUIREMENT_2026-11-10.md`; the prior
+schema-only environment is not Production-readiness evidence.
+
+Update: Production diagnosis of the subsequent Task 3 audit-lineage failure
+proves all 383 historical allocation snapshots differ only because Task 5 later
+added nullable `effective_date`; actor/entity and every other snapshot field are
+valid. This is a `TEST_HARNESS_FIX`, not a Product/data failure. The Task 2/3
+behavior and Task 2 postflight comparisons now normalize only that proven
+missing historical key while retaining all other mismatch failures. Corrected
+Task 3 passes locally with rollback, but Production Task 3 regression remains
+`NOT PASS` until the corrected file is rerun there; smoke/UAT remain pending.
+
+Production corrected Task 3 rollback behavior subsequently returned `PASS` and
+all test effects rolled back. This proves Task 3 only; remaining Task 4/5/6
+parity regressions, closing parity postflight, Production smoke, and UAT remain
+pending.
+
+Production native Task 4 Credit Note rollback behavior subsequently returned
+`PASS`, including full AR open credit, Journal, retry/isolation, unchanged
+pre-allocation Invoice consumers, and zero Stock/FIFO effect. Customer Receipt
+Credit Note outstanding, Task 5/6, closing parity postflight, smoke, and UAT
+remain pending.
+
+Production Customer Receipt Credit Note outstanding regression subsequently
+returned `PASS`, including native explicit allocation, retained-Retail boundary,
+settled-Invoice omission, over-allocation denial, and full rollback. Task 4
+regression is closed; Task 5/6, closing parity postflight, smoke, and UAT remain.
+
+Production Task 5 open-credit actions regression subsequently returned `PASS`
+with `parityConsumerAssertions:true`; direct allocation/reversal, Customer
+Balance, AR-native refund/Journals, retry/isolation, shared consumers, and zero
+Retail/Stock/FIFO effect were exercised and rolled back. Task 6, closing parity
+postflight, smoke, and UAT remain pending.
+
+Production Task 6 replacement regression subsequently returned `PASS`, covering
+atomic Credit Note/source allocation, Finance-neutral replacement Draft,
+commercial-copy boundaries, retry, normal replacement Invoice Finance posting,
+and zero duplicate SO/Stock/FIFO/Dispatch effect, with full rollback. All
+cumulative Task 3/4/5/6 regressions now pass; closing parity postflight, smoke,
+and UAT remain pending.
+
+Production closing reversal-parity postflight subsequently returned all
+mandatory rows `PASS`: ledger one, exact reversal-aware helper, protected
+execution privilege, and zero invalid Invoice items. Together with the completed
+Task 3/4/5/6 rollback matrix, the database status is `DATABASE LIVE + CUMULATIVE
+ROLLBACK REGRESSION PASS`. Authenticated Production browser smoke and UAT remain
+unproven; no further migration is the next step.

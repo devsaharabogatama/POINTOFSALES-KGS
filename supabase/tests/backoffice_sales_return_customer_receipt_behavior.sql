@@ -10,11 +10,16 @@ DECLARE
   v_order uuid;v_order_line uuid;v_delivery uuid;v_delivery_line uuid;v_version bigint;
   v_return_result jsonb;v_return uuid;v_return_line uuid;v_receipt jsonb;v_retry jsonb;
   v_operation uuid:=gen_random_uuid();v_payload jsonb;v_failed boolean;
+  v_submitted_warehouse uuid:=gen_random_uuid();
   v_event_before bigint;v_journal_before bigint;v_invoice_before bigint;
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
     WHERE version='20260917122000') THEN
     RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Customer Return Receipt reject-only audit guard forward-fix required';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
+    WHERE version='20260921120000') THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: source Warehouse guard required';
   END IF;
   IF (SELECT count(*) FROM pg_trigger trigger_state
       WHERE trigger_state.tgrelid='public.backoffice_sales_return_receipt_audit'::regclass
@@ -168,17 +173,17 @@ BEGIN
     (v_return_result->'data'->>'masterVersion')::bigint,v_operation,v_today,
     jsonb_build_array(
       jsonb_build_object('returnLineId',v_return_line,'quantityUom',1,
-        'warehouseId',v_warehouse,'disposition','RESTOCK','notes','Layak dijual kembali'),
+        'warehouseId',v_submitted_warehouse,'disposition','RESTOCK','notes','Layak dijual kembali'),
       jsonb_build_object('returnLineId',v_return_line,'quantityUom',1,
-        'warehouseId',v_warehouse,'disposition','DESTROY','notes','Rusak dan dihancurkan')),
+        'warehouseId',v_submitted_warehouse,'disposition','DESTROY','notes','Rusak dan dihancurkan')),
     'Split disposition rollback-only test');
   v_retry:=public.post_backoffice_sales_return_receipt(v_return,
     (v_return_result->'data'->>'masterVersion')::bigint,v_operation,v_today,
     jsonb_build_array(
       jsonb_build_object('returnLineId',v_return_line,'quantityUom',1,
-        'warehouseId',v_warehouse,'disposition','RESTOCK','notes','Layak dijual kembali'),
+        'warehouseId',v_submitted_warehouse,'disposition','RESTOCK','notes','Layak dijual kembali'),
       jsonb_build_object('returnLineId',v_return_line,'quantityUom',1,
-        'warehouseId',v_warehouse,'disposition','DESTROY','notes','Rusak dan dihancurkan')),
+        'warehouseId',v_submitted_warehouse,'disposition','DESTROY','notes','Rusak dan dihancurkan')),
     'Split disposition rollback-only test');
   IF COALESCE((v_retry->>'exactRetry')::boolean,false) IS NOT TRUE
     OR v_retry->>'receiptId'<>v_receipt->>'receiptId' THEN
@@ -195,7 +200,8 @@ BEGIN
         AND document.status='RECEIVED' AND document.total_received_base_qty=2
         AND document.total_restocked_base_qty=1 AND document.total_destroyed_base_qty=1)
     OR (SELECT count(*) FROM public.backoffice_sales_return_receipt_lines line
-      WHERE line.company_id=v_company AND line.receipt_id=(v_receipt->>'receiptId')::uuid)<>2
+      WHERE line.company_id=v_company AND line.receipt_id=(v_receipt->>'receiptId')::uuid
+        AND line.warehouse_id=v_warehouse)<>2
     OR (SELECT count(*) FROM public.stock_movements movement
       WHERE movement.company_id=v_company
         AND movement.reference_table='backoffice_sales_return_receipts'
@@ -265,6 +271,7 @@ SELECT 'backoffice_sales_return_customer_receipt_behavior' check_name,'PASS' sta
     'canonical SO Dispatch and Customer acceptance','approved Return source',
     'split RESTOCK and DESTROY on one Product','DESTROY note required and no photo/second approval',
     'original Customer Receipt FIFO lineage','RESTOCK-only On Hand increase',
+    'wrong submitted Warehouse canonicalized to source Warehouse',
     'future date and stale version rejection','exact retry','cross-Company denial',
     'immutable audit','zero Invoice, Financial Event and Journal effect',
     'all fixture writes rolled back']) details;

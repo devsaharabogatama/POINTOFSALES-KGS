@@ -1,7 +1,7 @@
--- Authenticated rollback-only behavior for Backoffice Sales Return Step 3/5.
+-- Authenticated rollback-only behavior for Backoffice AR Task 4.
 DO $test$
 DECLARE
-  v_actor uuid;v_company uuid;v_store uuid;v_warehouse uuid;v_customer uuid;
+  v_actor uuid;v_company uuid;v_other_company uuid;v_store uuid;v_warehouse uuid;v_customer uuid;
   v_customer_category uuid;v_fixture_code text;
   v_product_uom uuid;v_product uuid;v_method uuid;v_proof_mode text;
   v_today date;v_original_negative boolean;
@@ -13,7 +13,10 @@ DECLARE
   v_allocate_op uuid:=gen_random_uuid();v_allocate jsonb;v_retry jsonb;
   v_note uuid;v_post_op uuid:=gen_random_uuid();v_posted_note jsonb;
   v_payment_draft jsonb;v_payment_amount numeric(24,4);v_invoice_total numeric(24,4);
-  v_statement jsonb;
+  v_invoice_no text;v_statement jsonb;v_workspace jsonb;v_payment_context jsonb;
+  v_open_items jsonb;v_aging jsonb;
+  v_credit_item uuid;v_receivable_before numeric(24,4);v_receivable_after numeric(24,4);
+  v_before_movement bigint;v_before_fifo bigint;
   v_failed boolean;v_before_event bigint;v_before_journal bigint;
   v_phase text:='PRECONDITION';
 BEGIN
@@ -22,8 +25,8 @@ BEGIN
   -- BEGIN/ROLLBACK statement in the SQL editor.
   BEGIN
   IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
-    WHERE version='20260917131000') THEN
-    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Step 3 runtime migration required';
+    WHERE version='20261105120000') THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Task 4 migration 20261105120000 required';
   END IF;
   v_phase:='FIXTURE_SELECTION';
   SELECT profile.id INTO v_actor FROM auth.users auth_user
@@ -36,6 +39,9 @@ BEGIN
   INTO v_company,v_store,v_warehouse,v_original_negative,
     v_product_uom,v_product,v_method,v_proof_mode,v_today
   FROM public.companies company
+  JOIN public.company_sales_process_settings process
+    ON process.company_id=company.id
+   AND process.active_mode='BACKOFFICE_DELIVERED_QTY_INVOICE'
   JOIN public.stores store ON store.company_id=company.id AND store.status='ACTIVE'
   JOIN public.warehouses warehouse ON warehouse.company_id=company.id
     AND warehouse.is_active AND warehouse.is_sale_source
@@ -52,6 +58,7 @@ BEGIN
       AND payment_method.settlement_route IN('CASH_DRAWER','DIRECT_BANK')
     ORDER BY payment_method.is_default DESC,payment_method.id LIMIT 1) method ON true
   WHERE company.status='ACTIVE'
+    AND NOT public.private_company_feature_enabled(company.id,'tax_sales_enabled')
     AND EXISTS(SELECT 1 FROM public.accounting_periods period
       WHERE period.company_id=company.id AND period.status IN('OPEN','REOPENED')
         AND (clock_timestamp() AT TIME ZONE company.timezone)::date
@@ -90,16 +97,6 @@ BEGIN
       RAISE EXCEPTION 'TEST_FAILED: canonical rollback Customer fixture was not created';
     END IF;
   END IF;
-  INSERT INTO public.company_features(company_id,feature_code,is_enabled,config,updated_by)
-  VALUES(v_company,'backoffice_delivered_qty_sales_enabled',true,'{}',v_actor)
-  ON CONFLICT(company_id,feature_code) DO UPDATE SET is_enabled=true,updated_by=excluded.updated_by;
-  PERFORM pg_advisory_xact_lock(hashtextextended(v_company::text,20260911130000));
-  PERFORM set_config('kgs.sales_process_cutover_mutation','1',true);
-  UPDATE public.company_sales_process_settings SET
-    active_mode='BACKOFFICE_DELIVERED_QTY_INVOICE',mode_effective_at='-infinity',
-    master_version=master_version+1,updated_by=v_actor,updated_at=clock_timestamp()
-  WHERE company_id=v_company;
-  PERFORM set_config('kgs.sales_process_cutover_mutation','',true);
   UPDATE public.warehouses SET allow_negative_stock=true
   WHERE company_id=v_company AND id=v_warehouse;
 
@@ -167,7 +164,7 @@ BEGIN
   WHERE company_id=v_company AND invoice_id=v_posted_invoice AND line_type='PRODUCT';
   PERFORM public.post_backoffice_sales_invoice(v_posted_invoice,
     (v_result->'data'->>'masterVersion')::bigint,gen_random_uuid());
-  SELECT grand_total INTO STRICT v_invoice_total
+  SELECT grand_total,invoice_no INTO STRICT v_invoice_total,v_invoice_no
   FROM public.backoffice_sales_invoices
   WHERE company_id=v_company AND id=v_posted_invoice;
   v_phase:='PARTIAL_CUSTOMER_PAYMENT';
@@ -258,27 +255,109 @@ BEGIN
   END IF;
 
   v_phase:='CREDIT_NOTE_POST';
+  v_receivable_before:=private.backoffice_invoice_receivable_before_receipts(
+    v_company,v_posted_invoice,v_today);
+  SELECT count(*) INTO v_before_movement FROM public.stock_movements;
+  SELECT count(*) INTO v_before_fifo FROM public.sale_fifo_allocations;
   SELECT master_version INTO STRICT v_version FROM public.backoffice_sales_credit_notes
   WHERE company_id=v_company AND id=v_note;
+  v_failed:=false;
+  BEGIN
+    PERFORM public.post_backoffice_sales_credit_note(
+      v_note,v_version+1,gen_random_uuid());
+  EXCEPTION WHEN OTHERS THEN
+    v_failed:=SQLERRM LIKE '%MASTER_VERSION_CONFLICT%';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'TEST_FAILED: stale Credit Note version accepted';
+  END IF;
   v_posted_note:=public.post_backoffice_sales_credit_note(v_note,v_version,v_post_op);
   v_retry:=public.post_backoffice_sales_credit_note(v_note,v_version,v_post_op);
+  v_failed:=false;
+  BEGIN
+    PERFORM public.post_backoffice_sales_credit_note(
+      v_note,v_version,gen_random_uuid());
+  EXCEPTION WHEN OTHERS THEN
+    v_failed:=SQLERRM LIKE '%CREDIT_NOTE_NOT_POSTABLE%';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'TEST_FAILED: changed Credit Note retry accepted';
+  END IF;
+  SELECT company.id INTO v_other_company FROM public.companies company
+  JOIN public.company_sales_process_settings setting
+    ON setting.company_id=company.id
+   AND setting.active_mode='BACKOFFICE_DELIVERED_QTY_INVOICE'
+  WHERE company.status='ACTIVE' AND company.id<>v_company
+  ORDER BY company.id LIMIT 1;
+  IF v_other_company IS NOT NULL THEN
+    PERFORM public.set_active_company_context(v_other_company,'BACKOFFICE');
+    v_failed:=false;
+    BEGIN
+      PERFORM public.post_backoffice_sales_credit_note(
+        v_note,v_version,gen_random_uuid());
+    EXCEPTION WHEN OTHERS THEN
+      v_failed:=SQLERRM LIKE '%CREDIT_NOTE_NOT_FOUND%';
+    END;
+    PERFORM public.set_active_company_context(v_company,'BACKOFFICE');
+    IF NOT v_failed THEN
+      RAISE EXCEPTION 'TEST_FAILED: cross-Company Credit Note post not denied';
+    END IF;
+  END IF;
+  v_phase:='OPEN_CREDIT_CONSUMERS';
+  SELECT item.id INTO STRICT v_credit_item FROM public.ar_open_item_registry item
+  WHERE item.company_id=v_company AND item.scope_kind='BACKOFFICE'
+    AND item.item_kind='CREDIT_NOTE' AND item.source_id=v_note
+    AND item.customer_id=v_customer AND item.direction='CREDIT'
+    AND item.source_snapshot->>'runtime'='TASK4';
+  v_receivable_after:=private.backoffice_invoice_receivable_before_receipts(
+    v_company,v_posted_invoice,v_today);
+  v_workspace:=public.get_finance_customer_receipts();
+  v_payment_context:=public.get_backoffice_sales_invoice_payment_context(v_posted_invoice);
+  v_open_items:=public.get_finance_ar_open_items(v_customer,false);
+  v_aging:=public.get_finance_ar_aging(v_today,v_customer,v_store);
   v_phase:='CUSTOMER_STATEMENT';
   v_statement:=public.get_finance_customer_statement(v_customer,v_today,v_today,v_store);
   v_phase:='FINAL_ASSERTIONS';
   IF COALESCE((v_retry->>'exactRetry')::boolean,false) IS NOT TRUE
     OR NOT EXISTS(SELECT 1 FROM public.backoffice_sales_credit_notes note
       WHERE note.company_id=v_company AND note.id=v_note AND note.status='POSTED'
-        AND note.grand_total>0 AND note.ar_reduction_amount>0
-        AND note.refund_liability_amount>0
-        AND note.ar_reduction_amount+note.refund_liability_amount=note.grand_total)
+        AND note.grand_total>0 AND note.ar_reduction_amount=note.grand_total
+        AND note.refund_liability_amount=0)
     OR NOT EXISTS(SELECT 1 FROM public.backoffice_sales_returns document
       WHERE document.company_id=v_company AND document.id=v_return
-        AND document.status='REFUND_PENDING')
+        AND document.status='COMPLETED')
+    OR (SELECT count(*) FROM public.ar_open_item_registry item
+        WHERE item.company_id=v_company AND item.scope_kind='BACKOFFICE'
+          AND item.item_kind='CREDIT_NOTE' AND item.source_id=v_note)<>1
+    OR (SELECT COALESCE(sum(allocation.allocated_amount),0)
+        FROM public.ar_open_item_allocations allocation
+        WHERE allocation.company_id=v_company
+          AND allocation.credit_item_id=v_credit_item)<>0
+    OR v_receivable_after<>v_receivable_before
     OR (SELECT round(COALESCE(sum(schedule.credited_amount),0),4)
         FROM public.backoffice_sales_invoice_receivable_schedules schedule
-        WHERE schedule.company_id=v_company AND schedule.invoice_id=v_posted_invoice)
-      <>round((SELECT note.ar_reduction_amount FROM public.backoffice_sales_credit_notes note
-        WHERE note.company_id=v_company AND note.id=v_note),4)
+        WHERE schedule.company_id=v_company AND schedule.invoice_id=v_posted_invoice)<>0
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_workspace->'openInvoices') item
+      WHERE item->>'sourceType'='BACKOFFICE_SALES_INVOICE'
+        AND (item->>'sourceId')::uuid=v_posted_invoice
+        AND (item->>'creditedAmount')::numeric=0
+        AND round((item->>'remainingAmount')::numeric,4)
+          =round(v_invoice_total-v_payment_amount,4))
+    OR (v_payment_context->'summary'->>'creditNoteAmount')::numeric<>0
+    OR round((v_payment_context->'summary'->>'outstandingAmount')::numeric,4)
+      <>round(v_invoice_total-v_payment_amount,4)
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_aging->'invoices') item
+      WHERE item->>'invoiceNo'=v_invoice_no
+        AND (item->>'creditedAmount')::numeric=0)
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_open_items->'items') item
+      WHERE (item->>'id')::uuid=v_credit_item
+        AND (item->>'originalAmount')::numeric=(SELECT note.grand_total
+          FROM public.backoffice_sales_credit_notes note
+          WHERE note.company_id=v_company AND note.id=v_note)
+        AND (item->>'allocatedAmount')::numeric=0
+        AND (item->>'residualAmount')::numeric=(SELECT note.grand_total
+          FROM public.backoffice_sales_credit_notes note
+          WHERE note.company_id=v_company AND note.id=v_note))
     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_statement->'rows') item
       WHERE item->>'sourceType'='CREDIT_NOTE' AND item->>'sourceProcess'='BACKOFFICE'
         AND item->>'sourceId'=v_note::text)
@@ -286,8 +365,19 @@ BEGIN
       JOIN public.backoffice_sales_credit_notes note
         ON note.company_id=journal.company_id AND note.financial_event_id=journal.financial_event_id
       WHERE note.company_id=v_company AND note.id=v_note AND journal.status='POSTED'
-        AND journal.total_debit=note.grand_total AND journal.total_credit=note.grand_total) THEN
-    RAISE EXCEPTION 'TEST_FAILED: Credit Note posting or exact retry invalid';
+        AND journal.total_debit=note.grand_total AND journal.total_credit=note.grand_total)
+    OR (SELECT count(*) FROM public.financial_events event
+        WHERE event.company_id=v_company
+          AND event.source_table='backoffice_sales_credit_notes'
+          AND event.source_id=v_note)<>1
+    OR (SELECT count(*) FROM public.finance_journals journal
+        JOIN public.backoffice_sales_credit_notes note
+          ON note.company_id=journal.company_id
+         AND note.financial_event_id=journal.financial_event_id
+        WHERE note.company_id=v_company AND note.id=v_note)<>1
+    OR (SELECT count(*) FROM public.stock_movements)<>v_before_movement
+    OR (SELECT count(*) FROM public.sale_fifo_allocations)<>v_before_fifo THEN
+    RAISE EXCEPTION 'TEST_FAILED: Task 4 Credit Note open-credit behavior invalid';
   END IF;
 
   v_failed:=false;
@@ -306,10 +396,27 @@ BEGIN
   EXCEPTION WHEN SQLSTATE 'P7701' THEN
     NULL;
   END;
-  RAISE NOTICE 'backoffice_sales_return_credit_note_behavior PASS: all fixture writes rolled back';
+  RAISE NOTICE 'backoffice_sales_return_credit_note_behavior PASS: Task 4 open credit, consumers and all fixture writes rolled back';
 EXCEPTION WHEN OTHERS THEN
   RAISE EXCEPTION 'TEST_PHASE_FAILED [%]: %',v_phase,SQLERRM
     USING ERRCODE=SQLSTATE,
       DETAIL='Assertion tetap aktif; seluruh fixture dibatalkan oleh transaksi test.';
 END
 $test$;
+
+SELECT 'backoffice_ar_credit_note_open_credit_behavior' AS check_name,
+  'PASS' AS status,0::bigint AS violation_rows,
+  jsonb_build_object('tested',ARRAY[
+    'installed exact forward migration',
+    'authenticated native Backoffice non-tax Credit Note posting',
+    'full AR credit with zero new Refund Liability',
+    'Customer-scoped unallocated open credit and full residual',
+    'source Invoice receivable, schedule, Receipt workspace and payment context unchanged before allocation',
+    'AR Aging source Invoice uses zero allocated Credit Note',
+    'Customer Statement full Credit Note entry',
+    'balanced Finance Journal and exact retry',
+    'stale version and cross-Company denial',
+    'changed Credit Note retry denial',
+    'zero Credit Note posting effect on Stock/FIFO',
+    'stale Return allocation denial',
+    'all fixture writes rolled back']) AS details;

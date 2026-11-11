@@ -27,18 +27,23 @@ export async function GET(request: Request) {
   try {
     const caller = await requireCaller(request)
     await requireActiveCompany(caller)
-    const [workspace, advancePolicy, openItems] = await Promise.all([
+    const [workspace, advancePolicy, openItems, customerBalances] = await Promise.all([
       caller.client.rpc('get_finance_customer_receipts'),
       caller.client.rpc('get_customer_receipt_advance_policy'),
       caller.client.rpc('get_finance_ar_open_items', { p_customer_id: null, p_include_settled: false }),
+      caller.client.rpc('get_finance_customer_balances'),
     ])
     if (workspace.error) throwDatabaseError(workspace.error)
     if (advancePolicy.error) throwDatabaseError(advancePolicy.error)
     if (openItems.error) throwDatabaseError(openItems.error)
+    if (customerBalances.error && !/CUSTOM_PERMISSION_DENIED|FEATURE.*DISABLED/i.test(customerBalances.error.message ?? '')) {
+      throwDatabaseError(customerBalances.error)
+    }
     return Response.json({
       ...(workspace.data as Record<string, unknown>),
       advancePolicy: advancePolicy.data,
       openItems: openItems.data,
+      customerBalances: customerBalances.error ? null : customerBalances.data,
     })
   } catch (error) { return apiError(error) }
 }

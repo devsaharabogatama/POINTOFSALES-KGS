@@ -16,7 +16,14 @@ export async function GET(request: Request, { params }: Context) {
       const payment = await caller.client.rpc("get_backoffice_sales_credit_note_payment_context", { p_credit_note_id: creditNoteId });
       if (payment.error) throwBackofficeReturnError(payment.error); paymentContext = payment.data;
     }
-    return Response.json({ ...note.data, refunds: refunds.error ? null : refunds.data, paymentContext });
+    const replacementResult = await caller.client.rpc("get_backoffice_credit_note_replacement", {
+      p_credit_note_id: creditNoteId,
+    });
+    if (replacementResult.error && replacementResult.error.code !== "PGRST202") {
+      throwBackofficeReturnError(replacementResult.error);
+    }
+    return Response.json({ ...note.data, refunds: refunds.error ? null : refunds.data, paymentContext,
+      replacement: replacementResult.error ? null : replacementResult.data });
   } catch (error) { return apiError(error); }
 }
 

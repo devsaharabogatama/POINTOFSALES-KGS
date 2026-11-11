@@ -197,6 +197,8 @@ function authHeaders(session: Session) {
   return { Authorization: `Bearer ${session.access_token}` };
 }
 
+const SESSION_BOOTSTRAP_TIMEOUT_MS = 12_000;
+
 function messageFromError(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
   if (
@@ -238,19 +240,64 @@ export default function Home() {
   const [showTenant, setShowTenant] = useState(false);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let mounted = true;
+    let initialCheckFinished = false;
+    const finishInitialCheck = (nextSession: Session | null) => {
+      if (!mounted || initialCheckFinished) return;
+      initialCheckFinished = true;
+      window.clearTimeout(timeout);
+      setSession(nextSession);
       setCheckingSession(false);
-    });
+    };
+    const timeout = window.setTimeout(() => {
+      if (!mounted || initialCheckFinished) return;
+      initialCheckFinished = true;
+      setSession(null);
+      setNotice(
+        "Pemeriksaan sesi terlalu lama. Silakan masuk kembali atau muat ulang halaman.",
+      );
+      setCheckingSession(false);
+    }, SESSION_BOOTSTRAP_TIMEOUT_MS);
+
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        finishInitialCheck(data.session);
+      })
+      .catch((error: unknown) => {
+        if (!mounted || initialCheckFinished) return;
+        initialCheckFinished = true;
+        window.clearTimeout(timeout);
+        setSession(null);
+        setNotice(
+          messageFromError(
+            error,
+            "Sesi tidak dapat diperiksa. Silakan masuk kembali.",
+          ),
+        );
+        setCheckingSession(false);
+      });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
+      if (!initialCheckFinished) {
+        initialCheckFinished = true;
+        window.clearTimeout(timeout);
+      }
       setSession(nextSession);
       if (!nextSession) {
         setContext(null);
         setActiveCompanyId("");
+      } else {
+        setNotice(null);
       }
       setCheckingSession(false);
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      window.clearTimeout(timeout);
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   const loadContext = useCallback(async (activeSession: Session) => {
@@ -296,11 +343,31 @@ export default function Home() {
     setActiveCompanyId(selectedId);
   }, []);
 
-  useEffect(() => {
-    if (!session) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- account context follows the authenticated session
-    void loadContext(session).catch(async (error: unknown) => {
-      const code = error instanceof Error ? error.message : "";
+  const loadContextWithHandling = useCallback(
+    async (activeSession: Session) => {
+      setNotice(null);
+      let failure: unknown = null;
+      try {
+        await loadContext(activeSession);
+        return;
+      } catch (error) {
+        failure = error;
+      }
+
+      if (
+        failure instanceof Error &&
+        failure.message === "JWT issued at future"
+      ) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_100));
+        try {
+          await loadContext(activeSession);
+          return;
+        } catch (retryError) {
+          failure = retryError;
+        }
+      }
+
+      const code = failure instanceof Error ? failure.message : "";
       if (code === "INVALID_SESSION") {
         await supabase.auth.signOut({ scope: "local" });
         setSession(null);
@@ -309,9 +376,16 @@ export default function Home() {
         setNotice("Sesi login sudah kedaluwarsa. Silakan masuk kembali.");
         return;
       }
-      setNotice(messageFromError(error, "Gagal memuat akun"));
-    });
-  }, [session, loadContext]);
+      setNotice(messageFromError(failure, "Gagal memuat akun"));
+    },
+    [loadContext],
+  );
+
+  useEffect(() => {
+    if (!session) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- account context follows the authenticated session
+    void loadContextWithHandling(session);
+  }, [session, loadContextWithHandling]);
 
   const loadTenantData = useCallback(async () => {
     if (!session || !activeCompanyId) return;
@@ -727,10 +801,19 @@ export default function Home() {
 
   if (checkingSession)
     return <FullScreenLoader label="Menyiapkan backoffice" />;
-  if (!session) return <LoginScreen />;
+  if (!session) return <LoginScreen notice={notice} />;
 
   if (!context) {
-    return <FullScreenLoader label="Memuat akses perusahaan" notice={notice} />;
+    return (
+      <FullScreenLoader
+        label="Memuat akses perusahaan"
+        notice={notice}
+        actionLabel="Coba lagi"
+        onAction={
+          notice ? () => void loadContextWithHandling(session) : undefined
+        }
+      />
+    );
   }
 
   if (!activeCompany) {
@@ -1415,7 +1498,7 @@ export default function Home() {
   );
 }
 
-function LoginScreen() {
+function LoginScreen({ notice }: { notice?: string | null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1475,9 +1558,9 @@ function LoginScreen() {
             perusahaan.
           </p>
 
-          {error && (
+          {(error || notice) && (
             <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {error}
+              {error || notice}
             </div>
           )}
           <label
@@ -2544,9 +2627,13 @@ function Empty({ label }: { label: string }) {
 function FullScreenLoader({
   label,
   notice,
+  actionLabel,
+  onAction,
 }: {
   label: string;
   notice?: string | null;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="min-h-screen bg-slate-50 grid place-items-center">
@@ -2554,6 +2641,15 @@ function FullScreenLoader({
         <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-500" />
         <p className="mt-4 text-sm font-semibold text-slate-600">{label}</p>
         {notice && <p className="mt-2 text-xs text-rose-600">{notice}</p>}
+        {notice && actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="mt-4 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+          >
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -7,8 +7,8 @@ DECLARE v_actor uuid;v_company uuid;v_source_kind text;v_source_id uuid;v_custom
   v_workspace jsonb;v_row jsonb;v_method uuid;v_failed boolean:=false;
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM private.kgs_schema_migrations
-    WHERE version='20260919110000') THEN
-    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: 20260919110000 required';
+    WHERE version='20261105120000') THEN
+    RAISE EXCEPTION 'TEST_PRECONDITION_FAILED: Task 4 migration 20261105120000 required';
   END IF;
   SELECT profile.id INTO v_actor FROM public.profiles profile
   JOIN auth.users auth_user ON auth_user.id=profile.id
@@ -35,14 +35,9 @@ BEGIN
   VALUES(v_actor,v_company) ON CONFLICT(user_id) DO UPDATE SET
     company_id=excluded.company_id,selected_at=clock_timestamp(),updated_at=clock_timestamp();
 
-  SELECT round(COALESCE(sum(note.ar_reduction_amount),0),4) INTO v_credit
-  FROM public.backoffice_sales_credit_notes note
-  WHERE note.company_id=v_company AND note.status='POSTED'
-    AND note.source_kind=v_source_kind
-    AND CASE WHEN v_source_kind='BACKOFFICE' THEN note.source_invoice_id=v_source_id
-      ELSE note.source_retail_sales_id=v_source_id END
-    AND note.credit_note_date<=v_today;
   IF v_source_kind='BACKOFFICE' THEN
+    SELECT private.ar4_backoffice_invoice_allocated_credit(
+      v_company,v_source_id,v_today) INTO v_credit;
     SELECT invoice.grand_total,COALESCE((SELECT sum(allocation.allocated_amount)
       FROM public.customer_receipt_backoffice_invoice_allocations allocation
       JOIN public.customer_receipt_documents receipt ON receipt.company_id=allocation.company_id
@@ -51,6 +46,12 @@ BEGIN
     INTO v_original,v_paid FROM public.backoffice_sales_invoices invoice
     WHERE invoice.company_id=v_company AND invoice.id=v_source_id;
   ELSE
+    SELECT round(COALESCE(sum(note.ar_reduction_amount),0),4) INTO v_credit
+    FROM public.backoffice_sales_credit_notes note
+    WHERE note.company_id=v_company AND note.status='POSTED'
+      AND note.source_kind='RETAINED_RETAIL'
+      AND note.source_retail_sales_id=v_source_id
+      AND note.credit_note_date<=v_today;
     SELECT private.odr6d_dispatched_receivable_before_receipts(sale.company_id,sale.id,v_today),
       COALESCE((SELECT sum(allocation.allocated_amount)
       FROM public.customer_receipt_allocations allocation
@@ -99,7 +100,8 @@ $test$;
 
 SELECT 'customer_receipt_credit_note_outstanding_behavior' check_name,'PASS' status,
   0::bigint violation_rows,jsonb_build_object('tested',ARRAY[
-    'actual posted Credit Note reflected in Customer Receipt candidate',
+    'native Backoffice Credit Note uses explicit open-item allocation',
+    'retained Retail Credit Note keeps posted AR reduction behavior',
     'fully settled credited Invoice omitted from candidates',
     'server rejects allocation above Credit Note adjusted outstanding',
     'all test context writes rolled back']) details;

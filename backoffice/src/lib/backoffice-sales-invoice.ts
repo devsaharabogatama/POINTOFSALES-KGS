@@ -54,13 +54,15 @@ export function parsePostedInvoicePriceCorrectionLines(body: JsonObject) {
 
 export function parseBackofficeInvoicePayload(body: JsonObject) {
   if ((body.lines !== undefined && !Array.isArray(body.lines)) ||
-    (body.acceptedOverageLines !== undefined && !Array.isArray(body.acceptedOverageLines))) {
+    (body.acceptedOverageLines !== undefined && !Array.isArray(body.acceptedOverageLines)) ||
+    (body.replacementLines !== undefined && !Array.isArray(body.replacementLines))) {
     throw new ApiRouteError("BACKOFFICE_ACCEPTED_OVERAGE_INVOICE_PAYLOAD_INVALID", 400);
   }
   const rawSalesOrderLines = Array.isArray(body.lines) ? body.lines : [];
   const rawAcceptedOverageLines = Array.isArray(body.acceptedOverageLines)
     ? body.acceptedOverageLines : [];
-  if (rawSalesOrderLines.length === 0 && rawAcceptedOverageLines.length === 0) {
+  const rawReplacementLines = Array.isArray(body.replacementLines) ? body.replacementLines : [];
+  if (rawSalesOrderLines.length === 0 && rawAcceptedOverageLines.length === 0 && rawReplacementLines.length === 0) {
     throw new ApiRouteError("BACKOFFICE_SALES_INVOICE_LINES_REQUIRED", 400);
   }
   const lines = rawSalesOrderLines.map((raw) => {
@@ -100,6 +102,26 @@ export function parseBackofficeInvoicePayload(body: JsonObject) {
       quantityUom,
     };
   });
+  const replacementLines = rawReplacementLines.map((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new ApiRouteError("BACKOFFICE_REPLACEMENT_LINE_INVALID", 400);
+    }
+    const line = raw as JsonObject;
+    if (Object.keys(line).some((key) => ![
+      "replacementSourceInvoiceLineId", "quantityUom", "unitPrice", "discountAmount", "taxApplied",
+    ].includes(key))) throw new ApiRouteError("BACKOFFICE_REPLACEMENT_LINE_INVALID", 400);
+    const quantityUom = Number(line.quantityUom);
+    const unitPrice = Number(line.unitPrice);
+    const discountAmount = Number(line.discountAmount ?? 0);
+    if (!Number.isFinite(quantityUom) || quantityUom <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0 ||
+      !Number.isFinite(discountAmount) || discountAmount < 0) {
+      throw new ApiRouteError("BACKOFFICE_REPLACEMENT_LINE_INVALID", 400);
+    }
+    return {
+      replacementSourceInvoiceLineId: requiredUuid(line, "replacementSourceInvoiceLineId"),
+      quantityUom, unitPrice, discountAmount, taxApplied: line.taxApplied === true,
+    };
+  });
   const deliveryFeeAmount = Number(body.deliveryFeeAmount ?? 0);
   if (!Number.isFinite(deliveryFeeAmount) || deliveryFeeAmount < 0) {
     throw new ApiRouteError("BACKOFFICE_INVOICE_DELIVERY_FEE_INVALID", 400);
@@ -111,7 +133,7 @@ export function parseBackofficeInvoicePayload(body: JsonObject) {
     paymentTermId: null,
     deliveryFeeAmount,
     notes: typeof body.notes === "string" ? body.notes.trim().slice(0, 1000) || null : null,
-    lines,
+    lines: replacementLines.length ? replacementLines : lines,
     acceptedOverageLines,
   };
 }
@@ -131,6 +153,9 @@ export function throwBackofficeInvoiceError(error: { code?: string; message?: st
     "BACKOFFICE_ACCEPTED_OVERAGE_INVOICE_COMMERCIAL_IMMUTABLE",
     "BACKOFFICE_ACCEPTED_OVERAGE_INVOICE_QUANTITY_EXCEEDS_AVAILABLE",
     "BACKOFFICE_ACCEPTED_OVERAGE_INVOICE_RECONCILIATION_FAILED",
+    "BACKOFFICE_REPLACEMENT_PAYLOAD_INVALID", "BACKOFFICE_REPLACEMENT_LINE_INVALID",
+    "BACKOFFICE_REPLACEMENT_LINE_DUPLICATE", "BACKOFFICE_REPLACEMENT_DRAFT_NOT_FOUND",
+    "BACKOFFICE_REPLACEMENT_TAX_SOURCE_INVALID",
     "BACKOFFICE_SALES_INVOICE_POST_PAYLOAD_INVALID", "FINAL_BACKOFFICE_SALES_INVOICE_IMMUTABLE",
     "INVOICE_PRICE_REVISION_REQUIRED", "INVOICE_PRICE_REVISION_CONFLICT",
     "INVOICE_PRICE_CORRECTION_PAYLOAD_INVALID", "INVOICE_PRICE_CORRECTION_LINE_INVALID",

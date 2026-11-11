@@ -20,7 +20,7 @@ test('Finance UI shows received, allocated, and residual amounts without auto al
   expect(view).toContain('Nominal diterima')
   expect(view).toContain('Dialokasikan ke invoice')
   expect(view).toContain('Sisa kredit Customer')
-  expect(view).toContain('Kredit tidak dialokasikan otomatis')
+  expect(view).toContain('Finance memilih tindakan secara eksplisit; tidak ada alokasi otomatis.')
   expect(view).toContain('Kredit dan tagihan terbuka')
   expect(view).toContain("item.direction === 'DEBIT' ? 'Tagihan' : 'Kredit'")
 })

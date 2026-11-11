@@ -4,7 +4,9 @@ WITH definitions AS (
     pg_get_functiondef(to_regprocedure(
       'public.save_customer_receipt_allocated_draft(uuid,bigint,uuid,date,uuid,text,text,text,numeric,jsonb)')) save_draft,
     pg_get_functiondef(to_regprocedure(
-      'public.post_customer_receipt_allocated(uuid,bigint,uuid)')) post_receipt
+      'public.post_customer_receipt_allocated(uuid,bigint,uuid)')) post_receipt,
+    pg_get_functiondef(to_regprocedure(
+      'private.ar3_post_customer_receipt_allocated_core(uuid,bigint,uuid)')) post_receipt_core
 )
 SELECT * FROM (
   SELECT 'customer_receipt_credit_migration_ledger' check_name,
@@ -27,17 +29,22 @@ SELECT * FROM (
       AND position('row_data.allocated_amount-row_data.credited_amount>0' IN workspace)>0
       AND position('private.customer_receipt_retail_receivable_before_receipts(' IN save_draft)>0
       AND position('private.backoffice_invoice_receivable_before_receipts(' IN save_draft)>0
-      AND position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt)>0
+      AND position('private.ar3_post_customer_receipt_allocated_core(' IN post_receipt)>0
+      AND position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt_core)>0
       THEN 'PASS' ELSE 'FAIL' END,
     CASE WHEN position('''creditedAmount'',row_data.credited_amount' IN workspace)>0
       AND position('row_data.allocated_amount-row_data.credited_amount>0' IN workspace)>0
       AND position('private.customer_receipt_retail_receivable_before_receipts(' IN save_draft)>0
       AND position('private.backoffice_invoice_receivable_before_receipts(' IN save_draft)>0
-      AND position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt)>0
+      AND position('private.ar3_post_customer_receipt_allocated_core(' IN post_receipt)>0
+      AND position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt_core)>0
       THEN 0 ELSE 1 END::bigint,
     jsonb_build_object('workspaceNet',position('''creditedAmount'',row_data.credited_amount' IN workspace)>0,
       'saveNet',position('private.customer_receipt_retail_receivable_before_receipts(' IN save_draft)>0,
-      'postNet',position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt)>0)
+      'postWrapperCore',position('private.ar3_post_customer_receipt_allocated_core(' IN post_receipt)>0,
+      'postCoreNet',position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt_core)>0,
+      'postNet',position('private.ar3_post_customer_receipt_allocated_core(' IN post_receipt)>0
+        AND position('private.customer_receipt_retail_receivable_before_receipts(' IN post_receipt_core)>0)
   FROM definitions
   UNION ALL
   SELECT 'customer_receipt_credit_permission_contract',
